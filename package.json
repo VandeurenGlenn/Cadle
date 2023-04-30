@@ -2,15 +2,33 @@
   "name": "cadle",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
+    "watch": "rollup -c -w",
+    "serve": "jsproject --serve ./www --port 4333",
+    "build": "rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
-    "carlo": "^0.9.46",
-    "fabric": "^3.4.0"
+    "@lit-labs/context": "^0.3.1",
+    "@material/web": "^1.0.0-pre.7",
+    "@vandeurenglenn/flex-elements": "^0.1.1",
+    "custom-pages": "^0.12.1",
+    "custom-tabs": "^0.13.1",
+    "fabric": "^6.0.0-beta3",
+    "lit": "^2.7.3"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^24.1.0",
+    "@rollup/plugin-esm-shim": "^0.1.0",
+    "@rollup/plugin-json": "^6.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.2",
+    "@rollup/plugin-typescript": "^11.1.0",
+    "rollup": "^3.21.0",
+    "rollup-plugin-node-builtins": "^2.1.2",
+    "tslib": "^2.5.0"
   }
 }

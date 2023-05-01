@@ -118,11 +118,13 @@ export class DrawField extends LitElement {
       this._currentPoints = [ pointer.x, pointer.y, pointer.x, pointer.y ];
       const id = Math.random().toString(36).slice(-12)
       const index = this.canvas._objects.length
+      console.log(this._currentPoints);
+      
       if (this.action === 'draw-line') {
         this._current = new Line(this._currentPoints, {
           id,
           index,
-          strokeWidth: 5,
+          strokeWidth: 1,
           fill: '#555',
           stroke: '#555',
           originX: 'center',
@@ -137,7 +139,7 @@ export class DrawField extends LitElement {
           originX: 'left',
           originY: 'top',
           radius: pointer.x-this._currentPoints[0],
-          strokeWidth: 5,
+          strokeWidth: 1,
           fill: '#00000000',
           stroke: '#555'
         });
@@ -149,10 +151,10 @@ export class DrawField extends LitElement {
           left: this._currentPoints[0],
           originX: 'left',
           originY: 'top',
-          radius: pointer.y-this._currentPoints[1],
+          radius: pointer.y - this._currentPoints[1],
           startAngle: 0,
-          endAngle: pointer.x -this._currentPoints[0],
-          strokeWidth: 5,
+          endAngle: pointer.x - this._currentPoints[0],
+          strokeWidth: 1,
           fill: '#00000000',
           stroke: '#555'
         });
@@ -167,7 +169,7 @@ export class DrawField extends LitElement {
           width: pointer.x-this._currentPoints[0],
           height: pointer.y-this._currentPoints[1],
           angle: 0,
-          strokeWidth: 5,
+          strokeWidth: 1,
           fill: '#00000000',
           stroke: '#555'
         });
@@ -192,6 +194,7 @@ export class DrawField extends LitElement {
     }
     
     if (!this.drawing) return
+    this.canvas.selection = false
     // const pointer = this.canvas.getPointer(e)
     if (this.action === 'draw-line') {
       this._current.set({ x2: pointer.x, y2: pointer.y })
@@ -209,9 +212,13 @@ export class DrawField extends LitElement {
       this._current.set({ width: Math.abs(this._currentPoints[0] - pointer.x) });
       this._current.set({ height: Math.abs(this._currentPoints[1] - pointer.y) });
     } else if (this.action === 'draw-arc') {
+      console.log(pointer.x);
+      console.log(this._currentPoints[0]);
+      
       this._current.set({ 
         radius: Math.abs(this._currentPoints[1] - pointer.y),
-        endAngle: Math.abs((currentMouseLocation.x -this._currentPoints[0]) / 10 + (Math.PI / 5))
+        
+        endAngle: Math.abs((this._currentPoints[0] - pointer.x) / (Math.PI / 5))
       });
       // this._current.set({ radius: Math.abs(this._currentPoints[1] - pointer.y) });
     } else if (this.action === 'draw-symbol') {
@@ -239,7 +246,7 @@ export class DrawField extends LitElement {
     console.log('leave');
     this.drawing = false
     if (this.action === 'draw-symbol') {
-      this.canvas.remove(this.canvas.getActiveObject())
+      this.canvas.remove(this._current)
     }
     this.canvas.renderAll()
   }
@@ -250,7 +257,7 @@ export class DrawField extends LitElement {
       this.drawing = false
       this.canvas.remove(this._current)
       this.canvas.add(this._current);
-      
+      this.canvas.selection = true
       if (this._selectionWasTrue) this.canvas.selection = true
       // this.canvas.renderAll()
     } else if (this.canvas.getActiveObjects().length > 1) {

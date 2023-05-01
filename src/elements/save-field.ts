@@ -21,12 +21,13 @@ export class SaveField extends LitElement {
     `
   ];
 
-  loadFromJSON(json) {
-    return this.#canvas.loadFromJSON(json, this.#canvas.renderAll.bind(this.#canvas));
+  async loadFromJSON(json) {
+    await this.#canvas.loadFromJSON(json);
+    await this.#canvas.renderAll()
   }
 
   toDataURL() {
-    return this.#canvas.toDataURL()
+    return this.#canvas.toDataURL({quality: 100, enableRetinaScaling: true})
   }
 
   async connectedCallback(): Promise<void> {
@@ -35,29 +36,10 @@ export class SaveField extends LitElement {
     const { width, height } = this.getBoundingClientRect()
     this.#width = width
     this.#height = height
-    this.renderRoot.querySelector('canvas').width = width 
+    this.renderRoot.querySelector('canvas').width = width + document.querySelector('app-shell').drawer.getBoundingClientRect().width
     this.renderRoot.querySelector('canvas').height = height
     this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection: false });
     
-  
-  // create grid
-  
-    
-    
-    
-
- 
-    
-    // snap to grid
-    
-    this.#canvas.on('object:moving', (options) => { 
-      options.target.set({
-        left: Math.round(options.target.left / this.gridSize) * this.gridSize,
-        top: Math.round(options.target.top / this.gridSize) * this.gridSize
-      });
-    });
-
-    // this.#canvas
   }
 
   render() {

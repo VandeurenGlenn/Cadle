@@ -70,6 +70,10 @@ export class AppShell extends LitElement {
     }
   }
 
+  async save() {
+    
+  }
+
   get drawer() {
     return this.renderRoot.querySelector('project-drawer')
   }
@@ -102,6 +106,7 @@ export class AppShell extends LitElement {
       
         <md-standard-icon-button @click="${() => (this.action = 'select')}">arrow_selector_tool</md-standard-icon-button>
         <md-standard-icon-button @click="${this.download.bind(this)}">download</md-standard-icon-button>
+        <md-standard-icon-button @click="${this.save.bind(this)}">download</md-standard-icon-button>
       </flex-row>
     </project-drawer>
     <custom-pages attr-for-selected="data-route">

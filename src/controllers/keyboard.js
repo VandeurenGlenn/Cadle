@@ -1,4 +1,4 @@
-import { Object, util, IText } from 'fabric'
+import { Object, util, IText, Group } from 'fabric'
 
 const isMac = navigator.userAgent.indexOf('Mac OS X') != -1
 
@@ -19,22 +19,41 @@ addEventListener('keydown', async event => {
   if (event.metaKey && isMac && event.key === 'c' || event.ctrlKey && event.key === 'c' && !isMac) {
 
     const field = currentSelected()
-    currentObjectInClipboard = field.canvas.getActiveObject()
+    const target = field.canvas.getActiveObjects()[0]?.group || field.canvas.getActiveObjects()[0]
+    currentObjectInClipboard = target
   }
 
   if (event.metaKey && isMac && event.key === 'x' || event.ctrlKey && event.key === 'x' && !isMac) {
     const field = currentSelected()
-    currentObjectInClipboard = field.canvas.getActiveObject()
-    field.canvas.remove(field.canvas.getActiveObject())
+    const target = field.canvas.getActiveObjects()[0]
+    currentObjectInClipboard = target.group || target
+    console.log(target);
+    field.canvas.remove(target)
+  }
+
+  if (event.metaKey && isMac && event.ctrlKey && event.key === 'g' || event.ctrlKey && event.key === 'g' && !isMac) {
+    const field = currentSelected()
+    let items = field.canvas.getActiveObjects()
+    const group = field.canvas.getActiveObjects()[0].group;
+    // items = items.map(i => field.canvas.item(i.index))
+
+    for (const item of items) {
+      field.canvas.remove(item)
+    }
+    
+    field.canvas.add(new Group(items, {
+      left: group.left,
+      top: group.top
+    }))
   }
 
   if (event.metaKey && isMac && event.key === 'v' || event.ctrlKey && event.key === 'v' && !isMac) {
-    const json = await currentObjectInClipboard.cloneAsImage()
+    // const json = await currentObjectInClipboard.cloneAsImage()
+    const json = await currentObjectInClipboard.clone()
     let x = currentMousePosition.x - shell.drawer.getBoundingClientRect().width
     let y = currentMousePosition.y // - shell.header.width
     json.left = x - (json.width / 2)
     json.top = y - (json.height / 2)
-
     const field = currentSelected()
     console.log(json);
     await field.canvas.add(json)
@@ -47,8 +66,10 @@ addEventListener('keydown', async event => {
    
     const field = currentSelected()
     await field.canvas.add(new IText('Tap and Type', { 
-      fontFamily: 'arial black',
+      fontFamily: 'system-ui',
       fontSize: 12,
+      fontStyle: 'normal',
+      fontWeight: 'normal',
       left: currentMousePosition.x - shell.drawer.getBoundingClientRect().width, 
       top: currentMousePosition.y
     }))
@@ -58,6 +79,6 @@ addEventListener('keydown', async event => {
 
   
   
-  console.log(event);
+  // console.log(event);
   
 })

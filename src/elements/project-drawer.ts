@@ -5,7 +5,7 @@ import {consume} from '@lit-labs/context';
 import {Project, projectContext} from './../context/project-context.js';
 import'@material/web/list/list-item.js'
 import'@material/web/menu/sub-menu-item.js'
-import { loadSVGFromURL, util } from 'fabric';
+import { loadSVGFromURL, Image, util } from 'fabric';
 
 @customElement('project-drawer')
 
@@ -85,7 +85,7 @@ export class ProjectDrawer extends LitElement {
             
           
             
-            <md-standard-icon-button href="#!/add-page">add</md-standard-icon-button>
+            <md-standard-icon-button @click="${() => console.log('click')}" href="#!/add-page">add</md-standard-icon-button>
           </span>
         </section>
 
@@ -102,16 +102,15 @@ export class ProjectDrawer extends LitElement {
           ${map(symbols, item => html`
           
           <md-list-item .headline="${item}">
-            <img data-variant="image" slot="end" draggable="true" src="./symbols/${category}/${item}" @click="${() => {
+            <img data-variant="image" slot="end" draggable="true" src="./symbols/${category}/${item}" @click="${async () => {
               this.action = 'draw-symbol'
               this.symbol = `./symbols/${category}/${item}`
               console.log(`./symbols/${category}/${item}`);
+              const image = await Image.fromURL(`./symbols/${category}/${item}`)
+              console.log(image);
               
-              loadSVGFromURL(`./symbols/${category}/${item}`, (objects, options) => {
-                document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = util.groupSVGElements(objects);
-               
-                
-              })
+              document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = await image.clone()
+              
             }}" @dragstart=${this._dragstart.bind(this)}>
           </md-list-item>
         `)}

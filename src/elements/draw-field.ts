@@ -43,16 +43,16 @@ export class DrawField extends LitElement {
     const { width, height } = this.getBoundingClientRect()
     this.#width = width
     this.#height = height
-    this.renderRoot.querySelector('canvas').width = width 
-    this.renderRoot.querySelector('canvas').height = height
-    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection: false });
+    // this.renderRoot.querySelector('canvas').width = width 
+    // this.renderRoot.querySelector('canvas').height = height
+    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection :true, evented: false, width, height });
     this.gridSize = 10;
   
   // create grid
   
-    const drawVertical = (i: number) => this.#canvas.add(new Line([ i * this.gridSize, 0, i * this.gridSize, this.#height], { stroke: '#ccc', selectable: false, excludeFromExport: true }))
+    const drawVertical = (i: number) => this.#canvas.add(new Line([ i * this.gridSize, 0, i * this.gridSize, this.#height], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
 
-    const drawHorizontal = (i: number) => this.#canvas.add(new Line([ 0, i * this.gridSize, this.#width, i * this.gridSize], { stroke: '#ccc', selectable: false, excludeFromExport: true }))
+    const drawHorizontal = (i: number) => this.#canvas.add(new Line([ 0, i * this.gridSize, this.#width, i * this.gridSize], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
     
     for (var i = 0; i < (this.#biggest / this.gridSize); i++) {
       if (i <= this.#width) drawHorizontal(i)

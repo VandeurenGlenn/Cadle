@@ -45,7 +45,7 @@ export class AppShell extends LitElement {
       import('./controllers/mouse.js'),
       import('./controllers/keyboard.js'),
       (async () => {
-        this.project.symbols = (await import('./symbols/manifest.js')).default
+        // this.project.symbols = (await import('../www/symbols/manifest.js')).default
       })()
     ])
     

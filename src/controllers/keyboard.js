@@ -127,7 +127,7 @@ addEventListener('keydown', async event => {
 
   if (event.metaKey && isMac && event.key === 's' || event.ctrlKey && event.key === 's' && !isMac) {
     event.preventDefault()
-    cadleShell.save.bind(cadleShell)
+    shell.save()
   }
  
 

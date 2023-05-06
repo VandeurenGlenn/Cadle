@@ -21,6 +21,7 @@ export class ProjectsField extends LitElement {
         flex-direction: column;
         overflow-y: auto;
         align-items: center;
+        justify-content: center;
       }
     `
   ];

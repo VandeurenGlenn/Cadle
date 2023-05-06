@@ -1,4 +1,4 @@
-import { Object, util, IText, Group } from 'fabric'
+import { Object, util, IText, Group, ActiveSelection } from 'fabric'
 
 const isMac = navigator.userAgent.indexOf('Mac OS X') != -1
 
@@ -9,32 +9,70 @@ let currentObjectInClipboard
 
 addEventListener('keydown', async event => {
   const field = currentSelected()
+  const canvas = field.canvas
   if (event.metaKey && isMac && event.key === 'Backspace' || event.key === 'Backspace' && !isMac) {
-   
-    
     let items = field.canvas.getActiveObjects()
+    
     for (const item of items) {
-      field.canvas.remove(item)
+      if (item.type === 'activeselection') {
+        for (const _item of item._objects) {
+          field.canvas.remove(_item)
+        }
+      }
+      canvas.remove(item)
+      canvas.discardActiveObject();
     }
     
    
   }
 
+  if (event.metaKey && event.key === 'a' || event.ctrlKey && event.key === 'a') {
+
+    canvas.discardActiveObject();
+    var sel = new ActiveSelection(canvas.getObjects(), {
+      canvas: canvas,
+    });
+    canvas.setActiveObject(sel);
+  }
+
+
   if (event.metaKey && isMac && event.key === 'c' || event.ctrlKey && event.key === 'c' && !isMac) {
 
     
-    const target = field.canvas.getActiveObjects()[0]?.group || field.canvas.getActiveObjects()[0]
-    currentObjectInClipboard = target
+    const items = field.canvas.getActiveObjects()
+
+    const activeGroup = items[0].group || items[0]
+
+    const group = new Group(items, {
+      left: activeGroup.left,
+      top: activeGroup.top
+    })
+
+    for (const item of items) {
+      field.canvas.remove(item)
+    }
+    
+    field.canvas.add(group)
+
+    currentObjectInClipboard = group
   }
 
   if (event.metaKey && isMac && event.key === 'x' || event.ctrlKey && event.key === 'x' && !isMac) {
     
     const items = field.canvas.getActiveObjects()
 
-    const activeGroup = items[0].group
+    const activeGroup = items[0].group || items[0]
+    
     for (const item of items) {
-      field.canvas.remove(item)
+      if (item.type === 'activeselection') {
+        for (const _item of item._objects) {
+          field.canvas.remove(_item)
+        }
+      }
+      canvas.remove(item)
+      canvas.discardActiveObject();
     }
+
 
     const group = new Group(items, {
       left: activeGroup.left,

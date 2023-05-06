@@ -2,9 +2,6 @@ import commonjs from "@rollup/plugin-commonjs";
 import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
-import esmShim from '@rollup/plugin-esm-shim'
-import builtins from "rollup-plugin-node-builtins";
-import modify from "rollup-plugin-modify";
 import {readdir, unlink} from 'fs/promises'
 import { join } from 'path'
 
@@ -34,7 +31,6 @@ export default [{
   }],
   plugins: [
     cleanWWW(),
-    builtins(),
     json(),
     nodeResolve(),
     commonjs(),

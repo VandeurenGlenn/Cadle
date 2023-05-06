@@ -2,14 +2,17 @@ import {createContext} from '@lit-labs/context';
 // import type {Logger} from 'my-logging-library';
 // export type {Logger} from 'my-logging-library';
 
-declare type Project = {
-  pages: string[],
-  symbols: {
-    category: string,
-    symbols: string[]
-  }[]
+declare type Page = {
+  creationTime: EpochTimeStamp,
+  name: string,
+  schema: {}
 }
 
-export type { Project }
+declare type Project = {
+  creationTime: EpochTimeStamp
+  pages: Page[]
+}
+
+export type { Project, Page }
 
 export const projectContext = createContext<Project>('project');

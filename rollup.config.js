@@ -4,6 +4,7 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
 import esmShim from '@rollup/plugin-esm-shim'
 import builtins from "rollup-plugin-node-builtins";
+import modify from "rollup-plugin-modify";
 import {readdir, unlink} from 'fs/promises'
 import { join } from 'path'
 
@@ -22,9 +23,10 @@ const cleanWWW = async () => {
 }
 
 export default [{
-  input: ['./src/shell.ts', './src/elements/home-field.ts', './src/elements/add-page-field.ts'],
+  input: ['./src/shell.ts', './src/elements/add-page-field.ts', './src/fields/projects-field.ts'],
   external: [
-    './symbols/manifest.js'
+    './symbols/manifest.js',
+    './elements/symbols/manifest.js'
   ],
   output: [{
     format: 'es',

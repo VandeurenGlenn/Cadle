@@ -12,5 +12,5 @@ onhashchange = async () => {
   pages.select(selected)
 }
 
-if (!location.hash) location.hash = '#!/home'
+if (!location.hash) location.hash = '#!/projects'
 else onhashchange()

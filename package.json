@@ -19,6 +19,7 @@
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
     "fabric": "^6.0.0-beta3",
+    "idb-keyval": "^6.2.0",
     "lit": "^2.7.3"
   },
   "devDependencies": {
@@ -28,6 +29,7 @@
     "@rollup/plugin-node-resolve": "^15.0.2",
     "@rollup/plugin-typescript": "^11.1.0",
     "rollup": "^3.21.0",
+    "rollup-plugin-modify": "^3.0.0",
     "rollup-plugin-node-builtins": "^2.1.2",
     "tslib": "^2.5.0"
   }

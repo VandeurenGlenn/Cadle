@@ -1,13 +1,33 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
 import { Canvas, Circle, Line, Rect, Object, loadSVGFromURL, util } from 'fabric'
+import { AppShell } from '../shell.js';
+
+type x = number
+type y = number
+type left = number
+type top = number
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'draw-field': DrawField;
+  }
+}
 
 @customElement('draw-field')
 export class DrawField extends LitElement {
   #canvas: Canvas
   #height: number
   #width: number
+  #startPoints: [ x, y ]
   gridSize: number
+  drawing: boolean
+
+  _current: {}
+
+  get #shell() {
+    return document.querySelector('app-shell') as AppShell
+  }
 
   get #biggest() {
     return this.#width > this.#height ? this.#width : this.#height
@@ -18,11 +38,15 @@ export class DrawField extends LitElement {
   }
 
   get action() {
-    return document.querySelector('app-shell').action
+    return this.#shell.action
   }
 
   get symbol() {
-    return document.querySelector('app-shell').symbol
+    return this.#shell.symbol
+  }
+
+  get freeDraw() {
+    return this.#shell.freeDraw
   }
 
   set action(value) {
@@ -59,34 +83,12 @@ export class DrawField extends LitElement {
       if (i <= this.#height) drawVertical(i)
     }
 
-    this.#canvas.add(new Rect({ 
-      left: 100, 
-      top: 100, 
-      width: 50, 
-      height: 50, 
-      fill: '#faa', 
-      originX: 'left', 
-      originY: 'top',
-      centeredRotation: true
-    }));
-    
-    this.#canvas.add(new Circle({ 
-      left: 300, 
-      top: 300, 
-      radius: 50, 
-      fill: '#9f9', 
-      originX: 'left', 
-      originY: 'top',
-      centeredRotation: true
-    }));
     
     // snap to grid
     
-    this.#canvas.on('object:moving', (options) => { 
-      options.target.set({
-        left: Math.round(options.target.left / this.gridSize) * this.gridSize,
-        top: Math.round(options.target.top / this.gridSize) * this.gridSize
-      });
+    this.#canvas.on('object:moving', (options) => {
+
+      options.target.set(this.snapToGrid(options.target))
     });
 
     this.renderRoot.addEventListener('mousedown', this._mousedown.bind(this))
@@ -105,7 +107,27 @@ export class DrawField extends LitElement {
     
   }
 
+  snapToGrid({left, top}: {left: number, top: number}): {left: number, top: number} {
+    if (!this.freeDraw) {
+      left = Math.round(left / this.gridSize) * this.gridSize
+      top = Math.round(top / this.gridSize) * this.gridSize
+    }
+
+    return { left, top }
+  }
+
   _mousedown(e) {
+    if (this.isNaming) {
+      if (this.namingType === 'socket') {
+        if (this.namingNumber === 8) {
+          this.namingNumber = 0
+          this.namingLetter = this.alphabet[this.namingLetterIndex += 1]
+        }
+      }
+
+      this.namingNumber += 1
+      
+    }
       
     if (this.action === 'save' || this.action === 'disable-grid' ||
         this.action === 'group' || this.action === 'remove'  ||
@@ -115,63 +137,67 @@ export class DrawField extends LitElement {
       
       this.drawing = true;
       const pointer = this.#canvas.getPointer(e);
-      this._currentPoints = [ pointer.x, pointer.y, pointer.x, pointer.y ];
+      this.#startPoints = [ pointer.x, pointer.y ];
       const id = Math.random().toString(36).slice(-12)
       const index = this.canvas._objects.length
-      console.log(this._currentPoints);
+      console.log(this.#startPoints);
       
       if (this.action === 'draw-line') {
-        this._current = new Line(this._currentPoints, {
+        this._current = new Line(this.#startPoints, {
           id,
           index,
           strokeWidth: 1,
           fill: '#555',
           stroke: '#555',
           originX: 'center',
-          originY: 'center'
+          originY: 'center',
+          centeredRotation: true
         });
       } else if (this.action === 'draw-circle') {
         this._current = new Circle({
           id,
           index,
-          top: this._currentPoints[1],
-          left: this._currentPoints[0],
+          top: this.#startPoints[1],
+          left: this.#startPoints[0],
           originX: 'left',
           originY: 'top',
-          radius: pointer.x-this._currentPoints[0],
+          radius: pointer.x-this.#startPoints[0],
           strokeWidth: 1,
           fill: '#00000000',
-          stroke: '#555'
+          stroke: '#555',
+          centeredRotation: true
         });
       } else if (this.action === 'draw-arc') {
         this._current = new Circle({
           id,
           index,
-          top: this._currentPoints[1],
-          left: this._currentPoints[0],
+          top: this.#startPoints[1],
+          left: this.#startPoints[0],
           originX: 'left',
           originY: 'top',
-          radius: pointer.y - this._currentPoints[1],
+          radius: pointer.y - this.#startPoints[1],
           startAngle: 0,
-          endAngle: pointer.x - this._currentPoints[0],
+          endAngle: pointer.x - this.#startPoints[0],
           strokeWidth: 1,
           fill: '#00000000',
-          stroke: '#555'
+          stroke: '#555',
+          centeredRotation: true
         });
       } else if (this.action === 'draw-square') {
         this._current = new Rect({
           id,
           index,
-          left: this._currentPoints[0],
-          top: this._currentPoints[1],
+          left: this.#startPoints[0],
+          top: this.#startPoints[1],
           originX: 'left',
           originY: 'top',
-          width: pointer.x-this._currentPoints[0],
-          height: pointer.y-this._currentPoints[1],
+          width: pointer.x-this.#startPoints[0],
+          height: pointer.y-this.#startPoints[1],
           angle: 0,
           strokeWidth: 1,
           fill: '#00000000',
-          stroke: '#555'
+          stroke: '#555',
+          centeredRotation: true
         });
       } else if (this.action === 'draw-symbol') {
         // loadSVGFromURL(this.symbol, (objects, options) => {
@@ -187,11 +213,8 @@ export class DrawField extends LitElement {
   
   _mousemove(e) {
     const pointer = this.#canvas.getPointer(e)
-    
-    this.mouseLocation = {
-      left: pointer.x,
-      top: pointer.y
-    }
+
+
     
     if (!this.drawing) return
     this.canvas.selection = false
@@ -199,28 +222,28 @@ export class DrawField extends LitElement {
     if (this.action === 'draw-line') {
       this._current.set({ x2: pointer.x, y2: pointer.y })
     } else if (this.action === 'draw-circle') {
-      this._current.set({ radius: Math.abs(this._currentPoints[0] - pointer.x) });
-      // this._current.set({ radius: Math.abs(this._currentPoints[1] - pointer.y) });    
+      this._current.set({ radius: Math.abs(this.#startPoints[0] - pointer.x) });
+      // this._current.set({ radius: Math.abs(this.#startPoints[1] - pointer.y) });    
     } else if (this.action === 'draw-square') {
-      if (this._currentPoints[0] > pointer.x){
+      if (this.#startPoints[0] > pointer.x){
         this._current.set({ left: Math.abs(pointer.x) });
       }
-      if (this._currentPoints[1] > pointer.y){
+      if (this.#startPoints[1] > pointer.y){
         this._current.set({ top: Math.abs(pointer.y) });
       }
       
-      this._current.set({ width: Math.abs(this._currentPoints[0] - pointer.x) });
-      this._current.set({ height: Math.abs(this._currentPoints[1] - pointer.y) });
+      this._current.set({ width: Math.abs(this.#startPoints[0] - pointer.x) });
+      this._current.set({ height: Math.abs(this.#startPoints[1] - pointer.y) });
     } else if (this.action === 'draw-arc') {
       console.log(pointer.x);
-      console.log(this._currentPoints[0]);
+      console.log(this.#startPoints[0]);
       
       this._current.set({ 
-        radius: Math.abs(this._currentPoints[1] - pointer.y),
+        radius: Math.abs(this.#startPoints[1] - pointer.y),
         
-        endAngle: Math.abs((this._currentPoints[0] - pointer.x) / (Math.PI / 5))
+        endAngle: Math.abs((this.#startPoints[0] - pointer.x) / (Math.PI / 5))
       });
-      // this._current.set({ radius: Math.abs(this._currentPoints[1] - pointer.y) });
+      // this._current.set({ radius: Math.abs(this.#startPoints[1] - pointer.y) });
     } else if (this.action === 'draw-symbol') {
       
         this._current.set({ left: Math.abs(pointer.x) });
@@ -269,6 +292,12 @@ export class DrawField extends LitElement {
 
   toJSON() {
     return this.#canvas.toJSON()
+  }
+
+  async fromJSON(json) {
+    await this.#canvas.loadFromJSON(json)
+
+    this.#canvas.renderAll()
   }
 
   render() {

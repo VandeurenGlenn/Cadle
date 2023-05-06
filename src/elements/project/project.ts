@@ -51,7 +51,7 @@ export class ProjectElement extends LitElement {
   }
 
   async #keydown(event) {
-    if  (event.key === 'Escape') {
+    if (event.key === 'Escape') {
       this.addingPage = false
       this.renderRoot.querySelector('.add-page').selected = false
     } else if (event.key === 'Enter') {

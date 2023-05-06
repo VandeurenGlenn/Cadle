@@ -120,6 +120,9 @@ export class AppShell extends LitElement {
         this.projectsStore.set(this.projectName, {creationTime: new Date().getTime(), pages: []})
         
         this._projectsProvider.setValue([...this.projects, this.projectName])
+        this.project = await this.projectsStore.get(this.projectName)
+        this.loadPage(this.project.pages[0]?.name)
+        location.hash = '#!/draw'
       }
 
       if (action === 'open-project') {

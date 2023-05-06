@@ -8,31 +8,45 @@ const currentSelected = () => shell.renderRoot.querySelector('custom-pages').que
 let currentObjectInClipboard
 
 addEventListener('keydown', async event => {
-  
-  if (event.metaKey && isMac || event.key === 'Delete' && !isMac) {
-   if (event.key === 'Backspace') {
-    const field = currentSelected()
-    field.canvas.remove(field.canvas.getActiveObject())
-   }
+  const field = currentSelected()
+  if (event.metaKey && isMac && event.key === 'Backspace' || event.key === 'Backspace' && !isMac) {
+   
+    
+    let items = field.canvas.getActiveObjects()
+    for (const item of items) {
+      field.canvas.remove(item)
+    }
+    
+   
   }
 
   if (event.metaKey && isMac && event.key === 'c' || event.ctrlKey && event.key === 'c' && !isMac) {
 
-    const field = currentSelected()
+    
     const target = field.canvas.getActiveObjects()[0]?.group || field.canvas.getActiveObjects()[0]
     currentObjectInClipboard = target
   }
 
   if (event.metaKey && isMac && event.key === 'x' || event.ctrlKey && event.key === 'x' && !isMac) {
-    const field = currentSelected()
-    const target = field.canvas.getActiveObjects()[0]
-    currentObjectInClipboard = target.group || target
-    console.log(target);
-    field.canvas.remove(target)
+    
+    const items = field.canvas.getActiveObjects()
+
+    const activeGroup = items[0].group
+    for (const item of items) {
+      field.canvas.remove(item)
+    }
+
+    const group = new Group(items, {
+      left: activeGroup.left,
+      top: activeGroup.top
+    })
+
+    currentObjectInClipboard = group
+   
   }
 
   if (event.metaKey && isMac && event.ctrlKey && event.key === 'g' || event.ctrlKey && event.key === 'g' && !isMac) {
-    const field = currentSelected()
+    
     let items = field.canvas.getActiveObjects()
     const group = field.canvas.getActiveObjects()[0].group;
     // items = items.map(i => field.canvas.item(i.index))
@@ -54,7 +68,7 @@ addEventListener('keydown', async event => {
     let y = currentMousePosition.y // - shell.header.width
     json.left = x - (json.width / 2)
     json.top = y - (json.height / 2)
-    const field = currentSelected()
+    
     console.log(json);
     await field.canvas.add(json)
     // field.canvas.renderAll.bind(field.canvas)
@@ -63,8 +77,6 @@ addEventListener('keydown', async event => {
   }
 
   if (event.metaKey && isMac && event.ctrlKey && event.key === 't' || event.ctrlKey && event.key === 't' && !isMac) { 
-   
-    const field = currentSelected()
     await field.canvas.add(new IText('Tap and Type', { 
       fontFamily: 'system-ui',
       fontSize: 12,
@@ -75,9 +87,13 @@ addEventListener('keydown', async event => {
     }))
   }
 
+  if (event.metaKey && isMac && event.key === 's' || event.ctrlKey && event.key === 's' && !isMac) {
+    event.preventDefault()
+    cadleShell.save.bind(cadleShell)
+  }
  
 
-  
+  field.canvas.renderAll()
   
   // console.log(event);
   

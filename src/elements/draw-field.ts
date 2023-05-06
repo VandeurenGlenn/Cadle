@@ -143,10 +143,12 @@ export class DrawField extends LitElement {
       console.log(this.#startPoints);
       
       if (this.action === 'draw-line') {
-        this._current = new Line(this.#startPoints, {
+        this._current = new Line([...this.#startPoints, pointer.x, pointer.y], {
           id,
           index,
           strokeWidth: 1,
+          x2: this.#startPoints[1],
+          y2: this.#startPoints[0],
           fill: '#555',
           stroke: '#555',
           originX: 'center',
@@ -220,6 +222,8 @@ export class DrawField extends LitElement {
     this.canvas.selection = false
     // const pointer = this.canvas.getPointer(e)
     if (this.action === 'draw-line') {
+      console.log('line');
+      
       this._current.set({ x2: pointer.x, y2: pointer.y })
     } else if (this.action === 'draw-circle') {
       this._current.set({ radius: Math.abs(this.#startPoints[0] - pointer.x) });
@@ -249,6 +253,7 @@ export class DrawField extends LitElement {
         this._current.set({ left: Math.abs(pointer.x) });
         this._current.set({ top: Math.abs(pointer.y) });
     }
+    console.log('render');
     
     this.canvas.renderAll()
   }

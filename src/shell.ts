@@ -126,7 +126,7 @@ export class AppShell extends LitElement {
         this.projectName = this.dialog.querySelector('md-filled-text-field').value
         
         this.project = await this.projectsStore.get(this.projectName)
-        this.loadPage(this.project.pages[0].name)
+        this.loadPage(this.project.pages[0]?.name)
         location.hash = '#!/draw'
       }
       
@@ -198,7 +198,7 @@ export class AppShell extends LitElement {
 
   async save() {
     console.log(this.projectName);
-    
+    await this.savePage()
     this.projectsStore.set(this.projectName, this.project)
   }
 

@@ -24,6 +24,7 @@ export class ProjectElement extends LitElement {
   pageInput: HTMLInputElement
 
   set addingPage(value: boolean) {
+    if (value !== this.addingPage)
     if (value) {
       this.pageInput.value = ''
       this.setAttribute('addingPage', '')
@@ -44,6 +45,7 @@ export class ProjectElement extends LitElement {
       cadleShell.project = project
       await cadleShell.save.bind(cadleShell)()
       this.#cleanupListeners()
+      this.pageInput.value = ''
     }
     
   }
@@ -119,7 +121,7 @@ export class ProjectElement extends LitElement {
  
   get #projectTemplate() {
     return this.project.pages.map(item => html`
-      <cadle-list-item .headline=${item.name} data-project=${item.name} @list-click=${(event) => { cadleShell.loadPage(item.name )}}></cadle-list-item>
+      <cadle-list-item .headline=${item.name} data-project=${item.name} @list-click=${(event) => { cadleShell.loadPage(item.name); location.hash = '#!/draw'}}></cadle-list-item>
     `)
   }
 

@@ -3,9 +3,9 @@ import { customElement, property } from 'lit/decorators.js'
 import { map } from 'lit/directives/map.js';
 
 import { consume } from '@lit-labs/context';
-import { Projects, projectsContext } from './../context/projects.js';
+import { Projects, projectsContext } from '../context/projects.js';
 
-import './../elements/list/item.js'
+import '../elements/list/item.js'
 
 @customElement('projects-field')
 export class ProjectsField extends LitElement {

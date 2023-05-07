@@ -20,7 +20,7 @@ const cleanWWW = async () => {
 }
 
 export default [{
-  input: ['./src/shell.ts', './src/elements/add-page-field.ts', './src/fields/projects-field.ts'],
+  input: ['./src/shell.ts', './src/fields/projects.ts', './src/fields/draw.ts'],
   external: [
     './symbols/manifest.js',
     './elements/symbols/manifest.js'

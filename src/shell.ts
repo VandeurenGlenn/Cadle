@@ -8,12 +8,11 @@ import '@material/web/navigationtab/navigation-tab.js'
 import 'custom-tabs/custom-tabs.js'
 import 'custom-tabs/custom-tab.js'
 import 'custom-pages'
-import {DrawField} from './elements/draw-field.js'
-import './elements/draw-field.js'
+import {DrawField} from './fields/draw.js'
+import './fields/draw.js'
 import './elements/save-field.js'
 import './elements/project-drawer.js'
 import '@vandeurenglenn/flex-elements'
-import { map } from 'lit/directives/map.js';
 import { projectContext, Project, Page } from './context/project-context.js';
 import { provide } from '@lit-labs/context';
 import ProjectsStore from './storage/projects.js'
@@ -73,8 +72,8 @@ export class AppShell extends LitElement {
   @property({attribute: false})
   catalog: Catalog
 
-  private _projectsProvider = new ContextProvider(this, projectsContext);
-  private _projectProvider = new ContextProvider(this, projectContext);
+  private _projectsProvider = new ContextProvider(this, {context: projectsContext});
+  private _projectProvider = new ContextProvider(this, {context: projectContext});
 
   constructor() {
     super()

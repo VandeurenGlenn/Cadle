@@ -54,7 +54,7 @@ addEventListener('keydown', async event => {
     
     field.canvas.add(group)
 
-    currentObjectInClipboard = group
+    currentObjectInClipboard = group.clone()
   }
 
   if (event.metaKey && isMac && event.key === 'x' || event.ctrlKey && event.key === 'x' && !isMac) {
@@ -79,7 +79,7 @@ addEventListener('keydown', async event => {
       top: activeGroup.top
     })
 
-    currentObjectInClipboard = group
+    currentObjectInClipboard = group.clone()
    
   }
 
@@ -99,9 +99,28 @@ addEventListener('keydown', async event => {
     }))
   }
 
+  if (event.metaKey && isMac && event.ctrlKey && event.key === 'u' || event.ctrlKey && event.key === 'u' && !isMac) {
+   console.log('u');
+    let items = field.canvas.getActiveObjects()
+
+    canvas.discardActiveObject();
+
+    console.log(items);
+    
+    while (items[0].type === 'group' || items[0].type === 'activeselection') {
+      items = items[0]._objects
+    }
+    for(const item of items) {
+          canvas.add(item);
+        
+          
+
+    }
+  }
+
   if (event.metaKey && isMac && event.key === 'v' || event.ctrlKey && event.key === 'v' && !isMac) {
     // const json = await currentObjectInClipboard.cloneAsImage()
-    const json = await currentObjectInClipboard.clone()
+    const json = await currentObjectInClipboard
     let x = currentMousePosition.x - shell.drawer.getBoundingClientRect().width
     let y = currentMousePosition.y // - shell.header.width
     json.left = x - (json.width / 2)

@@ -23,6 +23,7 @@ import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import { ContextProvider } from '@lit-labs/context';
+import { IText } from 'fabric';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -226,6 +227,18 @@ export class AppShell extends LitElement {
     this.renderRoot.querySelector('draw-field').fromJSON(page.schema)
   }
 
+  #drawText() {
+    this.action = 'draw-text'
+    this.renderRoot.querySelector('draw-field')._current = new IText('Tap and Type', { 
+      fontFamily: 'system-ui',
+      fontSize: 12,
+      fontStyle: 'normal',
+      fontWeight: 'normal',
+      left: globalThis.currentMousePosition.x - this.drawer.getBoundingClientRect().width,
+      top: globalThis.currentMousePosition.y
+    })
+  }
+ 
   static styles = [
     css`
       :host {
@@ -282,7 +295,7 @@ export class AppShell extends LitElement {
       <md-standard-icon-button @click="${() => (this.action = 'draw-circle')}">circle</md-standard-icon-button>
       <md-standard-icon-button @click="${() => (this.action = 'draw-arc')}">line_curve</md-standard-icon-button>
       <md-standard-icon-button @click="${() => (this.action = 'draw-line')}">horizontal_rule</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'draw-text')}">insert_text</md-standard-icon-button>
+      <md-standard-icon-button @click=${this.#drawText}>insert_text</md-standard-icon-button>
     </header>
 
 

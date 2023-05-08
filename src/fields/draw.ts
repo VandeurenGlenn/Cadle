@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
-import { Canvas, Circle, Line, Rect, Object, loadSVGFromURL, util } from 'fabric'
+import { Canvas, Circle, Line, Rect, IText, Object, loadSVGFromURL, util } from 'fabric'
 import { AppShell } from '../shell.js';
 
 type x = number
@@ -133,7 +133,7 @@ export class DrawField extends LitElement {
         this.action === 'group' || this.action === 'remove'  ||
         this.action === 'select' || this.action === 'move') return;
     if (this.action) {
-      
+      if (this.action === 'draw-symbol' || this.action === 'draw-text') return
       
       this.drawing = true;
       const pointer = this.#canvas.getPointer(e);
@@ -200,12 +200,6 @@ export class DrawField extends LitElement {
           stroke: '#555',
           centeredRotation: true
         });
-      } else if (this.action === 'draw-symbol') {
-        // loadSVGFromURL(this.symbol, (objects, options) => {
-        //   this._current = util.groupSVGElements(objects);
-          
-        // })
-
       }
       this.canvas.add(this._current);
     }
@@ -251,6 +245,9 @@ export class DrawField extends LitElement {
       
         this._current.set({ left: Math.abs(currentPoints.left) });
         this._current.set({ top: Math.abs(currentPoints.top) });
+    }  else if (this.action === 'draw-text') {
+      this._current.set({ left: Math.abs(currentPoints.left) });
+      this._current.set({ top: Math.abs(currentPoints.top) });
     }
     console.log('render');
     
@@ -266,6 +263,11 @@ export class DrawField extends LitElement {
       this._current.set({ left: Math.abs(currentPoints.left) });
       this._current.set({ top: Math.abs(currentPoints.top) });
       this.canvas.add(this._current)
+    } else if (this.action === 'draw-text') {
+      this.drawing = true
+      this._current.set({ left: Math.abs(currentPoints.left) });
+      this._current.set({ top: Math.abs(currentPoints.top) });
+      this.canvas.add(this._current)
     }
     this.canvas.renderAll()
   }
@@ -274,6 +276,8 @@ export class DrawField extends LitElement {
     console.log('leave');
     this.drawing = false
     if (this.action === 'draw-symbol') {
+      this.canvas.remove(this._current)
+    } else if (this.action === 'draw-text') {
       this.canvas.remove(this._current)
     }
     this.canvas.renderAll()

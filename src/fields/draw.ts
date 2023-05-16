@@ -242,9 +242,8 @@ export class DrawField extends LitElement {
       });
       // this._current.set({ radius: Math.abs(this.#startPoints.top - currentPoints.top) });
     } else if (this.action === 'draw-symbol') {
-      
-        this._current.set({ left: Math.abs(currentPoints.left) });
-        this._current.set({ top: Math.abs(currentPoints.top) });
+      this._current.set({ left: Math.abs(currentPoints.left) });
+      this._current.set({ top: Math.abs(currentPoints.top) });
     }  else if (this.action === 'draw-text') {
       this._current.set({ left: Math.abs(currentPoints.left) });
       this._current.set({ top: Math.abs(currentPoints.top) });

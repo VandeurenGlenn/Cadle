@@ -67,7 +67,7 @@ export class CatalogCategory extends LitElement {
     
     <flex-column class="symbol-container">
       ${map(this.symbols, (symbol => html`
-        <catalog-item .headline="${symbol.name}" .image=${symbol.path}></catalog-item>
+        <catalog-item .headline="${symbol.name}" image=${symbol.path}></catalog-item>
       `))}
       <slot></slot>
     </flex-column>

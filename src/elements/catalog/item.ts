@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
-import { Image } from 'fabric';
+import { Group, Image, loadSVGFromURL } from 'fabric';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -10,6 +10,7 @@ declare global {
 
 @customElement('catalog-item')
 export class CatalogItem extends LitElement {
+  @property({type: String})
   set image(value) {
     this._image = value
     this.requestUpdate('image')
@@ -49,16 +50,32 @@ export class CatalogItem extends LitElement {
     `
   ]
 
-  async #click(event: Event) {
+  #loadSVGFromURL() {
+    return new Promise((resolve, reject) => {
+      loadSVGFromURL(this._image, async svg => {
+        resolve(svg)
+      } )
+    })
+    
+  }
+
+  #click = (event: Event) => {
     event.stopImmediatePropagation()
-    const image = await Image.fromURL(this.image)
-    document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
-    document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = await image.clone()
+    loadSVGFromURL(this.image, async svg => {
+      console.log(svg);
+      
+      const group = new Group(svg)
+      document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
+      document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
+    } )
+    
+    
+    
   }
 
   connectedCallback(): void {
     super.connectedCallback()
-    this.addEventListener('click', this.#click.bind(this))
+    this.addEventListener('click', this.#click)
   }
 
   render() {

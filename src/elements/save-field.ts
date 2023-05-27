@@ -27,7 +27,7 @@ export class SaveField extends LitElement {
   }
 
   toDataURL() {
-    return this.#canvas.toDataURL({quality: 100, enableRetinaScaling: true})
+    return this.#canvas.toDataURL({multiplier: 3, quality: 100, enableRetinaScaling: true})
   }
 
   async connectedCallback(): Promise<void> {

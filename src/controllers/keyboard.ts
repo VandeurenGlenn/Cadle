@@ -10,7 +10,7 @@ let currentObjectInClipboard
 addEventListener('keydown', async event => {
   const field = currentSelected()
   const canvas = field.canvas
-  if (event.metaKey && isMac && event.key === 'Backspace' || event.key === 'Backspace' && !isMac) {
+  if (event.metaKey && isMac && event.key === 'Backspace' || event.ctrlKey && event.key === 'Backspace' && !isMac) {
     let items = field.canvas.getActiveObjects()
     
     for (const item of items) {
@@ -33,6 +33,7 @@ addEventListener('keydown', async event => {
       canvas: canvas,
     });
     canvas.setActiveObject(sel);
+    event.preventDefault()
   }
 
 
@@ -101,21 +102,19 @@ addEventListener('keydown', async event => {
 
   if (event.metaKey && isMac && event.ctrlKey && event.key === 'u' || event.ctrlKey && event.key === 'u' && !isMac) {
    console.log('u');
+   event.preventDefault()
     let items = field.canvas.getActiveObjects()
+console.log(items);
 
     canvas.discardActiveObject();
 
-    console.log(items);
-    
-    while (items[0].type === 'group' || items[0].type === 'activeselection') {
-      items = items[0]._objects
-    }
-    for(const item of items) {
+    for(const item of items[0]._objects) {
           canvas.add(item);
         
           
 
     }
+    canvas.renderAll()
   }
 
   if (event.metaKey && isMac && event.key === 'v' || event.ctrlKey && event.key === 'v' && !isMac) {
@@ -125,12 +124,10 @@ addEventListener('keydown', async event => {
     let y = currentMousePosition.y // - shell.header.width
     json.left = x - (json.width / 2)
     json.top = y - (json.height / 2)
-    
-    console.log(json);
     await field.canvas.add(json)
+    currentObjectInClipboard = undefined
     // field.canvas.renderAll.bind(field.canvas)
     // currentMousePosition
-    console.log(json);
   }
 
   if (event.metaKey && isMac && event.ctrlKey && event.key === 't' || event.ctrlKey && event.key === 't' && !isMac) { 
@@ -147,6 +144,56 @@ addEventListener('keydown', async event => {
   if (event.metaKey && isMac && event.key === 's' || event.ctrlKey && event.key === 's' && !isMac) {
     event.preventDefault()
     shell.save()
+  }
+
+  const moveObject = (object, direction: 'left' | 'right' | 'down' | 'up', amount) => {
+    canvas.remove(object)
+console.log(object);
+
+    if (direction === 'left') object.left = Math.round((object.left - amount) *  100 ) / 100
+    if (direction === 'right') object.left = Math.round((object.left + amount) *  100 ) / 100
+    if (direction === 'up') object.top = Math.round((object.top - amount) *  100 ) / 100
+    if (direction === 'down') object.top = Math.round((object.top + amount) *  100 ) / 100
+    
+    canvas.add(object)
+  }
+
+  const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: number) => {
+    amount = amount || 0.5
+    let items = canvas.getActiveObjects()
+    console.log(items);
+    
+    // canvas.discardActiveObject();
+
+    for (const item of items) {
+      if (item.type === 'activeselection') {
+        canvas.remove(item)
+        for (const _item of item._objects) {
+          moveObject(_item, direction,  amount)
+          canvas.setActiveObject(_item);
+        }
+      } else {
+        moveObject(item, direction,  amount)
+        canvas.setActiveObject(item);
+      }
+    }
+    
+  }
+
+  if (event.metaKey && isMac && event.key === 'ArrowRight' || event.ctrlKey && event.key === 'ArrowRight' && !isMac) {
+    moveObjects('right')
+  }
+
+  if (event.metaKey && isMac && event.key === 'ArrowLeft' || event.ctrlKey && event.key === 'ArrowLeft' && !isMac) {
+    moveObjects('left')
+  }
+
+  if (event.metaKey && isMac && event.key === 'ArrowUp' || event.ctrlKey && event.key === 'ArrowUp' && !isMac) {
+    moveObjects('up')
+  }
+
+  if (event.metaKey && isMac && event.key === 'ArrowDown' || event.ctrlKey && event.key === 'ArrowDown' && !isMac) {
+    moveObjects('down')
   }
  
 

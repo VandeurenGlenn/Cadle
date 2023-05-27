@@ -1,12 +1,14 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
-import { Canvas, Circle, Line, Rect, IText, Object, loadSVGFromURL, util } from 'fabric'
+import { Canvas, Circle, Line, IText, Object, loadSVGFromURL, util } from './../fabric-imports.js'
 import { AppShell } from '../shell.js';
+import Rect from './../symbols/rectangle.js'
+import 'fabric-history';
 
-type x = number
-type y = number
-type left = number
-type top = number
+declare type x = number
+declare type y = number
+declare type left = number
+declare type top = number
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -20,7 +22,10 @@ export class DrawField extends LitElement {
   #height: number
   #width: number
   #startPoints: {left: number, top: number}
+
+  @property({type: Number})
   gridSize: number
+  
   drawing: boolean
 
   _current: {}
@@ -61,6 +66,10 @@ export class DrawField extends LitElement {
     `
   ];
 
+  snap(value) {
+    return Math.round(value / this.gridSize) * this.gridSize
+  }
+
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     await this.updateComplete
@@ -74,21 +83,71 @@ export class DrawField extends LitElement {
   
   // create grid
   
-    const drawVertical = (i: number) => this.#canvas.add(new Line([ i * this.gridSize, 0, i * this.gridSize, this.#height], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
+    // const drawVertical = (i: number) => this.#canvas.add(new Line([ i * this.gridSize, 0, i * this.gridSize, this.#height], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
 
-    const drawHorizontal = (i: number) => this.#canvas.add(new Line([ 0, i * this.gridSize, this.#width, i * this.gridSize], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
+    // const drawHorizontal = (i: number) => this.#canvas.add(new Line([ 0, i * this.gridSize, this.#width, i * this.gridSize], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
     
-    for (var i = 0; i < (this.#biggest / this.gridSize); i++) {
-      if (i <= this.#width) drawHorizontal(i)
-      if (i <= this.#height) drawVertical(i)
-    }
+    // for (var i = 0; i < (this.#biggest / this.gridSize); i++) {
+    //   if (i <= this.#width) drawHorizontal(i)
+    //   if (i <= this.#height) drawVertical(i)
+    // }
 
     
     // snap to grid
     
     this.#canvas.on('object:moving', (options) => {
-
+      console.log(options);
+      
       options.target.set(this.snapToGrid(options.target))
+    });
+
+    this.#canvas.on('object:scaling', (options) => {
+      var target = options.target;
+      var pointer = options.pointer;
+    
+      var px = this.snap(pointer.x);
+      var py = this.snap(pointer.y);
+
+      var rx = (px - target.left) / target.width;
+      var by = (py - target.top) / target.height;
+      var lx = (target.left - px + (target.width * target.scaleX)) / (target.width);
+      var ty = (target.top - py + (target.height * target.scaleY)) / (target.height);
+    
+      var a = {};
+    
+      // Cannot get snap to work on some corners :-(
+      switch (target.__corner)
+      {
+        case "tl":
+          // Not working
+          //a = { scaleX: lx, scaleY: ty, left: px, top: py };
+          break;
+        case "mt":
+          a = { scaleY: ty, top: py };
+          break;
+        case "tr":
+          // Not working
+          //a = { scaleX: rx, scaleY: ty, top: py  };
+          break;
+        case "ml":
+          a = { scaleX: lx, left: px };
+          break;
+        case "mr":
+          a = { scaleX: rx };
+          break;
+        case "bl":
+          // Not working
+          //a = { scaleX: lx, scaleY: by, left: px };
+          break;
+        case "mb":
+          a = { scaleY: by };
+          break;
+        case "br":
+          a = { scaleX: rx, scaleY: by };
+          break;
+      }
+    
+      options.target.set(a);
     });
 
     this.renderRoot.addEventListener('mousedown', this._mousedown.bind(this))
@@ -128,82 +187,99 @@ export class DrawField extends LitElement {
       this.namingNumber += 1
       
     }
-      
-    if (this.action === 'save' || this.action === 'disable-grid' ||
-        this.action === 'group' || this.action === 'remove'  ||
-        this.action === 'select' || this.action === 'move') return;
-    if (this.action) {
-      if (this.action === 'draw-symbol' || this.action === 'draw-text') return
-      
-      this.drawing = true;
-      const pointer = this.#canvas.getPointer(e);
-      this.#startPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
-      const id = Math.random().toString(36).slice(-12)
-      const index = this.canvas._objects.length
-      
-      if (this.action === 'draw-line') {
-        this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
+
+    switch (this.action) {
+      case 'save':
+      case 'disable-grid':
+      case 'group':
+      case 'remove':
+      case 'select':
+      case 'move':
+      case 'draw-symbol':
+      case 'draw-text':
+      case null:
+      case undefined:
+        return
+      default:
+        this.drawing = true;
+        const pointer = this.#canvas.getPointer(e);
+        this.#startPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
+        const id = Math.random().toString(36).slice(-12)
+        const index = this.canvas._objects.length
+
+        const sharedDrawOptions = {
           id,
-          index,
-          strokeWidth: 1,
-          x2: this.#startPoints.top,
-          y2: this.#startPoints.left,
-          fill: '#555',
-          stroke: '#555',
-          originX: 'center',
-          originY: 'center',
-          centeredRotation: true
-        });
-      } else if (this.action === 'draw-circle') {
-        this._current = new Circle({
-          id,
-          index,
-          top: this.#startPoints.top,
-          left: this.#startPoints.left,
-          originX: 'left',
-          originY: 'top',
-          radius: pointer.x-this.#startPoints.left,
-          strokeWidth: 1,
-          fill: '#00000000',
-          stroke: '#555',
-          centeredRotation: true
-        });
-      } else if (this.action === 'draw-arc') {
-        this._current = new Circle({
-          id,
-          index,
-          top: this.#startPoints.top,
-          left: this.#startPoints.left,
-          originX: 'left',
-          originY: 'top',
-          radius: pointer.y - this.#startPoints.top,
-          startAngle: 0,
-          endAngle: pointer.x - this.#startPoints.left,
-          strokeWidth: 1,
-          fill: '#00000000',
-          stroke: '#555',
-          centeredRotation: true
-        });
-      } else if (this.action === 'draw-square') {
-        this._current = new Rect({
-          id,
-          index,
-          left: this.#startPoints.left,
-          top: this.#startPoints.top,
-          originX: 'left',
-          originY: 'top',
-          width: pointer.x-this.#startPoints.left,
-          height: pointer.y-this.#startPoints.top,
-          angle: 0,
-          strokeWidth: 1,
-          fill: '#00000000',
-          stroke: '#555',
-          centeredRotation: true
-        });
-      }
-      this.canvas.add(this._current);
+          index
+        }
+
+        if (this.action === 'draw-line') {
+          this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
+            id,
+            index,
+            strokeWidth: 1,
+            x2: this.#startPoints.top,
+            y2: this.#startPoints.left,
+            fill: '#555',
+            stroke: '#555',
+            originX: 'center',
+            originY: 'center',
+            borderScaleFactor: 0,
+            centeredRotation: true
+          });
+        } else if (this.action === 'draw-circle') {
+          this._current = new Circle({
+            id,
+            index,
+            top: this.#startPoints.top,
+            left: this.#startPoints.left,
+            originX: 'left',
+            originY: 'top',
+            radius: pointer.x-this.#startPoints.left,
+            strokeWidth: 1,
+            fill: '#00000000',
+            stroke: '#555',
+            borderScaleFactor: 0,
+            centeredRotation: true
+          });
+        } else if (this.action === 'draw-arc') {
+          this._current = new Circle({
+            id,
+            index,
+            top: this.#startPoints.top,
+            left: this.#startPoints.left,
+            originX: 'left',
+            originY: 'top',
+            radius: pointer.y - this.#startPoints.top,
+            startAngle: 0,
+            endAngle: pointer.x - this.#startPoints.left,
+            strokeWidth: 1,
+            borderScaleFactor: 0,
+            fill: '#00000000',
+            stroke: '#555',
+            centeredRotation: true
+          });
+        } else if (this.action === 'draw-square') {
+          this._current = new Rect({
+            id,
+            index,
+            left: this.#startPoints.left,
+            top: this.#startPoints.top,
+            width: pointer.x-this.#startPoints.left,
+            height: pointer.y-this.#startPoints.top
+          });
+        } else if (this.action === 'draw-wall') {
+          this._current = new Rect({
+            id,
+            index,
+            left: this.#startPoints.left,
+            top: this.#startPoints.top,
+            width: pointer.x-this.#startPoints.left,
+            height: pointer.y-this.#startPoints.top
+          });
+        }
+        this.canvas.add(this._current);
+        break;
     }
-    
   }
   
   _mousemove(e) {
@@ -254,6 +330,7 @@ export class DrawField extends LitElement {
   }
 
   _mouseenter(e) {
+    if (!this._current) return
     console.log('enter');
     const pointer = this.#canvas.getPointer(e)
     const currentPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
@@ -289,6 +366,7 @@ export class DrawField extends LitElement {
       this.canvas.remove(this._current)
       this.canvas.add(this._current);
       this.canvas.selection = true
+      this._current = undefined
       if (this._selectionWasTrue) this.canvas.selection = true
       // this.canvas.renderAll()
     } else if (this.canvas.getActiveObjects().length > 1) {
@@ -307,9 +385,19 @@ export class DrawField extends LitElement {
 
     this.#canvas.renderAll()
   }
+  
+  toDataURL() {
+    return this.#canvas.toDataURL({multiplier: 3, quality: 100, enableRetinaScaling: true})
+  }
 
   render() {
     return html`
+    <style>
+
+      :host {
+        background-image: url('./assets/grid-${this.gridSize}.png');
+      }
+    </style>
     
     <canvas id="canvas" width="" height="600"></canvas>`;
   }

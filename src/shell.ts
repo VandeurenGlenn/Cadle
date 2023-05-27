@@ -29,7 +29,7 @@ declare global {
   interface HTMLElementTagNameMap {
     'app-shell': AppShell;
   }
-  const cadleShell: AppShell
+  var cadleShell: AppShell
 }
 
 declare type dialogAction = 'create-project' | 'open-project' | 'create-page' | 'rename-project' | 'rename-page' 
@@ -78,10 +78,10 @@ export class AppShell extends LitElement {
 
   constructor() {
     super()
-    globalThis.cadleShell= document.querySelector('app-shell')
+    globalThis.cadleShell = this
   }
 
-  async connectedCallback(): void {
+  async connectedCallback(): Promise<void> {
     this.projectsStore = new ProjectsStore()
     super.connectedCallback()
     await this.updateComplete
@@ -92,6 +92,7 @@ export class AppShell extends LitElement {
       import('./controllers/keyboard.js')
     ])
 
+    // @ts-ignore
     this.catalog = (await import('./symbols/manifest.js')).default
     
     this.projects = await this.projectsStore.keys()
@@ -191,10 +192,14 @@ export class AppShell extends LitElement {
     for (const field of fields) {
       const json = field.toJSON()
       console.log(json);
-      await this.renderRoot.querySelector('save-field').loadFromJSON(json)
+      // await this.renderRoot.querySelector('draw-field').loadFromJSON(json)
 
-      const url = this.renderRoot.querySelector('save-field').toDataURL()
+      const url = this.renderRoot.querySelector('draw-field').toDataURL()
     console.log(url);
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${this.loadedPage}.png`
+    a.click()
     
     }
   }
@@ -225,6 +230,14 @@ export class AppShell extends LitElement {
     const page = this.project.pages.filter(page => page.name === name)[0]
     
     this.renderRoot.querySelector('draw-field').fromJSON(page.schema)
+  }
+
+  undo() {
+    this.renderRoot.querySelector('draw-field').canvas.undo()
+  }
+
+  redo() {
+    this.renderRoot.querySelector('draw-field').canvas.undo()
   }
 
   #drawText() {
@@ -284,6 +297,9 @@ export class AppShell extends LitElement {
         <md-standard-icon-button title="show projects"  href="#!/projects">folder_open</md-standard-icon-button>
       </flex-row>
 
+
+      <md-standard-icon-button @click=${this.undo}>undo</md-standard-icon-button>
+      <md-standard-icon-button @click=${this.redo}>redo</md-standard-icon-button>
       <md-standard-icon-button @click="${() => (this.action = 'select')}">arrow_selector_tool</md-standard-icon-button>
       <md-standard-icon-button @click="${() => (this.freeDraw = !this.freeDraw)}" toggle>
         grid_on

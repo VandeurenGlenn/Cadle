@@ -21,7 +21,7 @@
     "fabric": "^6.0.0-beta3",
     "fabric-history": "^1.7.0",
     "idb-keyval": "^6.2.0",
-    "lit": "^2.7.3"
+    "lit": "^2.7.5"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^24.1.0",

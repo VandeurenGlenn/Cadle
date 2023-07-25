@@ -1,10 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { map } from 'lit/directives/map.js';
 import { customElement, property } from 'lit/decorators.js'
-import'@material/web/list/list-item.js'
-import'@material/web/menu/sub-menu-item.js'
+import '@vandeurenglenn/lit-elements/button.js'
+import '@vandeurenglenn/lit-elements/selector.js'
 import './catalog/catalog.js'
 import './project/project.js'
+
 
 @customElement('project-drawer')
 
@@ -25,28 +26,29 @@ export class ProjectDrawer extends LitElement {
   static styles = [
     css`
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
         --md-list-item-list-item-container-color: #fff;
         --md-list-item-list-item-leading-avatar-color: #fff;
         --md-list-item-list-item-leading-avatar-shape: 0
       }
 
-      aside {
-        width: 230px;
-        height: 100%;
-        display: flex;
-        position: relative;
-        flex-direction: column;
-      }
       section {
         overflow-y: auto;
         display: flex;
         flex-direction: column;
       }
 
-      img {
-        width: 32px;
-        height: 32px;
+      custom-button {
+        pointer-events: auto;
+      }
+
+      custom-selector {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        pointer-events: auto;
       }
     `
   ];
@@ -58,11 +60,10 @@ export class ProjectDrawer extends LitElement {
 
   render() {
     return html`
-      <aside opened>
-        <custom-tabs attr-for-selected="data-route" @selected=${(e) => this.#pages.select(e.detail)}>
-          <custom-tab data-route="project"><span>pages</span></custom-tab>
-          <custom-tab data-route="symbols"><span>catalog</span></custom-tab>
-        </custom-tabs>
+        <custom-selector attr-for-selected="route" @selected=${(e) => this.#pages.select(e.detail)}>
+          <custom-button route="project" label="project" type="outlined"></custom-button>
+          <custom-button route="symbols" label="catalog"></custom-button>
+        </custom-selector>
 
         <custom-pages attr-for-selected="data-route">
           <project-element data-route="project"></project-element>
@@ -70,7 +71,6 @@ export class ProjectDrawer extends LitElement {
         </custom-pages>
 
         <slot></slot>
-      </aside>
     `;
   }
 }

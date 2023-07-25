@@ -69,8 +69,6 @@ export class CatalogItem extends LitElement {
       document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
     } )
     
-    
-    
   }
 
   connectedCallback(): void {

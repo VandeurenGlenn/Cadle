@@ -4,10 +4,7 @@ import '@material/web/button/tonal-button.js'
 import '@material/web/iconbutton/standard-icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item-link.js'
-import '@material/web/navigationtab/navigation-tab.js'
-import 'custom-tabs/custom-tabs.js'
-import 'custom-tabs/custom-tab.js'
-import 'custom-pages'
+import '@vandeurenglenn/lit-elements/pages.js'
 import {DrawField} from './fields/draw.js'
 import './fields/draw.js'
 import './elements/save-field.js'
@@ -22,8 +19,12 @@ import '@material/web/dialog/dialog.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
+import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit-labs/context';
 import { IText } from 'fabric';
+import './elements/actions/actions.js'
+import '@vandeurenglenn/lit-elements/drawer-layout.js'
+import '@vandeurenglenn/lit-elements/theme.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -48,8 +49,7 @@ export class AppShell extends LitElement {
   manifest: {}
 
   @property({type: Boolean})
-  freeDraw: false
-
+  freeDraw: boolean = false
 
 
   get projects() {
@@ -73,7 +73,7 @@ export class AppShell extends LitElement {
   @property({attribute: false})
   catalog: Catalog
 
-  private _projectsProvider = new ContextProvider(this, {context: projectsContext});
+  private _projectsProvider = new ContextProvider(this, {context: projectsContext, initialValue: []});
   private _projectProvider = new ContextProvider(this, {context: projectContext});
 
   constructor() {
@@ -84,8 +84,16 @@ export class AppShell extends LitElement {
   async connectedCallback(): Promise<void> {
     this.projectsStore = new ProjectsStore()
     super.connectedCallback()
-    await this.updateComplete
     
+    const decoder = new TextDecoder()
+    const keys = await this.projectsStore.keys()
+    const projects = []
+    for (const key of keys) {
+      projects.push(decoder.decode(key))
+    }
+
+    this.projects = projects
+
     await Promise.all([
       import('./controllers/routing.js'),
       import('./controllers/mouse.js'),
@@ -95,11 +103,8 @@ export class AppShell extends LitElement {
     // @ts-ignore
     this.catalog = (await import('./symbols/manifest.js')).default
     
-    this.projects = await this.projectsStore.keys()
-    
-    // this.requestUpdate()
-    this.dialog.addEventListener('closed', this.#dialogAction.bind(this))
-    
+    await this.requestUpdate('projects')
+    this.dialog.addEventListener('closed', this.#dialogAction)
   }
 
 
@@ -111,28 +116,29 @@ export class AppShell extends LitElement {
     return this.renderRoot.querySelector('custom-pages')
   }
 
-  async #dialogAction(event: CustomEvent) {
-      const action: dialogAction = event.detail.action
-      console.log(action);
+  #dialogAction = async (event: CustomEvent) => {
+    const action: dialogAction = event.detail.action
+    console.log(action);
+    
+    if (action === 'create-project') {
+
+      this.projectName = this.dialog.querySelector('md-filled-text-field').value
+      this.projectsStore.set(new TextEncoder().encode(this.projectName), {creationTime: new Date().getTime(), pages: []})
       
-      if (action === 'create-project') {
+      this._projectsProvider.setValue([...this.projects, this.projectName])
+      this.project = await this.projectsStore.get(this.projectName)
+      this.loadPage(this.project.pages[0]?.name)
+      location.hash = '#!/draw'
+    }
 
-        this.projectName = this.dialog.querySelector('md-filled-text-field').value
-        this.projectsStore.set(this.projectName, {creationTime: new Date().getTime(), pages: []})
-        
-        this._projectsProvider.setValue([...this.projects, this.projectName])
-        this.project = await this.projectsStore.get(this.projectName)
-        this.loadPage(this.project.pages[0]?.name)
-        location.hash = '#!/draw'
-      }
-
-      if (action === 'open-project') {
-        this.projectName = this.dialog.querySelector('md-filled-text-field').value
-        
-        this.project = await this.projectsStore.get(this.projectName)
-        this.loadPage(this.project.pages[0]?.name)
-        location.hash = '#!/draw'
-      }
+    if (action === 'open-project') {
+      this.projectName = this.dialog.querySelector('md-filled-text-field').value
+      console.log(this.projectName);
+      
+      this.project = await this.projectsStore.get(new TextEncoder().encode(this.projectName))
+      this.loadPage(this.project.pages[0]?.name)
+      location.hash = '#!/draw'
+    }
       
   }
  
@@ -144,7 +150,7 @@ export class AppShell extends LitElement {
         dialogFocus>
       </md-filled-text-field>
 
-      <md-filled-button slot="footer"dialogAction="create-project">
+      <md-filled-button slot="footer"dialog-action="create-project">
         create
       </md-filled-button>
     
@@ -161,17 +167,17 @@ export class AppShell extends LitElement {
         <small>make sure you saved your open project</small>
         <md-filled-text-field
           label="Project name"
-          value=${projectKey}
+          value="${projectKey}"
           dialogFocus>
         </md-filled-text-field>
       </flex-column>
     
       <flex-row slot="footer" style="width: 100%;">
-        <md-outlined-button dialogAction="cancel-open-project">
+        <md-outlined-button dialog-action="cancel-open-project">
           cancel
         </md-outlined-button>
         <flex-one></flex-one>
-        <md-filled-button dialogAction="open-project">
+        <md-filled-button dialog-action="open-project">
           open
         </md-filled-button>
 
@@ -205,9 +211,8 @@ export class AppShell extends LitElement {
   }
 
   async save() {
-    console.log(this.projectName);
     await this.savePage()
-    this.projectsStore.set(this.projectName, this.project)
+    this.projectsStore.set(new TextEncoder().encode(this.projectName), this.project)
   }
 
   get drawer() {
@@ -240,7 +245,7 @@ export class AppShell extends LitElement {
     this.renderRoot.querySelector('draw-field').canvas.undo()
   }
 
-  #drawText() {
+  drawText() {
     this.action = 'draw-text'
     this.renderRoot.querySelector('draw-field')._current = new IText('Tap and Type', { 
       fontFamily: 'system-ui',
@@ -271,6 +276,12 @@ export class AppShell extends LitElement {
         align-items: center;
       }
 
+      custom-pages {
+        display: flex;
+      }
+
+      
+
       flex-row.main {
         width: calc(100% - 2px);
         height: calc(100% - 50px);
@@ -278,6 +289,7 @@ export class AppShell extends LitElement {
 
       .file-controls {
         width: 230px;
+        pointer-events: auto;
       }
     `
   ];
@@ -287,38 +299,24 @@ export class AppShell extends LitElement {
 
     <md-dialog>
     </md-dialog>
-
-    <header>
-      <flex-row class="file-controls">
-        <md-standard-icon-button title="create project" @click=${this.createProject}>create_new_folder</md-standard-icon-button>
-        <md-standard-icon-button title="upload project"  @click=${this.uploadProject}>upload_file</md-standard-icon-button>
-        <md-standard-icon-button title="download project"  @click=${this.download.bind(this)}>download</md-standard-icon-button>
-        <md-standard-icon-button title="save project" @click=${this.save.bind(this)}>save</md-standard-icon-button>
-        <md-standard-icon-button title="show projects"  href="#!/projects">folder_open</md-standard-icon-button>
+    
+    <custom-theme load-symbols="false"></custom-theme>
+    
+    <custom-drawer-layout>  
+      <flex-row class="file-controls" slot="drawer-headline" style="height: 40px;">
+        <custom-button title="create project" @click=${this.createProject}><md-icon slot="icon">create_new_folder</md-icon></custom-button>
+        <custom-button title="upload project"  @click=${this.uploadProject}><md-icon slot="icon">upload_file</md-icon></custom-button>
+        <custom-button title="download project"  @click=${this.download.bind(this)}><md-icon slot="icon">download</md-icon></custom-button>
+        <custom-button title="save project" @click=${this.save.bind(this)}><md-icon slot="icon">save</md-icon></custom-button>
+        <custom-button title="show projects"  href="#!/projects"><md-icon slot="icon">folder_open</md-icon></custom-button>
       </flex-row>
-
-
-      <md-standard-icon-button @click=${this.undo}>undo</md-standard-icon-button>
-      <md-standard-icon-button @click=${this.redo}>redo</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'select')}">arrow_selector_tool</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.freeDraw = !this.freeDraw)}" toggle>
-        grid_on
-        <span slot="selectedIcon">grid_off</span>
-      </md-standard-icon-button>
-      <flex-one></flex-one>
-      <md-standard-icon-button @click="${() => (this.action = 'draw')}">draw</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'draw-square')}">square</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'draw-circle')}">circle</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'draw-arc')}">line_curve</md-standard-icon-button>
-      <md-standard-icon-button @click="${() => (this.action = 'draw-line')}">horizontal_rule</md-standard-icon-button>
-      <md-standard-icon-button @click=${this.#drawText}>insert_text</md-standard-icon-button>
-    </header>
-
-
-    <flex-row class="main">
-    <project-drawer .manifest=${this.manifest} .project=${this.project}>
       
-    </project-drawer>
+      <project-drawer .manifest=${this.manifest} .project=${this.project} slot="drawer-content"></project-drawer>
+      
+      <header  slot="top-app-bar-end">
+        <cadle-actions></cadle-actions>
+      </header>
+
       <custom-pages attr-for-selected="data-route">
         <home-field data-route="home"></home-field>
         <draw-field data-route="draw"></draw-field>
@@ -326,6 +324,10 @@ export class AppShell extends LitElement {
         <add-page-field data-route="add-page"></add-page-field>
         <projects-field data-route="projects"></projects-field>
       </custom-pages>
+    </custom-drawer-layout>
+
+    <flex-row class="main">
+    
     </flex-row>
     `;
   }

@@ -2,6 +2,7 @@ import { LitElement, html, css, PropertyDeclarations } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
 import './item.js'
 import { map } from 'lit/directives/map.js';
+import '@vandeurenglenn/lit-elements/icon-font.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -60,8 +61,8 @@ export class CatalogCategory extends LitElement {
         data-variant="icon"
         aria-label="Show items for ${this.category}"
         selected-aria-label="Hide items for ${this.category}">
-          expand_more
-          <span slot="selectedIcon">expand_less</span>
+          <custom-icon-font>expand_more</custom-icon-font>
+          <custom-icon-font slot="selectedIcon">expand_less</custom-icon-font>
       </md-standard-icon-button>
     </catalog-item>
     

@@ -3,7 +3,7 @@ import { customElement, property } from 'lit/decorators.js'
 import { Canvas, Circle, Line, IText, Object, loadSVGFromURL, util } from './../fabric-imports.js'
 import { AppShell } from '../shell.js';
 import Rect from './../symbols/rectangle.js'
-import 'fabric-history';
+// import 'fabric-history';
 
 declare type x = number
 declare type y = number
@@ -211,8 +211,21 @@ export class DrawField extends LitElement {
           id,
           index
         }
-
-        if (this.action === 'draw-line') {
+        if (this.action === 'draw-wall') {
+          this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
+            id,
+            index,
+            strokeWidth: 10,
+            x2: this.#startPoints.top,
+            y2: this.#startPoints.left,
+            fill: '#555',
+            stroke: '#555',
+            originX: 'center',
+            originY: 'center',
+            borderScaleFactor: 0,
+            centeredRotation: true
+          });
+        } else if (this.action === 'draw-line') {
           this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
             id,
             index,
@@ -290,8 +303,7 @@ export class DrawField extends LitElement {
     if (!this.drawing) return
     this.canvas.selection = false
     // const pointer = this.canvas.getPointer(e)
-    if (this.action === 'draw-line') {
-      console.log('line');
+    if (this.action === 'draw-line' || this.action === 'draw-wall') {
       
       this._current.set({ x2: currentPoints.left, y2: currentPoints.top })
     } else if (this.action === 'draw-circle') {

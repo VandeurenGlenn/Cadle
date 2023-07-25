@@ -4,7 +4,13 @@ import { consume } from '@lit-labs/context';
 import { Project, projectContext } from '../../context/project-context.js';
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/filled-icon-button.js'
+import '@vandeurenglenn/lit-elements/drawer-item.js'
+import '@vandeurenglenn/lit-elements/selector.js'
+import '@vandeurenglenn/lit-elements/button.js'
+import '@vandeurenglenn/lit-elements/dropdown.js'
+import '@vandeurenglenn/lit-elements/list-item.js'
 import './../list/item.js'
+import './contextmenu.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -35,6 +41,7 @@ export class ProjectElement extends LitElement {
       this.removeAttribute('addingPage')
       this.handleInput()
     }
+    this.requestUpdate('addingPage')
   }
 
   async handleInput() {
@@ -65,13 +72,19 @@ export class ProjectElement extends LitElement {
     this.removeEventListener('keydown', this.#keydown)
   }
 
+  #showMenu = (event) => {
+    event.preventDefault()
+    const menu = this.renderRoot.querySelector('context-menu')
+    menu.open = !menu.open
+  }
+
   get addingPage() {
     return this.hasAttribute('addingPage')
   }
 
   connectedCallback(): void {
     super.connectedCallback()
-    this.addEventListener("contextmenu", (e) => {e.preventDefault()});
+    this.addEventListener("contextmenu", this.#showMenu);
   }
 
   static styles = [
@@ -110,32 +123,29 @@ export class ProjectElement extends LitElement {
         padding: 12px 24px;
         align-items: center;
       }
-
-      flex-container {
-
-        overflow-y: auto;
-      }
     `
   ];
 
  
   get #projectTemplate() {
     return this.project.pages.map(item => html`
-      <cadle-list-item .headline=${item.name} data-project=${item.name} @list-click=${(event) => { cadleShell.loadPage(item.name); location.hash = '#!/draw'}}></cadle-list-item>
+      <custom-drawer-item .headline=${item.name} data-project=${item.name} @click=${(event) => { cadleShell.loadPage(item.name); location.hash = '#!/draw'}}>${item.name}</custom-drawer-item>
     `)
   }
 
   render() {
     return html`
-      <flex-container>
-      ${this.project?.pages?.length > 0 ? this.#projectTemplate : ''}
-      </flex-container>
+        <context-menu></context-menu>
+        
+        <custom-selector>
+          ${this.project?.pages?.length > 0 ? this.#projectTemplate : ''}
+        </custom-selector>
       
 
-      <flex-row class="add-container">
+      <flex-row class="input-container">
         <input class="page-input">
         <flex-one></flex-one>
-        <md-filled-icon-button class="add-page" @click=${() => this.addingPage = !this.addingPage} toggle>add <span slot="selectedIcon">done</span></md-filled-icon-button>
+        <custom-icon-button class="add-page" @click=${() => this.addingPage = !this.addingPage}>${this.addingPage ? 'done' : 'add'}</custom-icon-button>
       </flex-row>
       
 

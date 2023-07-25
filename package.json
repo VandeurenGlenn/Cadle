@@ -15,7 +15,9 @@
   "dependencies": {
     "@lit-labs/context": "^0.3.1",
     "@material/web": "^1.0.0-pre.8",
+    "@vandeurenglenn/custom-elements": "^0.1.22",
     "@vandeurenglenn/flex-elements": "^0.1.1",
+    "@vandeurenglenn/lit-elements": "^0.1.1",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
     "fabric": "^6.0.0-beta3",
@@ -33,6 +35,7 @@
     "@types/node": "^20.2.1",
     "@vandeurenglenn/project": "^0.2.2",
     "rollup": "^3.21.0",
+    "rollup-plugin-material-symbols": "^1.0.0",
     "rollup-plugin-modify": "^3.0.0",
     "tslib": "^2.5.0"
   }

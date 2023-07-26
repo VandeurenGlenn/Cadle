@@ -147,10 +147,10 @@ export class ProjectElement extends LitElement {
         </custom-selector>
       
 
-      <flex-row class="input-container">
+      <flex-row class="input-container" slot="footer">
         <input class="page-input">
         <flex-one></flex-one>
-        <custom-icon-button class="add-page" @click=${() => this.addingPage = !this.addingPage}>${this.addingPage ? 'done' : 'add'}</custom-icon-button>
+        <custom-icon-button class="add-page" icon="${this.addingPage ? 'done' : 'add'}" @click=${() => this.addingPage = !this.addingPage}></custom-icon-button>
       </flex-row>
       
 

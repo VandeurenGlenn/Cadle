@@ -29,6 +29,7 @@ export class ProjectDrawer extends LitElement {
         display: flex;
         flex-direction: column;
         height: 100%;
+        width: 100%;
         --md-list-item-list-item-container-color: #fff;
         --md-list-item-list-item-leading-avatar-color: #fff;
         --md-list-item-list-item-leading-avatar-shape: 0

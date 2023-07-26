@@ -324,11 +324,35 @@ export class AppShell extends LitElement {
     
     <custom-drawer-layout>  
       <flex-row class="file-controls" slot="drawer-headline" style="height: 40px;">
-        <custom-button title="create project" @click=${this.createProject}><md-icon slot="icon">create_new_folder</md-icon></custom-button>
-        <custom-button title="upload project"  @click=${this.uploadProject}><md-icon slot="icon">upload_file</md-icon></custom-button>
-        <custom-button title="download project"  @click=${this.download.bind(this)}><md-icon slot="icon">download</md-icon></custom-button>
-        <custom-button title="save project" @click=${this.save.bind(this)}><md-icon slot="icon">save</md-icon></custom-button>
-        <custom-button title="show projects"  href="#!/projects"><md-icon slot="icon">folder_open</md-icon></custom-button>
+        <custom-button 
+          title="create project"
+          @click=${this.createProject}>
+          <custom-icon-font slot="icon">create_new_folder</custom-icon-font>
+        </custom-button>
+
+        <custom-button 
+          title="upload project"
+           @click=${this.uploadProject}>
+          <custom-icon-font slot="icon">upload_file</custom-icon-font>
+        </custom-button>
+
+        <custom-button 
+          title="download project"
+           @click=${this.download.bind(this)}>
+          <custom-icon-font slot="icon">download</custom-icon-font>
+        </custom-button>
+
+        <custom-button 
+          title="save project"
+          @click=${this.save.bind(this)}>
+          <custom-icon-font slot="icon">save</custom-icon-font>
+        </custom-button>
+
+        <custom-button 
+          title="show projects"
+           href="#!/projects">
+          <custom-icon-font slot="icon">folder_open</custom-icon-font>
+        </custom-button>
       </flex-row>
       
       <project-drawer .manifest=${this.manifest} .project=${this.project} slot="drawer-content"></project-drawer>

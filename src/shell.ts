@@ -196,7 +196,7 @@ export class AppShell extends LitElement {
         <md-outlined-button dialog-action="cancel-open-project">
           cancel
         </md-outlined-button>
-        <flex-one></flex-one>
+        <flex-it></flex-it>
         <md-filled-button dialog-action="open-project">
           open
         </md-filled-button>

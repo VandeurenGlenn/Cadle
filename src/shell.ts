@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, query } from 'lit/decorators.js'
 import '@material/web/button/tonal-button.js'
 import '@material/web/iconbutton/standard-icon-button.js'
 import '@material/web/list/list.js'
@@ -33,13 +33,19 @@ declare global {
   var cadleShell: AppShell
 }
 
-declare type dialogAction = 'create-project' | 'open-project' | 'create-page' | 'rename-project' | 'rename-page' 
+declare type dialogAction = 'create-project' | 'open-project' | 'create-page' | 'rename-project' | 'rename-page' | 'confirm-input'
 
 @customElement('app-shell')
 export class AppShell extends LitElement {
   projectsStore: ProjectsStore
   symbol: string
   projectName: string
+  inputType: 'wcd' | 'normal' = 'normal'
+  lastNumber: number
+  currentText: string
+
+  @query('cadle-actions')
+  actions
 
   @property({ type: String })
   action: string
@@ -50,6 +56,7 @@ export class AppShell extends LitElement {
 
   @property({type: Boolean})
   freeDraw: boolean = false
+  
 
 
   get projects() {
@@ -79,6 +86,11 @@ export class AppShell extends LitElement {
   constructor() {
     super()
     globalThis.cadleShell = this
+  }
+
+  #toggleInputType = () => {
+    if (this.inputType === 'normal') this.inputType = 'wcd'
+    else this.inputType = 'normal'
   }
 
   async connectedCallback(): Promise<void> {
@@ -118,7 +130,15 @@ export class AppShell extends LitElement {
 
   #dialogAction = async (event: CustomEvent) => {
     const action: dialogAction = event.detail.action
-    console.log(action);
+    if (action === 'confirm-input') {
+      const value = this.dialog.querySelector('md-filled-text-field').value
+      const match = value.match(/\d+/g)
+      if (match?.length > 0) {
+        const number = Number(match.join(''))
+        cadleShell.lastNumber = number
+      }
+      cadleShell.currentText = value
+    }
     
     if (action === 'create-project') {
 
@@ -216,7 +236,7 @@ export class AppShell extends LitElement {
   }
 
   get drawer() {
-    return this.renderRoot.querySelector('project-drawer')
+    return this.renderRoot.querySelector('custom-drawer-layout').shadowRoot.querySelector('custom-drawer')
   }
   async savePage() {
     if (this.loadedPage) { 

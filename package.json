@@ -16,7 +16,7 @@
     "@lit-labs/context": "^0.3.1",
     "@material/web": "^1.0.0-pre.8",
     "@vandeurenglenn/custom-elements": "^0.1.22",
-    "@vandeurenglenn/flex-elements": "^0.1.1",
+    "@vandeurenglenn/flex-elements": "^0.3.2",
     "@vandeurenglenn/lit-elements": "^0.1.1",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",

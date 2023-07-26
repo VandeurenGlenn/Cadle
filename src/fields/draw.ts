@@ -96,7 +96,6 @@ export class DrawField extends LitElement {
     // snap to grid
     
     this.#canvas.on('object:moving', (options) => {
-      console.log(options);
       
       options.target.set(this.snapToGrid(options.target))
     });

@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
-import { Group, Image, loadSVGFromURL } from 'fabric';
+import { Group, Image, loadSVGFromURL, util, SVG } from 'fabric';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -59,16 +59,23 @@ export class CatalogItem extends LitElement {
     
   }
 
-  #click = (event: Event) => {
+  #click = async (event: Event) => {
     event.stopImmediatePropagation()
-    loadSVGFromURL(this.image, async svg => {
-      console.log(svg);
-      
-      const group = new Group(svg)
-      document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
-      document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
-    } )
+    // const svg = await this.#loadSVGFromURL()
+    // util.groupSVGElements(svg)
+    // console.log({svg});
+    // const group = new Group([svg])
+    // document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
+    // document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
     
+    const svg = await loadSVGFromURL(this._image)
+    console.log(svg);
+    
+    const group = util.groupSVGElements(svg.objects)
+    console.log(group);
+    
+    document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
+    document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
   }
 
   connectedCallback(): void {

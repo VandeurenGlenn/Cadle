@@ -135,7 +135,12 @@ export class ProjectElement extends LitElement {
 
   render() {
     return html`
-        <context-menu></context-menu>
+        <context-menu>
+          <custom-list-item type="menu">
+            <custom-icon-font slot="start">delete</custom-icon-font>
+            delete
+          </custom-list-item>
+        </context-menu>
         
         <custom-selector>
           ${this.project?.pages?.length > 0 ? this.#projectTemplate : ''}

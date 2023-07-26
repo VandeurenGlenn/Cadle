@@ -1,5 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js'
+import '@vandeurenglenn/lit-elements/menu.js'
+import '@vandeurenglenn/lit-elements/dropdown.js'
 
 @customElement('context-menu')
 export class Contextmenu extends LitElement {
@@ -20,6 +22,10 @@ export class Contextmenu extends LitElement {
 
   show() {
     this.open = true
+  }
+
+  #selected = ({detail}: CustomEvent) => {
+    this.dispatchEvent(new CustomEvent('selected', {detail}))
   }
 
   static styles = [
@@ -46,11 +52,8 @@ export class Contextmenu extends LitElement {
     return html`
     <custom-dropdown class="contextmenu" @click=${this.hide} .open=${this.open}>
       <custom-elevation></custom-elevation>
-      <custom-menu>
-        <custom-list-item type="menu">
-          <custom-icon-font slot="start">delete</custom-icon-font>
-          delete
-        </custom-list-item>
+      <custom-menu @selected=${this.#selected}>
+        <slot></slot>
       </custom-menu>
     </custom-dropdown>
     `;

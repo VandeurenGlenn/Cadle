@@ -17,7 +17,7 @@
     "@material/web": "^1.0.0-pre.8",
     "@vandeurenglenn/custom-elements": "^0.1.22",
     "@vandeurenglenn/flex-elements": "^0.3.2",
-    "@vandeurenglenn/lit-elements": "^0.1.1",
+    "@vandeurenglenn/lit-elements": "^0.1.12",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
     "fabric": "^6.0.0-beta3",

@@ -16,18 +16,32 @@ declare global {
 
 @customElement('cadle-actions')
 export class CadleActions extends LitElement {
+  @property({ type: Boolean, reflect: true })
+  open: boolean = true
   static styles = [
     css`
       :host {
         display: flex;
         flex-direction: row;
         width: 100%;
+        opacity: 0;
       }
       custom-list-item {
         width: 100%;
       }
+      :host([open]) {
+        opacity: 1;
+      }
     `
   ];
+
+  show() {
+    this.open = true
+  }
+
+  hide() {
+    this.open = false
+  }
 
   #showMenu = (event) => {
     event.preventDefault()
@@ -44,16 +58,31 @@ export class CadleActions extends LitElement {
           <custom-icon-font>check_box_outline_blank</custom-icon-font>
           <custom-icon-font>check_box</custom-icon-font>
         </custom-toggle>
-        
         normal
       </custom-list-item>
 
-      <custom-list-item type="menu" name="wcd">
-        <custom-toggle active="${cadleShell.inputType === 'wcd' ? 1 : 0}" slot="end">
+      <custom-list-item type="menu" name="socket">
+        <custom-toggle active="${cadleShell.inputType === 'socket' ? 1 : 0}" slot="end">
           <custom-icon-font >check_box_outline_blank</custom-icon-font>
           <custom-icon-font>check_box</custom-icon-font>
         </custom-toggle>
-        wcd
+        sockets
+      </custom-list-item>
+
+      <custom-list-item type="menu" name="switch">
+        <custom-toggle active="${cadleShell.inputType === 'switch' ? 1 : 0}" slot="end">
+          <custom-icon-font >check_box_outline_blank</custom-icon-font>
+          <custom-icon-font>check_box</custom-icon-font>
+        </custom-toggle>
+        switches
+      </custom-list-item>
+
+      <custom-list-item type="menu" name="alphabet">
+        <custom-toggle active="${cadleShell.inputType === 'alphabet' ? 1 : 0}" slot="end">
+          <custom-icon-font >check_box_outline_blank</custom-icon-font>
+          <custom-icon-font>check_box</custom-icon-font>
+        </custom-toggle>
+        alphabet
       </custom-list-item>
       `
     }
@@ -67,7 +96,7 @@ export class CadleActions extends LitElement {
   }
 
   #selected = ({detail}) => {
-    if (detail === 'wcd' || detail === 'normal') {
+    if (detail === 'alphabet' || detail === 'normal' || detail === 'switch' || detail === 'socket') {
 
       cadleShell.inputType = detail
       cadleShell.dialog.innerHTML = `

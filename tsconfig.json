@@ -4,6 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "nodenext",
     "experimentalDecorators": true,
-    "useDefineForClassFields": false
+    "useDefineForClassFields": false,
+    "types": [
+      "@vandeurenglenn/lit-elements/elements.js"
+    ]
   }
 }

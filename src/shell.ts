@@ -40,12 +40,18 @@ export class AppShell extends LitElement {
   projectsStore: ProjectsStore
   symbol: string
   projectName: string
-  inputType: 'wcd' | 'normal' = 'normal'
+  inputType: 'alphabet' | 'switch' | 'socket' | 'normal' = 'normal'
   lastNumber: number
   currentText: string
 
   @query('cadle-actions')
   actions
+
+  @query('draw-field')
+  field
+
+  @query('custom-drawer-layout')
+  drawerLayout
 
   @property({ type: String })
   action: string
@@ -75,6 +81,7 @@ export class AppShell extends LitElement {
     this._projectProvider.setValue(value)
     this._projectProvider.updateObservers()
   }
+  
 
   @provide({context: catalogContext})
   @property({attribute: false})
@@ -91,6 +98,30 @@ export class AppShell extends LitElement {
   #toggleInputType = () => {
     if (this.inputType === 'normal') this.inputType = 'wcd'
     else this.inputType = 'normal'
+  }
+
+  #beforePrint = () => {
+    this.drawerLayout.drawerOpen = false
+    this.drawerLayout.keepClosed = true
+    this.actions.hide()
+    this.field.style.position = 'fixed'
+    this.field.style.left = '0'
+    const {width, height} = this.getBoundingClientRect()
+    this.field.canvas.setWidth(width)
+    this.field.canvas.setHeight(height)
+    this.field.canvas.renderAll()
+  }
+   
+
+  #afterPrint = () => {
+    
+    this.drawer.open = true
+    this.drawerLayout.keepClosed = false
+    this.field.style.position = 'absolute'
+    this.field.style.left = 'auto'
+    this.actions.show()
+    this.field.canvas.renderAll()
+    this.drawerLayout.drawerOpen = true
   }
 
   async connectedCallback(): Promise<void> {
@@ -117,6 +148,8 @@ export class AppShell extends LitElement {
     
     await this.requestUpdate('projects')
     this.dialog.addEventListener('closed', this.#dialogAction)
+    addEventListener("beforeprint", this.#beforePrint);
+    addEventListener("afterprint", this.#afterPrint);
   }
 
 
@@ -289,13 +322,6 @@ export class AppShell extends LitElement {
         flex-direction: column;
       }
 
-      header {
-        display: flex;
-        width: 100%;
-        height: 48px;
-        align-items: center;
-      }
-
       custom-pages {
         display: flex;
       }
@@ -357,9 +383,7 @@ export class AppShell extends LitElement {
       
       <project-drawer .manifest=${this.manifest} .project=${this.project} slot="drawer-content"></project-drawer>
       
-      <header  slot="top-app-bar-end">
-        <cadle-actions></cadle-actions>
-      </header>
+      <cadle-actions slot="top-app-bar-end"></cadle-actions>
 
       <custom-pages attr-for-selected="data-route">
         <home-field data-route="home"></home-field>

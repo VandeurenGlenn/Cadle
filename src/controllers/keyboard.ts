@@ -12,12 +12,35 @@ cadleShell.currentText = 'A1'
 
 const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('')
 
+const incrementLetter = (matches) => {
+  let text = ''
+      
+  if (matches?.length > 0) {
+    if (matches.length > 1) {
+      if (matches[1] === 'Z') {
+        text = `${matches[0]}A`
+      } else {
+        text = `${matches[0]}${alphabet[alphabet.indexOf(matches[1].toLowerCase()) + 1].toUpperCase()}`
+      }
+      
+    } else {
+      if (matches[0] === 'Z') {
+        text = 'AA'
+      } else {
+        text = alphabet[alphabet.indexOf(matches[0].toLowerCase()) + 1].toUpperCase()
+      }
+      
+    }
+  }
+  return text
+}
+
 const positionObject = () => {
   const drawerRect = shell.drawer.shadowRoot.querySelector('custom-pane').getBoundingClientRect()
   const actionsRect = shell.actions.getBoundingClientRect()
   return {
-    left: currentMousePosition.x - drawerRect.right - drawerRect.x,
-    top: currentMousePosition.y - actionsRect.height - actionsRect.y
+    left: currentMousePosition.x - drawerRect.right - drawerRect.x - 8,
+    top: currentMousePosition.y - actionsRect.height - actionsRect.y - 16
   }
 }
 
@@ -114,14 +137,16 @@ addEventListener('keydown', async event => {
 console.log(items);
 
     canvas.discardActiveObject();
+    
 
-    for(const item of items[0]._objects) {
-          canvas.add(item);
-        
-          
+    items[0].dispose()
+    field.canvas.remove(items[0])
 
+      for(const item of items[0]._objects) {
+        item.set('dirty', true)
+        canvas.add(item);
     }
-    canvas.renderAll()
+    field.canvas.requestRenderAll()
   }
 
   if (event.metaKey && isMac && event.key === 'v' || event.ctrlKey && event.key === 'v' && !isMac) {
@@ -149,6 +174,14 @@ console.log(items);
       top
     }))
 
+    if (cadleShell.inputType === 'normal') return
+
+
+
+    const textMatch = cadleShell.currentText.match(/\D/g)
+
+    if (cadleShell.inputType === 'alphabet') return cadleShell.currentText = incrementLetter(textMatch)
+
     const match = cadleShell.currentText.match(/\d+/g)
     
     if (match?.length > 0) {
@@ -156,7 +189,7 @@ console.log(items);
       
       if (number && number === cadleShell.lastNumber) {
         cadleShell.lastNumber += 1
-        if (cadleShell.lastNumber === 9 && globalThis.cadleShell.inputType === 'wcd') {
+        if (cadleShell.lastNumber === 9 && globalThis.cadleShell.inputType === 'socket') {
           cadleShell.lastNumber = 1
           const textMatch = cadleShell.currentText.match(/\D/g)
           let text = ''

@@ -16,8 +16,8 @@
     "@lit-labs/context": "^0.3.1",
     "@material/web": "^1.0.0-pre.8",
     "@vandeurenglenn/custom-elements": "^0.1.22",
-    "@vandeurenglenn/flex-elements": "^0.3.2",
-    "@vandeurenglenn/lit-elements": "^0.1.1",
+    "@vandeurenglenn/flex-elements": "^1.1.1",
+    "@vandeurenglenn/lit-elements": "^0.3.5",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
     "fabric": "^6.0.0-beta3",
@@ -32,10 +32,11 @@
     "@rollup/plugin-node-resolve": "^15.0.2",
     "@rollup/plugin-typescript": "^11.1.0",
     "@types/color": "^3.0.3",
+    "@types/fabric": "^5.3.5",
     "@types/node": "^20.2.1",
     "@vandeurenglenn/project": "^0.2.2",
     "rollup": "^3.21.0",
-    "rollup-plugin-material-symbols": "^1.0.0",
+    "rollup-plugin-material-symbols": "^2.1.4",
     "rollup-plugin-modify": "^3.0.0",
     "tslib": "^2.5.0"
   }

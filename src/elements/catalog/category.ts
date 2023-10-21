@@ -54,7 +54,7 @@ export class CatalogCategory extends LitElement {
   render() {
     return html`
     <catalog-item .headline="${this.category}" @click=${() => (this.open = !this.open)}>
-      <flex-one></flex-one>
+      <flex-it></flex-it>
       <md-standard-icon-button
         toggle
         slot="end"
@@ -62,7 +62,7 @@ export class CatalogCategory extends LitElement {
         aria-label="Show items for ${this.category}"
         selected-aria-label="Hide items for ${this.category}">
           <custom-icon-font>expand_more</custom-icon-font>
-          <custom-icon-font slot="selectedIcon">expand_less</custom-icon-font>
+          <custom-icon-font slot="selected">expand_less</custom-icon-font>
       </md-standard-icon-button>
     </catalog-item>
     

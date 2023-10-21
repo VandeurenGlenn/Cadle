@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "nodenext",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "types": [
-      "@vandeurenglenn/lit-elements/elements.js"
+      "@vandeurenglenn/lit-elements/elements.js",
+      "@material/web",
+      "fabric"
     ]
   }
 }

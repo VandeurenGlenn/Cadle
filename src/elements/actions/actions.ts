@@ -7,7 +7,6 @@ import '@vandeurenglenn/lit-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
 
-
 declare global {
   interface HTMLElementTagNameMap {
     'cadle-actions': CadleActions;
@@ -126,26 +125,26 @@ export class CadleActions extends LitElement {
 
   
 
-    <md-standard-icon-button @click=${globalThis.cadleShell.undo}><custom-icon-font>undo</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click=${globalThis.cadleShell.redo}><custom-icon-font>redo</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'select')}"><custom-icon-font>arrow_selector_tool</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw)}" toggle>
+    <md-icon-button @click=${globalThis.cadleShell.undo}><custom-icon-font>undo</custom-icon-font></md-icon-button>
+    <md-icon-button @click=${globalThis.cadleShell.redo}><custom-icon-font>redo</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'select')}"><custom-icon-font>arrow_selector_tool</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw)}" toggle>
       <custom-icon-font>grid_on</custom-icon-font>
-      <custom-icon-font slot="selectedIcon">grid_off</custom-icon-font>
-    </md-standard-icon-button>
-    <flex-one></flex-one>
+      <custom-icon-font slot="selected">grid_off</custom-icon-font>
+    </md-icon-button>
+    <flex-it></flex-it>
     <custom-icon-button
       route="insert-text"
       icon="insert_text"
       @click=${globalThis.cadleShell.drawText.bind(globalThis.cadleShell)}>
     </custom-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-wall')}"><custom-icon-font>polyline</custom-icon-font></md-standard-icon-button>
-    <flex-one></flex-one>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw')}"><custom-icon-font>draw</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-square')}"><custom-icon-font>square</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-circle')}"><custom-icon-font>circle</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-arc')}"><custom-icon-font>line_curve</custom-icon-font></md-standard-icon-button>
-    <md-standard-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-line')}"><custom-icon-font>horizontal_rule</custom-icon-font></md-standard-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-wall')}"><custom-icon-font>polyline</custom-icon-font></md-icon-button>
+    <flex-it></flex-it>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw')}"><custom-icon-font>draw</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-square')}"><custom-icon-font>square</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-circle')}"><custom-icon-font>circle</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-arc')}"><custom-icon-font>line_curve</custom-icon-font></md-icon-button>
+    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-line')}"><custom-icon-font>horizontal_rule</custom-icon-font></md-icon-button>
     
     `;
   }

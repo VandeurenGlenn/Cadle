@@ -86,7 +86,7 @@ export class CatalogItem extends LitElement {
   render() {
     return html`
     <span>${this.headline}</span>
-    <flex-one></flex-one>
+    <flex-it></flex-it>
     <slot name="end">
       <img src=${this.image}>
     </slot>

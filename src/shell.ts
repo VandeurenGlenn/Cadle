@@ -1,15 +1,14 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js'
-import '@material/web/button/tonal-button.js'
-import '@material/web/iconbutton/standard-icon-button.js'
+import '@material/web/button/filled-tonal-button.js'
+import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
-import '@material/web/list/list-item-link.js'
+import '@material/web/list/list-item.js'
 import '@vandeurenglenn/lit-elements/pages.js'
 import {DrawField} from './fields/draw.js'
 import './fields/draw.js'
 import './elements/save-field.js'
 import './elements/project-drawer.js'
-import '@vandeurenglenn/flex-elements'
 import { projectContext, Project, Page } from './context/project-context.js';
 import { provide } from '@lit-labs/context';
 import ProjectsStore from './storage/projects.js'
@@ -43,6 +42,7 @@ export class AppShell extends LitElement {
   inputType: 'alphabet' | 'switch' | 'socket' | 'normal' = 'normal'
   lastNumber: number
   currentText: string
+  loadedPage: string
 
   @query('cadle-actions')
   actions
@@ -162,7 +162,10 @@ export class AppShell extends LitElement {
   }
 
   #dialogAction = async (event: CustomEvent) => {
-    const action: dialogAction = event.detail.action
+    console.log(event.detail);
+    console.log(event);
+    
+    const action: dialogAction = this.dialog.returnValue
     if (action === 'confirm-input') {
       const value = this.dialog.querySelector('md-filled-text-field').value
       const match = value.match(/\d+/g)
@@ -214,23 +217,23 @@ export class AppShell extends LitElement {
 
   async loadProject(projectKey) {
     this.dialog.innerHTML = `
-
-      <flex-column>
-        <p>Are you sure you want to open ${projectKey}?</p>
-        <small>make sure you saved your open project</small>
-        <md-filled-text-field
-          label="Project name"
-          value="${projectKey}"
-          dialogFocus>
-        </md-filled-text-field>
-      </flex-column>
-    
-      <flex-row slot="footer" style="width: 100%;">
-        <md-outlined-button dialog-action="cancel-open-project">
+      <form id="load" slot="content" method="dialog">
+        <flex-column>
+          <p>Are you sure you want to open ${projectKey}?</p>
+          <small>make sure you saved your open project</small>
+          <md-filled-text-field
+            label="Project name"
+            value="${projectKey}"
+            dialogFocus>
+          </md-filled-text-field>
+        </flex-column>
+      </form>
+      <flex-row slot="actions" style="width: 100%;">
+        <md-outlined-button form="load" value="cancel-open-project">
           cancel
         </md-outlined-button>
         <flex-it></flex-it>
-        <md-filled-button dialog-action="open-project">
+        <md-filled-button form="load" value="open-project">
           open
         </md-filled-button>
 

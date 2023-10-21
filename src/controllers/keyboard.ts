@@ -1,6 +1,7 @@
 import { Object, util, IText, Group, ActiveSelection } from 'fabric'
 
 const isMac = navigator.userAgent.indexOf('Mac OS X') != -1
+console.log(isMac);
 
 const shell = document.querySelector('app-shell')
 

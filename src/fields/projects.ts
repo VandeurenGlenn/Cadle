@@ -35,7 +35,9 @@ export class ProjectsField extends LitElement {
     console.log(this.projects);
     
     return this.projects.map(item => html`
-      <cadle-list-item .headline=${item} data-project=${item} @list-click=${(event) => { cadleShell.loadProject(item)}}></cadle-list-item>
+      <cadle-list-item .headline=${item} data-project=${item} @list-click=${(event) => { cadleShell.loadProject(item)}}>
+        <span slot="headline">${item}</span>
+      </cadle-list-item>
     `)
   }
 

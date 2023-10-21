@@ -149,7 +149,7 @@ export class ProjectElement extends LitElement {
 
       <flex-row class="input-container" slot="footer">
         <input class="page-input">
-        <flex-one></flex-one>
+        <flex-it></flex-it>
         <custom-icon-button class="add-page" icon="${this.addingPage ? 'done' : 'add'}" @click=${() => this.addingPage = !this.addingPage}></custom-icon-button>
       </flex-row>
       

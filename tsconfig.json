@@ -6,8 +6,7 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "types": [
-      "@vandeurenglenn/lit-elements/elements.js",
-      "@material/web",
+      "@vandeurenglenn/lit-elements",
       "fabric"
     ]
   }

@@ -20,10 +20,12 @@ import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit-labs/context';
-import { IText } from 'fabric';
+import { Textbox } from 'fabric';
 import './elements/actions/actions.js'
 import '@vandeurenglenn/lit-elements/drawer-layout.js'
 import '@vandeurenglenn/lit-elements/theme.js'
+import state from './state.js';
+import { incrementLetter, incrementSocket, positionObject } from './utils.js';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -95,21 +97,27 @@ export class AppShell extends LitElement {
     globalThis.cadleShell = this
   }
 
-  #toggleInputType = () => {
-    if (this.inputType === 'normal') this.inputType = 'wcd'
-    else this.inputType = 'normal'
-  }
-
-  #beforePrint = () => {
+  #beforePrint = (e: Event) => {
     this.drawerLayout.drawerOpen = false
     this.drawerLayout.keepClosed = true
     this.actions.hide()
     this.field.style.position = 'fixed'
     this.field.style.left = '0'
-    const {width, height} = this.getBoundingClientRect()
-    this.field.canvas.setWidth(width)
-    this.field.canvas.setHeight(height)
+    // const {width, height} = this.getBoundingClientRect()
+    // this.field.canvas.setWidth(width)
+    // this.field.canvas.setHeight(height)
     this.field.canvas.renderAll()
+      var dataUrl = this.field.canvas.toDataURL(); //attempt to save base64 string to server using this var  
+      var windowContent = '<!DOCTYPE html>';
+      windowContent += '<html>'
+      windowContent += '<head><title>Print Cadle Project</title></head>';
+      windowContent += '<body>'
+      windowContent += '<img style="width: 100%;" src="' + dataUrl + '" onload=window.print();>';
+      windowContent += '</body>';
+      windowContent += '</html>';
+      var printWin = window.open('', '', 'width=340,height=260');
+      printWin.document.open();
+      printWin.document.write(windowContent);
   }
    
 
@@ -148,6 +156,7 @@ export class AppShell extends LitElement {
     
     await this.requestUpdate('projects')
     this.dialog.addEventListener('closed', this.#dialogAction)
+    
     addEventListener("beforeprint", this.#beforePrint);
     addEventListener("afterprint", this.#afterPrint);
   }
@@ -303,13 +312,34 @@ export class AppShell extends LitElement {
 
   drawText() {
     this.action = 'draw-text'
-    this.renderRoot.querySelector('draw-field')._current = new IText('Tap and Type', { 
+
+    const { left, top } = positionObject()
+
+    if (state.text.type === 'normal') return
+    const textMatch = state.text.current.match(/\D/g)
+
+    if (state.text.type === 'alphabet') return state.text.current = incrementLetter(textMatch)
+
+    const match = state.text.current.match(/\d+/g)
+    
+    if (match?.length > 0) {
+      const number = Number(match.join(''))
+      
+      if (number && number === state.text.lastNumber) {
+        state.text.lastNumber += 1
+        if (state.text.lastNumber === 9 && state.text.type === 'socket') incrementSocket()
+        else state.text.current = state.text.current.replace(/\d+/g, String(state.text.lastNumber))
+      }
+    }
+    
+    this.renderRoot.querySelector('draw-field')._current = new Textbox(state.text.current, { 
       fontFamily: 'system-ui',
       fontSize: 12,
       fontStyle: 'normal',
       fontWeight: 'normal',
-      left: globalThis.currentMousePosition.x - this.drawer.getBoundingClientRect().width,
-      top: globalThis.currentMousePosition.y
+      controls: false,
+      left,
+      top
     })
   }
  

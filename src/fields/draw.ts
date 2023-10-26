@@ -73,28 +73,18 @@ export class DrawField extends LitElement {
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     await this.updateComplete
-    const { width, height } = this.getBoundingClientRect()
+    // const { width, height } = this.getBoundingClientRect()
+    const width= 1123
+    const height= 794
+
     this.#width = width
     this.#height = height
     // this.renderRoot.querySelector('canvas').width = width 
     // this.renderRoot.querySelector('canvas').height = height
     // @ts-ignore
     this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection :true, evented: false, width, height });
+    
     this.gridSize = 10;
-  
-  // create grid
-  
-    // const drawVertical = (i: number) => this.#canvas.add(new Line([ i * this.gridSize, 0, i * this.gridSize, this.#height], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
-
-    // const drawHorizontal = (i: number) => this.#canvas.add(new Line([ 0, i * this.gridSize, this.#width, i * this.gridSize], { stroke: '#ccc', selection: false, selectable: false, evented: false , excludeFromExport: true }))
-    
-    // for (var i = 0; i < (this.#biggest / this.gridSize); i++) {
-    //   if (i <= this.#width) drawHorizontal(i)
-    //   if (i <= this.#height) drawVertical(i)
-    // }
-
-    
-    // snap to grid
     
     this.#canvas.on('object:moving', (options) => {
       
@@ -412,10 +402,28 @@ export class DrawField extends LitElement {
     <style>
 
       :host {
+        display: flex;
+        box-sizing: border-box;
+        width: 100%;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .shadow {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        box-shadow: inset 0 0 9px 2px #0000001f;
+        z-index: 2;
+        pointer-events: none;
+      }
+      canvas {
         background-image: url('./assets/grid-${this.gridSize}.png');
       }
     </style>
+
+    <div class="shadow"></div>
     
-    <canvas id="canvas" width="" height="600"></canvas>`;
+    <canvas></canvas>`;
   }
 }

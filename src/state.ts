@@ -1,7 +1,9 @@
+import { Color } from "./symbols/default-options.js"
+
 export declare type Text = {
   current: string,
   lastNumber: number,
-  type: 'normal' | 'alphabet' | 'socket'
+  type: 'normal' | 'alphabet' | 'socket' | 'switch'
 }
 
 export declare type State = {
@@ -11,23 +13,32 @@ export declare type State = {
   },
   mouse: {
     position: {
-      x: number,
-      y: number
+      x: number | undefined,
+      y: number | undefined
     }
+  },
+  styling: {
+    fill: Color
   }
 }
 
 const state: State = {
   text: {
     current: 'A1',
-    lastNumber: 1,
+    lastNumber: 0,
     type: 'normal'
   },
   move: {
     amount: 0.5
   },
   mouse: {
-    position: undefined
+    position: {
+      x: undefined,
+      y: undefined
+    }
+  },
+  styling: {
+    fill: '#ffffff'
   }
 }
 

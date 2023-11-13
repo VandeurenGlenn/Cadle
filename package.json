@@ -6,7 +6,8 @@
   "scripts": {
     "watch": "rollup -c -w",
     "serve": "jsproject --serve ./www --port 4333",
-    "build": "rollup -c",
+    "generate:manifest": "node generate-manifest.js",
+    "build": "npm run generate:manifest && rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -17,13 +18,14 @@
     "@material/web": "^1.0.0-pre.8",
     "@vandeurenglenn/custom-elements": "^0.1.22",
     "@vandeurenglenn/flex-elements": "^1.1.1",
-    "@vandeurenglenn/lit-elements": "^0.3.6",
+    "@vandeurenglenn/lit-elements": "^0.3.8",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
+    "eslint-config-standard": "^17.1.0",
     "fabric": "^6.0.0-beta3",
     "fabric-history": "^1.7.0",
     "idb-keyval": "^6.2.0",
-    "lit": "^2.7.3"
+    "lit": "^3.0.1"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^24.1.0",
@@ -34,10 +36,17 @@
     "@types/color": "^3.0.3",
     "@types/fabric": "^5.3.5",
     "@types/node": "^20.2.1",
+    "@typescript-eslint/eslint-plugin": "^6.9.0",
     "@vandeurenglenn/project": "^0.2.2",
+    "eslint": "^8.52.0",
+    "eslint-config-standard-with-typescript": "^39.1.1",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-n": "^16.2.0",
+    "eslint-plugin-promise": "^6.1.1",
     "rollup": "^3.21.0",
     "rollup-plugin-material-symbols": "^2.1.4",
     "rollup-plugin-modify": "^3.0.0",
-    "tslib": "^2.5.0"
+    "tslib": "^2.5.0",
+    "typescript": "^5.2.2"
   }
 }

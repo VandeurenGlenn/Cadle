@@ -1,8 +1,9 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, query } from 'lit/decorators.js'
 import { Canvas, Circle, Line, IText, Object, loadSVGFromURL, util, PencilBrush } from './../fabric-imports.js'
 import { AppShell } from '../shell.js';
 import Rect from './../symbols/rectangle.js'
+import state from '../state.js';
 // import 'fabric-history';
 
 declare type x = number
@@ -65,6 +66,9 @@ export class DrawField extends LitElement {
       }
     `
   ];
+
+  @query('.convas-container')
+  canvasContainer
 
   snap(value) {
     return Math.round(value / this.gridSize) * this.gridSize
@@ -233,11 +237,10 @@ export class DrawField extends LitElement {
             left: this.#startPoints.left,
             originX: 'left',
             originY: 'top',
-            radius: pointer.x-this.#startPoints.left,
+            radius: pointer.x - this.#startPoints.left,
             strokeWidth: 1,
             fill: '#00000000',
             stroke: '#555',
-            borderScaleFactor: 0,
             centeredRotation: true
           });
         } else if (this.action === 'draw-arc') {
@@ -248,11 +251,10 @@ export class DrawField extends LitElement {
             left: this.#startPoints.left,
             originX: 'left',
             originY: 'top',
-            radius: pointer.y - this.#startPoints.top,
+            radius: pointer.y ? pointer.y - this.#startPoints.top : 0,
             startAngle: 0,
             endAngle: pointer.x - this.#startPoints.left,
             strokeWidth: 1,
-            borderScaleFactor: 0,
             fill: '#00000000',
             stroke: '#555',
             centeredRotation: true
@@ -284,6 +286,7 @@ export class DrawField extends LitElement {
   
   _mousemove(e) {
     let pointer = this.#canvas.getPointer(e)
+    state.mouse.position = { x: pointer.x, y: pointer.y }
     const currentPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
 
     

@@ -1,7 +1,7 @@
 import { canvas, getActiveObjects } from "../../../utils.js"
 import { isMac } from "../utils.js"
 
-export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) => key === 'Backspace' && isMac ? metaKey : ctrlKey
+export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) => key === 'Delete' ? true : key === 'Backspace' && (isMac ? metaKey : ctrlKey)
 
 export const remove = () => {
   let items = getActiveObjects()
@@ -16,4 +16,5 @@ export const remove = () => {
     canvas.remove(item)
     canvas.discardActiveObject();
   }
+  canvas.shouldRender = true
 }

@@ -1,11 +1,16 @@
 import { LitElement, html, css } from 'lit';
+import { map } from 'lit/directives/map.js'
 import { customElement, property } from 'lit/decorators.js'
 import '@vandeurenglenn/lit-elements/icon-font.js'
+import '@vandeurenglenn/lit-elements/icon.js'
 import '@vandeurenglenn/lit-elements/icon-button.js'
-import '@vandeurenglenn/lit-elements/toggle.js'
+import '@vandeurenglenn/lit-elements/toggle-button.js'
 import '@vandeurenglenn/lit-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
+import { field, incrementLetter, incrementSocket, positionObject, shell } from '../../utils.js';
+import { Textbox } from 'fabric';
+import state from '../../state.js';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -42,80 +47,178 @@ export class CadleActions extends LitElement {
     this.open = false
   }
 
+  constructor() {
+    super()
+    this.addEventListener('mousedown', () => {
+      const menu = this.renderRoot.querySelector('context-menu')
+      if (menu.open) menu.open = false
+    })
+    this.addEventListener("contextmenu", this.#showMenu);
+  }
+
   #showMenu = (event) => {
     event.preventDefault()
+    
     const target = event.composedPath()[0]
     console.log(target);
-    const {top, left, width} = target.getBoundingClientRect()
-    
     const menu = this.renderRoot.querySelector('context-menu')
-    const drop = menu.shadowRoot.querySelector('custom-dropdown')
-    if (target.route = 'insert-text') {
+    if (target.dataset.menu === 'insert-text') {
       menu.innerHTML = `
       <custom-list-item type="menu" name="normal">
-        <custom-toggle active="${cadleShell.inputType === 'normal' ? 1 : 0}" slot="end">
-          <custom-icon-font>check_box_outline_blank</custom-icon-font>
-          <custom-icon-font>check_box</custom-icon-font>
+        <custom-toggle active="${state.text.type === 'normal' ? 1 : 0}" slot="end">
+          <custom-icon-font slot="icon">check_box_outline_blank</custom-icon-font>
+          <custom-icon-font slot="icon">check_box</custom-icon-font>
         </custom-toggle>
         normal
       </custom-list-item>
 
       <custom-list-item type="menu" name="socket">
-        <custom-toggle active="${cadleShell.inputType === 'socket' ? 1 : 0}" slot="end">
+        <custom-toggle active="${state.text.type === 'socket' ? 1 : 0}" slot="end">
           <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font>check_box</custom-icon-font>
+          <custom-icon-font slot="icon">check_box</custom-icon-font>
         </custom-toggle>
         sockets
       </custom-list-item>
 
       <custom-list-item type="menu" name="switch">
-        <custom-toggle active="${cadleShell.inputType === 'switch' ? 1 : 0}" slot="end">
+        <custom-toggle active="${state.text.type === 'switch' ? 1 : 0}" slot="end">
           <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font>check_box</custom-icon-font>
+          <custom-icon-font slot="icon">check_box</custom-icon-font>
         </custom-toggle>
         switches
       </custom-list-item>
 
       <custom-list-item type="menu" name="alphabet">
-        <custom-toggle active="${cadleShell.inputType === 'alphabet' ? 1 : 0}" slot="end">
+        <custom-toggle active="${state.text.type === 'alphabet' ? 1 : 0}" slot="end">
           <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font>check_box</custom-icon-font>
+          <custom-icon-font slot="icon">check_box</custom-icon-font>
         </custom-toggle>
         alphabet
       </custom-list-item>
       `
+      menu.show(target)
     }
     // drop.style.opacity = 0
     // drop.addEventListener('transitionend', () => {
     //   drop.style.left = `${left - width - drop.getBoundingClientRect().width}px`
     // })
-    menu.open = !menu.open
-
-    drop.style.left = `${left - width - 280}px`
   }
 
-  #selected = ({detail}) => {
+  #selected = async ({detail}) => {
     if (detail === 'alphabet' || detail === 'normal' || detail === 'switch' || detail === 'socket') {
 
-      cadleShell.inputType = detail
+      state.text.type = detail
       cadleShell.dialog.innerHTML = `
-      <md-filled-text-field
-        label="input"
-        value="${cadleShell.currentText}"
-        dialogFocus>
-      </md-filled-text-field>
-
-      <custom-icon-button slot="footer" icon="done" dialog-action="confirm-input"></custom-icon-button>
+      <form id="text-input" slot="content" method="dialog">
+        <md-filled-text-field
+          label="input"
+          value="${state.text.current}"
+          dialogFocus>
+        </md-filled-text-field>
+      </form>
+      <div slot="actions">
+        <md-filled-button form="text-input" value="confirm-input">
+          done
+        </md-filled-button>
+      </div>
       `
       cadleShell.dialog.open = true
     }
     
 
   }
-  connectedCallback(): void {
-    super.connectedCallback()
-    this.addEventListener("contextmenu", this.#showMenu);
+
+  
+  drawText() {
+    shell.action = 'draw-text'
+
+    const { left, top } = positionObject()
+
+    if (state.text.type === 'normal') return
+    const textMatch = state.text.current.match(/\D/g)
+
+    if (state.text.type === 'alphabet') return state.text.current = incrementLetter(textMatch)
+
+    const match = state.text.current.match(/\d+/g)
+    
+    if (match?.length > 0) {
+      const number = Number(match.join(''))
+      
+      if (number && number === state.text.lastNumber) {
+        state.text.lastNumber += 1
+        if (state.text.lastNumber === 9 && state.text.type === 'socket') incrementSocket()
+        else state.text.current = state.text.current.replace(/\d+/g, String(state.text.lastNumber))
+      }
+    }
+    
+    field._current = new Textbox(state.text.current, { 
+      fontFamily: 'system-ui',
+      fontSize: 12,
+      fontStyle: 'normal',
+      fontWeight: 'normal',
+      controls: false,
+      left,
+      top
+    })
   }
+  @property({type: Array})
+  actions = [
+    { 
+      title: 'undo changes',
+      icon: 'undo',
+      action: globalThis.cadleShell.undo
+    }, {
+      title: 'redo changes',
+      icon: 'redo',
+      action: globalThis.cadleShell.redo
+    }, {
+      title: 'select',
+      icon: 'arrow_selector_tool',
+      action: () => (globalThis.cadleShell.action = 'select')
+    }, {
+      title: 'snap to grid',
+      togglers: ['grid_on', 'grid_off'],
+      action: () => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw),
+      seperates: true
+    }, {
+      title: 'insert text',
+      icon: 'insert_text',
+      action: this.drawText,
+      menu: 'insert-text'
+    }, {
+      title: 'draw wall',
+      icon: 'polyline',
+      action: () => (globalThis.cadleShell.action = 'draw-wall'),
+      seperates: true
+    }, {
+      title: 'freedraw',
+      icon: 'draw',
+      action: () => (globalThis.cadleShell.action = 'draw')
+    }, {
+      title: 'draw square',
+      icon: 'square',
+      menu: 'draw-square',
+      menuPosition: 'right',
+      action: () => (globalThis.cadleShell.action = 'draw-square')
+    }, {
+      title: 'draw circle',
+      icon: 'circle',
+      action: () => (globalThis.cadleShell.action = 'draw-circle')
+    }, {
+      title: 'draw arc',
+      icon: 'line_curve',
+      action: () => (globalThis.cadleShell.action = 'draw-arc')
+    }, {
+      title: 'draw line',
+      icon: 'horizontal_rule',
+      action: () => (globalThis.cadleShell.action = 'draw-line')
+    }, {
+      title: 'pick color',
+      color: true,
+      action: () => (globalThis.cadleShell.action = 'draw-line')
+    }
+
+  ]
 
   render() {
     return html`
@@ -123,29 +226,40 @@ export class CadleActions extends LitElement {
       
     </context-menu>
 
-  
+    ${map(this.actions, ({action, icon, title, seperates, togglers, menu, menuPosition, color}) => {
+      if (togglers) return  html`
+        <md-icon-button @click=${action} toggle>
+          <custom-icon-font icon=${togglers[0]}>${togglers[0]}</custom-icon-font>
+          <custom-icon-font slot="selected" icon=${togglers[1]}></custom-icon-font>
+        </md-icon-button>
+        ${seperates ? html`<flex-it></flex-it>` : ''} : ''`
 
-    <md-icon-button @click=${globalThis.cadleShell.undo}><custom-icon-font>undo</custom-icon-font></md-icon-button>
-    <md-icon-button @click=${globalThis.cadleShell.redo}><custom-icon-font>redo</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'select')}"><custom-icon-font>arrow_selector_tool</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw)}" toggle>
-      <custom-icon-font>grid_on</custom-icon-font>
-      <custom-icon-font slot="selected">grid_off</custom-icon-font>
-    </md-icon-button>
-    <flex-it></flex-it>
-    <custom-icon-button
-      route="insert-text"
-      icon="insert_text"
-      @click=${globalThis.cadleShell.drawText.bind(globalThis.cadleShell)}>
-    </custom-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-wall')}"><custom-icon-font>polyline</custom-icon-font></md-icon-button>
-    <flex-it></flex-it>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw')}"><custom-icon-font>draw</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-square')}"><custom-icon-font>square</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-circle')}"><custom-icon-font>circle</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-arc')}"><custom-icon-font>line_curve</custom-icon-font></md-icon-button>
-    <md-icon-button @click="${() => (globalThis.cadleShell.action = 'draw-line')}"><custom-icon-font>horizontal_rule</custom-icon-font></md-icon-button>
+      if (color) {
+        return html`
+        <button
+          @mouseup=${action}
+          title=${title}
+          data-menu=${menu}
+          menu-position=${menuPosition}
+        >
+          <input type="color" value=${state.styling.fill}>
+        </button>
+        ${seperates ? html`<flex-it></flex-it>` : ''}`        
+      }
+
+      return html`
+      <custom-button
+        @mouseup=${action}
+        title=${title}
+        data-menu=${menu}
+        menu-position=${menuPosition}
+      >
+        <custom-icon-font slot="icon" icon=${icon}></custom-icon-font>
+      </custom-button>
+      ${seperates ? html`<flex-it></flex-it>` : ''}
+    `
     
+    })}    
     `;
   }
 }

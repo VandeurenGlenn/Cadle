@@ -8,7 +8,6 @@ import './project/project.js'
 
 
 @customElement('project-drawer')
-
 export class ProjectDrawer extends LitElement {
   
 

@@ -5,13 +5,6 @@ import '@vandeurenglenn/lit-elements/dropdown.js'
 
 @customElement('context-menu')
 export class Contextmenu extends LitElement {
-  static styles = [
-    css`
-      :host {
-        display: contents
-      }
-    `
-  ];
 
   @property({type: Boolean, reflect: true})
   open: boolean = false
@@ -20,8 +13,17 @@ export class Contextmenu extends LitElement {
     this.open = false
   }
 
-  show() {
+  async show(target) {
     this.open = true
+    const {top, left, width} = target.getBoundingClientRect()
+    await this.updateComplete
+    const drop = this.renderRoot.querySelector('custom-dropdown')
+    
+    if (target.getAttribute('menu-position') === 'right') {
+      drop.style.left = `${left - (280 * 2)}px`
+    } else {
+      drop.style.left = `${left - width - 280}px`
+    }
   }
 
   #selected = ({detail}: CustomEvent) => {

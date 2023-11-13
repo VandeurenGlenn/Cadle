@@ -5,8 +5,8 @@
     "moduleResolution": "nodenext",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
+    "strictNullChecks": true,
     "types": [
-      "@vandeurenglenn/lit-elements",
       "fabric"
     ]
   }

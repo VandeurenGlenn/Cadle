@@ -20,12 +20,10 @@ import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit-labs/context';
-import { Textbox } from 'fabric';
-import './elements/actions/actions.js'
 import '@vandeurenglenn/lit-elements/drawer-layout.js'
 import '@vandeurenglenn/lit-elements/theme.js'
 import state from './state.js';
-import { incrementLetter, incrementSocket, positionObject } from './utils.js';
+import { Color } from './symbols/default-options.js';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -41,9 +39,6 @@ export class AppShell extends LitElement {
   projectsStore: ProjectsStore
   symbol: string
   projectName: string
-  inputType: 'alphabet' | 'switch' | 'socket' | 'normal' = 'normal'
-  lastNumber: number
-  currentText: string
   loadedPage: string
 
   @query('cadle-actions')
@@ -123,13 +118,12 @@ export class AppShell extends LitElement {
 
   #afterPrint = () => {
     
-    this.drawer.open = true
+    this.drawerLayout.drawerOpen = true
     this.drawerLayout.keepClosed = false
     this.field.style.position = 'absolute'
     this.field.style.left = 'auto'
     this.actions.show()
     this.field.canvas.renderAll()
-    this.drawerLayout.drawerOpen = true
   }
 
   async connectedCallback(): Promise<void> {
@@ -146,8 +140,10 @@ export class AppShell extends LitElement {
     this.projects = projects
 
     await Promise.all([
+      
+      import('./elements/actions/actions.js'),
       import('./controllers/routing.js'),
-      import('./controllers/mouse.js'),
+      // import('./controllers/mouse.js'),
       import('./controllers/keyboard.js')
     ])
 
@@ -155,10 +151,15 @@ export class AppShell extends LitElement {
     this.catalog = (await import('./symbols/manifest.js')).default
     
     await this.requestUpdate('projects')
-    this.dialog.addEventListener('closed', this.#dialogAction)
-    
+
     addEventListener("beforeprint", this.#beforePrint);
     addEventListener("afterprint", this.#afterPrint);
+
+    await this.updateComplete
+
+    this.dialog.addEventListener('close', this.#dialogAction)
+    
+    
   }
 
 
@@ -170,19 +171,22 @@ export class AppShell extends LitElement {
     return this.renderRoot.querySelector('custom-pages')
   }
 
-  #dialogAction = async (event: CustomEvent) => {
-    console.log(event.detail);
+  #dialogAction = async (event: Event) => {
+    console.log(event.returnValue);
     console.log(event);
+
+    console.log(event.returnValue);
     
-    const action: dialogAction = this.dialog.returnValue
+    
+    const action: dialogAction = this.dialog.returnValue as dialogAction
     if (action === 'confirm-input') {
       const value = this.dialog.querySelector('md-filled-text-field').value
       const match = value.match(/\d+/g)
       if (match?.length > 0) {
         const number = Number(match.join(''))
-        cadleShell.lastNumber = number
+        state.text.lastNumber = number
       }
-      cadleShell.currentText = value
+      state.text.current = value
     }
     
     if (action === 'create-project') {
@@ -209,16 +213,19 @@ export class AppShell extends LitElement {
  
   async createProject() {
     this.dialog.innerHTML = `
-    
-      <md-filled-text-field
-        label="Project name"
-        dialogFocus>
-      </md-filled-text-field>
 
-      <md-filled-button slot="footer"dialog-action="create-project">
-        create
-      </md-filled-button>
-    
+      <form id="form" slot="content" method="dialog">
+        <md-filled-text-field
+          label="Project name"
+          dialogFocus>
+        </md-filled-text-field>
+      </form>
+
+      <flex-row slot="actions">
+        <md-filled-button form="form" value="create-project">
+          create
+        </md-filled-button>
+      </flex-row>
     `
 
     this.dialog.open = true
@@ -237,6 +244,7 @@ export class AppShell extends LitElement {
           </md-filled-text-field>
         </flex-column>
       </form>
+
       <flex-row slot="actions" style="width: 100%;">
         <md-outlined-button form="load" value="cancel-open-project">
           cancel
@@ -283,6 +291,7 @@ export class AppShell extends LitElement {
   get drawer() {
     return this.renderRoot.querySelector('custom-drawer-layout').shadowRoot.querySelector('custom-drawer')
   }
+
   async savePage() {
     if (this.loadedPage) { 
       const pageToSave = this.project.pages.filter(page => page.name === this.loadedPage)[0]
@@ -310,37 +319,20 @@ export class AppShell extends LitElement {
     this.renderRoot.querySelector('draw-field').canvas.undo()
   }
 
-  drawText() {
-    this.action = 'draw-text'
+  pickColor(): Promise<Color> {
+    return new Promise((resolve, reject) => {
+      const picker = this.renderRoot.querySelector('input[type="color"]')
+      const pickerDialog = this.renderRoot.querySelector('.color-picker')
+      pickerDialog.addEventListener('close', () => {
+        if (pickerDialog.returnValue === 'confirm-color') {
+          resolve(picker.value)
+        }
+        
+      })
 
-    const { left, top } = positionObject()
-
-    if (state.text.type === 'normal') return
-    const textMatch = state.text.current.match(/\D/g)
-
-    if (state.text.type === 'alphabet') return state.text.current = incrementLetter(textMatch)
-
-    const match = state.text.current.match(/\d+/g)
-    
-    if (match?.length > 0) {
-      const number = Number(match.join(''))
-      
-      if (number && number === state.text.lastNumber) {
-        state.text.lastNumber += 1
-        if (state.text.lastNumber === 9 && state.text.type === 'socket') incrementSocket()
-        else state.text.current = state.text.current.replace(/\d+/g, String(state.text.lastNumber))
-      }
-    }
-    
-    this.renderRoot.querySelector('draw-field')._current = new Textbox(state.text.current, { 
-      fontFamily: 'system-ui',
-      fontSize: 12,
-      fontStyle: 'normal',
-      fontWeight: 'normal',
-      controls: false,
-      left,
-      top
+      pickerDialog.show()
     })
+    
   }
  
   static styles = [
@@ -370,6 +362,12 @@ export class AppShell extends LitElement {
         width: 230px;
         pointer-events: auto;
       }
+
+      input[type="color"] {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%)
+      }
     `
   ];
 
@@ -381,7 +379,8 @@ export class AppShell extends LitElement {
     
     <custom-theme load-symbols="false"></custom-theme>
     
-    <custom-drawer-layout>  
+    <custom-drawer-layout> 
+       
       <flex-row class="file-controls" slot="drawer-headline" style="height: 40px;">
         <custom-button 
           title="create project"
@@ -426,10 +425,26 @@ export class AppShell extends LitElement {
         <projects-field data-route="projects"></projects-field>
       </custom-pages>
     </custom-drawer-layout>
-
-    <flex-row class="main">
     
-    </flex-row>
+    <md-dialog class="color-picker">      
+      <form id="pick-color" slot="content" method="dialog">
+        <flex-it></flex-it>
+        <flex-row>
+          <input
+            type="color"
+            label="color"
+            value="${state.styling.fill}"
+            dialogFocus/>
+          <flex-it></flex-it>
+        </flex-row>
+      </form>
+      <div slot="actions">
+        <md-filled-button form="pick-color" value="confirm-color">
+          done
+        </md-filled-button>
+      </div>
+    </md-dialog>
+    
     `;
   }
 }

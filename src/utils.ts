@@ -18,13 +18,13 @@ export const clipboard: Clipboard = {
 
 export const shell = document.querySelector('app-shell')
 
-export const pages = shell.renderRoot.querySelector('custom-pages')
+export const pages = shell.shadowRoot.querySelector('custom-pages')
 
 export const field = pages.querySelector('draw-field') as DrawField
 
 export const canvas = field.canvas as Canvas
 
-export const getActiveObjects = canvas.getActiveObjects
+export const getActiveObjects = () => canvas.getActiveObjects()
 
 export const removeItems = items => {
   for (const item of items) {
@@ -33,11 +33,9 @@ export const removeItems = items => {
 }
 
 export const positionObject = () => {
-  const drawerRect = shell.drawer.shadowRoot.querySelector('custom-pane').getBoundingClientRect()
-  const actionsRect = shell.actions.getBoundingClientRect()
   return {
-    left: state.mouse.position.x - drawerRect.right - drawerRect.x - 8,
-    top: state.mouse.position.y - actionsRect.height - actionsRect.y - 16
+    left: state.mouse.position.x,
+    top: state.mouse.position.y
   }
 }
 
@@ -64,8 +62,10 @@ const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: numbe
     } else {
       moveObject(item, direction,  amount)
       canvas.setActiveObject(item);
+      
     }
-  }  
+  } 
+  canvas.shouldRender = true
 }
 
 export const moveUp = (amount) => {
@@ -114,3 +114,5 @@ export const incrementSocket = () => {
   const text = incrementLetter(textMatch)
   state.text.current = `${text}${state.text.lastNumber}`
 }
+
+export const canvasContainer = () => field.canvasContainer as HTMLElement

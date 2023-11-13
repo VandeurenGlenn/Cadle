@@ -1,7 +1,7 @@
 import { clipboard, canvas, positionObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
-export const isPaste = ({metaKey, key, ctrlKey}: KeyboardEvent) => key === 'v' && isMac ? metaKey : ctrlKey
+export const isPaste = ({metaKey, key, ctrlKey}: KeyboardEvent) => key === 'v' && (isMac ? metaKey : ctrlKey)
 
 export const paste = () => {
   const json = clipboard.object

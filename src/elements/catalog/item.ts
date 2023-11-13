@@ -60,7 +60,8 @@ export class CatalogItem extends LitElement {
   }
 
   #click = async (event: Event) => {
-    event.stopImmediatePropagation()
+    console.log(event);
+    
     // const svg = await this.#loadSVGFromURL()
     // util.groupSVGElements(svg)
     // console.log({svg});
@@ -78,10 +79,7 @@ export class CatalogItem extends LitElement {
     document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
   }
 
-  connectedCallback(): void {
-    super.connectedCallback()
-    this.addEventListener('click', this.#click)
-  }
+  override onclick = (event) => {this.#click(event)}
 
   render() {
     return html`

@@ -1,5 +1,7 @@
+import { CustomPages } from "@vandeurenglenn/custom-elements/pages.js"
+
 const shell = document.querySelector('app-shell')
-const pages = shell.renderRoot.querySelector('custom-pages')
+const pages = shell.renderRoot.querySelector('custom-pages') as unknown as CustomPages
 
 onhashchange = async () => {
   
@@ -13,4 +15,5 @@ onhashchange = async () => {
 }
 
 location.hash = '#!/projects'
+// @ts-ignore
 onhashchange()

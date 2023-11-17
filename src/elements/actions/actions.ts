@@ -1,7 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { map } from 'lit/directives/map.js'
 import { customElement, property } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/icon-font.js'
 import '@vandeurenglenn/lit-elements/icon.js'
 import '@vandeurenglenn/lit-elements/icon-button.js'
 import '@vandeurenglenn/lit-elements/toggle-button.js'
@@ -233,8 +232,8 @@ export class CadleActions extends LitElement {
     ${map(this.actions, ({action, icon, title, seperates, togglers, menu, menuPosition, color}) => {
       if (togglers) return  html`
         <md-icon-button @click=${action} toggle>
-          <custom-icon-font icon=${togglers[0]}>${togglers[0]}</custom-icon-font>
-          <custom-icon-font slot="selected" icon=${togglers[1]}></custom-icon-font>
+          <custom-icon icon=${togglers[0]}>${togglers[0]}</custom-icon>
+          <custom-icon slot="selected" icon=${togglers[1]}></custom-icon>
         </md-icon-button>
         ${seperates ? html`<flex-it></flex-it>` : ''}`
 
@@ -260,7 +259,7 @@ export class CadleActions extends LitElement {
         data-menu=${menu}
         menu-position=${menuPosition}
       >
-        <custom-icon-font slot="icon" icon=${icon}></custom-icon-font>
+        <custom-icon slot="icon" icon=${icon}></custom-icon>
       </custom-button>
       ${seperates ? html`<flex-it></flex-it>` : ''}
     `

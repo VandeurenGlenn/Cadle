@@ -22,6 +22,8 @@ import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit-labs/context';
 import '@vandeurenglenn/lit-elements/drawer-layout.js'
 import '@vandeurenglenn/lit-elements/theme.js'
+import '@vandeurenglenn/lit-elements/icon-set.js'
+import '@vandeurenglenn/lit-elements/icon.js'
 import state from './state.js';
 import { Color } from './symbols/default-options.js';
 
@@ -380,6 +382,42 @@ export class AppShell extends LitElement {
 
     <md-dialog>
     </md-dialog>
+
+    
+  <custom-icon-set>
+  <template>
+    <span name="add">@symbol-add</span>
+    <span name="check_box">@symbol-check_box</span>
+    <span name="check_box_outline_blank">@symbol-check_box_outline_blank</span>
+    <span name="delete">@symbol-delete</span>
+    <span name="done">@symbol-done</span>
+    <span name="menu">@symbol-menu</span>
+    <span name="menu_open">@symbol-menu_open</span>
+    <span name="undo">@symbol-undo</span>
+    <span name="redo">@symbol-redo</span>
+    <span name="arrow_selector_tool">@symbol-arrow_selector_tool</span>
+    <span name="grid_on">@symbol-grid_on</span>
+    <span name="grid_off">@symbol-grid_off</span>
+    <span name="draw">@symbol-draw</span>
+    <span name="square">@symbol-square</span>
+    <span name="circle">@symbol-circle</span>
+    <span name="line_curve">@symbol-line_curve</span>
+    <span name="horizontal_rule">@symbol-horizontal_rule</span>
+    <span name="insert_text">@symbol-insert_text</span>
+    <span name="expand_more">@symbol-expand_more</span>
+    <span name="expand_less">@symbol-expand_less</span>
+    <span name="polyline">@symbol-polyline</span>
+    <span name="save">@symbol-save</span>
+    <span name="create_new_folder">@symbol-create_new_folder</span>
+    <span name="folder_open">@symbol-folder_open</span>
+    <span name="upload_file">@symbol-upload_file</span>
+    <span name="download">@symbol-download</span>
+    <span name="swap-vert">@symbol-swap_vert</span>
+    <span name="swap-horiz">@symbol-swap_horiz</span>
+    <span name="share">@symbol-share</span>
+  </template>
+  
+</custom-icon-set>
     
     <custom-theme load-symbols="false"></custom-theme>
     
@@ -389,31 +427,31 @@ export class AppShell extends LitElement {
         <custom-button 
           title="create project"
           @click=${this.createProject}>
-          <custom-icon-font slot="icon">create_new_folder</custom-icon-font>
+          <custom-icon slot="icon">create_new_folder</custom-icon>
         </custom-button>
 
         <custom-button 
           title="upload project"
            @click=${this.uploadProject}>
-          <custom-icon-font slot="icon">upload_file</custom-icon-font>
+          <custom-icon slot="icon">upload_file</custom-icon>
         </custom-button>
 
         <custom-button 
           title="download project"
            @click=${this.download.bind(this)}>
-          <custom-icon-font slot="icon">download</custom-icon-font>
+          <custom-icon slot="icon">download</custom-icon>
         </custom-button>
 
         <custom-button 
           title="save project"
           @click=${this.save.bind(this)}>
-          <custom-icon-font slot="icon">save</custom-icon-font>
+          <custom-icon slot="icon">save</custom-icon>
         </custom-button>
 
         <custom-button 
           title="show projects"
            href="#!/projects">
-          <custom-icon-font slot="icon">folder_open</custom-icon-font>
+          <custom-icon slot="icon">folder_open</custom-icon>
         </custom-button>
       </flex-row>
       

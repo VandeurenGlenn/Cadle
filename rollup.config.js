@@ -36,8 +36,7 @@ export default [{
   plugins: [
     cleanWWW(),
     materialSymbols({
-      copyHTML: true,
-      includeHTML: true
+      placeholderPrefix: 'symbol'
     }),
     json(),
     nodeResolve(),

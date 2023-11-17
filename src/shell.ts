@@ -321,6 +321,21 @@ export class AppShell extends LitElement {
     this.renderRoot.querySelector('draw-field').canvas.undo()
   }
 
+  importShare = () => {
+    if (this.projects)
+  }
+
+  share = () => {
+    const data = {
+      title: this.projectName,
+      url: `https://vandeurenglenn.github.io/Cadle?project=${JSON.stringify({
+        name: this.projectName,
+        schema: this.renderRoot.querySelector('draw-field')?.toJSON()
+      })}`
+    }
+    navigator.share(data)
+  }
+
   pickColor = async (): Promise<Color> => {
     await this.updateComplete
     return new Promise(async (resolve, reject) => {
@@ -450,7 +465,13 @@ export class AppShell extends LitElement {
 
         <custom-button 
           title="show projects"
-           href="#!/projects">
+          href="#!/projects">
+          <custom-icon slot="icon">folder_open</custom-icon>
+        </custom-button>
+
+        <custom-button 
+          title="share"
+          @click=${this.share}>
           <custom-icon slot="icon">folder_open</custom-icon>
         </custom-button>
       </flex-row>

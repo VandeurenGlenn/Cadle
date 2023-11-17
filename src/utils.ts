@@ -1,14 +1,14 @@
-import { Group, Object } from "fabric"
+import { Group, Object, Canvas as _Canvas} from "fabric"
 import type { DrawField } from "./fields/draw.js"
 import state from "./state.js"
 
-declare type currentObjectInClipboard = Group | Object
+declare type currentObjectInClipboard = Group | Object | undefined
 
 declare type Clipboard = {
   object: currentObjectInClipboard
 }
 
-interface Canvas extends fabric.Canvas {
+interface Canvas extends _Canvas {
   shouldRender: boolean
 }
 
@@ -26,16 +26,22 @@ export const canvas = field.canvas as Canvas
 
 export const getActiveObjects = () => canvas.getActiveObjects()
 
+export const getActiveObject = () => canvas.getActiveObject()
+
 export const removeItems = items => {
   for (const item of items) {
     canvas.remove(item)
   }
 }
 
-export const positionObject = () => {
+/**
+ * position object according mouse position
+ * @returns {left, right}
+ */
+export const positionObject = (): {left: number, top: number} => {
   return {
-    left: state.mouse.position.x,
-    top: state.mouse.position.y
+    left: state.mouse.position.x as number,
+    top: state.mouse.position.y as number
   }
 }
 

@@ -19,7 +19,7 @@ declare global {
 
 @customElement('draw-field')
 export class DrawField extends LitElement {
-  #canvas: fabric.Canvas
+  #canvas: Canvas
   #height: number
   #width: number
   #startPoints: {left?: number, top?: number}
@@ -86,7 +86,7 @@ export class DrawField extends LitElement {
     // this.renderRoot.querySelector('canvas').width = width 
     // this.renderRoot.querySelector('canvas').height = height
     // @ts-ignore
-    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection :true, evented: false, width, height });
+    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection: true, evented: true, width, height });
     
     this.gridSize = 10;
     
@@ -206,7 +206,9 @@ export class DrawField extends LitElement {
 
         const sharedDrawOptions = {
           id,
-          index
+          index,          
+          fill: state.styling.fill,
+          stroke: state.styling.stroke
         }
         if (this.action === 'draw') {
           // this._current = new PencilBrush(this.#canvas);
@@ -217,13 +219,10 @@ export class DrawField extends LitElement {
           this.#canvas.freeDrawingBrush = new PencilBrush(this.#canvas);
         } else if (this.action === 'draw-line') {
           this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
-            id,
-            index,
+            ...sharedDrawOptions,
             strokeWidth: 1,
             x2: this.#startPoints.top,
             y2: this.#startPoints.left,
-            fill: '#555',
-            stroke: '#555',
             originX: 'center',
             originY: 'center',
             borderScaleFactor: 0,
@@ -231,22 +230,18 @@ export class DrawField extends LitElement {
           });
         } else if (this.action === 'draw-circle') {
           this._current = new Circle({
-            id,
-            index,
+            ...sharedDrawOptions,
             top: this.#startPoints.top,
             left: this.#startPoints.left,
             originX: 'left',
             originY: 'top',
             radius: pointer.x - this.#startPoints.left,
             strokeWidth: 1,
-            fill: '#00000000',
-            stroke: '#555',
             centeredRotation: true
           });
         } else if (this.action === 'draw-arc') {
           this._current = new Circle({
-            id,
-            index,
+            ...sharedDrawOptions,
             top: this.#startPoints.top,
             left: this.#startPoints.left,
             originX: 'left',
@@ -255,14 +250,11 @@ export class DrawField extends LitElement {
             startAngle: 0,
             endAngle: pointer.x - this.#startPoints.left,
             strokeWidth: 1,
-            fill: '#00000000',
-            stroke: '#555',
             centeredRotation: true
           });
         } else if (this.action === 'draw-square') {
           this._current = new Rect({
-            id,
-            index,
+            ...sharedDrawOptions,
             left: this.#startPoints.left,
             top: this.#startPoints.top,
             width: pointer.x-this.#startPoints.left,
@@ -270,9 +262,7 @@ export class DrawField extends LitElement {
           });
         } else if (this.action === 'draw-wall') {
           this._current = new Rect({
-            id,
-            index,
-            fill: '#555',
+            ...sharedDrawOptions,
             left: this.#startPoints.left,
             top: this.#startPoints.top,
             width: pointer.x-this.#startPoints.left,

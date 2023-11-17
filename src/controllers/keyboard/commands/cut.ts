@@ -1,15 +1,14 @@
 import { Group } from 'fabric'
-import { clipboard, field, getActiveObjects, canvas } from '../../../utils.js'
+import { clipboard, field, getActiveObjects, canvas, getActiveObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
 export const isCut = ({metaKey, key, ctrlKey}: KeyboardEvent) => key === 'x' && (isMac ? metaKey : ctrlKey)
 
 export const cut = async () => {
-  const items = getActiveObjects()
+  const object = getActiveObject()
+  const cloned = await object?.clone()
+  clipboard.object = cloned
   // @ts-ignore
-  const group = new Group(items)
-  clipboard.object = group
-
   for (const item of items) {
     if (item.type === 'activeselection') {
       // @ts-ignore
@@ -19,7 +18,6 @@ export const cut = async () => {
     }
     canvas.remove(item)
   }
-
   canvas.discardActiveObject();
   canvas.shouldRender = true
 }

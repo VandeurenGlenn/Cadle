@@ -18,7 +18,8 @@ export declare type State = {
     }
   },
   styling: {
-    fill: Color
+    fill: Color,
+    stroke: Color
   }
 }
 
@@ -38,7 +39,8 @@ const state: State = {
     }
   },
   styling: {
-    fill: '#ffffff'
+    fill: '#ffffff',    
+    stroke: '#555'
   }
 }
 

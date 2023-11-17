@@ -11,7 +11,7 @@ addEventListener('keydown', async event => {
   }
  
   if (canvas.shouldRender) {
-    field.canvas.renderAll()
+    await canvas.requestRenderAll()
     canvas.shouldRender = false
   }
 })

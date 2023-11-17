@@ -5,9 +5,6 @@
     "moduleResolution": "nodenext",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "strictNullChecks": true,
-    "types": [
-      "fabric"
-    ]
+    "strictNullChecks": true
   }
 }

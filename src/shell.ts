@@ -319,18 +319,22 @@ export class AppShell extends LitElement {
     this.renderRoot.querySelector('draw-field').canvas.undo()
   }
 
-  pickColor(): Promise<Color> {
-    return new Promise((resolve, reject) => {
-      const picker = this.renderRoot.querySelector('input[type="color"]')
-      const pickerDialog = this.renderRoot.querySelector('.color-picker')
+  pickColor = async (): Promise<Color> => {
+    await this.updateComplete
+    return new Promise(async (resolve, reject) => {
+      const picker = this.renderRoot.querySelector('input[type="color"]') as HTMLInputElement
+      const pickerDialog = this.renderRoot.querySelector('.color-picker') as HTMLFormElement
       pickerDialog.addEventListener('close', () => {
         if (pickerDialog.returnValue === 'confirm-color') {
-          resolve(picker.value)
+          const color = picker.value as Color
+          state.styling.fill = color
+          this.actions.fill = color
+          resolve(color)
         }
         
       })
-
-      pickerDialog.show()
+      await pickerDialog.show()
+      picker.click()
     })
     
   }

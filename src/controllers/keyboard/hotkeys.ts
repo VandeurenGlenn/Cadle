@@ -13,7 +13,7 @@ import { isMac } from './utils.js';
 import state from '../../state.js';
 
 export const getHotkey = (event: KeyboardEvent): Function => {
-  if (isPrint(event)) return print
+  // if (isPrint(event)) return print
   if (isSelectAll(event)) return selectAll
   if (isCopy(event)) return copy
   if (isPaste(event)) return paste

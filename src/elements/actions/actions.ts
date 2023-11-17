@@ -11,6 +11,7 @@ import '@vandeurenglenn/flex-elements/row.js'
 import { field, incrementLetter, incrementSocket, positionObject, shell } from '../../utils.js';
 import { Textbox } from 'fabric';
 import state from '../../state.js';
+import { Color } from '../../symbols/default-options.js';
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -38,6 +39,9 @@ export class CadleActions extends LitElement {
       }
     `
   ];
+
+  @property()
+  fill: Color = state.styling.fill
 
   show() {
     this.open = true
@@ -215,7 +219,7 @@ export class CadleActions extends LitElement {
     }, {
       title: 'pick color',
       color: true,
-      action: () => (globalThis.cadleShell.action = 'draw-line')
+      action: globalThis.cadleShell.pickColor
     }
 
   ]
@@ -232,19 +236,21 @@ export class CadleActions extends LitElement {
           <custom-icon-font icon=${togglers[0]}>${togglers[0]}</custom-icon-font>
           <custom-icon-font slot="selected" icon=${togglers[1]}></custom-icon-font>
         </md-icon-button>
-        ${seperates ? html`<flex-it></flex-it>` : ''} : ''`
+        ${seperates ? html`<flex-it></flex-it>` : ''}`
 
       if (color) {
         return html`
-        <button
+        <custom-button
           @mouseup=${action}
           title=${title}
           data-menu=${menu}
           menu-position=${menuPosition}
+          style="width: 40px; border-radius: 50%;"
         >
-          <input type="color" value=${state.styling.fill}>
-        </button>
-        ${seperates ? html`<flex-it></flex-it>` : ''}`        
+        <div style="width: 24px; height: 24px; border: 1px solid #555; border-radius: 50%; background-color: ${this.fill}" slot="icon"></div>
+          
+        </custom-button>
+        ${seperates ? html`<flex-it></flex-it>` : ''}`
       }
 
       return html`

@@ -1,9 +1,9 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import { Canvas, Circle, Line, IText, Object, loadSVGFromURL, util, PencilBrush } from './../fabric-imports.js'
-import { AppShell } from '../shell.js';
+import { AppShell } from '../shell.js'
 import Rect from './../symbols/rectangle.js'
-import state from '../state.js';
+import state from '../state.js'
 // import 'fabric-history';
 
 declare type x = number
@@ -13,7 +13,7 @@ declare type top = number
 
 declare global {
   interface HTMLElementTagNameMap {
-    'draw-field': DrawField;
+    'draw-field': DrawField
   }
 }
 
@@ -22,11 +22,11 @@ export class DrawField extends LitElement {
   #canvas: Canvas
   #height: number
   #width: number
-  #startPoints: {left?: number, top?: number}
+  #startPoints: { left?: number; top?: number }
 
-  @property({type: Number})
+  @property({ type: Number })
   gridSize: number
-  
+
   drawing: boolean
 
   _current: {}
@@ -56,7 +56,12 @@ export class DrawField extends LitElement {
   }
 
   set action(value) {
-    document.querySelector('app-shell').action = value
+    cadleShell.action = value
+  }
+
+  get upperCanvas() {
+    return this.shadowRoot.querySelector('.upper-canvas')
+
   }
 
   static styles = [
@@ -65,7 +70,7 @@ export class DrawField extends LitElement {
         display: flex;
       }
     `
-  ];
+  ]
 
   @query('.convas-container')
   canvasContainer
@@ -78,92 +83,102 @@ export class DrawField extends LitElement {
     super.connectedCallback()
     await this.updateComplete
     // const { width, height } = this.getBoundingClientRect()
-    const width= 1123
-    const height= 794
+    const width = 1123
+    const height = 794
 
     this.#width = width
     this.#height = height
-    // this.renderRoot.querySelector('canvas').width = width 
+    // this.renderRoot.querySelector('canvas').width = width
     // this.renderRoot.querySelector('canvas').height = height
     // @ts-ignore
-    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection: true, evented: true, width, height });
-    
-    this.gridSize = 10;
-    
-    this.#canvas.on('object:moving', (options) => {
-      
+    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), {
+      selection: true,
+      evented: true,
+      width,
+      height
+    })
+
+    this.#canvas.history = []
+
+    this.gridSize = state.gridSize
+
+    this.#canvas.on('object:moving', options => {
+      this.moving = true
       options.target.set(this.snapToGrid(options.target))
-    });
+    })
 
-    this.#canvas.on('object:scaling', (options) => {
-      console.log('scaling');
-      
-      var target = options.target;
-      var pointer = options.pointer;
-    
-      const {left, top} = this.snapToGrid({left: pointer.x, top: pointer.y})
-      var px = left;
-      var py = top;
+    this.#canvas.on('after:render', options => {
+      this.moving = false
+    })
 
-      var rx = (px - target.left) / target.width;
-      var by = (py - target.top) / target.height;
-      var lx = (target.left - px + (target.width * target.scaleX)) / (target.width);
-      var ty = (target.top - py + (target.height * target.scaleY)) / (target.height);
-    
-      var a = {};
-    
+    this.#canvas.on('object:scaling', options => {
+      console.log('scaling')
+
+      var target = options.target
+      var pointer = options.pointer
+
+      const { left, top } = this.snapToGrid({ left: pointer.x, top: pointer.y })
+      var px = left
+      var py = top
+
+      var rx = (px - target.left) / target.width
+      var by = (py - target.top) / target.height
+      var lx = (target.left - px + target.width * target.scaleX) / target.width
+      var ty = (target.top - py + target.height * target.scaleY) / target.height
+
+      var a = {}
+
       // Cannot get snap to work on some corners :-(
-      switch (target.__corner)
-      {
-        case "tl":
+      switch (target.__corner) {
+        case 'tl':
           // Not working
           //a = { scaleX: lx, scaleY: ty, left: px, top: py };
-          break;
-        case "mt":
-          a = { scaleY: ty, top: py };
-          break;
-        case "tr":
+          break
+        case 'mt':
+          a = { scaleY: ty, top: py }
+          break
+        case 'tr':
           // Not working
           //a = { scaleX: rx, scaleY: ty, top: py  };
-          break;
-        case "ml":
-          a = { scaleX: lx, left: px };
-          break;
-        case "mr":
-          a = { scaleX: rx };
-          break;
-        case "bl":
+          break
+        case 'ml':
+          a = { scaleX: lx, left: px }
+          break
+        case 'mr':
+          a = { scaleX: rx }
+          break
+        case 'bl':
           // Not working
           //a = { scaleX: lx, scaleY: by, left: px };
-          break;
-        case "mb":
-          a = { scaleY: by };
-          break;
-        case "br":
-          a = { scaleX: rx, scaleY: by };
-          break;
+          break
+        case 'mb':
+          a = { scaleY: by }
+          break
+        case 'br':
+          a = { scaleX: rx, scaleY: by }
+          break
       }
-    
-      options.target.set(a);
-    });
 
-    this.renderRoot.addEventListener('mousedown', this._mousedown.bind(this))
-    this.renderRoot.addEventListener('mouseup', this._mouseup.bind(this))
+      options.target.set(a)
+    })
+
+    this.#canvas.on('mouse:down', this._mousedown.bind(this))
+    this.#canvas.on('mouse:up', this._mouseup.bind(this))
     this.addEventListener('mouseenter', this._mouseenter.bind(this))
     this.addEventListener('mouseleave', this._mouseleave.bind(this))
-    
-    this.renderRoot.addEventListener('mousemove', this._mousemove.bind(this))
+
+    // this.renderRoot.addEventListener('mousemove', this._mousemove.bind(this))
+    this.#canvas.on('mouse:move', this._mousemove.bind(this))
     this.renderRoot.addEventListener('drop', this._drop.bind(this))
 
     // this.#canvas
   }
 
   _drop(e) {
-    console.log(e);
-    
+    console.log(e)
   }
 
-  snapToGrid({left, top}: {left?: number, top?: number}): {left?: number, top?: number} {
+  snapToGrid({ left, top }: { left?: number; top?: number }): { left?: number; top?: number } {
     if (!this.freeDraw) {
       if (left) left = Math.round(left / this.gridSize) * this.gridSize
       if (top) top = Math.round(top / this.gridSize) * this.gridSize
@@ -173,113 +188,121 @@ export class DrawField extends LitElement {
   }
 
   _mousedown(e) {
-    if (this.isNaming) {
-      if (this.namingType === 'socket') {
-        if (this.namingNumber === 8) {
-          this.namingNumber = 0
-          this.namingLetter = this.alphabet[this.namingLetterIndex += 1]
+    if (e.target) return
+    if (!this._current && !this.drawing && !this.moving) {
+      if (this.isNaming) {
+        if (this.namingType === 'socket') {
+          if (this.namingNumber === 8) {
+            this.namingNumber = 0
+            this.namingLetter = this.alphabet[(this.namingLetterIndex += 1)]
+          }
         }
-      }
-
-      this.namingNumber += 1
-      
-    }
-
-    switch (this.action) {
-      case 'save':
-      case 'disable-grid':
-      case 'group':
-      case 'remove':
-      case 'select':
-      case 'move':
-      case 'draw-symbol':
-      case 'draw-text':
-      case null:
-      case undefined:
-        return
-      default:
-        this.drawing = true;
-        const pointer = this.#canvas.getPointer(e);
-        this.#startPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
-        const id = Math.random().toString(36).slice(-12)
-        const index = this.canvas._objects.length
-
-        const sharedDrawOptions = {
-          id,
-          index,          
-          fill: state.styling.fill,
-          stroke: state.styling.stroke
-        }
-        if (this.action === 'draw') {
-          // this._current = new PencilBrush(this.#canvas);
-          // this._current.color = '#555'
-          // this._current.width = 1;
-          this.#canvas.isDrawingMode = true
-          // @ts-ignore
-          this.#canvas.freeDrawingBrush = new PencilBrush(this.#canvas);
-        } else if (this.action === 'draw-line') {
-          this._current = new Line([this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top], {
-            ...sharedDrawOptions,
-            strokeWidth: 1,
-            x2: this.#startPoints.top,
-            y2: this.#startPoints.left,
-            originX: 'center',
-            originY: 'center',
-            borderScaleFactor: 0,
-            centeredRotation: true
-          });
-        } else if (this.action === 'draw-circle') {
-          this._current = new Circle({
-            ...sharedDrawOptions,
-            top: this.#startPoints.top,
-            left: this.#startPoints.left,
-            originX: 'left',
-            originY: 'top',
-            radius: pointer.x - this.#startPoints.left,
-            strokeWidth: 1,
-            centeredRotation: true
-          });
-        } else if (this.action === 'draw-arc') {
-          this._current = new Circle({
-            ...sharedDrawOptions,
-            top: this.#startPoints.top,
-            left: this.#startPoints.left,
-            originX: 'left',
-            originY: 'top',
-            radius: pointer.y ? pointer.y - this.#startPoints.top : 0,
-            startAngle: 0,
-            endAngle: pointer.x - this.#startPoints.left,
-            strokeWidth: 1,
-            centeredRotation: true
-          });
-        } else if (this.action === 'draw-square') {
-          this._current = new Rect({
-            ...sharedDrawOptions,
-            left: this.#startPoints.left,
-            top: this.#startPoints.top,
-            width: pointer.x-this.#startPoints.left,
-            height: pointer.y-this.#startPoints.top
-          });
-        } else if (this.action === 'draw-wall') {
-          this._current = new Rect({
-            ...sharedDrawOptions,
-            left: this.#startPoints.left,
-            top: this.#startPoints.top,
-            width: pointer.x-this.#startPoints.left,
-            height: pointer.y-this.#startPoints.top
-          });
-        }
-        if (this.action !== 'draw') this.canvas.add(this._current);
-        break;
-    }
-  }
   
-  _mousemove(e) {
+        this.namingNumber += 1
+      }
+  
+      switch (this.action) {
+        case 'save':
+        case 'disable-grid':
+        case 'group':
+        case 'remove':
+        case 'select':
+        case 'move':
+        case 'draw-symbol':
+        case 'draw-text':
+        case null:
+        case undefined:
+          return
+        default:
+          this.drawing = true
+          const pointer = this.#canvas.getPointer(e)
+          this.#startPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+          const id = Math.random().toString(36).slice(-12)
+          const index = this.canvas._objects.length
+  
+          const sharedDrawOptions = {
+            id,
+            index,
+            fill: state.styling.fill,
+            stroke: state.styling.stroke
+          }
+          if (this.action === 'draw') {
+            // this._current = new PencilBrush(this.#canvas);
+            // this._current.color = '#555'
+            // this._current.width = 1;
+            this.#canvas.isDrawingMode = true
+            // @ts-ignore
+            this.#canvas.freeDrawingBrush = new PencilBrush(this.#canvas)
+          } else if (this.action === 'draw-line') {
+            this._current = new Line(
+              [this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top],
+              {
+                ...sharedDrawOptions,
+                strokeWidth: 1,
+                x2: this.#startPoints.top,
+                y2: this.#startPoints.left,
+                originX: 'center',
+                originY: 'center',
+                borderScaleFactor: 0,
+                centeredRotation: true
+              }
+            )
+          } else if (this.action === 'draw-circle') {
+            this._current = new Circle({
+              ...sharedDrawOptions,
+              top: this.#startPoints.top,
+              left: this.#startPoints.left,
+              originX: 'left',
+              originY: 'top',
+              radius: pointer.x - this.#startPoints.left,
+              strokeWidth: 1,
+              centeredRotation: true
+            })
+          } else if (this.action === 'draw-arc') {
+            this._current = new Circle({
+              ...sharedDrawOptions,
+              top: this.#startPoints.top,
+              left: this.#startPoints.left,
+              originX: 'left',
+              originY: 'top',
+              radius: pointer.y ? pointer.y - this.#startPoints.top : 0,
+              startAngle: 0,
+              endAngle: pointer.x - this.#startPoints.left,
+              strokeWidth: 1,
+              centeredRotation: true
+            })
+          } else if (this.action === 'draw-square') {
+            this._current = new Rect({
+              ...sharedDrawOptions,
+              left: this.#startPoints.left,
+              top: this.#startPoints.top,
+              width: pointer.x - this.#startPoints.left,
+              height: pointer.y - this.#startPoints.top
+            })
+          } else if (this.action === 'draw-wall') {
+            this._current = new Rect({
+              ...sharedDrawOptions,
+              left: this.#startPoints.left,
+              top: this.#startPoints.top,
+              width: pointer.x - this.#startPoints.left,
+              height: pointer.y - this.#startPoints.top,
+              strokeWidth: 0,
+              fill: cadleShell._currentColor
+            })
+          }
+          if (this.action !== 'draw') this.canvas.add(this._current)
+          break
+      }
+    }
+    
+  }
+
+  _mousemove(e) {    
+    if (e.target) return
     let pointer = this.#canvas.getPointer(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
-    const currentPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
+    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
 
-    
     if (!this.drawing) return
     this.canvas.selection = false
     // const pointer = this.canvas.getPointer(e)
@@ -287,64 +310,67 @@ export class DrawField extends LitElement {
       return
       // this._current.onMouseMove({x:currentPoints.left, y:currentPoints.top}, e)
     } else if (this.action === 'draw-line') {
-      
       this._current.set({ x2: currentPoints.left, y2: currentPoints.top })
     } else if (this.action === 'draw-circle') {
-      this._current.set({ radius: Math.abs(this.#startPoints.left - currentPoints.left) });
-      // this._current.set({ radius: Math.abs(this.#startPoints.top - pointer.y) });    
+      this._current.set({ radius: Math.abs(this.#startPoints.left - currentPoints.left) })
+      // this._current.set({ radius: Math.abs(this.#startPoints.top - pointer.y) });
     } else if (this.action === 'draw-square' || this.action === 'draw-wall') {
-      if (this.#startPoints.left > currentPoints.left){
-        this._current.set({ left: Math.abs(currentPoints.left) });
+      if (this.#startPoints.left > currentPoints.left) {
+        this._current.set({ left: Math.abs(currentPoints.left) })
       }
-      if (this.#startPoints.top > currentPoints.top){
-        this._current.set({ top: Math.abs(currentPoints.top) });
+      if (this.#startPoints.top > currentPoints.top) {
+        this._current.set({ top: Math.abs(currentPoints.top) })
       }
-      
-      this._current.set({ width: Math.abs(this.#startPoints.left - currentPoints.left) });
-      this._current.set({ height: Math.abs(this.#startPoints.top - currentPoints.top) });
+
+      this._current.set({ width: Math.abs(this.#startPoints.left - currentPoints.left) })
+      this._current.set({ height: Math.abs(this.#startPoints.top - currentPoints.top) })
     } else if (this.action === 'draw-arc') {
-      console.log(currentPoints.left);
-      console.log(this.#startPoints.left);
-      
-      this._current.set({ 
+      console.log(currentPoints.left)
+      console.log(this.#startPoints.left)
+
+      this._current.set({
         radius: Math.abs(this.#startPoints.top - currentPoints.top),
-        
+
         endAngle: Math.abs((this.#startPoints.left - currentPoints.left) / (Math.PI / 5))
-      });
+      })
       // this._current.set({ radius: Math.abs(this.#startPoints.top - currentPoints.top) });
     } else if (this.action === 'draw-symbol') {
-      this._current.set({ left: Math.abs(currentPoints.left) });
-      this._current.set({ top: Math.abs(currentPoints.top) });
-    }  else if (this.action === 'draw-text') {
-      this._current.set({ left: Math.abs(currentPoints.left) });
-      this._current.set({ top: Math.abs(currentPoints.top) });
+      this._current.set({ left: Math.abs(currentPoints.left) })
+      this._current.set({ top: Math.abs(currentPoints.top) })
+    } else if (this.action === 'draw-text') {
+      this._current.set({ left: Math.abs(currentPoints.left) })
+      this._current.set({ top: Math.abs(currentPoints.top) })
     }
-    console.log('render');
-    
+    console.log('render')
+
     this.canvas.renderAll()
   }
 
   _mouseenter(e) {
+    if (this.action) this.#canvas.defaultCursor='crosshair'
     if (!this._current) return
-    console.log('enter');
+    
+    console.log('enter')
     const pointer = this.#canvas.getPointer(e)
-    const currentPoints = this.snapToGrid({left: pointer.x, top: pointer.y})
+
+    state.mouse.position = { x: pointer.x, y: pointer.y }
+    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
     if (this.action === 'draw-symbol') {
       this.drawing = true
-      this._current.set({ left: Math.abs(currentPoints.left) });
-      this._current.set({ top: Math.abs(currentPoints.top) });
+      this._current.set({ left: Math.abs(currentPoints.left) })
+      this._current.set({ top: Math.abs(currentPoints.top) })
       this.canvas.add(this._current)
     } else if (this.action === 'draw-text') {
       this.drawing = true
-      this._current.set({ left: Math.abs(currentPoints.left) });
-      this._current.set({ top: Math.abs(currentPoints.top) });
+      this._current.set({ left: Math.abs(currentPoints.left) })
+      this._current.set({ top: Math.abs(currentPoints.top) })
       this.canvas.add(this._current)
     }
     this.canvas.renderAll()
   }
 
   _mouseleave(e) {
-    console.log('leave');
+    console.log('leave')
     this.drawing = false
     if (this.action === 'draw-symbol') {
       this.canvas.remove(this._current)
@@ -354,15 +380,14 @@ export class DrawField extends LitElement {
     this.canvas.renderAll()
   }
 
-  _mouseup() {
-
-    
-    if (this.drawing) {
-      this.action = undefined
+  _mouseup(e) {
+    if (e.target) return
+    if (this.drawing && !this.moving) {
+      // this.action = undefined
       this.drawing = false
       if (this.action !== 'draw') {
         this.canvas.remove(this._current)
-        this.canvas.add(this._current);
+        this.canvas.add(this._current)
       }
       this.canvas.selection = true
       this._current = undefined
@@ -371,7 +396,7 @@ export class DrawField extends LitElement {
       // this.canvas.renderAll()
     } else if (this.canvas.getActiveObjects().length > 1) {
       this._drawState = 'group'
-      this._currentGroup = this.canvas.getActiveObjects()[0].group;
+      this._currentGroup = this.canvas.getActiveObjects()[0].group
       this.canvas.renderAll()
     }
   }
@@ -385,38 +410,36 @@ export class DrawField extends LitElement {
 
     this.#canvas.renderAll()
   }
-  
+
   toDataURL() {
-    return this.#canvas.toDataURL({multiplier: 3, quality: 100, enableRetinaScaling: true})
+    return this.#canvas.toDataURL({ multiplier: 3, quality: 100, enableRetinaScaling: true })
   }
 
   render() {
-    return html`
-    <style>
+    return html` <style>
+        :host {
+          display: flex;
+          box-sizing: border-box;
+          width: 100%;
+          align-items: center;
+          justify-content: center;
+        }
 
-      :host {
-        display: flex;
-        box-sizing: border-box;
-        width: 100%;
-        align-items: center;
-        justify-content: center;
-      }
+        .shadow {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          box-shadow: inset 0 0 9px 2px #0000001f;
+          z-index: 2;
+          pointer-events: none;
+        }
+        canvas {
+          background-image: url('./assets/grid-${this.gridSize}.png');
+        }
+      </style>
 
-      .shadow {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        box-shadow: inset 0 0 9px 2px #0000001f;
-        z-index: 2;
-        pointer-events: none;
-      }
-      canvas {
-        background-image: url('./assets/grid-${this.gridSize}.png');
-      }
-    </style>
+      <div class="shadow"></div>
 
-    <div class="shadow"></div>
-    
-    <canvas></canvas>`;
+      <canvas></canvas>`
   }
 }

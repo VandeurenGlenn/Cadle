@@ -1,26 +1,28 @@
-import { Color } from "./symbols/default-options.js"
+import { Color } from './symbols/default-options.js'
 
 export declare type Text = {
-  current: string,
-  lastNumber: number,
+  current: string
+  lastNumber: number
   type: 'normal' | 'alphabet' | 'socket' | 'switch'
 }
 
 export declare type State = {
-  text: Text,
+  text: Text
   move: {
     amount: number
-  },
+  }
   mouse: {
     position: {
-      x: number | undefined,
+      x: number | undefined
       y: number | undefined
     }
-  },
+  }
   styling: {
-    fill: Color,
+    fill: Color
     stroke: Color
   }
+  freeDraw: boolean
+  gridSize: number
 }
 
 const state: State = {
@@ -39,13 +41,12 @@ const state: State = {
     }
   },
   styling: {
-    fill: '#ffffff',    
-    stroke: '#555'
-  }
+    fill: '#ffffff',
+    stroke: '#000'
+  },
+  freeDraw: false,
+  gridSize: 10
 }
-
-
-
 
 export const { text } = state
 

@@ -1,16 +1,16 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { Group, Image, loadSVGFromURL, util, SVG } from 'fabric';
+import { Group, Image, loadSVGFromURL, util, SVG } from 'fabric'
 
 declare global {
   interface HTMLElementTagNameMap {
-    'catalog-item': CatalogItem;
+    'catalog-item': CatalogItem
   }
 }
 
 @customElement('catalog-item')
 export class CatalogItem extends LitElement {
-  @property({type: String})
+  @property({ type: String })
   set image(value) {
     this._image = value
     this.requestUpdate('image')
@@ -54,40 +54,41 @@ export class CatalogItem extends LitElement {
     return new Promise((resolve, reject) => {
       loadSVGFromURL(this._image, async svg => {
         resolve(svg)
-      } )
+      })
     })
-    
   }
 
   #click = async (event: Event) => {
-    console.log(event);
-    
+    console.log(event)
+
     // const svg = await this.#loadSVGFromURL()
     // util.groupSVGElements(svg)
     // console.log({svg});
     // const group = new Group([svg])
     // document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
     // document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
-    
+
     const svg = await loadSVGFromURL(this._image)
-    console.log(svg);
-    
+    // console.log(svg)
+    svg.objects.forEach(obj => {obj.strokeWidth = 1})
     const group = util.groupSVGElements(svg.objects)
-    console.log(group);
-    
+    // console.log(group)
+    group.scale(1.2)
     document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
     document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
   }
 
-  override onclick = (event) => {this.#click(event)}
+  override onclick = event => {
+    this.#click(event)
+  }
 
   render() {
     return html`
-    <span>${this.headline}</span>
-    <flex-it></flex-it>
-    <slot name="end">
-      <img src=${this.image}>
-    </slot>
-    `;
+      <span>${this.headline}</span>
+      <flex-it></flex-it>
+      <slot name="end">
+        <img src=${this.image} />
+      </slot>
+    `
   }
 }

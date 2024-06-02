@@ -11,6 +11,10 @@ export class CadleListItem extends MdListItem {
     css`
     :host {
       width: 100%;
+      background: var(--md-sys-color-surface-variant);
+      color: var(--md-sys-color-on-surface-variant);
+      cursor: pointer;
+      border-radius: var(--md-sys-shape-corner-extra-large);
     }
     `
   ]

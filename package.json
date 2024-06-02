@@ -25,6 +25,7 @@
     "fabric": "^6.0.0-beta15",
     "fabric-history": "^1.7.0",
     "idb-keyval": "^6.2.0",
+    "jspdf": "^2.5.1",
     "lit": "^3.0.1"
   },
   "devDependencies": {

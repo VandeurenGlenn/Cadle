@@ -15,7 +15,7 @@ declare global {
 
 @customElement('catalog-element')
 export class CatalogElement extends LitElement {
-  @consume({context: catalogContext, subscribe: true})
+  @consume({context: 'catalogContext', subscribe: true})
   @property({attribute: false})
   set catalog(value : Catalog) {
     this._catalog = value

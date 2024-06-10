@@ -1,7 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { consume } from '@lit-labs/context'
-import { Project, projectContext } from '../../context/project-context.js'
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/filled-icon-button.js'
 import '@vandeurenglenn/lit-elements/drawer-item.js'
@@ -11,6 +10,7 @@ import '@vandeurenglenn/lit-elements/dropdown.js'
 import '@vandeurenglenn/lit-elements/list-item.js'
 import './../list/item.js'
 import './contextmenu.js'
+import { Project } from '../../types.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -20,7 +20,7 @@ declare global {
 
 @customElement('project-element')
 export class ProjectElement extends LitElement {
-  @consume({ context: projectContext, subscribe: true })
+  @consume({ context: 'projectContext', subscribe: true })
   @property({ attribute: false })
   @state()
   project: Project

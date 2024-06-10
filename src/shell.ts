@@ -9,7 +9,6 @@ import { DrawField } from './fields/draw.js'
 import './fields/draw.js'
 import './elements/save-field.js'
 import './elements/project-drawer.js'
-import { projectContext, Project, Page } from './context/project-context.js'
 import { provide } from '@lit-labs/context'
 import ProjectsStore from './storage/projects.js'
 import { Projects, projectsContext } from './context/projects.js'
@@ -27,6 +26,7 @@ import '@vandeurenglenn/lit-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
 import jsPDF from 'jspdf'
+import { version } from 'commander'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -56,6 +56,9 @@ export class AppShell extends LitElement {
 
   @query('draw-field')
   field
+
+  @query('custom-pages')
+  pages
 
   @query('custom-drawer-layout')
   drawerLayout
@@ -95,12 +98,12 @@ export class AppShell extends LitElement {
     this._projectProvider.updateObservers()
   }
 
-  @provide({ context: catalogContext })
+  @provide({ context: 'catalogContext' })
   @property({ attribute: false })
   catalog: Catalog
 
   private _projectsProvider = new ContextProvider(this, { context: projectsContext, initialValue: [] })
-  private _projectProvider = new ContextProvider(this, { context: projectContext })
+  private _projectProvider = new ContextProvider(this, { context: 'projectContext' })
 
   constructor() {
     super()
@@ -170,14 +173,68 @@ export class AppShell extends LitElement {
     await this.updateComplete
 
     this.dialog.addEventListener('close', this.#dialogAction)
+
+    onhashchange = this.#onhashchange.bind(this)
+    this.#onhashchange()
+  }
+
+  #debang(possibleBangedHash) {
+    const parts = possibleBangedHash.split('#!/')
+    if (parts.length > 1) return parts[1]
+    return possibleBangedHash
+  }
+
+  #dehash(possibleHash) {
+    const parts = possibleHash.split('#')
+    if (parts.length > 1) return parts[1]
+    return possibleHash
+  }
+
+  #dequery(routeWithPossibleQuery) {
+    const parts = routeWithPossibleQuery.split('?')
+    if (parts.length > 1) return { route: parts[0], query: parts[1] }
+    return { route: routeWithPossibleQuery }
+  }
+
+  #paramify(query) {
+    const parts = query.split('&')
+    const params = {}
+    for (const part of parts) {
+      const [key, value] = part.split('=')
+      params[key] = value
+    }
+    return params
+  }
+
+  #parsheHash(hash) {
+    let routeWithPossibleQuery
+    if (hash.includes('#!/')) routeWithPossibleQuery = this.#debang(hash)
+    if (routeWithPossibleQuery === hash && hash.includes('#')) routeWithPossibleQuery = this.#dehash(hash)
+
+    const { route, query } = this.#dequery(routeWithPossibleQuery)
+    if (query) {
+      const params = this.#paramify(query)
+      return { route, params }
+    }
+    return {
+      route
+    }
+  }
+
+  #onhashchange = async () => {
+    const { route, params } = this.#parsheHash(location.hash)
+    if (!customElements.get(`${route}-field`)) await import(`./${route}.js`)
+    await this.pages.select(route)
+    if (params) {
+      const selected = this.shadowRoot.querySelector('custom-pages').querySelector('.custom-selected')
+      for (const [key, value] of Object.entries(params)) {
+        selected[key] = value
+      }
+    }
   }
 
   get dialog() {
     return this.renderRoot.querySelector('md-dialog')
-  }
-
-  get pages() {
-    return this.renderRoot.querySelector('custom-pages')
   }
 
   #dialogAction = async (event: Event) => {
@@ -198,7 +255,7 @@ export class AppShell extends LitElement {
     }
 
     if (action === 'create-project') {
-      await this.savePage();
+      await this.savePage()
       this.projectName = this.dialog.querySelector('md-filled-text-field').value
       this.projectsStore.set(new TextEncoder().encode(this.projectName), {
         creationTime: new Date().getTime(),
@@ -212,7 +269,7 @@ export class AppShell extends LitElement {
     }
 
     if (action === 'open-project') {
-      await this.savePage();
+      await this.savePage()
       this.projectName = this.dialog.querySelector('md-filled-text-field').value
       console.log(this.projectName)
 
@@ -272,49 +329,66 @@ export class AppShell extends LitElement {
     this.dialog.open = true
   }
 
-  async uploadProject() {}
+  async uploadProject() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.addEventListener('change', e => {
+      console.log(input.files[0]);
+      
+      var fr = new FileReader();
+
+      fr.onload = (e) => {
+        var result = JSON.parse(e.target.result);
+        this.projectsStore.set(new TextEncoder().encode(result.name), result)
+        
+      }
+    
+      fr.readAsText(input.files[0]);
+    })
+    input.click()
+
+  }
 
   async toPNG() {
-    return this.field.canvas.toDataURL( { multiplier: 1, quality: 100, enableRetinaScaling: true })   
+    return this.field.canvas.toDataURL({ multiplier: 1, quality: 100, enableRetinaScaling: true })
   }
 
   async downloadAsPNG(name) {
     const dataUrl = await this.toPNG()
     // const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `${this.projectName}-${name}.png`;
-    a.click();
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `${this.projectName}-${name}.png`
+    a.click()
   }
 
   async download() {
     // const fields: DrawField[] = Array.from(this.renderRoot.querySelectorAll('draw-field'))
-    const pdf = new jsPDF({format: 'a4', unit: 'px', orientation: 'landscape'});
-  // only jpeg is supported by jsPDF
-  let i = 0
-  for (const page of this.project.pages) {
-    await this.loadPage(page.name)
-    const dataUrl = await this.toPNG()
-    
+    const pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape' })
+    // only jpeg is supported by jsPDF
+    let i = 0
+    for (const page of this.project.pages) {
+      await this.loadPage(page.name)
+      const dataUrl = await this.toPNG()
 
-    if (i !== 0) pdf.addPage()
-    pdf.addImage(dataUrl, 0, 0);
-    // pdf.addSvgAsImage(svg, 0, 0, 1123, 842, undefined, undefined,  90);
-    URL.revokeObjectURL(dataUrl);
-    i += 1
-  }
+      if (i !== 0) pdf.addPage()
+      pdf.addImage(dataUrl, 0, 0)
+      // pdf.addSvgAsImage(svg, 0, 0, 1123, 842, undefined, undefined,  90);
+      URL.revokeObjectURL(dataUrl)
+      i += 1
+    }
 
-  
-  pdf.save(`${this.projectName}.pdf`);
-      const blob = new Blob([JSON.stringify(this.project, null, 2)], {
-        type: 'application/json',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${this.projectName}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+    pdf.save(`${this.projectName}.pdf`)
+    this.project.name = this.projectName
+    const blob = new Blob([JSON.stringify(this.project, null, 2)], {
+      type: 'application/json'
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${this.projectName}.json`
+    a.click()
+    URL.revokeObjectURL(url)
     // };
     // for (const field of fields) {
     //   const json = field.toJSON()
@@ -343,12 +417,12 @@ export class AppShell extends LitElement {
     if (this.loadedPage) {
       const pageToSave = this.project.pages.filter(page => page.name === this.loadedPage)[0]
       const pageIndex = this.project.pages.indexOf(pageToSave)
-      if (this.project.pages[pageIndex]?.schema) this.project.pages[pageIndex].schema = this.renderRoot.querySelector('draw-field').toJSON()
+      if (this.project.pages[pageIndex]?.schema)
+        this.project.pages[pageIndex].schema = this.renderRoot.querySelector('draw-field').toJSON()
     }
   }
 
   async loadPage(name: string) {
-
     this.loadedPage = name
     const page = this.project.pages.filter(page => page.name === name)[0]
 
@@ -527,8 +601,11 @@ export class AppShell extends LitElement {
           <home-field data-route="home"></home-field>
           <draw-field data-route="draw"></draw-field>
           <save-field data-route="save"></save-field>
+
           <add-page-field data-route="add-page"></add-page-field>
           <projects-field data-route="projects"></projects-field>
+          <create-project-field data-route="create-project"></create-project-field>
+          <settings-field data-route="settings"></settings-field>
         </custom-pages>
       </custom-drawer-layout>
 

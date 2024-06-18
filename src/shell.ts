@@ -25,8 +25,9 @@ import '@vandeurenglenn/lit-elements/icon-set.js'
 import '@vandeurenglenn/lit-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
-import jsPDF from 'jspdf'
-import { version } from 'commander'
+import './elements/actions/project-actions.js'
+import '@vandeurenglenn/lit-elements/tabs.js'
+import '@vandeurenglenn/lit-elements/tab.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -53,6 +54,9 @@ export class AppShell extends LitElement {
 
   @query('cadle-actions')
   actions
+
+  @query('project-drawer')
+  projectDrawer
 
   @query('draw-field')
   field
@@ -176,6 +180,24 @@ export class AppShell extends LitElement {
 
     onhashchange = this.#onhashchange.bind(this)
     this.#onhashchange()
+
+    this.addEventListener('drop', this.#drop.bind(this))
+    this.addEventListener('dragover', this.#dragover.bind(this))
+
+    // this.addEventListener('mousedown', () => {
+    //   const target = this.shadowRoot.querySelector('[open]')
+    //   if (target) target.open = false
+    // })
+  }
+
+  #dragover(event) {
+    event.preventDefault()
+    this.setAttribute('show-drop', '')
+  }
+
+  #drop(event) {
+    event.preventDefault()
+    console.log(event)
   }
 
   #debang(possibleBangedHash) {
@@ -255,16 +277,16 @@ export class AppShell extends LitElement {
     }
 
     if (action === 'create-project') {
-      await this.savePage()
-      this.projectName = this.dialog.querySelector('md-filled-text-field').value
-      this.projectsStore.set(new TextEncoder().encode(this.projectName), {
+      await cadleShell.savePage()
+      cadleShell.projectName = cadleShell.dialog.querySelector('md-filled-text-field').value
+      cadleShell.projectsStore.set(new TextEncoder().encode(cadleShell.projectName), {
         creationTime: new Date().getTime(),
         pages: []
       })
 
-      this._projectsProvider.setValue([...this.projects, this.projectName])
-      this.project = await this.projectsStore.get(this.projectName)
-      this.loadPage(this.project.pages[0]?.name)
+      cadleShell._projectsProvider.setValue([...cadleShell.projects, cadleShell.projectName])
+      cadleShell.project = await cadleShell.projectsStore.get(cadleShell.projectName)
+      cadleShell.loadPage(cadleShell.project.pages[0]?.name)
       location.hash = '#!/draw'
     }
 
@@ -280,7 +302,7 @@ export class AppShell extends LitElement {
   }
 
   async createProject() {
-    this.dialog.innerHTML = `
+    cadleShell.dialog.innerHTML = `
 
       <form id="form" slot="content" method="dialog">
         <md-filled-text-field
@@ -296,11 +318,11 @@ export class AppShell extends LitElement {
       </flex-row>
     `
 
-    this.dialog.open = true
+    cadleShell.dialog.open = true
   }
 
   async loadProject(projectKey) {
-    this.dialog.innerHTML = `
+    cadleShell.dialog.innerHTML = `
       <form id="load" slot="content" method="dialog">
         <flex-column>
           <p>Are you sure you want to open ${projectKey}?</p>
@@ -326,27 +348,7 @@ export class AppShell extends LitElement {
     
     `
 
-    this.dialog.open = true
-  }
-
-  async uploadProject() {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.addEventListener('change', e => {
-      console.log(input.files[0]);
-      
-      var fr = new FileReader();
-
-      fr.onload = (e) => {
-        var result = JSON.parse(e.target.result);
-        this.projectsStore.set(new TextEncoder().encode(result.name), result)
-        
-      }
-    
-      fr.readAsText(input.files[0]);
-    })
-    input.click()
-
+    cadleShell.dialog.open = true
   }
 
   async toPNG() {
@@ -362,60 +364,13 @@ export class AppShell extends LitElement {
     a.click()
   }
 
-  async download() {
-    // const fields: DrawField[] = Array.from(this.renderRoot.querySelectorAll('draw-field'))
-    const pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape' })
-    // only jpeg is supported by jsPDF
-    let i = 0
-    for (const page of this.project.pages) {
-      await this.loadPage(page.name)
-      const dataUrl = await this.toPNG()
-
-      if (i !== 0) pdf.addPage()
-      pdf.addImage(dataUrl, 0, 0)
-      // pdf.addSvgAsImage(svg, 0, 0, 1123, 842, undefined, undefined,  90);
-      URL.revokeObjectURL(dataUrl)
-      i += 1
-    }
-
-    pdf.save(`${this.projectName}.pdf`)
-    this.project.name = this.projectName
-    const blob = new Blob([JSON.stringify(this.project, null, 2)], {
-      type: 'application/json'
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${this.projectName}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    // };
-    // for (const field of fields) {
-    //   const json = field.toJSON()
-    //   console.log(json)
-    //   // await this.renderRoot.querySelector('draw-field').loadFromJSON(json)
-
-    //   const url = this.renderRoot.querySelector('draw-field').toDataURL()
-    //   console.log(url)
-    //   const a = document.createElement('a')
-    //   a.href = url
-    //   a.download = `${this.loadedPage}.png`
-    //   a.click()
-    // }
-  }
-
-  async save() {
-    await this.savePage()
-    this.projectsStore.set(new TextEncoder().encode(this.projectName), this.project)
-  }
-
   get drawer() {
     return this.renderRoot.querySelector('custom-drawer-layout').shadowRoot.querySelector('custom-drawer')
   }
 
   async savePage() {
     if (this.loadedPage) {
-      const pageToSave = this.project.pages.filter(page => page.name === this.loadedPage)[0]
+      const pageToSave = this.project.pages.filter((page) => page.name === this.loadedPage)[0]
       const pageIndex = this.project.pages.indexOf(pageToSave)
       if (this.project.pages[pageIndex]?.schema)
         this.project.pages[pageIndex].schema = this.renderRoot.querySelector('draw-field').toJSON()
@@ -424,7 +379,7 @@ export class AppShell extends LitElement {
 
   async loadPage(name: string) {
     this.loadedPage = name
-    const page = this.project.pages.filter(page => page.name === name)[0]
+    const page = this.project.pages.filter((page) => page.name === name)[0]
 
     await this.renderRoot.querySelector('draw-field').fromJSON(page.schema)
   }
@@ -441,16 +396,9 @@ export class AppShell extends LitElement {
     // if (this.projects)
   }
 
-  share = () => {
-    const project = JSON.stringify({
-      name: this.projectName,
-      schema: this.renderRoot.querySelector('draw-field')?.toJSON()
-    })
-    const data = {
-      title: this.projectName,
-      url: `https://vandeurenglenn.github.io/Cadle?import=${new TextEncoder().encode(project).join(',')}`
-    }
-    navigator.share(data)
+  showShortcuts = async () => {
+    if (!customElements.get('keyboard-shortcuts')) await import('./screens/keyboard-shortcuts.js')
+    this.shadowRoot.querySelector('keyboard-shortcuts').open = true
   }
 
   pickColor = async (): Promise<Color> => {
@@ -477,6 +425,7 @@ export class AppShell extends LitElement {
       :host {
         display: flex;
         flex-direction: column;
+        --custom-top-app-bar-height: 54px;
       }
 
       section {
@@ -485,7 +434,9 @@ export class AppShell extends LitElement {
       }
 
       custom-pages {
+        border-top: 1px solid var(--md-sys-color-outline);
         display: flex;
+        height: calc(100% - 1px);
       }
 
       flex-row.main {
@@ -503,8 +454,34 @@ export class AppShell extends LitElement {
         top: 50%;
         transform: translate(-50%, -50%);
       }
+
+      custom-tabs {
+        width: 100%;
+        padding-top: 12px;
+        justify-content: center;
+        border-top: 1px solid var(--md-sys-color-outline);
+      }
+
+      custom-tab {
+        pointer-events: auto;
+      }
+
+      custom-tab custom-icon {
+        margin-right: 6px;
+      }
     `
   ]
+
+  deletePage(pageName) {
+    let i = 0
+    for (const page of this.project.pages) {
+      if (page.name === pageName) {
+        this.project.pages.splice(i, 1)
+        break
+      }
+      i += 1
+    }
+  }
 
   render() {
     return html`
@@ -517,9 +494,12 @@ export class AppShell extends LitElement {
           <span name="check_box">@symbol-check_box</span>
           <span name="check_box_outline_blank">@symbol-check_box_outline_blank</span>
           <span name="delete">@symbol-delete</span>
-          <span name="done">@symbol-done</span>
+          <span name="check">@symbol-check</span>
           <span name="menu">@symbol-menu</span>
           <span name="menu_open">@symbol-menu_open</span>
+          <span name="shapes">@symbol-shapes</span>
+          <span name="folder">@symbol-folder</span>
+          <span name="keyboard">@symbol-keyboard</span>
           <span name="undo">@symbol-undo</span>
           <span name="redo">@symbol-redo</span>
           <span name="arrow_selector_tool">@symbol-arrow_selector_tool</span>
@@ -531,8 +511,8 @@ export class AppShell extends LitElement {
           <span name="line_curve">@symbol-line_curve</span>
           <span name="horizontal_rule">@symbol-horizontal_rule</span>
           <span name="insert_text">@symbol-insert_text</span>
-          <span name="expand_more">@symbol-expand_more</span>
-          <span name="expand_less">@symbol-expand_less</span>
+          <span name="tree_closed">@symbol-keyboard_arrow_right</span>
+          <span name="tree_open">@symbol-keyboard_arrow_down</span>
           <span name="polyline">@symbol-polyline</span>
           <span name="save">@symbol-save</span>
           <span name="create_new_folder">@symbol-create_new_folder</span>
@@ -549,54 +529,24 @@ export class AppShell extends LitElement {
       <custom-theme load-symbols="false"></custom-theme>
 
       <custom-drawer-layout>
-        <flex-row
-          class="file-controls"
-          slot="drawer-headline"
-          style="height: 40px;">
-          <custom-button
-            title="create project"
-            @click=${this.createProject}>
-            <custom-icon slot="icon">create_new_folder</custom-icon>
-          </custom-button>
-
-          <custom-button
-            title="upload project"
-            @click=${this.uploadProject}>
-            <custom-icon slot="icon">upload_file</custom-icon>
-          </custom-button>
-
-          <custom-button
-            title="download project"
-            @click=${this.download.bind(this)}>
-            <custom-icon slot="icon">download</custom-icon>
-          </custom-button>
-
-          <custom-button
-            title="save project"
-            @click=${this.save.bind(this)}>
-            <custom-icon slot="icon">save</custom-icon>
-          </custom-button>
-
-          <custom-button
-            title="show projects"
-            href="#!/projects">
-            <custom-icon slot="icon">folder_open</custom-icon>
-          </custom-button>
-
-          <custom-button
-            title="share"
-            @click=${this.share}>
-            <custom-icon slot="icon">share</custom-icon>
-          </custom-button>
-        </flex-row>
+        <project-actions slot="drawer-headline"> </project-actions>
 
         <project-drawer
           .manifest=${this.manifest}
           .project=${this.project}
           slot="drawer-content"></project-drawer>
 
-        <cadle-actions slot="top-app-bar-end"></cadle-actions>
+        <custom-tabs
+          round
+          slot="drawer-footer"
+          attr-for-selected="route"
+          default-selected="symbols"
+          @selected=${(e) => this.projectDrawer.select(e.detail)}>
+          <custom-tab route="project"><custom-icon icon="folder"></custom-icon>project</custom-tab>
+          <custom-tab route="symbols"><custom-icon icon="shapes"></custom-icon>symbols</custom-tab>
+        </custom-tabs>
 
+        <cadle-actions slot="top-app-bar-end"></cadle-actions>
         <custom-pages attr-for-selected="data-route">
           <home-field data-route="home"></home-field>
           <draw-field data-route="draw"></draw-field>
@@ -608,6 +558,8 @@ export class AppShell extends LitElement {
           <settings-field data-route="settings"></settings-field>
         </custom-pages>
       </custom-drawer-layout>
+
+      <keyboard-shortcuts></keyboard-shortcuts>
 
       <md-dialog class="color-picker">
         <form

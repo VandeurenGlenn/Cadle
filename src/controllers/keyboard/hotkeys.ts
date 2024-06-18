@@ -15,9 +15,13 @@ import { isFlip, flip } from './commands/flip.js'
 import { isRotate, rotate } from './commands/rotate.js'
 import { isScale, scale } from './commands/scale.js'
 import { isEscape, escape } from './commands/escape.js'
+import { bringForward, isBringForward } from './commands/bring-forward.js'
+import { bringToFront, isBringToFront } from './commands/bring-to-front.js'
+import { isSendBackwards, sendBackwards } from './commands/send-backwards.js'
+import { isSendToBack, sendToBack } from './commands/send-to-back.js'
 
 // note whenever shiftKey is pressed it will return upperkey
-export const getHotkey = (event: KeyboardEvent): Function => {
+export const getHotkey = (event: KeyboardEvent): undefined | Function => {
   // if (isPrint(event)) return print
   if (isSelectAll(event)) return selectAll
   if (isCopy(event)) return copy
@@ -32,6 +36,10 @@ export const getHotkey = (event: KeyboardEvent): Function => {
   if (isRotate(event)) return rotate
   if (isScale(event)) return scale
   if (isEscape(event)) return escape
+  if (isBringForward(event)) return bringForward
+  if (isBringToFront(event)) return bringToFront
+  if (isSendBackwards(event)) return sendBackwards
+  if (isSendToBack(event)) return sendToBack
 
   if (
     (event.metaKey && isMac && event.key === 'ArrowRight' && event.ctrlKey) ||

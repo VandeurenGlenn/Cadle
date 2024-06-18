@@ -61,7 +61,6 @@ export class DrawField extends LitElement {
 
   get upperCanvas() {
     return this.shadowRoot.querySelector('.upper-canvas')
-
   }
 
   static styles = [
@@ -95,23 +94,26 @@ export class DrawField extends LitElement {
       selection: true,
       evented: true,
       width,
-      height
+      height,
+      preserveObjectStacking: true
     })
 
     this.#canvas.history = []
 
     this.gridSize = state.gridSize
 
-    this.#canvas.on('object:moving', options => {
+    this.#canvas.on('object:moving', (options) => {
       this.moving = true
+      console.log(options)
+
       options.target.set(this.snapToGrid(options.target))
     })
 
-    this.#canvas.on('after:render', options => {
+    this.#canvas.on('after:render', (options) => {
       this.moving = false
     })
 
-    this.#canvas.on('object:scaling', options => {
+    this.#canvas.on('object:scaling', (options) => {
       console.log('scaling')
 
       var target = options.target
@@ -166,12 +168,16 @@ export class DrawField extends LitElement {
     this.#canvas.on('mouse:up', this._mouseup.bind(this))
     this.addEventListener('mouseenter', this._mouseenter.bind(this))
     this.addEventListener('mouseleave', this._mouseleave.bind(this))
-
+    this.#canvas.on('mouse:dblclick', this._dblclick.bind(this))
     // this.renderRoot.addEventListener('mousemove', this._mousemove.bind(this))
     this.#canvas.on('mouse:move', this._mousemove.bind(this))
     this.renderRoot.addEventListener('drop', this._drop.bind(this))
 
     // this.#canvas
+  }
+
+  _dblclick() {
+    console.log('dbl')
   }
 
   _drop(e) {
@@ -197,10 +203,10 @@ export class DrawField extends LitElement {
             this.namingLetter = this.alphabet[(this.namingLetterIndex += 1)]
           }
         }
-  
+
         this.namingNumber += 1
       }
-  
+
       switch (this.action) {
         case 'save':
         case 'disable-grid':
@@ -215,11 +221,11 @@ export class DrawField extends LitElement {
           return
         default:
           this.drawing = true
-          const pointer = this.#canvas.getPointer(e)
+          const pointer = this.#canvas.getViewportPoint(e)
           this.#startPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
           const id = Math.random().toString(36).slice(-12)
           const index = this.canvas._objects.length
-  
+
           const sharedDrawOptions = {
             id,
             index,
@@ -294,13 +300,12 @@ export class DrawField extends LitElement {
           break
       }
     }
-    
   }
 
-  _mousemove(e) {    
-    if (e.target) return
-    let pointer = this.#canvas.getPointer(e)
+  _mousemove(e) {
+    let pointer = this.#canvas.getScenePoint(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
+    if (e.target) return
     const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
 
     if (!this.drawing) return
@@ -347,13 +352,11 @@ export class DrawField extends LitElement {
   }
 
   _mouseenter(e) {
-    if (this.action) this.#canvas.defaultCursor='crosshair'
-    if (!this._current) return
-    
-    console.log('enter')
-    const pointer = this.#canvas.getPointer(e)
-
+    const pointer = this.#canvas.getScenePoint(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
+    if (this.action) this.#canvas.defaultCursor = 'crosshair'
+    if (!this._current) return
+
     const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
     if (this.action === 'draw-symbol') {
       this.drawing = true

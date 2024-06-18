@@ -21,7 +21,7 @@ declare global {
 @customElement('cadle-actions')
 export class CadleActions extends LitElement {
   @property({ type: Boolean, reflect: true })
-  open: boolean = true
+  shown: boolean = true
   static styles = [
     css`
       :host {
@@ -29,12 +29,14 @@ export class CadleActions extends LitElement {
         flex-direction: row;
         width: 100%;
         opacity: 0;
-        height: 54px;
+        align-items: center;
+        height: 57px;
+        box-sizing: border-box;
       }
       custom-list-item {
         width: 100%;
       }
-      :host([open]) {
+      :host([shown]) {
         opacity: 1;
       }
     `
@@ -44,11 +46,11 @@ export class CadleActions extends LitElement {
   fill: Color = state.styling.fill
 
   show() {
-    this.open = true
+    this.shown = true
   }
 
   hide() {
-    this.open = false
+    this.shown = false
   }
 
   constructor() {
@@ -60,7 +62,7 @@ export class CadleActions extends LitElement {
     this.addEventListener('contextmenu', this.#showMenu)
   }
 
-  #showMenu = event => {
+  #showMenu = (event) => {
     event.preventDefault()
 
     const target = event.composedPath()[0]
@@ -148,6 +150,7 @@ export class CadleActions extends LitElement {
       top
     })
   }
+
   @property({ type: Array })
   actions = [
     {

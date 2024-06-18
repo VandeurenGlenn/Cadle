@@ -1,23 +1,23 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import './category.js'
-import { Catalog, catalogContext } from '../../context/catalog.js';
-import { consume } from '@lit-labs/context';
-import {ContextRoot} from '@lit-labs/context';
-
-
+import { Catalog } from '../../context/catalog.js'
+import { consume } from '@lit-labs/context'
+import './../search.js'
 
 declare global {
   interface HTMLElementTagNameMap {
-    'catalog-element': CatalogElement;
+    'catalog-element': CatalogElement
   }
 }
 
 @customElement('catalog-element')
 export class CatalogElement extends LitElement {
-  @consume({context: 'catalogContext', subscribe: true})
-  @property({attribute: false})
-  set catalog(value : Catalog) {
+  #catalogBackup
+
+  @consume({ context: 'catalogContext', subscribe: true })
+  @property({ attribute: false })
+  set catalog(value: Catalog) {
     this._catalog = value
     this.requestUpdate('catalog')
   }
@@ -27,34 +27,64 @@ export class CatalogElement extends LitElement {
   }
 
   private _catalog: Catalog
-  
 
   static styles = [
     css`
       :host {
         display: flex;
         flex-direction: column;
+      }
+      flex-column {
+        height: 100%;
         overflow-y: auto;
       }
+
+      input[type='search'] {
+        height: 40px;
+        margin: 12px;
+        padding: 6px 12px;
+        box-sizing: border-box;
+        border: none;
+        border-radius: var(--md-sys-shape-corner-large);
+      }
     `
-  ];
-
-  constructor() {
-    super()
-
-  }
+  ]
 
   get #catalogTemplate() {
-    console.log(this.catalog);
-    
-    return this.catalog.map(item => html`
-      <catalog-category .category=${item.category} .symbols=${item.symbols}></catalog-category>
-    `)
+    console.log(this.catalog)
+
+    return this.catalog.map(
+      (item) => html`
+        <catalog-category
+          .category=${item.category}
+          .symbols=${item.symbols}></catalog-category>
+      `
+    )
+  }
+
+  #search = (event: CustomEvent) => {
+    if (!this.#catalogBackup) this.#catalogBackup = this._catalog
+    console.log(event.detail)
+
+    if (!event.detail) {
+      this.catalog = this.#catalogBackup
+      console.log('n')
+      this.#catalogBackup = undefined
+    } else {
+      this.catalog = JSON.parse(JSON.stringify(this.#catalogBackup)).filter((item) => {
+        item.symbols = [...item.symbols].filter((symbol) => symbol.name.includes(event.detail))
+        return item.symbols.length > 0 || item.category.includes(event.detail)
+      })
+    }
   }
 
   render() {
     return html`
-      ${this.catalog ? this.#catalogTemplate : ''}
-    `;
+      <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
+      <search-element
+        @search=${this.#search}
+        name="search_catalog"
+        placeholder="search symbol"></search-element>
+    `
   }
 }

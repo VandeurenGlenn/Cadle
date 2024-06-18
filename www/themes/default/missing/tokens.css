@@ -1,0 +1,9 @@
+:root {
+  --md-sys-color-surface-container-light: var(--md-ref-palette-neutral99);
+  --md-sys-color-surface-container-high-light: var(--md-ref-palette-neutral95);
+  --md-sys-color-surface-container-highest-light: var(--md-ref-palette-neutral90);
+
+  --md-sys-color-surface-container-dark: var(--md-ref-palette-neutral10);
+  --md-sys-color-surface-container-high-dark: var(--md-ref-palette-neutral20);
+  --md-sys-color-surface-container-highest-dark: var(--md-ref-palette-neutral30);
+}

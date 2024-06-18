@@ -1,6 +1,10 @@
 @import url(tokens.css);
 @import url(colors.module.css);
 @import url(typography.module.css);
-@import url(missing.css);
+@import url(missing/motion.css);
+@import url(missing/shape.css);
+@import url(missing/tokens.css);
+@import url(missing/theme.dark.css) (prefers-color-scheme: dark);
+@import url(missing/theme.light.css) (prefers-color-scheme: light);
 @import url(theme.light.css) (prefers-color-scheme: light);
 @import url(theme.dark.css) (prefers-color-scheme: dark);

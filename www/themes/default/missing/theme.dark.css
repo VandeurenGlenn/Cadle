@@ -1,0 +1,5 @@
+:root {
+  --md-sys-color-surface-container: var(--md-sys-color-surface-container-dark);
+  --md-sys-color-surface-container-high: var(--md-sys-color-surface-container-high-dark);
+  --md-sys-color-surface-container-highest: var(--md-sys-color-surface-container-highest-dark);
+}

@@ -253,6 +253,4 @@
   --md-sys-typescale-title-small-font-size: 14px;
   --md-sys-typescale-title-small-line-height: 20px;
   --md-sys-typescale-title-small-letter-spacing: 0.10px;
-  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
-  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
 }

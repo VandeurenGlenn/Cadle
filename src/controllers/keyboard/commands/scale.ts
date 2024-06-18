@@ -3,7 +3,7 @@ import { isMac } from '../utils.js'
 
 // only flip on active object
 export const isScale = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
-  canvas.getActiveObject() && (key === '/' || key === '*') && (isMac ? metaKey : ctrlKey)
+  canvas.getActiveObject() && (key === '/' || key === '*')
 
 export const scale = ({ key }) => {
   canvas.shouldRender = true

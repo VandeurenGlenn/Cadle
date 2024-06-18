@@ -138,6 +138,7 @@ export class ProjectElement extends LitElement {
       :host {
         display: flex;
         flex-direction: column;
+        height: 100%;
       }
 
       .page-input {
@@ -167,6 +168,10 @@ export class ProjectElement extends LitElement {
         box-sizing: border-box;
         padding: 12px 24px;
         align-items: center;
+      }
+
+      custom-selector {
+        height: 100%; 
       }
     `
   ]
@@ -200,7 +205,7 @@ export class ProjectElement extends LitElement {
         <flex-it></flex-it>
         <custom-icon-button
           class="add-page"
-          icon="${this.addingPage ? 'done' : 'add'}"
+          icon="${this.addingPage ? 'check' : 'add'}"
           @click=${() => (this.addingPage = !this.addingPage)}></custom-icon-button>
       </flex-row>
 

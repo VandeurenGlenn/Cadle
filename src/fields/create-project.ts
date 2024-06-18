@@ -28,7 +28,7 @@ export class CreateProjectField extends LitElement {
       box-sizing: border-box;
     }
 
-    h5 {
+    h4 {
       margin-top: 24px;
     }
 
@@ -37,6 +37,7 @@ export class CreateProjectField extends LitElement {
     }
     flex-container {
       align-items: center;
+      --flex-display-max-width: 507px;
     }
   `
   protected render() {
@@ -44,32 +45,51 @@ export class CreateProjectField extends LitElement {
       <flex-container>
         <summary>
           <h3>Create Project</h3>
-          <h5>General</h5>
+          <h4>General</h4>
           <md-outlined-text-field
             label="Project name"
             placeholder="residential @zipcode @streetname @housenumber">
           </md-outlined-text-field>
+
           <md-outlined-text-field
             label="Page name"
             placeholder="ground floor">
           </md-outlined-text-field>
 
-          <h5>Installer</h5>
+          <h4>Installer</h4>
           <md-outlined-text-field
-            label="name"
+            label="Name"
             placeholder="Iondependent">
           </md-outlined-text-field>
 
-          <md-outlined-field
-            label="signature"
-            placeholder="Iondependent">
-          </md-outlined-field>
-
-          <h5>Installation</h5>
           <md-outlined-text-field
-            label="Installer name"
-            placeholder="Iondependent">
+            label="Company"
+            placeholder="Cadle BV">
           </md-outlined-text-field>
+
+          <h4>Installation</h4>
+          <h5>Address</h5>
+
+          <md-outlined-text-field
+            label="Street"
+            placeholder="mainstreet">
+          </md-outlined-text-field>
+
+          <md-outlined-text-field
+            label="HouseNumber"
+            placeholder="1">
+          </md-outlined-text-field>
+
+          <md-outlined-text-field
+            label="Postalcode"
+            placeholder="0001">
+          </md-outlined-text-field>
+
+          <md-outlined-text-field
+            label="City"
+            placeholder="NewCity">
+          </md-outlined-text-field>
+
           <flex-row>
             <md-outlined-button @click=${() => history.back()}> cancel </md-outlined-button>
             <flex-it></flex-it>

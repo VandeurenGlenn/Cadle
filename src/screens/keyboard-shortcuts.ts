@@ -23,11 +23,11 @@ export class KeyboardShortcuts extends LitElement {
       },
       {
         combination: html`<kbd>Ctrl</kbd> + <kbd>B</kbd>`,
-        action: 'Send object to back'
+        action: 'sendObjectToBack'
       },
       {
         combination: html`<kbd>Ctrl</kbd> + <kbd>SHIFT</kbd> +<kbd>B</kbd>`,
-        action: 'Bring object to front'
+        action: 'bringObjectToFront'
       }
     ]
   }

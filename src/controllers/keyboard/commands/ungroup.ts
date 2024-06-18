@@ -1,4 +1,4 @@
-import { ActiveSelection, Circle, FabricText, Group, Line, Path, Rect, Textbox, FabricImage } from 'fabric'
+import { ActiveSelection, Circle, FabricText, Group, Line, Path, Rect, Textbox, FabricImage, Ellipse } from 'fabric'
 import { canvas, getActiveObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
@@ -24,12 +24,14 @@ const loop = async (items: Group['_objects'], { top, left }) => {
       if (object.type === 'Text') object = await FabricText.fromObject(object)
       if (object.type === 'Textbox') object = await Textbox.fromObject(object)
       if (object.type === 'Image') object = await FabricImage.fromObject(object)
+      if (object.type === 'Ellipse') object = await Ellipse.fromObject(object)
+
       object.strokeWidth = 1
       object.top += top
       object.left += left
       canvas.remove(item)
-      console.log('rem');
-      
+      console.log('rem')
+
       canvas.add(object)
     }
   }
@@ -41,8 +43,8 @@ export const ungroup = async () => {
   canvas.discardActiveObject()
   // canvas.remove(object)
   // canvas.requestRenderAll()
-  console.log(object);
-  
+  console.log(object)
+
   if (!object) {
     return
   }

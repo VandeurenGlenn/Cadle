@@ -12,6 +12,7 @@ import '@vandeurenglenn/lit-elements/icon-button.js'
 
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lit-elements/dropdown.js'
+import { upload } from '../api/project.js'
 
 @customElement('projects-field')
 export class ProjectsField extends LitElement {
@@ -160,7 +161,7 @@ export class ProjectsField extends LitElement {
         </custom-list-item>`
       )}
       <flex-row>
-        <md-outlined-button @click=${cadleShell.uploadProject.bind(cadleShell)}>upload</md-outlined-button>
+        <md-outlined-button @click=${() => upload()}>upload</md-outlined-button>
         <flex-it></flex-it>
         <md-filled-button @click=${() => (location.hash = '#!/create-project')}>create</md-filled-button>
       </flex-row> `

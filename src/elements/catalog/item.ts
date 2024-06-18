@@ -24,7 +24,7 @@ export class CatalogItem extends LitElement {
 
   set headline(value) {
     this.title = value
-    this._headline = value.length > 20 ? `${value.slice(0, 20)} ...` : value
+    this._headline = value.length > 28 ? `${value.slice(0, 28)} ...` : value
     this.requestUpdate('headline')
   }
 
@@ -37,6 +37,7 @@ export class CatalogItem extends LitElement {
   static styles = [
     css`
       :host {
+        user-select: none;
         display: flex;
         width: 100%;
         align-items: center;
@@ -52,7 +53,7 @@ export class CatalogItem extends LitElement {
 
   #loadSVGFromURL() {
     return new Promise((resolve, reject) => {
-      loadSVGFromURL(this._image, async svg => {
+      loadSVGFromURL(this._image, async (svg) => {
         resolve(svg)
       })
     })
@@ -70,15 +71,18 @@ export class CatalogItem extends LitElement {
 
     const svg = await loadSVGFromURL(this._image)
     // console.log(svg)
-    svg.objects.forEach(obj => {obj.strokeWidth = 1})
+    svg.objects.forEach((obj) => {
+      obj.strokeWidth = 0.7
+    })
+
     const group = util.groupSVGElements(svg.objects)
     // console.log(group)
     group.scale(1.2)
-    document.querySelector('app-shell').renderRoot.querySelector('draw-field').action = 'draw-symbol'
-    document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
+    cadleShell.field.action = 'draw-symbol'
+    cadleShell.field._current = group
   }
 
-  override onclick = event => {
+  override onclick = (event) => {
     this.#click(event)
   }
 

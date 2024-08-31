@@ -1,12 +1,21 @@
-import ProjectsStore from '../storage/projects.js'
+import Storage from '../storage/storage.js'
 import jsPDF from 'jspdf'
-import { Project, ProjectInput } from '../types.js'
+import { Project, ProjectInput, UUID } from '../types.js'
 
-export const projectStore = new ProjectsStore()
+export const projectStore = new Storage('projects')
 
-export const get = key => projectStore.get(key)
+export const projectDataStore = new Storage('project-data')
 
-export const del = key => projectStore.delete(key)
+/** */
+export const getProjects = () => projectStore.entries() as Promise<[uuid: UUID, name: string][]>
+
+export const getProjectData = (uuid: UUID) => projectDataStore.get(uuid) as Promise<Project>
+
+export const setProjectData = (uuid: UUID, project: Project) => projectDataStore.set(uuid, project)
+
+export const get = (key) => projectStore.get(key)
+
+export const del = (key) => projectStore.delete(new TextEncoder().encode(key))
 
 export const set = (key, value) => projectStore.set(key, value)
 
@@ -19,13 +28,18 @@ export const create = async (project: ProjectInput, pageName) => {
     name: pageName
   }
   const _project = { creationTime, ...project, pages }
-  await projectStore.set(uuid, _project)
+  await projectDataStore.set(uuid, _project)
+  await projectStore.set(uuid, project.name)
   return
 }
 
 export const save = async () => {
   await cadleShell.savePage()
   await set(new TextEncoder().encode(cadleShell.projectName), cadleShell.project)
+  if (cadleShell.project.uuid) {
+    // await set(cadleShell.project.uuid, cadleShell.project.name ?? cadleShell.projectName)
+  }
+  // await setProjectData(cadleShell.project.uuid ?? new TextEncoder().encode(cadleShell.projectName), cadleShell.project)
 }
 
 export const share = () => {
@@ -46,10 +60,10 @@ export const share = () => {
 export const upload = async () => {
   const input = document.createElement('input')
   input.type = 'file'
-  input.addEventListener('change', e => {
+  input.addEventListener('change', (e) => {
     var fr = new FileReader()
 
-    fr.onload = e => {
+    fr.onload = (e) => {
       var result = JSON.parse(e.target.result)
       set(new TextEncoder().encode(result.name), result)
     }

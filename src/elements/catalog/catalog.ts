@@ -62,13 +62,31 @@ export class CatalogElement extends LitElement {
     )
   }
 
+  connectedCallback(): void {
+    super.connectedCallback()
+    this.addEventListener('drop', this.#drop.bind(this))
+    this.addEventListener('dragover', this.#dragover.bind(this))
+
+    // this.addEventListener('mousedown', () => {
+    //   const target = this.shadowRoot.querySelector('[open]')
+    //   if (target) target.open = false
+    // })
+  }
+
+  #dragover(event) {
+    event.preventDefault()
+    this.setAttribute('show-drop', '')
+  }
+
+  #drop(event) {
+    event.preventDefault()
+    console.log(event)
+  }
+
   #search = (event: CustomEvent) => {
     if (!this.#catalogBackup) this.#catalogBackup = this._catalog
-    console.log(event.detail)
-
     if (!event.detail) {
       this.catalog = this.#catalogBackup
-      console.log('n')
       this.#catalogBackup = undefined
     } else {
       this.catalog = JSON.parse(JSON.stringify(this.#catalogBackup)).filter((item) => {

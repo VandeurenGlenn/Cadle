@@ -1,25 +1,38 @@
-import { get, getMany, set, setMany, entries, values, keys, clear, del, delMany, createStore, UseStore } from 'idb-keyval'
+import {
+  get,
+  getMany,
+  set,
+  setMany,
+  entries,
+  values,
+  keys,
+  clear,
+  del,
+  delMany,
+  createStore,
+  UseStore
+} from 'idb-keyval'
 
-export default class ProjectsStorage {
+export default class Storage {
   store: UseStore
 
-  constructor () {
-    this.store = createStore('cadle', 'projects')
+  constructor(name: string) {
+    this.store = createStore('cadle', name)
   }
 
-  async set (key: IDBValidKey, val: any) {
+  async set(key: IDBValidKey, val: any) {
     await set(key, val, this.store)
   }
 
-  async get (key: IDBValidKey) {
+  async get(key: IDBValidKey) {
     return await get(key, this.store)
   }
 
-  async getMany (keys: IDBValidKey[]) {
+  async getMany(keys: IDBValidKey[]) {
     return getMany(keys, this.store)
   }
 
-  async setMany (entries: [IDBValidKey, any][]) {
+  async setMany(entries: [IDBValidKey, any][]) {
     return setMany(entries, this.store)
   }
 

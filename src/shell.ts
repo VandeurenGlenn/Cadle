@@ -5,20 +5,19 @@ import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 import '@vandeurenglenn/lit-elements/pages.js'
-import { DrawField } from './fields/draw.js'
 import './fields/draw.js'
 import './elements/save-field.js'
-import './elements/project-drawer.js'
-import { provide } from '@lit-labs/context'
-import ProjectsStore from './storage/projects.js'
-import { Projects, projectsContext } from './context/projects.js'
-import { Catalog, catalogContext } from './context/catalog.js'
+import './elements/panes/project-pane.js'
+import './elements/panes/object-pane.js'
+import { provide } from '@lit/context'
+import { projectsContext } from './context/projects.js'
+import { Catalog } from './context/catalog.js'
 import '@material/web/dialog/dialog.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
-import { ContextProvider } from '@lit-labs/context'
+import { ContextProvider } from '@lit/context'
 import '@vandeurenglenn/lit-elements/drawer-layout.js'
 import '@vandeurenglenn/lit-elements/theme.js'
 import '@vandeurenglenn/lit-elements/icon-set.js'
@@ -28,6 +27,9 @@ import { Color } from './symbols/default-options.js'
 import './elements/actions/project-actions.js'
 import '@vandeurenglenn/lit-elements/tabs.js'
 import '@vandeurenglenn/lit-elements/tab.js'
+import { Project } from './types.js'
+import { projectStore } from './api/project.js'
+import { randomUUID } from 'crypto'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -46,7 +48,7 @@ declare type dialogAction =
 
 @customElement('app-shell')
 export class AppShell extends LitElement {
-  projectsStore: ProjectsStore
+  projectStore = projectStore
   symbol: string
   projectName: string
   loadedPage: string
@@ -55,8 +57,8 @@ export class AppShell extends LitElement {
   @query('cadle-actions')
   actions
 
-  @query('project-drawer')
-  projectDrawer
+  @query('project-pane')
+  projectPane
 
   @query('draw-field')
   field
@@ -147,14 +149,19 @@ export class AppShell extends LitElement {
   }
 
   async connectedCallback(): Promise<void> {
-    this.projectsStore = new ProjectsStore()
     super.connectedCallback()
+    // const entries = await this.projectStore.entries()
+    const projects = []
+
+    // for (const [key, value] of entries) {
+    //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
+    // }
 
     const decoder = new TextDecoder()
-    const keys = await this.projectsStore.keys()
-    const projects = []
+    const keys = await this.projectStore.keys()
+
     for (const key of keys) {
-      projects.push(decoder.decode(key))
+      projects.push(typeof key === 'string' ? key : decoder.decode(key))
     }
 
     this.projects = projects
@@ -279,13 +286,13 @@ export class AppShell extends LitElement {
     if (action === 'create-project') {
       await cadleShell.savePage()
       cadleShell.projectName = cadleShell.dialog.querySelector('md-filled-text-field').value
-      cadleShell.projectsStore.set(new TextEncoder().encode(cadleShell.projectName), {
+      cadleShell.projectStore.set(new TextEncoder().encode(cadleShell.projectName), {
         creationTime: new Date().getTime(),
         pages: []
       })
 
       cadleShell._projectsProvider.setValue([...cadleShell.projects, cadleShell.projectName])
-      cadleShell.project = await cadleShell.projectsStore.get(cadleShell.projectName)
+      cadleShell.project = await cadleShell.projectStore.get(cadleShell.projectName)
       cadleShell.loadPage(cadleShell.project.pages[0]?.name)
       location.hash = '#!/draw'
     }
@@ -295,9 +302,10 @@ export class AppShell extends LitElement {
       this.projectName = this.dialog.querySelector('md-filled-text-field').value
       console.log(this.projectName)
 
-      this.project = await this.projectsStore.get(new TextEncoder().encode(this.projectName))
+      this.project = await this.projectStore.get(new TextEncoder().encode(this.projectName))
       this.loadPage(this.project.pages[0]?.name)
       location.hash = '#!/draw'
+      this.projectPane.select('project')
     }
   }
 
@@ -436,6 +444,7 @@ export class AppShell extends LitElement {
       custom-pages {
         border-top: 1px solid var(--md-sys-color-outline);
         display: flex;
+        width: calc(100% - 320px);
         height: calc(100% - 1px);
       }
 
@@ -523,6 +532,16 @@ export class AppShell extends LitElement {
           <span name="swap-horiz">@symbol-swap_horiz</span>
           <span name="share">@symbol-share</span>
           <span name="more_vert">@symbol-more_vert</span>
+          <span name="keyboard_arrow_down">@symbol-keyboard_arrow_down</span>
+          <span name="keyboard_arrow_up">@symbol-keyboard_arrow_up</span>
+          <span name="palette">@symbol-palette</span>
+          <span name="border_color">@symbol-border_color</span>
+          <span name="format_color_fill">@symbol-format_color_fill</span>
+          <span name="opacity">@symbol-opacity</span>
+          <span name="place_item">@symbol-place_item</span>
+          <span name="output">@symbol-output</span>
+          <span name="format_size">@symbol-format_size</span>
+          <span name="open_with">@symbol-open_with</span>
         </template>
       </custom-icon-set>
 
@@ -531,17 +550,17 @@ export class AppShell extends LitElement {
       <custom-drawer-layout>
         <project-actions slot="drawer-headline"> </project-actions>
 
-        <project-drawer
+        <project-pane
           .manifest=${this.manifest}
           .project=${this.project}
-          slot="drawer-content"></project-drawer>
+          slot="drawer-content"></project-pane>
 
         <custom-tabs
           round
           slot="drawer-footer"
           attr-for-selected="route"
           default-selected="symbols"
-          @selected=${(e) => this.projectDrawer.select(e.detail)}>
+          @selected=${(e) => this.projectPane.select(e.detail)}>
           <custom-tab route="project"><custom-icon icon="folder"></custom-icon>project</custom-tab>
           <custom-tab route="symbols"><custom-icon icon="shapes"></custom-icon>symbols</custom-tab>
         </custom-tabs>
@@ -559,6 +578,9 @@ export class AppShell extends LitElement {
         </custom-pages>
       </custom-drawer-layout>
 
+      <object-pane
+        right
+        open></object-pane>
       <keyboard-shortcuts></keyboard-shortcuts>
 
       <md-dialog class="color-picker">

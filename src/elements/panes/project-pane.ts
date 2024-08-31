@@ -3,11 +3,11 @@ import { map } from 'lit/directives/map.js'
 import { customElement, property } from 'lit/decorators.js'
 import '@vandeurenglenn/lit-elements/button.js'
 import '@vandeurenglenn/lit-elements/selector.js'
-import './catalog/catalog.js'
-import './project/project.js'
+import '../catalog/catalog.js'
+import '../project/project.js'
 
-@customElement('project-drawer')
-export class ProjectDrawer extends LitElement {
+@customElement('project-pane')
+export class ProjectPane extends LitElement {
   get #pages() {
     return this.renderRoot.querySelector('custom-pages')
   }

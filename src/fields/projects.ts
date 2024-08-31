@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import { map } from 'lit/directives/map.js'
 
-import { consume } from '@lit-labs/context'
+import { consume } from '@lit/context'
 import { Projects, projectsContext } from '../context/projects.js'
 import '@material/web/elevation/elevation.js'
 import '@material/web/button/outlined-button.js'
@@ -12,7 +12,7 @@ import '@vandeurenglenn/lit-elements/icon-button.js'
 
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lit-elements/dropdown.js'
-import { upload } from '../api/project.js'
+import { del, upload } from '../api/project.js'
 
 @customElement('projects-field')
 export class ProjectsField extends LitElement {
@@ -108,6 +108,8 @@ export class ProjectsField extends LitElement {
       const dropdown = this.shadowRoot?.querySelector('custom-dropdown')
       if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
       const id = event.target.getAttribute('data-id')
+      console.log({ id })
+
       if (action === 'showContextMenu') {
         if (this._currentSelected !== undefined && id !== this._currentSelected) {
           // close open menu & reopen on new location
@@ -124,13 +126,23 @@ export class ProjectsField extends LitElement {
           else this._currentSelected = id
         }
       } else {
-        this[`_${action}`](id)
+        this[`_${action}`](this._currentSelected ?? id)
       }
     }
   }
 
-  _delete(id) {
-    cadleShell.projectsStore.delete(id)
+  async _delete(id) {
+    await del(id)
+    const projects = []
+
+    // for (const [key, value] of entries) {
+    //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
+    // }
+
+    const decoder = new TextDecoder()
+    const keys = await cadleShell.projectStore.keys()
+
+    // cadleShell.projects = await cadleShell.projectStore.entries()
   }
 
   __showContextMenu(projectName) {
@@ -149,7 +161,7 @@ export class ProjectsField extends LitElement {
     console.log(this.projects)
 
     return html`${this.projects.map(
-        item => html` <custom-list-item
+        (item) => html` <custom-list-item
           data-id=${item}
           data-action="loadProject">
           <span>${item}</span>
@@ -195,7 +207,7 @@ export class ProjectsField extends LitElement {
               <h5>Kind regards, HAL 9000</h5>
               <h6>small note: This project is not finished at all!</h6>
               <flex-row>
-                <md-outlined-button @click=${cadleShell.uploadProject.bind(cadleShell)}>upload</md-outlined-button>
+                <md-outlined-button @click=${upload}>upload</md-outlined-button>
                 <flex-it></flex-it>
                 <md-filled-button @click=${() => (location.hash = '#!/create-project')}>create</md-filled-button>
               </flex-row>

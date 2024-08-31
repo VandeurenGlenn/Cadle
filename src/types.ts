@@ -1,5 +1,6 @@
-export type ProjectInput =  {
-  
+export type UUID = `${string}-${string}-${string}-${string}-${string}`
+
+export type ProjectInput = {
   name: string
   installer: {
     name: string
@@ -15,13 +16,14 @@ export type ProjectInput =  {
 
 export interface Project extends ProjectInput {
   creationTime: EpochTimeStamp
+  uuid: UUID
   pages: {
     [uuid: string]: {
       creationTime: EpochTimeStamp
       name: string
-      schema: {version: string, objects: object[]}
-    }    
+      schema: { version: string; objects: object[] }
+    }
   }
 }
 
-export type Projects = {[uuid: `${string}-${string}-${string}-${string}-${string}`]: Project}
+export type Projects = { [uuid: UUID]: Project }

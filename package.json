@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "watch": "rollup -c -w",
-    "serve": "jsproject --serve ./www --port 4333",
-    "serve-2": "jsproject --serve ./www --port 4332",
+    "serve": "jsproject --serve www --port 4333",
+    "serve-2": "jsproject --serve www --port 4332",
     "generate:manifest": "node generate-manifest.js",
     "build": "npm run generate:manifest && rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -36,7 +36,6 @@
     "@rollup/plugin-typescript": "^11.1.6",
     "@types/color": "^3.0.6",
     "@types/node": "^20.14.5",
-    "@vandeurenglenn/project": "^0.2.0",
     "rollup": "^4.18.0",
     "rollup-plugin-material-symbols": "^2.1.5",
     "rollup-plugin-modify": "^3.0.0",

@@ -38,7 +38,8 @@ export default [
     output: [
       {
         format: 'es',
-        dir: './www'
+        dir: './www',
+        sourceMap: true
       }
     ],
     plugins: [

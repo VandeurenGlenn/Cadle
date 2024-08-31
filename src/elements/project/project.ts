@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
-import { consume } from '@lit-labs/context'
+import { consume } from '@lit/context'
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/filled-icon-button.js'
 import '@vandeurenglenn/lit-elements/drawer-item.js'
@@ -9,7 +9,7 @@ import '@vandeurenglenn/lit-elements/button.js'
 import '@vandeurenglenn/lit-elements/dropdown.js'
 import '@vandeurenglenn/lit-elements/list-item.js'
 import './../list/item.js'
-import './contextmenu.js'
+import '../../contextmenu.js'
 import { Project } from '../../types.js'
 
 declare global {
@@ -72,7 +72,7 @@ export class ProjectElement extends LitElement {
     this.removeEventListener('keydown', this.#keydown)
   }
 
-  #showMenu = event => {
+  #showMenu = (event) => {
     console.log(event.composedPath())
     console.log(event)
 
@@ -171,19 +171,18 @@ export class ProjectElement extends LitElement {
       }
 
       custom-selector {
-        height: 100%; 
+        height: 100%;
       }
     `
   ]
 
   get #projectTemplate() {
     return this.project.pages.map(
-      item => html`
+      (item) => html`
         <custom-drawer-item
           .headline=${item.name}
           data-project=${item.name}
-          @click=${async event => {
-            
+          @click=${async (event) => {
             await cadleShell.savePage()
             cadleShell.loadPage(item.name)
             location.hash = '#!/draw'

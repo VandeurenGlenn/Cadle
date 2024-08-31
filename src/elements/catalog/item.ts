@@ -77,6 +77,7 @@ export class CatalogItem extends LitElement {
 
     const group = util.groupSVGElements(svg.objects)
     // console.log(group)
+    // group.backgroundColor = '#fff'
     group.scale(1.2)
     cadleShell.field.action = 'draw-symbol'
     cadleShell.field._current = group

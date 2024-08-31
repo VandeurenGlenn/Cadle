@@ -4,6 +4,7 @@ import { Canvas, Circle, Line, IText, Object, loadSVGFromURL, util, PencilBrush 
 import { AppShell } from '../shell.js'
 import Rect from './../symbols/rectangle.js'
 import state from '../state.js'
+import './../contextmenu.js'
 // import 'fabric-history';
 
 declare type x = number
@@ -26,6 +27,8 @@ export class DrawField extends LitElement {
 
   @property({ type: Number })
   gridSize: number
+
+  @query('context-menu') contextMenu
 
   drawing: boolean
 
@@ -173,7 +176,21 @@ export class DrawField extends LitElement {
     this.#canvas.on('mouse:move', this._mousemove.bind(this))
     this.renderRoot.addEventListener('drop', this._drop.bind(this))
 
+    this.addEventListener('contextmenu', this.#contextmenu)
+
     // this.#canvas
+  }
+
+  #contextmenu = (event) => {
+    const object = this.canvas.getActiveObject()
+    if (object) {
+      event.preventDefault()
+      const { top, left } = this.shadowRoot?.querySelector('canvas')?.getBoundingClientRect()
+      // const { width } = this.contextMenu.getBoundingClientRect()
+      this.contextMenu.style.top = `${object.top + top}px`
+      this.contextMenu.style.left = `${object.left + left}px`
+      this.contextMenu.open = true
+    }
   }
 
   _dblclick() {
@@ -440,7 +457,16 @@ export class DrawField extends LitElement {
           background-image: url('./assets/grid-${this.gridSize}.png');
         }
       </style>
-
+      <context-menu>
+        <custom-list-item
+          type="menu"
+          action="add-to-catalog">
+          <custom-icon
+            slot="start"
+            icon="add"></custom-icon>
+          add
+        </custom-list-item>
+      </context-menu>
       <div class="shadow"></div>
 
       <canvas></canvas>`

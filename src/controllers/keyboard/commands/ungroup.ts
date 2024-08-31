@@ -7,43 +7,75 @@ export const isUngroup = ({ metaKey, key, ctrlKey }: KeyboardEvent): boolean =>
 
 const loop = async (items: Group['_objects'], { top, left }) => {
   for (const item of items) {
-    if (item instanceof ActiveSelection) {
-      await loop(item.getObjects(), { top, left })
-    } else if (item instanceof Group) {
-      const group = new Group(item._objects)
-      group.dirty = true
-      canvas.add(group)
-    } else {
-      let object = item.toObject()
-      console.log(object.type)
+    console.log({ isGroup: item instanceof Group })
+    console.log(item.type)
 
-      if (object.type === 'Rect') object = await Rect.fromObject(object)
-      if (object.type === 'Circle') object = await Circle.fromObject(object)
-      if (object.type === 'Line') object = await Line.fromObject(object)
-      if (object.type === 'Path') object = await Path.fromObject(object)
-      if (object.type === 'Text') object = await FabricText.fromObject(object)
-      if (object.type === 'Textbox') object = await Textbox.fromObject(object)
-      if (object.type === 'Image') object = await FabricImage.fromObject(object)
-      if (object.type === 'Ellipse') object = await Ellipse.fromObject(object)
+    // if (item instanceof ActiveSelection) {
+    //   await loop(item.getObjects(), { top, left })
+    //   await canvas.remove(item)
+    // } else if (item instanceof Group) {
+    //   await loop(item.getObjects(), { top, left })
+    //   await canvas.remove(item)
+    // } else {
+    let object
+    if (item.type !== 'group') object = item.toObject()
+    switch (item.type) {
+      case 'rect':
+        object = await Rect.fromObject(object)
+        break
+      case 'circle':
+        object = await Circle.fromObject(object)
+        break
+      case 'line':
+        object = await Line.fromObject(object)
+        break
+      case 'path':
+        object = await Path.fromObject(object)
+        break
+      case 'text':
+        object = await FabricText.fromObject(object)
+        break
+      case 'textbox':
+        object = await Textbox.fromObject(object)
+        break
+      case 'image':
+        object = await FabricImage.fromObject(object)
+        break
+      case 'ellipse':
+        object = await Ellipse.fromObject(object)
+        break
+      case 'group':
+        // item.group = undefined
+        // await loop(item.getObjects(), { top, left })
 
+        canvas.remove(item)
+        item.set({ left: left + item.left, top: top + item.top })
+        canvas.add(await item.clone())
+        break
+      default:
+        alert(`encountered unsupported type ${item.type}`)
+        break
+    }
+    if (object) {
       object.strokeWidth = 1
       object.top += top
       object.left += left
-      canvas.remove(item)
-      console.log('rem')
-
+      canvas.requestRenderAll()
       canvas.add(object)
     }
+
+    // }
   }
+  console.log('done')
+
+  canvas.discardActiveObject()
 }
 
 export const ungroup = async () => {
   canvas.shouldRender = true
   const object = getActiveObject() as Group
-  canvas.discardActiveObject()
-  // canvas.remove(object)
+  canvas.remove(object)
   // canvas.requestRenderAll()
-  console.log(object)
 
   if (!object) {
     return
@@ -56,4 +88,6 @@ export const ungroup = async () => {
     top: object.top + object.width / 2,
     left: object.left + object.height / 2
   })
+
+  // canvas.remove(object)
 }

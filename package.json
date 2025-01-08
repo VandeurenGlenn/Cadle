@@ -22,7 +22,7 @@
     "@vandeurenglenn/lit-elements": "^0.3.35",
     "custom-pages": "^0.12.1",
     "custom-tabs": "^0.13.1",
-    "fabric": "^6.0.0-beta15",
+    "fabric": "^6.0.0",
     "fabric-history": "^2.0.0",
     "idb-keyval": "^6.2.1",
     "jspdf": "^2.5.1",

@@ -57,7 +57,7 @@ const loop = async (items: Group['_objects'], { top, left }) => {
         break
     }
     if (object) {
-      object.strokeWidth = 1
+      // object.strokeWidth = 1
       object.top += top
       object.left += left
       canvas.requestRenderAll()

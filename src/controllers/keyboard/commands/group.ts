@@ -8,7 +8,7 @@ export const isGroup = ({ metaKey, key, ctrlKey }: KeyboardEvent) =>
 export const group = async () => {
   let items = getActiveObjects()
   canvas.discardActiveObject()
-  const { left, top } = items[0].group
+  let { left, top } = items[0]?.group ?? items[0]
 
   for (const item of items) {
     field.canvas.remove(item)

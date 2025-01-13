@@ -7,11 +7,26 @@ import '@material/web/field/outlined-field.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
 import { MdOutlinedTextField } from '@material/web/textfield/outlined-text-field.js'
+import { create } from '../api/project.js'
+import { ProjectInput } from '../types.js'
 
 @customElement('create-project-field')
 export class CreateProjectField extends LitElement {
-  @query('[label="Project name"]')
-  nameInput: MdOutlinedTextField
+  @query('[label="Project name"]') nameInput: MdOutlinedTextField
+
+  @query('[label="Page name"]') pageNameInput: MdOutlinedTextField
+
+  @query('[label="Name"]') installerNameInput: MdOutlinedTextField
+
+  @query('[label="Company"]') installerCompanyInput: MdOutlinedTextField
+
+  @query('[label="Street"]') streetInput: MdOutlinedTextField
+
+  @query('[label="HouseNumber"]') houseNumberInput: MdOutlinedTextField
+
+  @query('[label="Postalcode"]') postalCodeInput: MdOutlinedTextField
+
+  @query('[label="City"]') cityInput: MdOutlinedTextField
 
   static styles = css`
     :host {
@@ -40,6 +55,27 @@ export class CreateProjectField extends LitElement {
       --flex-display-max-width: 507px;
     }
   `
+
+  create = () => {
+    const project: ProjectInput = {
+      name: this.nameInput.value,
+      installer: {
+        name: this.installerNameInput.value,
+        company: this.installerCompanyInput.value
+      },
+      installation: {
+        address: {
+          street: this.streetInput.value,
+          houseNumber: this.houseNumberInput.value,
+          postalCode: this.postalCodeInput.value,
+          city: this.cityInput.value
+        }
+      }
+    }
+
+    console.log(project)
+    create(project as ProjectInput, this.pageNameInput.value)
+  }
   protected render() {
     return html`
       <flex-container>
@@ -93,7 +129,7 @@ export class CreateProjectField extends LitElement {
           <flex-row>
             <md-outlined-button @click=${() => history.back()}> cancel </md-outlined-button>
             <flex-it></flex-it>
-            <md-filled-button @click=${() => cadleShell.createProject(this.nameInput.value)}> create </md-filled-button>
+            <md-filled-button @click=${() => this.create()}> create </md-filled-button>
           </flex-row>
         </summary>
       </flex-container>

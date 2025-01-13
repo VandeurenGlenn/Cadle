@@ -183,7 +183,12 @@ export class CadleActions extends LitElement {
     {
       title: 'draw wall',
       icon: 'polyline',
-      action: () => (globalThis.cadleShell.action = 'draw-wall'),
+      action: () => (globalThis.cadleShell.action = 'draw-wall')
+    },
+    {
+      title: 'draw window',
+      icon: 'window',
+      action: () => (globalThis.cadleShell.action = 'draw-window'),
       seperates: true
     },
     {

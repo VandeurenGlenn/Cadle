@@ -177,17 +177,17 @@ export class ProjectElement extends LitElement {
   ]
 
   get #projectTemplate() {
-    return this.project.pages.map(
-      (item) => html`
+    return Object.entries(this.project.pages).map(
+      ([key, project]) => html`
         <custom-drawer-item
-          .headline=${item.name}
-          data-project=${item.name}
+          .headline=${project.name}
+          data-project=${key}
           @click=${async (event) => {
             await cadleShell.savePage()
-            cadleShell.loadPage(item.name)
+            cadleShell.loadPage(project.name)
             location.hash = '#!/draw'
           }}
-          >${item.name}</custom-drawer-item
+          >${project.name}</custom-drawer-item
         >
       `
     )
@@ -195,7 +195,7 @@ export class ProjectElement extends LitElement {
 
   render() {
     return html`
-      <custom-selector> ${this.project?.pages?.length > 0 ? this.#projectTemplate : ''} </custom-selector>
+      <custom-selector> ${this.project?.pages ? this.#projectTemplate : ''} </custom-selector>
 
       <flex-row
         class="input-container"

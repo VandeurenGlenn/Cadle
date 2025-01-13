@@ -26,4 +26,4 @@ export interface Project extends ProjectInput {
   }
 }
 
-export type Projects = { [uuid: UUID]: Project }
+export type Projects = { [uuid: UUID]: string }

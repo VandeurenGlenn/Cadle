@@ -32,7 +32,8 @@ export default [
       './src/fields/projects.ts',
       './src/fields/draw.ts',
       './src/fields/settings.ts',
-      './src/fields/create-project.ts'
+      './src/fields/create-project.ts',
+      './node_modules/@leofcoin/storage/exports/browser-store.js'
     ],
     external: ['./symbols/manifest.js', './elements/symbols/manifest.js'],
     output: [

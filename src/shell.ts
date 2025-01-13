@@ -1,5 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
+
+import '@material/web/dialog/dialog.js'
 import '@material/web/button/filled-tonal-button.js'
 import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
@@ -12,7 +14,6 @@ import './elements/panes/object-pane.js'
 import { provide } from '@lit/context'
 import { projectsContext } from './context/projects.js'
 import { Catalog } from './context/catalog.js'
-import '@material/web/dialog/dialog.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -28,8 +29,9 @@ import './elements/actions/project-actions.js'
 import '@vandeurenglenn/lit-elements/tabs.js'
 import '@vandeurenglenn/lit-elements/tab.js'
 import { Project } from './types.js'
-import { projectStore } from './api/project.js'
+import { create, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { randomUUID } from 'crypto'
+import { DrawField } from './fields/draw.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -61,7 +63,7 @@ export class AppShell extends LitElement {
   projectPane
 
   @query('draw-field')
-  field
+  field: DrawField
 
   @query('custom-pages')
   pages
@@ -76,6 +78,8 @@ export class AppShell extends LitElement {
   freeDraw: boolean = false
 
   _action
+
+  projectKey: `'${string}-${string}-${string}-${string}-${string}'`
 
   set action(value) {
     if (value) this.field.canvas.defaultCursor = 'crosshair'
@@ -151,20 +155,23 @@ export class AppShell extends LitElement {
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     // const entries = await this.projectStore.entries()
-    const projects = []
 
     // for (const [key, value] of entries) {
     //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
     // }
 
     const decoder = new TextDecoder()
-    const keys = await this.projectStore.keys()
-
-    for (const key of keys) {
-      projects.push(typeof key === 'string' ? key : decoder.decode(key))
+    try {
+      const projects = await getProjects()
+      this.projects = projects
+    } catch (error) {
+      console.error(error)
+      this.projects = []
     }
 
-    this.projects = projects
+    // for (const key of keys) {
+    //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
+    // }
 
     await Promise.all([
       import('./elements/actions/actions.js'),
@@ -174,16 +181,14 @@ export class AppShell extends LitElement {
     ])
 
     // @ts-ignore
-    this.catalog = (await import('./symbols/manifest.js')).default
+    this.catalog = (await import('/symbols/manifest.js')).default
 
     await this.requestUpdate('projects')
 
-    addEventListener('beforeprint', this.#beforePrint)
-    addEventListener('afterprint', this.#afterPrint)
+    // addEventListener('beforeprint', this.#beforePrint)
+    // addEventListener('afterprint', this.#afterPrint)
 
     await this.updateComplete
-
-    this.dialog.addEventListener('close', this.#dialogAction)
 
     onhashchange = this.#onhashchange.bind(this)
     this.#onhashchange()
@@ -195,6 +200,10 @@ export class AppShell extends LitElement {
     //   const target = this.shadowRoot.querySelector('[open]')
     //   if (target) target.open = false
     // })
+    await this.dialog.updateComplete
+    console.log(this.dialog)
+
+    this.dialog.addEventListener('close', this.#dialogAction)
   }
 
   #dragover(event) {
@@ -273,6 +282,10 @@ export class AppShell extends LitElement {
     console.log(event.returnValue)
 
     const action: dialogAction = this.dialog.returnValue as dialogAction
+    const projectKey = this.dialog.dataset?.key
+
+    console.log(action)
+
     if (action === 'confirm-input') {
       const value = this.dialog.querySelector('md-filled-text-field').value
       state.text.current = value
@@ -298,48 +311,31 @@ export class AppShell extends LitElement {
     }
 
     if (action === 'open-project') {
-      await this.savePage()
-      this.projectName = this.dialog.querySelector('md-filled-text-field').value
-      console.log(this.projectName)
+      console.log(projectKey)
 
-      this.project = await this.projectStore.get(new TextEncoder().encode(this.projectName))
-      this.loadPage(this.project.pages[0]?.name)
+      await this.savePage()
+
+      this.project = await getProjectData(projectKey)
+      this.projectKey = projectKey
+      console.log(this.project)
+      const keys = Object.keys(this.project.pages)
+      this.loadPage(keys[0])
       location.hash = '#!/draw'
       this.projectPane.select('project')
     }
   }
 
-  async createProject() {
+  async loadProject(projectKey, projectName) {
+    this.dialog.addEventListener('close', this.#dialogAction)
+    console.log(projectKey, projectName)
+
+    cadleShell.dialog.dataset.key = projectKey
+
     cadleShell.dialog.innerHTML = `
-
-      <form id="form" slot="content" method="dialog">
-        <md-filled-text-field
-          label="Project name"
-          dialogFocus>
-        </md-filled-text-field>
-      </form>
-
-      <flex-row slot="actions">
-        <md-filled-button form="form" value="create-project">
-          create
-        </md-filled-button>
-      </flex-row>
-    `
-
-    cadleShell.dialog.open = true
-  }
-
-  async loadProject(projectKey) {
-    cadleShell.dialog.innerHTML = `
-      <form id="load" slot="content" method="dialog">
+      <form id="load" slot="content" method="dialog">  
         <flex-column>
-          <p>Are you sure you want to open ${projectKey}?</p>
+          <p>Are you sure you want to open ${projectName}?</p>
           <small>make sure you saved your open project</small>
-          <md-filled-text-field
-            label="Project name"
-            value="${projectKey}"
-            dialogFocus>
-          </md-filled-text-field>
         </flex-column>
       </form>
 
@@ -360,7 +356,14 @@ export class AppShell extends LitElement {
   }
 
   async toPNG() {
-    return this.field.canvas.toDataURL({ multiplier: 1, quality: 100, enableRetinaScaling: true })
+    return this.field.canvas.toDataURL({
+      multiplier: 1,
+      quality: 100,
+      format: 'png',
+      width: 1123,
+      height: 794,
+      enableRetinaScaling: true
+    })
   }
 
   async downloadAsPNG(name) {
@@ -378,18 +381,20 @@ export class AppShell extends LitElement {
 
   async savePage() {
     if (this.loadedPage) {
-      const pageToSave = this.project.pages.filter((page) => page.name === this.loadedPage)[0]
-      const pageIndex = this.project.pages.indexOf(pageToSave)
-      if (this.project.pages[pageIndex]?.schema)
-        this.project.pages[pageIndex].schema = this.renderRoot.querySelector('draw-field').toJSON()
+      this.project.pages[this.loadedPage].schema = this.renderRoot.querySelector('draw-field').toJSON()
+      console.log(this.project)
+      console.log(this.projectKey)
+
+      await setProjectData(this.projectKey, this.project)
     }
   }
 
-  async loadPage(name: string) {
-    this.loadedPage = name
-    const page = this.project.pages.filter((page) => page.name === name)[0]
+  async loadPage(key: string) {
+    this.loadedPage = key
+    const page = this.project.pages[key]
+    console.log(page, key)
 
-    await this.renderRoot.querySelector('draw-field').fromJSON(page.schema)
+    await this.renderRoot.querySelector('draw-field').fromJSON(page.schema || {})
   }
 
   undo() {
@@ -494,7 +499,7 @@ export class AppShell extends LitElement {
 
   render() {
     return html`
-      <md-dialog> </md-dialog>
+      <md-dialog></md-dialog>
 
       <custom-icon-set>
         <template>
@@ -542,6 +547,27 @@ export class AppShell extends LitElement {
           <span name="output">@symbol-output</span>
           <span name="format_size">@symbol-format_size</span>
           <span name="open_with">@symbol-open_with</span>
+          <span name="format_bold">@symbol-format_bold</span>
+          <span name="format_italic">@symbol-format_italic</span>
+          <span name="format_underlined">@symbol-format_underlined</span>
+          <span name="format_align_center">@symbol-format_align_center</span>
+          <span name="format_align_justify">@symbol-format_align_justify</span>
+          <span name="format_align_left">@symbol-format_align_left</span>
+          <span name="format_align_right">@symbol-format_align_right</span>
+          <span name="format_indent_increase">@symbol-format_indent_increase</span>
+          <span name="format_indent_decrease">@symbol-format_indent_decrease</span>
+          <span name="format_list_bulleted">@symbol-format_list_bulleted</span>
+          <span name="format_list_numbered">@symbol-format_list_numbered</span>
+          <span name="format_quote">@symbol-format_quote</span>
+          <span name="format_strikethrough">@symbol-format_strikethrough</span>
+          <span name="format_clear">@symbol-format_clear</span>
+          <span name="format_color_text">@symbol-format_color_text</span>
+          <span name="format_paint">@symbol-format_paint</span>
+          <span name="format_shapes">@symbol-format_shapes</span>
+          <span name="format_size">@symbol-format_size</span>
+          <span name="format_textdirection_l_to_r">@symbol-format_textdirection_l_to_r</span>
+          <span name="format_textdirection_r_to_l">@symbol-format_textdirection_r_to_l</span>
+          <span name="window">@symbol-window</span>
         </template>
       </custom-icon-set>
 

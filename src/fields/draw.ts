@@ -5,6 +5,10 @@ import { AppShell } from '../shell.js'
 import Rect from './../symbols/rectangle.js'
 import state from '../state.js'
 import './../contextmenu.js'
+import { set } from 'idb-keyval'
+import { version } from 'os'
+import CadleWindow from '../symbols/window.js'
+import CadleWall from './../symbols/wall.js'
 // import 'fabric-history';
 
 declare type x = number
@@ -81,6 +85,21 @@ export class DrawField extends LitElement {
     return Math.round(value / this.gridSize) * this.gridSize
   }
 
+  updateMeasures(evt) {
+    var obj = evt.target
+    if (obj.type != 'group') {
+      return
+    }
+    var width = obj.getWidth()
+    var height = obj.getWidth()
+    obj._objects[1].text = width.toFixed(2) + 'px'
+    obj._objects[1].scaleX = 1 / obj.scaleX
+    obj._objects[1].scaleY = 1 / obj.scaleY
+    obj._objects[2].text = height.toFixed(2) + 'px'
+    obj._objects[2].scaleX = 1 / obj.scaleY
+    obj._objects[2].scaleY = 1 / obj.scaleX
+  }
+
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     await this.updateComplete
@@ -117,6 +136,7 @@ export class DrawField extends LitElement {
     })
 
     this.#canvas.on('object:scaling', (options) => {
+      return
       console.log('scaling')
 
       var target = options.target
@@ -132,6 +152,8 @@ export class DrawField extends LitElement {
       var ty = (target.top - py + target.height * target.scaleY) / target.height
 
       var a = {}
+
+      console.log(target.__corner)
 
       // Cannot get snap to work on some corners :-(
       switch (target.__corner) {
@@ -303,7 +325,7 @@ export class DrawField extends LitElement {
               height: pointer.y - this.#startPoints.top
             })
           } else if (this.action === 'draw-wall') {
-            this._current = new Rect({
+            this._current = new CadleWall({
               ...sharedDrawOptions,
               left: this.#startPoints.left,
               top: this.#startPoints.top,
@@ -311,6 +333,16 @@ export class DrawField extends LitElement {
               height: pointer.y - this.#startPoints.top,
               strokeWidth: 0,
               fill: cadleShell._currentColor
+            })
+          } else if (this.action === 'draw-window') {
+            this._current = new CadleWindow({
+              ...sharedDrawOptions,
+              left: this.#startPoints.left,
+              top: this.#startPoints.top,
+              width: pointer.x - this.#startPoints.left,
+              height: pointer.y - this.#startPoints.top,
+              strokeWidth: 1,
+              strokeDashArray: [5, 5]
             })
           }
           if (this.action !== 'draw') this.canvas.add(this._current)
@@ -336,7 +368,17 @@ export class DrawField extends LitElement {
     } else if (this.action === 'draw-circle') {
       this._current.set({ radius: Math.abs(this.#startPoints.left - currentPoints.left) })
       // this._current.set({ radius: Math.abs(this.#startPoints.top - pointer.y) });
-    } else if (this.action === 'draw-square' || this.action === 'draw-wall') {
+    } else if (this.action === 'draw-square') {
+      if (this.#startPoints.left > currentPoints.left) {
+        this._current.set({ left: Math.abs(currentPoints.left) })
+      }
+      if (this.#startPoints.top > currentPoints.top) {
+        this._current.set({ top: Math.abs(currentPoints.top) })
+      }
+
+      this._current.set({ width: Math.abs(this.#startPoints.left - currentPoints.left) })
+      this._current.set({ height: Math.abs(this.#startPoints.top - currentPoints.top) })
+    } else if (this.action === 'draw-window') {
       if (this.#startPoints.left > currentPoints.left) {
         this._current.set({ left: Math.abs(currentPoints.left) })
       }
@@ -356,6 +398,18 @@ export class DrawField extends LitElement {
         endAngle: Math.abs((this.#startPoints.left - currentPoints.left) / (Math.PI / 5))
       })
       // this._current.set({ radius: Math.abs(this.#startPoints.top - currentPoints.top) });
+    } else if (this.action === 'draw-wall') {
+      if (this.#startPoints.left > currentPoints.left) {
+        this._current.set({ left: Math.abs(currentPoints.left) })
+      }
+      if (this.#startPoints.top > currentPoints.top) {
+        this._current.set({ top: Math.abs(currentPoints.top) })
+      }
+
+      this._current.set({
+        width: Math.abs(this.#startPoints.left - currentPoints.left),
+        height: Math.abs(this.#startPoints.top - currentPoints.top)
+      })
     } else if (this.action === 'draw-symbol') {
       this._current.set({ left: Math.abs(currentPoints.left) })
       this._current.set({ top: Math.abs(currentPoints.top) })
@@ -363,8 +417,6 @@ export class DrawField extends LitElement {
       this._current.set({ left: Math.abs(currentPoints.left) })
       this._current.set({ top: Math.abs(currentPoints.top) })
     }
-    console.log('render')
-
     this.canvas.renderAll()
   }
 
@@ -422,11 +474,43 @@ export class DrawField extends LitElement {
   }
 
   toJSON() {
-    return this.#canvas.toJSON()
+    const json = this.#canvas.toJSON()
+    return json
   }
 
-  async fromJSON(json) {
-    await this.#canvas.loadFromJSON(json)
+  async fromJSON(json: { objects: Object[]; version: string }) {
+    console.log({ json })
+    if (!json.objects) return
+    const objects = []
+
+    const specials = []
+
+    for (const obj of json.objects) {
+      if (
+        obj.type === 'CadleWall' ||
+        obj.type === 'CadleWidth' ||
+        obj.type === 'CadleDepth' ||
+        obj.type === 'CadleWindow'
+      ) {
+        specials.push(obj)
+      } else {
+        objects.push(obj)
+      }
+    }
+
+    await this.#canvas.loadFromJSON({ objects, version: json.version })
+
+    for (const obj of specials) {
+      if (obj.type === 'CadleWall') {
+        delete obj.type
+        const wall = new CadleWall(obj)
+        this.#canvas.add(wall)
+      } else if (obj.type === 'CadleWindow') {
+        delete obj.type
+        const width = new CadleWindow(obj)
+        this.#canvas.add(width)
+      }
+    }
 
     this.#canvas.renderAll()
   }

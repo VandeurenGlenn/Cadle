@@ -12,7 +12,8 @@ import '@vandeurenglenn/lit-elements/icon-button.js'
 
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lit-elements/dropdown.js'
-import { del, upload } from '../api/project.js'
+import { del, getProjects, upload } from '../api/project.js'
+import { get } from 'http'
 
 @customElement('projects-field')
 export class ProjectsField extends LitElement {
@@ -96,18 +97,20 @@ export class ProjectsField extends LitElement {
     this.shadowRoot?.addEventListener('click', this._click.bind(this))
   }
 
-  _loadProject(projectName) {
-    cadleShell.loadProject(projectName)
+  _loadProject(key, projectName) {
+    cadleShell.loadProject(key, projectName)
   }
 
   _click(event: Event) {
     console.log(event.target)
 
     const action = event.target.getAttribute('data-action')
+
     if (this[`_${action}`]) {
       const dropdown = this.shadowRoot?.querySelector('custom-dropdown')
       if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
       const id = event.target.getAttribute('data-id')
+      const name = event.target.getAttribute('data-name')
       console.log({ id })
 
       if (action === 'showContextMenu') {
@@ -126,7 +129,7 @@ export class ProjectsField extends LitElement {
           else this._currentSelected = id
         }
       } else {
-        this[`_${action}`](this._currentSelected ?? id)
+        this[`_${action}`](this._currentSelected ?? id, name)
       }
     }
   }
@@ -135,14 +138,13 @@ export class ProjectsField extends LitElement {
     await del(id)
     const projects = []
 
-    // for (const [key, value] of entries) {
-    //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
-    // }
+    for (const [key, value] of await getProjects()) {
+      projects.push([key, value])
+    }
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown')
 
-    const decoder = new TextDecoder()
-    const keys = await cadleShell.projectStore.keys()
-
-    // cadleShell.projects = await cadleShell.projectStore.entries()
+    cadleShell.projects = projects
+    dropdown.shown = false
   }
 
   __showContextMenu(projectName) {
@@ -158,16 +160,15 @@ export class ProjectsField extends LitElement {
   }
 
   get #projectsTemplate() {
-    console.log(this.projects)
-
     return html`${this.projects.map(
-        (item) => html` <custom-list-item
-          data-id=${item}
+        ([key, name]) => html` <custom-list-item
+          data-id=${key}
+          data-name=${name}
           data-action="loadProject">
-          <span>${item}</span>
+          <span>${name}</span>
           <custom-icon-button
             icon="more_vert"
-            data-id=${item}
+            data-id=${key}
             data-action="showContextMenu"
             slot="end"></custom-icon-button>
         </custom-list-item>`

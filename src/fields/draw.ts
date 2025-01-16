@@ -136,7 +136,6 @@ export class DrawField extends LitElement {
     })
 
     this.#canvas.on('object:scaling', (options) => {
-      return
       console.log('scaling')
 
       var target = options.target
@@ -271,6 +270,7 @@ export class DrawField extends LitElement {
             fill: state.styling.fill,
             stroke: state.styling.stroke
           }
+
           if (this.action === 'draw') {
             // this._current = new PencilBrush(this.#canvas);
             // this._current.color = '#555'
@@ -351,13 +351,7 @@ export class DrawField extends LitElement {
     }
   }
 
-  _mousemove(e) {
-    let pointer = this.#canvas.getScenePoint(e)
-    state.mouse.position = { x: pointer.x, y: pointer.y }
-    if (e.target) return
-    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
-
-    if (!this.drawing) return
+  updateObjects(currentPoints) {
     this.canvas.selection = false
     // const pointer = this.canvas.getPointer(e)
     if (this.action === 'draw') {
@@ -417,6 +411,17 @@ export class DrawField extends LitElement {
       this._current.set({ left: Math.abs(currentPoints.left) })
       this._current.set({ top: Math.abs(currentPoints.top) })
     }
+  }
+
+  _mousemove(e) {
+    let pointer = this.#canvas.getScenePoint(e)
+    state.mouse.position = { x: pointer.x, y: pointer.y }
+    if (e.target) return
+    if (!this.drawing) return
+    if (!this._current) return
+
+    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+    this.updateObjects(currentPoints)
     this.canvas.renderAll()
   }
 
@@ -427,12 +432,7 @@ export class DrawField extends LitElement {
     if (!this._current) return
 
     const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
-    if (this.action === 'draw-symbol') {
-      this.drawing = true
-      this._current.set({ left: Math.abs(currentPoints.left) })
-      this._current.set({ top: Math.abs(currentPoints.top) })
-      this.canvas.add(this._current)
-    } else if (this.action === 'draw-text') {
+    if (this.action === 'draw-symbol' || this.action === 'draw-text') {
       this.drawing = true
       this._current.set({ left: Math.abs(currentPoints.left) })
       this._current.set({ top: Math.abs(currentPoints.top) })
@@ -443,12 +443,20 @@ export class DrawField extends LitElement {
 
   _mouseleave(e) {
     console.log('leave')
+    const pointer = this.#canvas.getScenePoint(e)
+    state.mouse.position = { x: pointer.x, y: pointer.y }
     this.drawing = false
+    if (!this._current) return
+    if (this._current) this.canvas.remove(this._current)
     if (this.action === 'draw-symbol') {
-      this.canvas.remove(this._current)
     } else if (this.action === 'draw-text') {
       this.canvas.remove(this._current)
+    } else {
+      const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+      this.updateObjects(currentPoints)
+      this._current = undefined
     }
+
     this.canvas.renderAll()
   }
 

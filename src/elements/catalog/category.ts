@@ -2,7 +2,6 @@ import { LitElement, html, css, PropertyDeclarations, PropertyValueMap } from 'l
 import { customElement, property } from 'lit/decorators.js'
 import './item.js'
 import { map } from 'lit/directives/map.js'
-import '@vandeurenglenn/lit-elements/icon-font.js'
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -1,8 +1,8 @@
 import { LitElement, html, css } from 'lit'
 import { map } from 'lit/directives/map.js'
 import { customElement, property } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/button.js'
-import '@vandeurenglenn/lit-elements/selector.js'
+import '@vandeurenglenn/lite-elements/button.js'
+import '@vandeurenglenn/lite-elements/selector.js'
 import '../catalog/catalog.js'
 import '../project/project.js'
 

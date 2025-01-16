@@ -6,7 +6,7 @@ import '@material/web/button/filled-tonal-button.js'
 import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
-import '@vandeurenglenn/lit-elements/pages.js'
+import '@vandeurenglenn/lite-elements/pages.js'
 import './fields/draw.js'
 import './elements/save-field.js'
 import './elements/panes/project-pane.js'
@@ -19,15 +19,15 @@ import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit/context'
-import '@vandeurenglenn/lit-elements/drawer-layout.js'
-import '@vandeurenglenn/lit-elements/theme.js'
-import '@vandeurenglenn/lit-elements/icon-set.js'
-import '@vandeurenglenn/lit-elements/icon.js'
+import '@vandeurenglenn/lite-elements/drawer-layout.js'
+import '@vandeurenglenn/lite-elements/theme.js'
+import '@vandeurenglenn/lite-elements/icon-set.js'
+import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
 import './elements/actions/project-actions.js'
-import '@vandeurenglenn/lit-elements/tabs.js'
-import '@vandeurenglenn/lit-elements/tab.js'
+import '@vandeurenglenn/lite-elements/tabs.js'
+import '@vandeurenglenn/lite-elements/tab.js'
 import { Project } from './types.js'
 import { create, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { randomUUID } from 'crypto'
@@ -76,6 +76,22 @@ export class AppShell extends LitElement {
 
   @property({ type: Boolean })
   freeDraw: boolean = false
+
+  _showMeasurements = false
+
+  set showMeasurements(value) {
+    this._showMeasurements = value
+    const objects = this.field.canvas._objects
+    for (const object of objects) {
+      if (object.type === 'CadleWall' || object.type === 'CadleWindow') {
+        object.set('showMeasurements', value)
+      }
+    }
+  }
+
+  get showMeasurements() {
+    return this._showMeasurements
+  }
 
   _action
 
@@ -568,6 +584,9 @@ export class AppShell extends LitElement {
           <span name="format_textdirection_l_to_r">@symbol-format_textdirection_l_to_r</span>
           <span name="format_textdirection_r_to_l">@symbol-format_textdirection_r_to_l</span>
           <span name="window">@symbol-window</span>
+          <span name="width">@symbol-width</span>
+          <span name="height">@symbol-height</span>
+          <span name="measuring_tape">@symbol-measuring_tape</span>
         </template>
       </custom-icon-set>
 

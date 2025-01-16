@@ -1,9 +1,9 @@
 import { LitElement, html, css, render } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import '@material/web/button/text-button.js'
-import '@vandeurenglenn/lit-elements/dropdown.js'
-import '@vandeurenglenn/lit-elements/menu.js'
-import { CustomDropdown } from '@vandeurenglenn/lit-elements/dropdown.js'
+import '@vandeurenglenn/lite-elements/dropdown.js'
+import '@vandeurenglenn/lite-elements/menu.js'
+import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { download, save, share, upload, create } from '../../api/project.js'
 import { map } from 'lit/directives/map.js'
 

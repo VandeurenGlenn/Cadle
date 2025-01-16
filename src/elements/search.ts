@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/elevation.js'
+import '@vandeurenglenn/lite-elements/elevation.js'
 
 declare global {
   interface HTMLElementTagNameMap {

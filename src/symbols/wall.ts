@@ -37,7 +37,8 @@ export default class CadleWall extends Rect {
       left: this.left,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black'
+      fill: 'black',
+      visible: cadleShell.showMeasurements
     })
   }
 
@@ -46,7 +47,8 @@ export default class CadleWall extends Rect {
       left: this.left + this.width / 2,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black'
+      fill: 'black',
+      visible: cadleShell.showMeasurements
     })
   }
 
@@ -68,18 +70,19 @@ export default class CadleWall extends Rect {
   updateWidthText(key, value) {
     // if (!this.widthText) this.initWidthText()
     if (key === 'scaleX') this.scaleX = value
-
     if (this.isHorizontal) {
       this.widthText.set({
         top: this.top - 20,
         left: this.left + (this.width * this.scaleX) / 2 - this.widthText.width / 2,
-        text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100)
+        text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100),
+        visible: cadleShell.showMeasurements
       })
     } else {
       this.widthText.set({
         top: this.top + this.height / 2 - this.widthText.height / 2,
         left: this.left - this.widthText.width - 10,
-        text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100)
+        text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100),
+        visible: cadleShell.showMeasurements
       })
     }
   }
@@ -87,18 +90,19 @@ export default class CadleWall extends Rect {
   updateDepthText(key, value) {
     // if (!this.depthText) this.initDepthText()
     if (key === 'scaleY') this.scaleY = value
-
     if (this.isHorizontal) {
       this.depthText.set({
         top: this.top + (this.height * this.scaleY) / 2 - this.depthText.height / 2,
         left: this.left - this.depthText.width - 10,
-        text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100)
+        text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100),
+        visible: cadleShell.showMeasurements
       })
     } else {
       this.depthText.set({
         top: this.top - 20,
         left: this.left + (this.width * this.scaleX) / 2 - this.depthText.width / 2,
-        text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100)
+        text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100),
+        visible: cadleShell.showMeasurements
       })
     }
   }
@@ -130,12 +134,12 @@ export default class CadleWall extends Rect {
     return {
       ...super.toObject(),
       uuid: this.uuid,
-      type: 'CadleWall',
-      children: [
-        this.widthText.uuid
+      type: 'CadleWall'
+      // children: [
+      // this.widthText.uuid
 
-        // this.depthText.uuid
-      ]
+      // this.depthText.uuid
+      // ]
     }
   }
 }

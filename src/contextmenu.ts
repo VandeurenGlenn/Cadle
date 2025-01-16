@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/menu.js'
-import '@vandeurenglenn/lit-elements/dropdown.js'
+import '@vandeurenglenn/lite-elements/menu.js'
+import '@vandeurenglenn/lite-elements/dropdown.js'
 import { cp } from 'fs'
 
 @customElement('context-menu')

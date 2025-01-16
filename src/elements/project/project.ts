@@ -3,14 +3,15 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 import { consume } from '@lit/context'
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/filled-icon-button.js'
-import '@vandeurenglenn/lit-elements/drawer-item.js'
-import '@vandeurenglenn/lit-elements/selector.js'
-import '@vandeurenglenn/lit-elements/button.js'
-import '@vandeurenglenn/lit-elements/dropdown.js'
-import '@vandeurenglenn/lit-elements/list-item.js'
+import '@vandeurenglenn/lite-elements/drawer-item.js'
+import '@vandeurenglenn/lite-elements/selector.js'
+import '@vandeurenglenn/lite-elements/button.js'
+import '@vandeurenglenn/lite-elements/dropdown.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
 import './../list/item.js'
 import '../../contextmenu.js'
 import { Project } from '../../types.js'
+import { addPage, getProjectData } from '../../api/project.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -49,9 +50,10 @@ export class ProjectElement extends LitElement {
     const page: string = this.pageInput.value
     if (page.length > 0) {
       const project = cadleShell.project
-      project.pages.push({ name: page, schema: {}, creationTime: new Date().getTime() })
-      cadleShell.project = project
-      await cadleShell.save.bind(cadleShell)()
+      addPage(cadleShell.projectKey, page, {})
+      cadleShell.project = await getProjectData(cadleShell.projectKey)
+      this.project = cadleShell.project
+
       this.#cleanupListeners()
       this.pageInput.value = ''
     }
@@ -123,7 +125,7 @@ export class ProjectElement extends LitElement {
         if (page.name === this.clipboard?.dataset.project || page.name == menu.currentTarget.dataset.project) {
           if (action === 'paste') {
             this.clipboard = undefined
-            cadleShell.project.pages.push({ ...page, name: `${page.name} copy` })
+            addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
           } else {
             cadleShell.project.pages.splice(i, 1)
           }
@@ -184,7 +186,7 @@ export class ProjectElement extends LitElement {
           data-project=${key}
           @click=${async (event) => {
             await cadleShell.savePage()
-            cadleShell.loadPage(project.name)
+            cadleShell.loadPage(key)
             location.hash = '#!/draw'
           }}
           >${project.name}</custom-drawer-item

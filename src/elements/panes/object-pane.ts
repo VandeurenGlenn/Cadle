@@ -5,6 +5,8 @@ import './object/color.js'
 import './object/export.js'
 import './object/position.js'
 import './object/text.js'
+import '@vandeurenglenn/flex-elements/it.js'
+import '@vandeurenglenn/lite-elements/icon-button.js'
 
 @customElement('object-pane')
 export class ObjectPane extends LitElement {
@@ -50,9 +52,15 @@ export class ObjectPane extends LitElement {
   ]
 
   render() {
-    return html` <object-color></object-color>
+    return html`
+      <object-color></object-color>
       <object-text></object-text>
       <object-position></object-position>
-      <object-export></object-export>`
+      <object-export></object-export>
+
+      <custom-icon-button icon="measuring_tape" @click=${() =>
+        (cadleShell.showMeasurements = !cadleShell.showMeasurements)}></custom-icon-button>
+      </custom-icon-button>
+    `
   }
 }

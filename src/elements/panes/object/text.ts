@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/list-item.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
 
 @customElement('object-text')
 export class ObjectText extends LitElement {

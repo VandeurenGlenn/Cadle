@@ -1,7 +1,7 @@
 import { LitElement, html } from 'lit'
 import { customElement } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/toggle.js'
-import '@vandeurenglenn/lit-elements/icon.js'
+import '@vandeurenglenn/lite-elements/toggle.js'
+import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
 

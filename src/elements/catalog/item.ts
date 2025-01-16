@@ -72,7 +72,7 @@ export class CatalogItem extends LitElement {
     const svg = await loadSVGFromURL(this._image)
     // console.log(svg)
     svg.objects.forEach((obj) => {
-      obj.strokeWidth = 0.7
+      obj.strokeWidth = 1
     })
 
     const group = util.groupSVGElements(svg.objects)

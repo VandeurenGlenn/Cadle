@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { map } from 'lit/directives/map.js'
-import '@vandeurenglenn/lit-elements/divider.js'
+import '@vandeurenglenn/lite-elements/divider.js'
 
 @customElement('keyboard-shortcuts')
 export class KeyboardShortcuts extends LitElement {

@@ -36,25 +36,29 @@ export default class CadleWindow extends Rect {
       left: this.left,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black'
+      fill: 'black',
+      visible: cadleShell.showMeasurements
     })
   }
 
   updateWidthText(key, value) {
     if (!this.widthText) this.initWidthText()
     if (key === 'scaleX') this.scaleX = value
+    if (!cadleShell.showMeasurements) return
 
     if (this.isHorizontal) {
       this.widthText.set({
         top: this.top - 20,
         left: this.left + (this.width * this.scaleX) / 2 - this.widthText.width / 2,
-        text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100)
+        text: String(((this.width * this.scaleX) / 50) * 100),
+        visible: cadleShell.showMeasurements
       })
     } else {
       this.widthText.set({
+        visible: cadleShell.showMeasurements,
         top: this.top + this.height / 2 - this.widthText.height / 2,
         left: this.left - this.widthText.width - 10,
-        text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100)
+        text: String(((this.height * this.scaleY) / 50) * 100)
       })
     }
   }
@@ -85,8 +89,8 @@ export default class CadleWindow extends Rect {
     return {
       ...super.toObject(),
       uuid: this.uuid,
-      type: 'CadleWindow',
-      children: [this.widthText.uuid]
+      type: 'CadleWindow'
+      // children: [this.widthText.uuid]
     }
   }
 
@@ -94,8 +98,8 @@ export default class CadleWindow extends Rect {
     return {
       ...super.toObject(),
       uuid: this.uuid,
-      type: 'CadleWindow',
-      children: [this.widthText.uuid]
+      type: 'CadleWindow'
+      // children: [this.widthText.uuid]
     }
   }
 }

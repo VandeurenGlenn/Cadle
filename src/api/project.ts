@@ -50,6 +50,13 @@ export const create = async (project: ProjectInput, pageName) => {
   return
 }
 
+export const addPage = async (uuid: UUID, pageName: string, schema) => {
+  const project = await getProjectData(uuid)
+  const pageUuid = crypto.randomUUID() as UUID
+  project.pages[pageUuid] = { name: pageName, schema }
+  await setProjectData(uuid, project)
+}
+
 export const save = async () => {
   await cadleShell.savePage()
   console.log(cadleShell.project)

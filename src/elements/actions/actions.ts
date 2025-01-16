@@ -1,10 +1,10 @@
 import { LitElement, html, css } from 'lit'
 import { map } from 'lit/directives/map.js'
 import { customElement, property } from 'lit/decorators.js'
-import '@vandeurenglenn/lit-elements/icon.js'
-import '@vandeurenglenn/lit-elements/icon-button.js'
-import '@vandeurenglenn/lit-elements/toggle-button.js'
-import '@vandeurenglenn/lit-elements/list-item.js'
+import '@vandeurenglenn/lite-elements/icon.js'
+import '@vandeurenglenn/lite-elements/icon-button.js'
+import '@vandeurenglenn/lite-elements/toggle-button.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
 import { field, incrementLetter, incrementSocket, positionObject, shell } from '../../utils.js'
@@ -255,15 +255,12 @@ export class CadleActions extends LitElement {
         }
 
         return html`
-          <custom-button
+          <custom-icon-button
             @mouseup=${action}
             title=${title}
             data-menu=${menu}
-            .menu-position=${menuPosition}>
-            <custom-icon
-              slot="icon"
-              icon=${icon}></custom-icon>
-          </custom-button>
+            .menu-position=${menuPosition}
+            .icon=${icon}></custom-icon-button>
           ${seperates ? html`<flex-it></flex-it>` : ''}
         `
       })}

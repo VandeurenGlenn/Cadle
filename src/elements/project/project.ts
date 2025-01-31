@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit'
+import { LitElement, html, css, PropertyValues } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
 import { consume } from '@lit/context'
 import '@material/web/textfield/outlined-text-field.js'
@@ -11,7 +11,7 @@ import '@vandeurenglenn/lite-elements/list-item.js'
 import './../list/item.js'
 import '../../contextmenu.js'
 import { Project } from '../../types.js'
-import { addPage, getProjectData } from '../../api/project.js'
+import { addPage, getProjectData, setProjectData } from '../../api/project.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -26,11 +26,17 @@ export class ProjectElement extends LitElement {
   @state()
   project: Project
 
+  currentSelected: string
+
   @property()
   clipboard
 
   @query('.page-input')
   pageInput: HTMLInputElement
+
+  protected firstUpdated(_changedProperties: PropertyValues): void {
+    this.addEventListener('keydown', this.#keydown.bind(this))
+  }
 
   set addingPage(value: boolean) {
     if (value !== this.addingPage)
@@ -38,7 +44,6 @@ export class ProjectElement extends LitElement {
         this.pageInput.value = ''
         this.setAttribute('addingPage', '')
         this.pageInput.focus()
-        this.addEventListener('keydown', this.#keydown.bind(this))
       } else {
         this.removeAttribute('addingPage')
         this.handleInput()
@@ -53,25 +58,22 @@ export class ProjectElement extends LitElement {
       addPage(cadleShell.projectKey, page, {})
       cadleShell.project = await getProjectData(cadleShell.projectKey)
       this.project = cadleShell.project
-
-      this.#cleanupListeners()
       this.pageInput.value = ''
     }
   }
 
   async #keydown(event) {
+    console.log(event)
+
     if (event.key === 'Escape') {
       this.addingPage = false
+      this.shadowRoot.querySelector('context-menu').open = false
       this.renderRoot.querySelector('.add-page').selected = false
     } else if (event.key === 'Enter') {
       await this.handleInput()
       this.addingPage = false
       this.renderRoot.querySelector('.add-page').selected = false
     }
-  }
-
-  #cleanupListeners() {
-    this.removeEventListener('keydown', this.#keydown)
   }
 
   #showMenu = (event) => {
@@ -83,6 +85,10 @@ export class ProjectElement extends LitElement {
       event.preventDefault()
       const menu = this.renderRoot.querySelector('context-menu')
       paths[0].setAttribute('id', 'contextmenu-anchor')
+      console.log(paths[0])
+      console.log(paths)
+      console.log(paths[0].dataset.project)
+      this.currentSelected = paths[0].dataset.project
       menu.show({ clientY: event.clientY, target: paths[0] })
     }
   }
@@ -106,34 +112,28 @@ export class ProjectElement extends LitElement {
     menu.addEventListener('selected', this.#contextMenuItemSelected.bind(this))
   }
 
-  #contextMenuItemSelected({ detail }) {
+  #contextMenuItemSelected(event) {
+    const detail = event.detail
     const menu = this.renderRoot.querySelector('context-menu')
     const action = detail.getAttribute('action')
     console.log({ action })
+    console.log(event)
 
-    if (action === 'copy') {
-      this.clipboard = menu.currentTarget
+    this.clipboard = this.currentSelected
+    if (action === 'remove' || action === 'paste') {
+      const page = this.project.pages[this.clipboard]
+      if (action === 'paste') {
+        this.clipboard = undefined
+        addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
+      } else if (action === 'remove') {
+        delete this.project.pages[this.clipboard]
+        setProjectData(cadleShell.projectKey, this.project)
+      }
     }
 
     console.log({ clipboard: this.clipboard })
 
-    if (action === 'paste' || action === 'remove') {
-      let i = 0
-      for (const page of this.project.pages) {
-        console.log(page.name === this.clipboard ? this.clipboard.dataset.project : menu.currentTarget.dataset.project)
-
-        if (page.name === this.clipboard?.dataset.project || page.name == menu.currentTarget.dataset.project) {
-          if (action === 'paste') {
-            this.clipboard = undefined
-            addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
-          } else {
-            cadleShell.project.pages.splice(i, 1)
-          }
-        }
-        i += 1
-      }
-      this.requestUpdate()
-    }
+    this.requestUpdate()
   }
   static styles = [
     css`

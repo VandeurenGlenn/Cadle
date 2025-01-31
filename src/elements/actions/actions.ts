@@ -53,17 +53,17 @@ export class CadleActions extends LitElement {
     this.shown = false
   }
 
-  constructor() {
-    super()
+  firstUpdated() {
     this.addEventListener('mousedown', () => {
       const menu = this.renderRoot.querySelector('context-menu')
       if (menu.open) menu.open = false
     })
-    this.addEventListener('contextmenu', this.#showMenu)
+    this.shadowRoot.addEventListener('contextmenu', this.#showMenu)
   }
 
   #showMenu = (event) => {
     event.preventDefault()
+    console.log(event.composedPath())
 
     const target = event.composedPath()[0]
     console.log({ target })

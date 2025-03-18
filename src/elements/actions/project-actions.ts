@@ -3,6 +3,7 @@ import { customElement, property, query } from 'lit/decorators.js'
 import '@material/web/button/text-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/menu.js'
+import '@vandeurenglenn/lite-elements/icon.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { download, save, share, upload, create } from '../../api/project.js'
 import { map } from 'lit/directives/map.js'
@@ -194,7 +195,7 @@ export class ProjectActions extends LitElement {
             data-action=${action.action}
             tabindex=${i + 1}>
             <flex-row center>
-              <custom-icon icon=${action.icon}></custom-icon>
+              <custom-icon .icon=${action.icon}></custom-icon>
               <flex-it></flex-it>
               ${action.title}
             </flex-row>
@@ -214,7 +215,7 @@ export class ProjectActions extends LitElement {
             data-action=${action.action}
             tabindex=${i + 1}>
             <flex-row center>
-              <custom-icon icon=${action.icon}></custom-icon>
+              <custom-icon .icon=${action.icon}></custom-icon>
               <flex-it></flex-it>
               ${action.title}
             </flex-row>

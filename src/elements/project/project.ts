@@ -89,6 +89,8 @@ export class ProjectElement extends LitElement {
       console.log(paths)
       console.log(paths[0].dataset.project)
       this.currentSelected = paths[0].dataset.project
+      console.log({ currentSelected: this.currentSelected })
+
       menu.show({ clientY: event.clientY, target: paths[0] })
     }
   }
@@ -119,9 +121,12 @@ export class ProjectElement extends LitElement {
     console.log({ action })
     console.log(event)
 
-    this.clipboard = this.currentSelected
+    console.log({ clipboard: this.clipboard })
+
     if (action === 'remove' || action === 'paste') {
       const page = this.project.pages[this.clipboard]
+      console.log({ page })
+
       if (action === 'paste') {
         this.clipboard = undefined
         addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
@@ -129,6 +134,8 @@ export class ProjectElement extends LitElement {
         delete this.project.pages[this.clipboard]
         setProjectData(cadleShell.projectKey, this.project)
       }
+    } else if (action === 'copy') {
+      this.clipboard = this.currentSelected
     }
 
     console.log({ clipboard: this.clipboard })

@@ -504,6 +504,7 @@ export class DrawField extends LitElement {
       } else {
         objects.push(obj)
       }
+      if (!obj) console.log(obj)
     }
 
     await this.#canvas.loadFromJSON({ objects, version: json.version })

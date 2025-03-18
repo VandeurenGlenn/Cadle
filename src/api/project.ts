@@ -47,6 +47,9 @@ export const create = async (project: ProjectInput, pageName) => {
   const _project = { creationTime, ...project, pages }
   await projectDataStore.put(uuid, JSON.stringify(_project))
   await projectStore.put(uuid, project.name)
+
+  cadleShell.pages.select('projects')
+  cadleShell.projects = await getProjects()
   return
 }
 
@@ -88,9 +91,25 @@ export const upload = async () => {
   input.addEventListener('change', (e) => {
     var fr = new FileReader()
 
-    fr.onload = (e) => {
+    fr.onload = async (e) => {
+      console.log(e.target.result)
+      console.log(e)
+
       var result = JSON.parse(e.target.result)
-      set(new TextEncoder().encode(result.name), result)
+      console.log(result)
+      const projectKey = result.projectKey
+      delete result.projectKey
+      if (await projectDataStore.has(projectKey)) {
+        if (confirm('Project already exists, do you want to overwrite it?')) {
+          await projectDataStore.put(projectKey, JSON.stringify(result))
+          await projectStore.put(projectKey, result.name)
+          cadleShell.projects = await getProjects()
+        }
+      } else {
+        await projectDataStore.put(projectKey, JSON.stringify(result))
+        await projectStore.put(projectKey, result.name)
+        cadleShell.projects = await getProjects()
+      }
     }
 
     fr.readAsText(input.files[0])
@@ -122,13 +141,14 @@ export const download = async () => {
 
   pdf.save(`${cadleShell.project.name}.pdf`)
 
-  const blob = new Blob([JSON.stringify(cadleShell.project, null, 2)], {
+  const projectData = { ...cadleShell.project, projectKey: cadleShell.projectKey }
+  const blob = new Blob([JSON.stringify(projectData, null, 2)], {
     type: 'application/json'
   })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${cadleShell.project.name}.json`
+  a.download = `${cadleShell.project.name}-${cadleShell.projectKey}.json`
   a.click()
   URL.revokeObjectURL(url)
   // };

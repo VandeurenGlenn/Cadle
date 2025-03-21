@@ -6,6 +6,7 @@ import { readdir, unlink } from 'fs/promises'
 import { join } from 'path'
 import { cp } from 'fs/promises'
 import materialSymbols from 'rollup-plugin-material-symbols'
+import { fileURLToPath } from 'url'
 
 await cp('node_modules/@vandeurenglenn/lit-elements/exports/themes/default', 'www/themes/default', {
   recursive: true
@@ -41,7 +42,7 @@ export default [
       './src/fields/create-project.ts',
       './node_modules/@leofcoin/storage/exports/browser-store.js'
     ],
-    external: ['./symbols/manifest.js', './elements/symbols/manifest.js'],
+    external: ['./symbols/manifest.js', './elements/symbols/manifest.js', '/src/symbols/manifest.js'],
     output: [
       {
         format: 'es',

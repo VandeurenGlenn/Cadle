@@ -9,7 +9,7 @@
     "serve": "jsproject --serve www --port 4333",
     "serve-2": "jsproject --serve www --port 4332",
     "generate:manifest": "node generate-manifest.js",
-    "build": "npm run generate:manifest && npm run generate:manifest && rollup -c",
+    "build": "npm run generate:manifest && rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

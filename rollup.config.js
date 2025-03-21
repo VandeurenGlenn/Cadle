@@ -17,10 +17,16 @@ const cleanWWW = async () => {
     generateBundle: async () => {
       const files = await readdir('www')
       for (const file of files) {
-        if (file.endsWith('.js') && !file.includes('sw.js') && !file.includes('workbox'))
+        if (
+          file.endsWith('.js') &&
+          !file.includes('sw.js') &&
+          !file.includes('workbox') &&
+          !file.endsWith('manifest.js')
+        ) {
           await unlink(join('www', file))
+        }
+        return
       }
-      return
     }
   }
 }

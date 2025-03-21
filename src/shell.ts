@@ -197,7 +197,7 @@ export class AppShell extends LitElement {
     ])
 
     // @ts-ignore
-    this.catalog = (await import('/symbols/manifest.js')).default
+    this.catalog = (await import('./symbols/manifest.js')).default
 
     await this.requestUpdate('projects')
 

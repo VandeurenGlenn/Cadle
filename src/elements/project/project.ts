@@ -118,20 +118,16 @@ export class ProjectElement extends LitElement {
     const detail = event.detail
     const menu = this.renderRoot.querySelector('context-menu')
     const action = detail.getAttribute('action')
-    console.log({ action })
-    console.log(event)
-
-    console.log({ clipboard: this.clipboard })
 
     if (action === 'remove' || action === 'paste') {
-      const page = this.project.pages[this.clipboard]
+      const page = this.project.pages[menu.currentTarget.dataset.project]
       console.log({ page })
 
       if (action === 'paste') {
         this.clipboard = undefined
         addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
       } else if (action === 'remove') {
-        delete this.project.pages[this.clipboard]
+        delete this.project.pages[menu.currentTarget.dataset.project]
         setProjectData(cadleShell.projectKey, this.project)
       }
     } else if (action === 'copy') {

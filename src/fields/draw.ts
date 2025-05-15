@@ -278,6 +278,8 @@ export class DrawField extends LitElement {
             this.#canvas.isDrawingMode = true
             // @ts-ignore
             this.#canvas.freeDrawingBrush = new PencilBrush(this.#canvas)
+            this.#canvas.freeDrawingBrush.color = state.styling.stroke || '#555'
+            this.#canvas.freeDrawingBrush.width = 2
           } else if (this.action === 'draw-line') {
             this._current = new Line(
               [this.#startPoints.left, this.#startPoints.top, this.#startPoints.left, this.#startPoints.top],
@@ -416,6 +418,14 @@ export class DrawField extends LitElement {
   _mousemove(e) {
     let pointer = this.#canvas.getScenePoint(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
+    if (this.action === 'draw') {
+      this.#canvas.isDrawingMode = true
+      this.#canvas.freeDrawingBrush.color = state.styling.stroke || '#555'
+      this.#canvas.freeDrawingBrush.width = 2
+      this.#canvas.freeDrawingBrush.onMouseMove({ x: pointer.x, y: pointer.y })
+      this.#canvas.renderAll()
+      return
+    }
     if (e.target) return
     if (!this.drawing) return
     if (!this._current) return
@@ -462,6 +472,8 @@ export class DrawField extends LitElement {
 
   _mouseup(e) {
     if (e.target) return
+    console.log(this.action)
+
     if (this.drawing && !this.moving) {
       // this.action = undefined
       this.drawing = false
@@ -472,6 +484,11 @@ export class DrawField extends LitElement {
       this.canvas.selection = true
       this._current = undefined
       this.#canvas.isDrawingMode = false
+      if (this.action === 'draw') {
+        this.canvas.selection = true
+        this.canvas.isDrawingMode = false
+        this.action = undefined
+      }
       if (this._selectionWasTrue) this.canvas.selection = true
       // this.canvas.renderAll()
     } else if (this.canvas.getActiveObjects().length > 1) {
@@ -495,27 +512,33 @@ export class DrawField extends LitElement {
 
     for (const obj of json.objects) {
       if (
+        obj.type === 'wall' ||
         obj.type === 'CadleWall' ||
         obj.type === 'CadleWidth' ||
         obj.type === 'CadleDepth' ||
         obj.type === 'CadleWindow'
       ) {
         specials.push(obj)
-      } else {
+      } else if (obj.type) {
         objects.push(obj)
+      }
+      if (!obj.type) {
+        obj.type = 'CadleWall'
+        specials.push(obj)
       }
       if (!obj) console.log(obj)
     }
 
     await this.#canvas.loadFromJSON({ objects, version: json.version })
+    console.log({ specials })
 
     for (const obj of specials) {
       if (obj.type === 'CadleWall') {
-        delete obj.type
+        // delete obj.type
         const wall = new CadleWall(obj)
         this.#canvas.add(wall)
       } else if (obj.type === 'CadleWindow') {
-        delete obj.type
+        // delete obj.type
         const width = new CadleWindow(obj)
         this.#canvas.add(width)
       }

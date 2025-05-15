@@ -130,6 +130,10 @@ export default class CadleWall extends Rect {
     return result
   }
 
+  get type() {
+    return 'CadleWall'
+  }
+
   toObject(): any {
     return {
       ...super.toObject(),

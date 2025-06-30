@@ -33,7 +33,7 @@
     "@rollup/plugin-esm-shim": "^0.1.8",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-typescript": "^12.1.2",
+    "@rollup/plugin-typescript": "^12.1.4",
     "@types/color": "^4.2.0",
     "@types/node": "^24.0.1",
     "@vandeurenglenn/lite": "^0.2.65",

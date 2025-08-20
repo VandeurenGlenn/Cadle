@@ -22,7 +22,7 @@
     "@vandeurenglenn/custom-elements": "^0.1.22",
     "@vandeurenglenn/flex-elements": "^1.3.2",
     "@vandeurenglenn/lit-elements": "^0.3.36",
-    "@vandeurenglenn/lite-elements": "^0.3.82",
+    "@vandeurenglenn/lite-elements": "^0.3.84",
     "fabric": "^6.7.0",
     "fabric-history": "^2.0.0",
     "idb-keyval": "^6.2.2",

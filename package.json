@@ -16,7 +16,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@leofcoin/storage": "^3.5.34",
+    "@leofcoin/storage": "^3.5.38",
     "@lit-labs/context": "^0.5.1",
     "@material/web": "^2.3.0",
     "@vandeurenglenn/custom-elements": "^0.1.22",

@@ -26,7 +26,7 @@
     "fabric": "^6.7.0",
     "fabric-history": "^2.0.0",
     "idb-keyval": "^6.2.2",
-    "jspdf": "^3.0.1"
+    "jspdf": "^3.0.2"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.3",

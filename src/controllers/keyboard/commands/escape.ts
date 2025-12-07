@@ -17,3 +17,6 @@ export const escape = () => {
   }
   if (cadleShell.action) return (cadleShell.action = undefined)
 }
+
+export const keyCombination = { key: 'Escape' }
+export const keys = [['Escape']]

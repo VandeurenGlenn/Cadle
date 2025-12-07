@@ -21,3 +21,6 @@ export const remove = () => {
     canvas.remove(item)
   }
 }
+
+export const keyCombination = { key: 'Delete / Backspace', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'Backspace'] : ['Delete'], !isMac ? ['ctrl', 'Backspace'] : []]

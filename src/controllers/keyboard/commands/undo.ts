@@ -27,3 +27,6 @@ export const undo = () => {
         break
     }
 }
+
+export const keyCombination = { key: 'z', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'z'] : ['ctrl', 'z']]

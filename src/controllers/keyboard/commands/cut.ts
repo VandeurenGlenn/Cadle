@@ -1,8 +1,7 @@
-import { Group } from 'fabric'
-import { clipboard, field, getActiveObjects, canvas, getActiveObject } from '../../../utils.js'
+import { clipboard, canvas, getActiveObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
-export const isCut = ({metaKey, key, ctrlKey}: KeyboardEvent) => key === 'x' && (isMac ? metaKey : ctrlKey)
+export const isCut = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'x' && (isMac ? metaKey : ctrlKey)
 
 export const cut = async () => {
   const object = getActiveObject()
@@ -18,6 +17,8 @@ export const cut = async () => {
     }
     canvas.remove(item)
   }
-  canvas.discardActiveObject();
+  canvas.discardActiveObject()
   canvas.shouldRender = true
 }
+export const keyCombination = { key: 'x', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'x'] : ['ctrl', 'x']]

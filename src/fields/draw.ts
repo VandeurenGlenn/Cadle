@@ -520,7 +520,9 @@ export class DrawField extends LitElement {
       ) {
         specials.push(obj)
       } else if (obj.type) {
-        objects.push(obj)
+        if (!String(obj.radius).startsWith('-')) {
+          objects.push(obj)
+        }
       }
       if (!obj.type) {
         obj.type = 'CadleWall'
@@ -559,6 +561,7 @@ export class DrawField extends LitElement {
           width: 100%;
           align-items: center;
           justify-content: center;
+          background-color: #f0f0f0;
         }
 
         .shadow {

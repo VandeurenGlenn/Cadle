@@ -37,3 +37,6 @@ export const paste = async () => {
     await canvas.setActiveObject(cloned)
   }
 }
+
+export const keyCombination = { key: 'v', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'v'] : ['ctrl', 'v']]

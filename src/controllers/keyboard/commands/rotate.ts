@@ -42,3 +42,6 @@ export const rotate = ({ key }) => {
     canvas.history.push({ type: 'rotate-down', item: object })
   }
 }
+
+export const keyCombination = { key: '+ / -' }
+export const keys = [['+'], ['-']]

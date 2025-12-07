@@ -28,7 +28,16 @@ export const getActiveObjects = () => canvas.getActiveObjects()
 
 export const getActiveObject = () => canvas.getActiveObject()
 
-export const removeItems = items => {
+export const shouldRender = (should: boolean) => {
+  canvas.shouldRender = should
+}
+
+/**
+ * remove items from canvas
+ * @param items
+ */
+
+export const removeItems = (items) => {
   for (const item of items) {
     canvas.remove(item)
   }
@@ -74,25 +83,25 @@ const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: numbe
   canvas.shouldRender = true
 }
 
-export const moveUp = amount => {
+export const moveUp = (amount) => {
   moveObjects('up', amount)
 }
 
-export const moveDown = amount => {
+export const moveDown = (amount) => {
   moveObjects('down', amount)
 }
 
-export const moveLeft = amount => {
+export const moveLeft = (amount) => {
   moveObjects('left', amount)
 }
 
-export const moveRight = amount => {
+export const moveRight = (amount) => {
   moveObjects('right', amount)
 }
 
 export const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('')
 
-export const incrementLetter = matches => {
+export const incrementLetter = (matches) => {
   let text = ''
 
   if (matches?.length > 0) {

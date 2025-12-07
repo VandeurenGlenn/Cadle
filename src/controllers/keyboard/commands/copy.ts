@@ -1,4 +1,4 @@
-import { ActiveSelection, Group } from 'fabric'
+import { Group } from 'fabric'
 import { canvas, clipboard, getActiveObjects } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
@@ -24,3 +24,6 @@ export const copy = async () => {
   //   interactive: true
   // })
 }
+
+export const keyCombination = { key: 'c', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'c'] : ['ctrl', 'c']]

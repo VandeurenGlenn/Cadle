@@ -12,3 +12,6 @@ export const selectAll = (): void => {
   // @ts-expect-error  fabric object works but some type error somewhere
   canvas.setActiveObject(selection)
 }
+
+export const keyCombination = { key: 'a', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'a'] : ['ctrl', 'a']]

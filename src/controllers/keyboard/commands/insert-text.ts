@@ -9,3 +9,6 @@ export const insertText = () => {
   drawText()
   canvas.shouldRender = true
 }
+
+export const keyCombination = { key: 't', metaKey: isMac, ctrlKey: !isMac, altKey: true }
+export const keys = [isMac ? ['meta', 'ctrl', 't'] : ['ctrl', 'alt', 't']]

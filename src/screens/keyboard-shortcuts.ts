@@ -1,38 +1,28 @@
-import { LitElement, html, css } from 'lit'
+import { LitElement, html, css, PropertyValues } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { map } from 'lit/directives/map.js'
 import '@vandeurenglenn/lite-elements/divider.js'
+import '@vandeurenglenn/flex-elements/container.js'
+import '@vandeurenglenn/flex-elements/row.js'
+import '@vandeurenglenn/flex-elements/it.js'
+import { hotkeyList } from '../controllers/keyboard/hotkeys.js'
 
 @customElement('keyboard-shortcuts')
 export class KeyboardShortcuts extends LitElement {
-  shortcuts = {
-    general: [
-      {
-        combination: html`<kbd>Ctrl</kbd> + <kbd>C</kbd>`,
-        action: 'Copy'
-      },
-      {
-        combination: html`<kbd>Ctrl</kbd> + <kbd>P</kbd>`,
-        action: 'Paste'
-      }
-    ],
-    drawing: [
-      {
-        combination: html`<kbd>Ctrl</kbd> + <kbd>SHIFT</kbd> + <kbd>T</kbd>`,
-        action: 'Insert Text'
-      },
-      {
-        combination: html`<kbd>Ctrl</kbd> + <kbd>B</kbd>`,
-        action: 'sendObjectToBack'
-      },
-      {
-        combination: html`<kbd>Ctrl</kbd> + <kbd>SHIFT</kbd> +<kbd>B</kbd>`,
-        action: 'bringObjectToFront'
-      }
-    ]
-  }
-
   @property({ reflect: true, type: Boolean }) open = false
+
+  transformKeys(keys: string[][]) {
+    console.log(keys)
+    return html`${map(
+      keys,
+      (combo, comboIndex) => html`
+        <span class="combo">
+          ${map(combo, (key, keyIndex) => html`${keyIndex ? html`<span class="plus">+</span>` : ''}<kbd>${key}</kbd>`)}
+        </span>
+        ${comboIndex < keys.length - 1 && keys[comboIndex + 1].length > 0 ? html`<span class="or">/</span>` : ''}
+      `
+    )}`
+  }
 
   static styles = [
     css`
@@ -86,6 +76,21 @@ export class KeyboardShortcuts extends LitElement {
         margin-bottom: 6px;
       }
 
+      .combo {
+        display: inline-flex;
+        gap: 2px;
+        align-items: center;
+      }
+
+      .plus {
+        margin: 0 2px;
+      }
+
+      .or {
+        margin: 0 4px;
+        color: #555;
+      }
+
       custom-divider {
         width: 100%;
       }
@@ -97,14 +102,14 @@ export class KeyboardShortcuts extends LitElement {
       <flex-container>
         <h3>keyboard shortcuts</h3>
         ${map(
-          Object.entries(this.shortcuts),
+          Object.entries(hotkeyList),
           ([category, shortcuts]) => html`
             <h4>${category}</h4>
             <custom-divider></custom-divider>
             ${map(
               shortcuts,
-              ({ combination, action }) =>
-                html`<flex-row class="row-item">${combination}<flex-it></flex-it>${action}</flex-row>`
+              ({ keys, action }) =>
+                html`<flex-row class="row-item">${this.transformKeys(keys)}<flex-it></flex-it>${action}</flex-row>`
             )}
           `
         )}

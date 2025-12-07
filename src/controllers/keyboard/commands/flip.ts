@@ -19,3 +19,6 @@ export const flip = ({ shiftKey }) => {
     canvas.history.push({ type: 'flipY', item: object })
   }
 }
+
+export const keyCombination = { key: 'f', metaKey: isMac, ctrlKey: !isMac, shiftKey: false }
+export const keys = [isMac ? ['meta', 'f'] : ['ctrl', 'f'], ['shift', 'f']]

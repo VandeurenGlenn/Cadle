@@ -17,6 +17,8 @@ const cleanWWW = async () => {
     name: 'clean-www', // this name will show up in warnings and errors
     generateBundle: async () => {
       const files = await readdir('www')
+      console.log(files)
+
       for (const file of files) {
         if (
           file.endsWith('.js') &&
@@ -55,7 +57,7 @@ export default [
         placeholderPrefix: 'symbol'
       }),
       json(),
-      nodeResolve(),
+      nodeResolve({ browser: true }),
       commonjs(),
       typescript()
     ]

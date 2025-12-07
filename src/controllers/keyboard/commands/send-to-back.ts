@@ -9,3 +9,6 @@ export const sendToBack = () => {
   canvas.shouldRender = true
   canvas.sendObjectToBack(canvas.getActiveObject())
 }
+
+export const keyCombination = { key: 'b', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'b'] : ['ctrl', 'b']]

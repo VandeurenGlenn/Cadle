@@ -22,3 +22,6 @@ export const group = async () => {
     })
   )
 }
+
+export const keyCombination = { key: 'g', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'g'] : ['ctrl', 'g']]

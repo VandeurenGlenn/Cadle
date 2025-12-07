@@ -32,3 +32,6 @@ export const scale = ({ key }) => {
     canvas.history.push({ type: 'scale-up', item: object })
   }
 }
+
+export const keyCombination = { key: '/ or *' }
+export const keys = [['/'], ['*']]

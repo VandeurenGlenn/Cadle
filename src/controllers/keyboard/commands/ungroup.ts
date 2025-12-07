@@ -91,3 +91,6 @@ export const ungroup = async () => {
 
   // canvas.remove(object)
 }
+
+export const keyCombination = { key: 'u', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'u'] : ['ctrl', 'u']]

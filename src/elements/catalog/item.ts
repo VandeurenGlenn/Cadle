@@ -70,9 +70,14 @@ export class CatalogItem extends LitElement {
     // document.querySelector('app-shell').renderRoot.querySelector('draw-field')._current = group
 
     const svg = await loadSVGFromURL(this._image)
+
     // console.log(svg)
     svg.objects.forEach((obj) => {
-      obj.strokeWidth = 1
+      if (this._image.endsWith('door.svg')) {
+        obj.strokeWidth = 7
+      } else {
+        obj.strokeWidth = 1
+      }
     })
 
     const group = util.groupSVGElements(svg.objects)

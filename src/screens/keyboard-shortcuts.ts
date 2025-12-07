@@ -42,7 +42,17 @@ export class KeyboardShortcuts extends LitElement {
         opacity: 1;
         pointer-events: auto;
       }
-
+      flex-container {
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+        flex-direction: column;
+        gap: 12px;
+        overflow-y: auto;
+        max-height: 80%;
+        min-width: 300px;
+        max-width: 720px !important;
+      }
       kbd {
         background-color: #eee;
         border-radius: 3px;
@@ -66,12 +76,25 @@ export class KeyboardShortcuts extends LitElement {
 
       .row-item {
         width: 100%;
+        height: 40px;
         margin-bottom: 6px;
+        padding: 4px 8px;
+        box-sizing: border-box;
+        border-radius: 4px;
+        align-items: center;
+        display: flex;
+      }
+      .row-item:hover {
+        background-color: var(--md-sys-color-surface-variant);
+      }
+      kbd {
+        background-color: var(--md-sys-color-surface-variant);
+        color: var(--md-sys-color-on-surface-variant);
+        border: none;
+        box-shadow: none;
+        padding: 6px 8px;
       }
 
-      flex-container .row-item:nth-child(even) {
-        background-color: #0000001a;
-      }
       h4 {
         margin-bottom: 6px;
       }

@@ -65,7 +65,7 @@ const moveObject = (object, direction: 'left' | 'right' | 'down' | 'up', amount)
 const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: number) => {
   amount = amount || 0.5
   let items = getActiveObjects()
-  canvas.history.push({ type: `move-${direction}`, items, amount: state.move.amount })
+  history.push({ type: `move`, objects: items })
   for (const item of items) {
     if (item.type === 'activeselection') {
       // canvas.remove(item)

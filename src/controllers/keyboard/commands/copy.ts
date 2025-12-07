@@ -1,4 +1,4 @@
-import { Group } from 'fabric'
+import { FabricObject, Group } from 'fabric'
 import { canvas, clipboard, getActiveObjects } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
@@ -9,9 +9,10 @@ export const copy = async () => {
   canvas.discardActiveObject()
 
   if (cloned.length > 1) {
-    const items = []
+    const items: FabricObject[] = []
     for (const item of cloned) {
-      items.push(item.clone())
+      const clone = await item.clone()
+      items.push(clone)
     }
     clipboard.object = new Group(await Promise.all(items))
   } else {

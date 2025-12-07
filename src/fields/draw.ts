@@ -25,18 +25,28 @@ declare global {
 @customElement('draw-field')
 export class DrawField extends LitElement {
   #canvas: Canvas
-  #height: number
-  #width: number
-  #startPoints: { left?: number; top?: number }
+  #height = 0
+  #width = 0
+  #startPoints: { left: number; top: number } = { left: 0, top: 0 }
+
+  moving = false
+  drawing = false
+  isNaming = false
+  namingType?: string
+  namingNumber = 0
+  namingLetter = ''
+  alphabet: string[] = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+  namingLetterIndex = 0
+  _selectionWasTrue = false
+  _drawState?: string
+  _currentGroup: any
 
   @property({ type: Number })
   gridSize: number
 
   @query('context-menu') contextMenu
 
-  drawing: boolean
-
-  _current: {}
+  _current: any = null
 
   get #shell() {
     return document.querySelector('app-shell') as AppShell
@@ -67,7 +77,7 @@ export class DrawField extends LitElement {
   }
 
   get upperCanvas() {
-    return this.shadowRoot.querySelector('.upper-canvas')
+    return this.shadowRoot?.querySelector('.upper-canvas') ?? null
   }
 
   static styles = [
@@ -120,7 +130,7 @@ export class DrawField extends LitElement {
       preserveObjectStacking: true
     })
 
-    this.#canvas.history = []
+    ;(this.#canvas as any).history = []
 
     this.gridSize = state.gridSize
 
@@ -206,7 +216,9 @@ export class DrawField extends LitElement {
     const object = this.canvas.getActiveObject()
     if (object) {
       event.preventDefault()
-      const { top, left } = this.shadowRoot?.querySelector('canvas')?.getBoundingClientRect()
+      const rect = this.shadowRoot?.querySelector('canvas')?.getBoundingClientRect()
+      if (!rect) return
+      const { top, left } = rect
       // const { width } = this.contextMenu.getBoundingClientRect()
       this.contextMenu.style.top = `${object.top + top}px`
       this.contextMenu.style.left = `${object.left + left}px`
@@ -222,13 +234,16 @@ export class DrawField extends LitElement {
     console.log(e)
   }
 
-  snapToGrid({ left, top }: { left?: number; top?: number }): { left?: number; top?: number } {
+  snapToGrid({ left, top }: { left?: number; top?: number }): { left: number; top: number } {
+    let snappedLeft = left ?? 0
+    let snappedTop = top ?? 0
+
     if (!this.freeDraw) {
-      if (left) left = Math.round(left / this.gridSize) * this.gridSize
-      if (top) top = Math.round(top / this.gridSize) * this.gridSize
+      snappedLeft = Math.round(snappedLeft / this.gridSize) * this.gridSize
+      snappedTop = Math.round(snappedTop / this.gridSize) * this.gridSize
     }
 
-    return { left, top }
+    return { left: snappedLeft, top: snappedTop }
   }
 
   _mousedown(e) {
@@ -420,9 +435,11 @@ export class DrawField extends LitElement {
     state.mouse.position = { x: pointer.x, y: pointer.y }
     if (this.action === 'draw') {
       this.#canvas.isDrawingMode = true
-      this.#canvas.freeDrawingBrush.color = state.styling.stroke || '#555'
-      this.#canvas.freeDrawingBrush.width = 2
-      this.#canvas.freeDrawingBrush.onMouseMove({ x: pointer.x, y: pointer.y })
+      const brush = this.#canvas.freeDrawingBrush
+      if (!brush) return
+      brush.color = state.styling.stroke || '#555'
+      brush.width = 2
+      brush.onMouseMove({ x: pointer.x, y: pointer.y } as any, e as any)
       this.#canvas.renderAll()
       return
     }
@@ -503,12 +520,12 @@ export class DrawField extends LitElement {
     return json
   }
 
-  async fromJSON(json: { objects: Object[]; version: string }) {
+  async fromJSON(json: { objects?: any[]; version: string }) {
     console.log({ json })
     if (!json.objects) return
-    const objects = []
+    const objects: any[] = []
 
-    const specials = []
+    const specials: any[] = []
 
     for (const obj of json.objects) {
       if (
@@ -538,11 +555,11 @@ export class DrawField extends LitElement {
       if (obj.type === 'CadleWall') {
         // delete obj.type
         const wall = new CadleWall(obj)
-        this.#canvas.add(wall)
+        this.#canvas.add(wall as any)
       } else if (obj.type === 'CadleWindow') {
         // delete obj.type
         const width = new CadleWindow(obj)
-        this.#canvas.add(width)
+        this.#canvas.add(width as any)
       }
     }
 

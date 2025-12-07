@@ -11,6 +11,7 @@ import { field, incrementLetter, incrementSocket, positionObject, shell } from '
 import { Textbox } from 'fabric'
 import state from '../../state.js'
 import { Color } from '../../symbols/default-options.js'
+import { Contextmenu } from '../../contextmenu.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -55,10 +56,10 @@ export class CadleActions extends LitElement {
 
   firstUpdated() {
     this.addEventListener('mousedown', () => {
-      const menu = this.renderRoot.querySelector('context-menu')
-      if (menu.open) menu.open = false
+      const menu = this.renderRoot.querySelector('context-menu') as Contextmenu
+      if (menu?.open) menu.open = false
     })
-    this.shadowRoot.addEventListener('contextmenu', this.#showMenu)
+    this.shadowRoot?.addEventListener('contextmenu', this.#showMenu)
   }
 
   #showMenu = (event) => {
@@ -67,7 +68,7 @@ export class CadleActions extends LitElement {
 
     const target = event.composedPath()[0]
     console.log({ target })
-    const menu = this.renderRoot.querySelector('context-menu')
+    const menu = this.renderRoot.querySelector('context-menu') as Contextmenu
     if (target.dataset.menu === 'insert-text') {
       menu.innerHTML = `
       <custom-list-item type="menu" name="normal">

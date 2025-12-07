@@ -31,8 +31,8 @@ export interface Project extends ProjectInput {
 export type Projects = { [uuid: UUID]: string }
 
 export type HistoryAction = {
-  type: 'add' | 'remove' | 'modify'
-  object: FabricObject
+  type: 'add' | 'remove' | 'modify' | 'move'
+  objects: FabricObject[]
   prevState?: any
   newState?: any
 }

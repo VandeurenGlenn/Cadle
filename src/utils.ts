@@ -1,6 +1,7 @@
 import { Group, Object, Canvas as _Canvas } from 'fabric'
 import type { DrawField } from './fields/draw.js'
 import state from './state.js'
+import { HistoryAction } from './types.js'
 
 declare type currentObjectInClipboard = Group | Object | undefined
 
@@ -137,4 +138,60 @@ export const snapToGrid = ({ left, top }: { left?: number; top?: number }): { le
   }
 
   return { left, top }
+}
+
+const applyAction = (action: HistoryAction, method: 'undo' | 'redo') => {
+  switch (action.type) {
+    case 'remove':
+      if (method === 'undo') {
+        canvas.add(action.object)
+      } else {
+        canvas.remove(action.object)
+      }
+      break
+    case 'add':
+      if (method === 'undo') {
+        canvas.remove(action.object)
+      } else {
+        canvas.add(action.object)
+      }
+      break
+    case 'modify':
+      if (method === 'undo' && action.prevState) {
+        action.object.set(action.prevState)
+      } else if (method === 'redo' && action.newState) {
+        action.object.set(action.newState)
+      }
+      break
+  }
+}
+
+export const history = {
+  stack: [] as any[],
+  position: -1,
+  push(action: HistoryAction) {
+    // if we are not at the end of the stack, remove all redo actions
+    if (this.position < this.stack.length - 1) {
+      this.stack = this.stack.slice(0, this.position + 1)
+    }
+    this.stack.push(action)
+    this.position++
+  },
+  undo() {
+    if (this.position >= 0) {
+      const action = this.stack[this.position]
+      this.position--
+      this.applyAction(action, 'undo')
+      return action
+    }
+    return null
+  },
+  redo() {
+    if (this.position < this.stack.length - 1) {
+      this.position++
+      const action = this.stack[this.position]
+      return action
+    }
+    return null
+  }
 }

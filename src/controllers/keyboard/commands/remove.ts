@@ -1,4 +1,4 @@
-import { canvas, getActiveObjects } from '../../../utils.js'
+import { canvas, getActiveObjects, history } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
 export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) =>
@@ -7,18 +7,18 @@ export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) =>
 export const remove = () => {
   canvas.shouldRender = true
 
-  let items = canvas.getActiveObjects()
+  let objects = canvas.getActiveObjects()
   canvas.discardActiveObject()
   // todo is this really needed?
-  for (const item of items) {
-    if (item.type === 'activeselection') {
+  for (const object of objects) {
+    if (object.type === 'activeselection') {
       // @ts-ignore
-      for (const _item of item._objects) {
-        canvas.remove(_item)
+      for (const _object of object._objects) {
+        canvas.remove(_object)
       }
     }
-    canvas.history.push({ type: 'remove', item })
-    canvas.remove(item)
+    history.push({ type: 'remove', object })
+    canvas.remove(object)
   }
 }
 

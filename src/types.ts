@@ -1,3 +1,5 @@
+import { FabricObject } from 'fabric'
+
 export type UUID = `${string}-${string}-${string}-${string}-${string}`
 
 export type ProjectInput = {
@@ -27,3 +29,10 @@ export interface Project extends ProjectInput {
 }
 
 export type Projects = { [uuid: UUID]: string }
+
+export type HistoryAction = {
+  type: 'add' | 'remove' | 'modify'
+  object: FabricObject
+  prevState?: any
+  newState?: any
+}

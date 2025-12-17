@@ -173,7 +173,7 @@ export class CadleActions extends LitElement {
       title: 'snap to grid',
       togglers: ['grid_on', 'grid_off'],
       action: () => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw),
-      seperates: true
+      separates: true
     },
     {
       title: 'insert text',
@@ -190,7 +190,7 @@ export class CadleActions extends LitElement {
       title: 'draw window',
       icon: 'window',
       action: () => (globalThis.cadleShell.action = 'draw-window'),
-      seperates: true
+      separates: true
     },
     {
       title: 'freedraw',
@@ -228,7 +228,7 @@ export class CadleActions extends LitElement {
 
   render() {
     return html`
-      ${map(this.actions, ({ action, icon, title, seperates, togglers, menu, menuPosition, color }) => {
+      ${map(this.actions, ({ action, icon, title, separates, togglers, menu, menuPosition, color }) => {
         if (togglers)
           return html` <md-icon-button
               @click=${action}
@@ -238,7 +238,7 @@ export class CadleActions extends LitElement {
                 slot="selected"
                 icon=${togglers[1]}></custom-icon>
             </md-icon-button>
-            ${seperates ? html`<flex-it></flex-it>` : ''}`
+            ${separates ? html`<flex-it></flex-it>` : ''}`
 
         if (color) {
           return html` <custom-button
@@ -252,7 +252,7 @@ export class CadleActions extends LitElement {
                   .fill}"
                 slot="icon"></div>
             </custom-button>
-            ${seperates ? html`<flex-it></flex-it>` : ''}`
+            ${separates ? html`<flex-it></flex-it>` : ''}`
         }
 
         return html`
@@ -262,7 +262,7 @@ export class CadleActions extends LitElement {
             data-menu=${menu}
             .menu-position=${menuPosition}
             .icon=${icon}></custom-icon-button>
-          ${seperates ? html`<flex-it></flex-it>` : ''}
+          ${separates ? html`<flex-it></flex-it>` : ''}
         `
       })}
 

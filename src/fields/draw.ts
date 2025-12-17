@@ -129,7 +129,6 @@ export class DrawField extends LitElement {
       height,
       preserveObjectStacking: true
     })
-
     ;(this.#canvas as any).history = []
 
     this.gridSize = state.gridSize

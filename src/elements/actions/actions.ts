@@ -179,12 +179,18 @@ export class CadleActions extends LitElement {
       title: 'insert text',
       icon: 'insert_text',
       action: this.drawText,
-      menu: 'insert-text'
+      menu: 'insert-text',
+      separates: true
     },
     {
       title: 'draw wall',
       icon: 'polyline',
       action: () => (globalThis.cadleShell.action = 'draw-wall')
+    },
+    {
+      title: 'draw door',
+      icon: 'door_front',
+      action: () => (globalThis.cadleShell.action = 'draw-door')
     },
     {
       title: 'draw window',

@@ -5,7 +5,7 @@ import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
-import { download, save, share, upload, create } from '../../api/project.js'
+import { download, save, share, upload, create, importPlan } from '../../api/project.js'
 import { map } from 'lit/directives/map.js'
 
 @customElement('project-actions')
@@ -13,6 +13,11 @@ export class ProjectActions extends LitElement {
   lastAction: string
   actions = {
     file: [
+      {
+        title: 'import plan',
+        action: 'import-pdf',
+        icon: 'upload_file'
+      },
       {
         title: 'create project',
         action: 'create',
@@ -155,6 +160,9 @@ export class ProjectActions extends LitElement {
           this.dropdown.open = false
           handleHelpDropdown()
         }
+        break
+      case 'import-pdf':
+        importPlan()
         break
       case 'save':
         save()

@@ -3,7 +3,7 @@ import { isMac } from '../utils.js'
 
 // only flip on active object
 export const isRotate = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
-  canvas.getActiveObject() && (key === '+' || key === '-')
+  canvas.getActiveObject() && isMac ? metaKey && (key === '+' || key === '-') : ctrlKey && (key === '+' || key === '-')
 
 export const rotate = ({ key }) => {
   canvas.shouldRender = true

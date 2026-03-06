@@ -12,7 +12,7 @@ await cp('node_modules/@vandeurenglenn/lit-elements/exports/themes/default', 'ww
   recursive: true
 })
 
-const cleanWWW = async () => {
+const cleanWWWAndCopyWorkers = async () => {
   return {
     name: 'clean-www', // this name will show up in warnings and errors
     generateBundle: async () => {
@@ -25,6 +25,14 @@ const cleanWWW = async () => {
           !file.endsWith('manifest.js')
         ) {
           await unlink(join('www', file))
+        }
+      }
+      const workerFiles = await readdir('node_modules/pdfjs-dist/build')
+      for (const file of workerFiles) {
+        if (file.startsWith('pdf.worker') && file.endsWith('.mjs')) {
+          await cp(join('node_modules/pdfjs-dist/build', file), join('www', file), {
+            recursive: true
+          })
         }
       }
     }
@@ -49,7 +57,7 @@ export default [
       }
     ],
     plugins: [
-      cleanWWW(),
+      cleanWWWAndCopyWorkers(),
       materialSymbols({
         placeholderPrefix: 'symbol'
       }),

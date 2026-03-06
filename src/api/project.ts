@@ -165,3 +165,52 @@ export const download = async () => {
   //   a.click()
   // }
 }
+export const importPlan = async () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'application/pdf'
+  input.addEventListener('change', async (e) => {
+    const file = input.files[0]
+    if (!file) return
+
+    // Show PDF importer dialog
+    const importer = document.createElement('pdf-importer')
+    const dialog = document.createElement('dialog')
+
+    dialog.style.cssText = `
+      width: 90vw;
+      height: 90vh;
+      max-width: 1200px;
+      max-height: 800px;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      padding: 0;
+    `
+
+    // Handle import completion
+    const handleImportComplete = async (event: CustomEvent) => {
+      dialog.close()
+      dialog.remove()
+      cadleShell.projects = await getProjects()
+      console.log(`Successfully imported ${event.detail.pagesImported} page(s)`)
+    }
+
+    // Handle import cancellation
+    const handleImportCancel = () => {
+      dialog.close()
+      dialog.remove()
+    }
+
+    importer.addEventListener('import-complete', handleImportComplete)
+    importer.addEventListener('import-cancel', handleImportCancel)
+
+    dialog.appendChild(importer)
+    document.body.appendChild(dialog)
+    dialog.showModal()
+
+    // Load PDF into importer
+    await (importer as any).loadPDF(file)
+  })
+  input.click()
+}

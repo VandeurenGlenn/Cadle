@@ -176,6 +176,22 @@ export class CadleActions extends LitElement {
       separates: true
     },
     {
+      title: 'zoom out',
+      icon: 'zoom_out',
+      action: () => globalThis.cadleShell.field.zoomOut()
+    },
+    {
+      title: 'reset zoom',
+      icon: 'zoom_in_map',
+      action: () => globalThis.cadleShell.field.resetZoom()
+    },
+    {
+      title: 'zoom in',
+      icon: 'zoom_in',
+      action: () => globalThis.cadleShell.field.zoomIn(),
+      separates: true
+    },
+    {
       title: 'insert text',
       icon: 'insert_text',
       action: this.drawText,

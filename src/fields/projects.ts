@@ -161,17 +161,18 @@ export class ProjectsField extends LitElement {
 
   get #projectsTemplate() {
     return html`${this.projects.map(
-        ([key, name]) => html` <custom-list-item
-          data-id=${key}
-          data-name=${name}
-          data-action="loadProject">
-          <span>${name}</span>
-          <custom-icon-button
-            icon="more_vert"
+        ([key, name]) =>
+          html` <custom-list-item
             data-id=${key}
-            data-action="showContextMenu"
-            slot="end"></custom-icon-button>
-        </custom-list-item>`
+            data-name=${name}
+            data-action="loadProject">
+            <span>${name}</span>
+            <custom-icon-button
+              icon="more_vert"
+              data-id=${key}
+              data-action="showContextMenu"
+              slot="end"></custom-icon-button>
+          </custom-list-item>`
       )}
       <flex-row>
         <md-outlined-button @click=${() => upload()}>upload</md-outlined-button>

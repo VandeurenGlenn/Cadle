@@ -9,6 +9,7 @@ import { set } from 'idb-keyval'
 import { version } from 'os'
 import CadleWindow from '../symbols/window.js'
 import CadleWall from './../symbols/wall.js'
+import CadleDoor from '../symbols/door.js'
 // import 'fabric-history';
 
 declare type x = number
@@ -44,7 +45,11 @@ export class DrawField extends LitElement {
   @property({ type: Number })
   gridSize: number
 
-  @query('context-menu') contextMenu
+  @property({ type: Number })
+  zoomLevel: number = 1
+
+  @query('context-menu')
+  contextMenu!: any
 
   _current: any = null
 
@@ -89,7 +94,7 @@ export class DrawField extends LitElement {
   ]
 
   @query('.convas-container')
-  canvasContainer
+  canvasContainer!: any
 
   snap(value) {
     return Math.round(value / this.gridSize) * this.gridSize
@@ -113,25 +118,35 @@ export class DrawField extends LitElement {
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     await this.updateComplete
-    // const { width, height } = this.getBoundingClientRect()
-    const width = 1123
-    const height = 794
 
-    this.#width = width
-    this.#height = height
-    // this.renderRoot.querySelector('canvas').width = width
-    // this.renderRoot.querySelector('canvas').height = height
+    // Start with default A4 landscape dimensions
+    const defaultWidth = 1123
+    const defaultHeight = 794
+
+    this.#width = defaultWidth
+    this.#height = defaultHeight
+
     // @ts-ignore
     this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), {
       selection: true,
       evented: true,
-      width,
-      height,
+      width: defaultWidth,
+      height: defaultHeight,
       preserveObjectStacking: true
     })
     ;(this.#canvas as any).history = []
 
     this.gridSize = state.gridSize
+
+    // Set initial zoom to 1 (100%)
+    this.zoomLevel = 1
+    this.#canvas.setZoom(1)
+
+    // Resize canvas to fit container after layout is complete
+    // Use setTimeout to ensure layout is fully settled
+    setTimeout(() => {
+      this.resizeCanvas()
+    }, 100)
 
     this.#canvas.on('object:moving', (options) => {
       this.moving = true
@@ -208,6 +223,12 @@ export class DrawField extends LitElement {
 
     this.addEventListener('contextmenu', this.#contextmenu)
 
+    // Use ResizeObserver to handle container size changes
+    const resizeObserver = new ResizeObserver(() => {
+      this.resizeCanvas()
+    })
+    resizeObserver.observe(this)
+
     // this.#canvas
   }
 
@@ -273,7 +294,24 @@ export class DrawField extends LitElement {
           return
         default:
           this.drawing = true
-          const pointer = this.#canvas.getViewportPoint(e)
+          // Get canvas container's position to account for centering offset
+          const canvasContainer = this.#canvas.getElement()?.parentElement
+          const containerRect = canvasContainer?.getBoundingClientRect()
+          const canvasRect = this.#canvas.getElement()?.getBoundingClientRect()
+
+          // Calculate offset between event and canvas
+          const offsetX = canvasRect?.left ?? 0
+          const offsetY = canvasRect?.top ?? 0
+
+          // Adjust event coordinates to canvas-relative
+          const adjustedEvent = {
+            clientX: e.clientX - offsetX,
+            clientY: e.clientY - offsetY,
+            pageX: e.pageX - offsetX,
+            pageY: e.pageY - offsetY
+          }
+
+          const pointer = this.#canvas.getScenePoint(adjustedEvent)
           this.#startPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
           const id = Math.random().toString(36).slice(-12)
           const index = this.canvas._objects.length
@@ -360,6 +398,16 @@ export class DrawField extends LitElement {
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
+          } else if (this.action === 'draw-door') {
+            this._current = new CadleDoor({
+              ...sharedDrawOptions,
+              left: this.#startPoints.left,
+              top: this.#startPoints.top,
+              width: pointer.x - this.#startPoints.left,
+              height: pointer.y - this.#startPoints.top,
+              strokeWidth: 1,
+              strokeDashArray: [5, 5]
+            })
           }
           if (this.action !== 'draw') this.canvas.add(this._current)
           break
@@ -398,6 +446,33 @@ export class DrawField extends LitElement {
 
       this._current.set({ width: Math.abs(this.#startPoints.left - currentPoints.left) })
       this._current.set({ height: Math.abs(this.#startPoints.top - currentPoints.top) })
+    } else if (this.action === 'draw-door') {
+      if (this.#startPoints.left > currentPoints.left) {
+        this._current.set({ left: Math.abs(currentPoints.left) })
+      }
+      if (this.#startPoints.top > currentPoints.top) {
+        this._current.set({ top: Math.abs(currentPoints.top) })
+      }
+
+      this._current.set({ width: Math.abs(this.#startPoints.left - currentPoints.left) })
+      this._current.set({ height: Math.abs(this.#startPoints.top - currentPoints.top) })
+
+      const dx = currentPoints.left - this.#startPoints.left
+      const dy = currentPoints.top - this.#startPoints.top
+
+      const isHorizontal = Math.abs(dx) >= Math.abs(dy)
+
+      if (isHorizontal) {
+        this._current.set({
+          doorHingeSide: dx >= 0 ? 'right' : 'left',
+          doorSwingDirection: dy >= 0 ? 'down' : 'up'
+        })
+      } else {
+        this._current.set({
+          doorHingeSide: dy >= 0 ? 'bottom' : 'top',
+          doorSwingDirection: dx >= 0 ? 'right' : 'left'
+        })
+      }
     } else if (this.action === 'draw-arc') {
       console.log(currentPoints.left)
       console.log(this.#startPoints.left)
@@ -430,7 +505,18 @@ export class DrawField extends LitElement {
   }
 
   _mousemove(e) {
-    let pointer = this.#canvas.getScenePoint(e)
+    // Get canvas position to account for centering offset
+    const canvasRect = this.#canvas.getElement()?.getBoundingClientRect()
+    const offsetX = canvasRect?.left ?? 0
+    const offsetY = canvasRect?.top ?? 0
+    const adjustedEvent = {
+      clientX: e.clientX - offsetX,
+      clientY: e.clientY - offsetY,
+      pageX: e.pageX - offsetX,
+      pageY: e.pageY - offsetY
+    }
+
+    let pointer = this.#canvas.getScenePoint(adjustedEvent)
     state.mouse.position = { x: pointer.x, y: pointer.y }
     if (this.action === 'draw') {
       this.#canvas.isDrawingMode = true
@@ -442,7 +528,7 @@ export class DrawField extends LitElement {
       this.#canvas.renderAll()
       return
     }
-    if (e.target) return
+    if (e.target && !this.drawing) return
     if (!this.drawing) return
     if (!this._current) return
 
@@ -487,7 +573,7 @@ export class DrawField extends LitElement {
   }
 
   _mouseup(e) {
-    if (e.target) return
+    if (e.target && !this.drawing) return
     console.log(this.action)
 
     if (this.drawing && !this.moving) {
@@ -532,7 +618,8 @@ export class DrawField extends LitElement {
         obj.type === 'CadleWall' ||
         obj.type === 'CadleWidth' ||
         obj.type === 'CadleDepth' ||
-        obj.type === 'CadleWindow'
+        obj.type === 'CadleWindow' ||
+        obj.type === 'CadleDoor'
       ) {
         specials.push(obj)
       } else if (obj.type) {
@@ -555,6 +642,10 @@ export class DrawField extends LitElement {
         // delete obj.type
         const wall = new CadleWall(obj)
         this.#canvas.add(wall as any)
+      } else if (obj.type === 'CadleDoor') {
+        // delete obj.type
+        const door = new CadleDoor(obj)
+        this.#canvas.add(door as any)
       } else if (obj.type === 'CadleWindow') {
         // delete obj.type
         const width = new CadleWindow(obj)
@@ -569,15 +660,105 @@ export class DrawField extends LitElement {
     return this.#canvas.toDataURL({ multiplier: 3, quality: 100, enableRetinaScaling: true })
   }
 
+  resizeCanvas() {
+    const container = this.parentElement?.getBoundingClientRect() ?? this.getBoundingClientRect()
+
+    // Skip if container doesn't have valid dimensions yet
+    if (!container.width || !container.height || container.width < 200 || container.height < 200) {
+      return
+    }
+
+    // A4 landscape aspect ratio
+    const aspectRatio = 1123 / 794
+
+    // Calculate new canvas size from available viewport space
+    const availableWidth = Math.max(200, container.width - 24)
+    const availableHeight = Math.max(200, container.height - 24)
+
+    let canvasWidth = availableWidth
+    let canvasHeight = availableHeight
+
+    if (canvasWidth / canvasHeight > aspectRatio) {
+      canvasWidth = canvasHeight * aspectRatio
+    } else {
+      canvasHeight = canvasWidth / aspectRatio
+    }
+
+    canvasWidth = Math.floor(canvasWidth)
+    canvasHeight = Math.floor(canvasHeight)
+
+    // Only update if dimensions changed significantly (avoid tiny adjustments)
+    if (Math.abs(this.#width - canvasWidth) > 10 || Math.abs(this.#height - canvasHeight) > 10) {
+      this.#width = canvasWidth
+      this.#height = canvasHeight
+      this.#canvas.setDimensions({ width: canvasWidth, height: canvasHeight })
+      this.#canvas.renderAll()
+    }
+  }
+
+  fitToContainer() {
+    // Reset zoom to 100% since canvas is already sized to fit
+    this.setZoom(1)
+  }
+
+  setZoom(zoom: number) {
+    // Clamp zoom between 0.1 and 3
+    const newZoom = Math.max(0.1, Math.min(3, zoom))
+    if (this.zoomLevel !== newZoom) {
+      this.zoomLevel = newZoom
+      this.#canvas.setZoom(this.zoomLevel)
+      this.#canvas.renderAll()
+      this.requestUpdate() // Trigger re-render to update zoom display
+    }
+  }
+
+  zoomIn() {
+    this.setZoom(this.zoomLevel * 1.2)
+  }
+
+  zoomOut() {
+    this.setZoom(this.zoomLevel / 1.2)
+  }
+
+  resetZoom() {
+    this.fitToContainer()
+  }
+
+  updated(changedProperties: Map<string, any>) {
+    super.updated(changedProperties)
+    if (changedProperties.has('zoomLevel')) {
+      // Zoom level updated, display is already re-rendered
+    }
+  }
+
   render() {
     return html` <style>
         :host {
           display: flex;
+          position: relative;
+          flex: 1 1 auto;
+          min-width: 0;
+          min-height: 0;
           box-sizing: border-box;
           width: 100%;
+          height: 100%;
           align-items: center;
           justify-content: center;
           background-color: #f0f0f0;
+          overflow: hidden;
+        }
+
+        .canvas-stage {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .canvas-stage .canvas-container {
+          margin: auto;
         }
 
         .shadow {
@@ -591,6 +772,27 @@ export class DrawField extends LitElement {
         canvas {
           background-image: url('./assets/grid-${this.gridSize}.png');
         }
+
+        .zoom-controls {
+          position: absolute;
+          bottom: 16px;
+          right: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          background: var(--md-sys-color-surface);
+          border-radius: 8px;
+          padding: 8px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          z-index: 3;
+        }
+
+        .zoom-level {
+          font-size: 12px;
+          color: var(--md-sys-color-on-surface);
+          text-align: center;
+          padding: 4px;
+        }
       </style>
       <context-menu>
         <custom-list-item
@@ -602,8 +804,13 @@ export class DrawField extends LitElement {
           add
         </custom-list-item>
       </context-menu>
-      <div class="shadow"></div>
+      <div class="canvas-stage">
+        <div class="shadow"></div>
+        <canvas></canvas>
+      </div>
 
-      <canvas></canvas>`
+      <div class="zoom-controls">
+        <div class="zoom-level">${Math.round(this.zoomLevel * 100)}%</div>
+      </div>`
   }
 }

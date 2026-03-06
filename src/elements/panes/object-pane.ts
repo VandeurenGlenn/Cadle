@@ -4,21 +4,14 @@ import { customElement, property } from 'lit/decorators.js'
 import './object/color.js'
 import './object/export.js'
 import './object/position.js'
+import './object/scale.js'
 import './object/text.js'
+import './object/overlay.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 
 @customElement('object-pane')
 export class ObjectPane extends LitElement {
-  connectedCallback(): void {
-    super.connectedCallback()
-    this.shadowRoot.addEventListener('click', this.#click)
-  }
-
-  #click = (event) => {
-    console.log(event.target)
-    event.target.active = !event.target.active
-  }
   static styles = [
     css`
       :host {
@@ -55,12 +48,14 @@ export class ObjectPane extends LitElement {
     return html`
       <object-color></object-color>
       <object-text></object-text>
+      <object-scale></object-scale>
       <object-position></object-position>
+      <object-overlay></object-overlay>
       <object-export></object-export>
 
-      <custom-icon-button icon="measuring_tape" @click=${() =>
-        (cadleShell.showMeasurements = !cadleShell.showMeasurements)}></custom-icon-button>
-      </custom-icon-button>
+      <custom-icon-button
+        icon="measuring_tape"
+        @click=${() => (cadleShell.showMeasurements = !cadleShell.showMeasurements)}></custom-icon-button>
     `
   }
 }

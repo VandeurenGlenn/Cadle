@@ -3,6 +3,10 @@ import { customElement, property, query } from 'lit/decorators.js'
 
 import '@material/web/dialog/dialog.js'
 import '@material/web/button/filled-tonal-button.js'
+import '@material/web/button/text-button.js'
+import '@material/web/button/filled-button.js'
+import '@material/web/checkbox/checkbox.js'
+import '@material/web/progress/circular-progress.js'
 import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
@@ -11,11 +15,11 @@ import './fields/draw.js'
 import './elements/save-field.js'
 import './elements/panes/project-pane.js'
 import './elements/panes/object-pane.js'
+import './elements/pdf-importer.js'
 import { provide } from '@lit/context'
 import { projectsContext } from './context/projects.js'
 import { Catalog } from './context/catalog.js'
 import '@material/web/textfield/filled-text-field.js'
-import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit/context'
@@ -32,7 +36,6 @@ import { Project } from './types.js'
 import { create, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { randomUUID } from 'crypto'
 import { DrawField } from './fields/draw.js'
-
 declare global {
   interface HTMLElementTagNameMap {
     'app-shell': AppShell
@@ -469,6 +472,20 @@ export class AppShell extends LitElement {
         height: calc(100% - 1px);
       }
 
+      draw-field,
+      save-field,
+      projects-field,
+      home-field,
+      add-page-field,
+      create-project-field,
+      settings-field {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        width: 100%;
+        height: 100%;
+      }
+
       flex-row.main {
         width: calc(100% - 2px);
         height: calc(100% - 50px);
@@ -516,6 +533,8 @@ export class AppShell extends LitElement {
   render() {
     return html`
       <md-dialog></md-dialog>
+
+      <project-actions slot="drawer-headline"> </project-actions>
 
       <custom-icon-set>
         <template>
@@ -587,6 +606,10 @@ export class AppShell extends LitElement {
           <span name="width">@symbol-width</span>
           <span name="height">@symbol-height</span>
           <span name="measuring_tape">@symbol-measuring_tape</span>
+          <span name="door_front">@symbol-door_front</span>
+          <span name="polyline">@symbol-polyline</span>
+          <span name="zoom_in">@symbol-zoom_in</span>
+          <span name="resize">@symbol-resize</span>
         </template>
       </custom-icon-set>
 
@@ -615,9 +638,9 @@ export class AppShell extends LitElement {
           <home-field data-route="home"></home-field>
           <draw-field data-route="draw"></draw-field>
           <save-field data-route="save"></save-field>
+          <projects-field data-route="projects"></projects-field>
 
           <add-page-field data-route="add-page"></add-page-field>
-          <projects-field data-route="projects"></projects-field>
           <create-project-field data-route="create-project"></create-project-field>
           <settings-field data-route="settings"></settings-field>
         </custom-pages>

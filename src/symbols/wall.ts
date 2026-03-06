@@ -130,8 +130,8 @@ export default class CadleWall extends Rect {
     return result
   }
 
-  type() {
-    return 'CadleWall'
+  isType(type) {
+    return type === 'CadleWall'
   }
 
   toObject(): any {

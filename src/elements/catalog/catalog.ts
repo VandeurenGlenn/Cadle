@@ -46,6 +46,23 @@ export class CatalogElement extends LitElement {
         box-sizing: border-box;
         border: none;
         border-radius: var(--md-sys-shape-corner-large);
+        background: var(--md-sys-color-surface-variant);
+        color: var(--md-sys-color-on-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      input[type='search']:focus {
+        outline: none;
+        background: var(--md-sys-color-surface);
+        border-color: var(--md-sys-color-primary);
+        box-shadow: 0 0 0 2px var(--md-sys-color-primary-container);
+      }
+
+      input[type='search']::placeholder {
+        color: var(--md-sys-color-on-surface-variant);
       }
     `
   ]

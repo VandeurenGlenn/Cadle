@@ -1,9 +1,9 @@
-import { Group, Object, Canvas as _Canvas } from 'fabric'
+import { Group, FabricObject, Canvas as _Canvas } from 'fabric'
 import type { DrawField } from './fields/draw.js'
 import state from './state.js'
 import { HistoryAction } from './types.js'
 
-declare type currentObjectInClipboard = Group | Object | undefined
+declare type currentObjectInClipboard = Group | FabricObject | undefined
 
 declare type Clipboard = {
   object: currentObjectInClipboard
@@ -67,11 +67,11 @@ const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: numbe
   let items = getActiveObjects()
   history.push({ type: `move`, objects: items })
   for (const item of items) {
-    if (item.type === 'activeselection') {
+    if (item.type === 'activeSelection') {
       // canvas.remove(item)
 
-      // // @ts-ignore
-      for (const _item of item._objects) {
+      const selectedObjects = (item as any).getObjects?.() ?? []
+      for (const _item of selectedObjects) {
         moveObject(_item, direction, amount)
         // canvas.setActiveObject(_item)
       }

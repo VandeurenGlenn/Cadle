@@ -4,13 +4,18 @@ import { CadleDepth } from './depth.js'
 import { CadleWidth } from './width.js'
 
 export default class CadleWall extends Rect {
+  static type = 'CadleWall'
+
   rect: Rect
   _widthText: CadleWidth
   _depthText: CadleDepth
   uuid: `${string}-${string}-${string}-${string}-${string}`
+  bindingId?: string
+  situationElementType: 'wall' = 'wall'
+  situationMetadata?: Record<string, unknown>
 
-  scaleX: number = 1
-  scaleY: number = 1
+  declare scaleX: number
+  declare scaleY: number
 
   isHorizontal: boolean
 
@@ -54,17 +59,22 @@ export default class CadleWall extends Rect {
 
   constructor(options) {
     super()
-    console.log('Wall', options)
-    console.log(options.id)
 
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
+    } else {
+      this.uuid = options.uuid
+    }
+    if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
+    if (options?.situationMetadata && typeof options.situationMetadata === 'object') {
+      this.situationMetadata = options.situationMetadata
     }
     this.initWidthText()
     // this.initDepthText()
     this.set({ ...defaultOptions, ...options })
+    this.set('type', 'CadleWall')
 
-    cadleShell.field.canvas.renderAll()
+    cadleShell.field.canvas.requestRenderAll()
   }
 
   updateWidthText(key, value) {
@@ -75,14 +85,14 @@ export default class CadleWall extends Rect {
         top: this.top - 20,
         left: this.left + (this.width * this.scaleX) / 2 - this.widthText.width / 2,
         text: String(Math.round(((this.width * this.scaleX) / 50) * 100 * 100) / 100),
-        visible: cadleShell.showMeasurements
+        visible: false
       })
     } else {
       this.widthText.set({
         top: this.top + this.height / 2 - this.widthText.height / 2,
         left: this.left - this.widthText.width - 10,
         text: String(Math.round(((this.height * this.scaleY) / 50) * 100 * 100) / 100),
-        visible: cadleShell.showMeasurements
+        visible: false
       })
     }
   }
@@ -134,10 +144,24 @@ export default class CadleWall extends Rect {
     return type === 'CadleWall'
   }
 
+  toJSON(): any {
+    return {
+      ...super.toObject(),
+      uuid: this.uuid,
+      bindingId: this.bindingId,
+      situationElementType: this.situationElementType,
+      situationMetadata: this.situationMetadata,
+      type: 'CadleWall'
+    }
+  }
+
   toObject(): any {
     return {
       ...super.toObject(),
       uuid: this.uuid,
+      bindingId: this.bindingId,
+      situationElementType: this.situationElementType,
+      situationMetadata: this.situationMetadata,
       type: 'CadleWall'
       // children: [
       // this.widthText.uuid

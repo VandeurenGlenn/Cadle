@@ -3,17 +3,22 @@ import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
 
 export default class CadleDoor extends Rect {
+  static type = 'CadleDoor'
+
   rect: Rect
   _widthText: CadleWidth
   uuid: `${string}-${string}-${string}-${string}-${string}`
+  bindingId?: string
+  situationElementType: 'door' = 'door'
+  situationMetadata?: Record<string, unknown>
 
   doorHingeSide: 'left' | 'right' | 'top' | 'bottom' = 'right'
   doorSwingDirection: 'up' | 'down' | 'left' | 'right' = 'down'
 
   wallThickness?: number
 
-  scaleX: number = 1
-  scaleY: number = 1
+  declare scaleX: number
+  declare scaleY: number
 
   isHorizontal: boolean
 
@@ -28,17 +33,23 @@ export default class CadleDoor extends Rect {
 
   constructor(options) {
     super({ ...defaultOptions, ...options })
+    this.set('type', 'CadleDoor')
 
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
+      this.uuid = options.uuid
     }
 
     if (options?.doorHingeSide) this.doorHingeSide = options.doorHingeSide
     if (options?.doorSwingDirection) this.doorSwingDirection = options.doorSwingDirection
     if (typeof options?.wallThickness === 'number') this.wallThickness = options.wallThickness
+    if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
+    if (options?.situationMetadata && typeof options.situationMetadata === 'object') {
+      this.situationMetadata = options.situationMetadata
+    }
 
-    cadleShell.field.canvas.renderAll()
+    cadleShell.field.canvas.requestRenderAll()
   }
 
   _render(ctx: CanvasRenderingContext2D) {
@@ -50,7 +61,7 @@ export default class CadleDoor extends Rect {
     const y0 = -boxH / 2
 
     const isHorizontal = this.doorSwingDirection === 'up' || this.doorSwingDirection === 'down'
-    const leafLen = Math.max(1, Math.min(boxW, boxH))
+    const leafLen = Math.max(1, isHorizontal ? boxW : boxH)
 
     // Normalize hinge side for the current orientation.
     const hingeSide = ((): 'left' | 'right' | 'top' | 'bottom' => {
@@ -61,6 +72,11 @@ export default class CadleDoor extends Rect {
     })()
 
     ctx.save()
+
+    // Mask the wall segment under the door so the opening reads clearly.
+    ctx.fillStyle = (this as any).backgroundColor || '#fff'
+    ctx.fillRect(x0, y0, boxW, boxH)
+
     ctx.strokeStyle = (this.stroke as any) || '#555'
     ctx.lineWidth = (this.strokeWidth as any) || 1
 
@@ -190,6 +206,9 @@ export default class CadleDoor extends Rect {
     return {
       ...super.toObject(),
       uuid: this.uuid,
+      bindingId: this.bindingId,
+      situationElementType: this.situationElementType,
+      situationMetadata: this.situationMetadata,
       doorHingeSide: this.doorHingeSide,
       doorSwingDirection: this.doorSwingDirection,
       wallThickness: this.wallThickness,
@@ -202,6 +221,9 @@ export default class CadleDoor extends Rect {
     return {
       ...super.toObject(),
       uuid: this.uuid,
+      bindingId: this.bindingId,
+      situationElementType: this.situationElementType,
+      situationMetadata: this.situationMetadata,
       doorHingeSide: this.doorHingeSide,
       doorSwingDirection: this.doorSwingDirection,
       wallThickness: this.wallThickness,

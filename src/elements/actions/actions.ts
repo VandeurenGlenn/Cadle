@@ -176,6 +176,11 @@ export class CadleActions extends LitElement {
       separates: true
     },
     {
+      title: 'toggle measurements',
+      icon: 'measuring_tape',
+      action: () => (globalThis.cadleShell.showMeasurements = !globalThis.cadleShell.showMeasurements)
+    },
+    {
       title: 'zoom out',
       icon: 'zoom_out',
       action: () => globalThis.cadleShell.field.zoomOut()
@@ -207,6 +212,11 @@ export class CadleActions extends LitElement {
       title: 'draw door',
       icon: 'door_front',
       action: () => (globalThis.cadleShell.action = 'draw-door')
+    },
+    {
+      title: 'draw gate',
+      icon: 'fence',
+      action: () => (globalThis.cadleShell.action = 'draw-gate')
     },
     {
       title: 'draw window',

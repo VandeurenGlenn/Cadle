@@ -150,14 +150,22 @@ export class ProjectElement extends LitElement {
         pointer-events: none;
         opacity: 0;
         padding: 3px;
-        outline: 1px solid #eee;
-        border: none;
+        outline: none;
+        border: 1px solid var(--md-sys-color-outline-variant);
         background: var(--md-sys-color-surface, #fef7ff);
+        color: var(--md-sys-color-on-surface);
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: 8px;
+        padding: 8px 12px;
+        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       :host([addingPage]) .page-input {
         pointer-events: auto;
         opacity: 1;
+        border-color: var(--md-sys-color-primary);
+        box-shadow: 0 0 0 2px var(--md-sys-color-primary-container);
       }
 
       .add-container {

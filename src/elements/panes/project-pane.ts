@@ -34,17 +34,27 @@ export class ProjectPane extends LitElement {
         --md-list-item-list-item-leading-avatar-color: #fff;
         --md-list-item-list-item-leading-avatar-shape: 0;
         pointer-events: auto;
-        border-top: 1px solid var(--md-sys-color-outline);
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
       }
 
       section {
         overflow-y: auto;
         display: flex;
         flex-direction: column;
+        box-sizing: border-box;
+        padding: 8px;
+        gap: 4px;
       }
 
       custom-button {
-        pointer-events: auto;
+        border-radius: 8px;
+        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      custom-button:hover {
+        background: var(--md-sys-color-surface-variant);
+        transform: translateY(-1px);
       }
     `
   ]

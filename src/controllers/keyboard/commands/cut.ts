@@ -5,13 +5,13 @@ export const isCut = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'x' &
 
 export const cut = async () => {
   const object = getActiveObject()
+  const items = canvas.getActiveObjects()
   const cloned = await object?.clone()
   clipboard.object = cloned
-  // @ts-ignore
   for (const item of items) {
-    if (item.type === 'activeselection') {
-      // @ts-ignore
-      for (const _item of item._objects) {
+    if (item.type === 'activeSelection') {
+      const selectionObjects = (item as any).getObjects?.() ?? []
+      for (const _item of selectionObjects) {
         canvas.remove(_item)
       }
     }

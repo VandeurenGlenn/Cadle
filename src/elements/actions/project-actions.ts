@@ -72,9 +72,11 @@ export class ProjectActions extends LitElement {
         margin-left: 6px;
         margin-top: 6px;
 
-        background-color: var(--md-sys-color-background);
+        background-color: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
         border-radius: var(--md-sys-shape-corner-medium);
-        // border: 1px solid var(--md-sys-color-outline);
+        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.12);
       }
 
       custom-elevation {
@@ -99,6 +101,7 @@ export class ProjectActions extends LitElement {
       }
 
       custom-list-item {
+        background: var(--md-sys-color-surface);
         color: var(--md-sys-color-on-surface-variant);
         font-family: var(--md-sys-typescale-label-large-font-family-name);
         font-style: var(--md-sys-typescale-label-large-font-family-style);
@@ -108,6 +111,11 @@ export class ProjectActions extends LitElement {
         line-height: var(--md-sys-typescale-label-large-height);
         text-transform: var(--md-sys-typescale-label-large-text-transform);
         text-decoration: var(--md-sys-typescale-label-large-text-decoration);
+        border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      }
+
+      custom-list-item:last-of-type {
+        border-bottom: none;
       }
 
       custom-list-item:hover,

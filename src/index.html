@@ -1,34 +1,48 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-  // @material-symbols-link
-</head>
-<body>
-  <style>
-    app-shell, body, html {
-      height: 100%;
-      overflow: hidden;
-      contain: strict;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="X-UA-Compatible"
+      content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link
+      rel="stylesheet"
+      href="./themes/default/theme.css" />
+    // @material-symbols-link
+  </head>
+  <body>
+    <style>
+      app-shell,
+      body,
+      html {
+        height: 100%;
+        overflow: hidden;
+        contain: strict;
+      }
 
-    body, html {
-      padding: 0;
-      margin: 0;
-      font-family: HelveticaNeue-Light,Helvetica Neue Light,Helvetica Neue,Helvetica,Arial,Lucida Grande,sans-serif;
-      overscroll-behavior: none;
-    }
-  </style>
+      body,
+      html {
+        padding: 0;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overscroll-behavior: none;
+        background: var(--md-sys-color-background);
+        color: var(--md-sys-color-on-background);
+      }
+    </style>
 
-  
-  
-  <app-shell>
+    <app-shell> </app-shell>
 
-  </app-shell>
-  
-  <script src="./shell.js" type="module"></script>
-</body>
+    <script
+      src="./shell.js"
+      type="module"></script>
+  </body>
 </html>

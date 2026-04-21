@@ -48,6 +48,12 @@ export class ProjectsField extends LitElement {
 
       .contextmenu custom-list-item {
         width: 260px;
+        background: var(--md-sys-color-surface);
+        border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      }
+
+      .contextmenu custom-list-item:last-of-type {
+        border-bottom: none;
       }
 
       custom-list-item {
@@ -56,6 +62,11 @@ export class ProjectsField extends LitElement {
         cursor: pointer;
         overflow: hidden;
         padding: 8px 8px 8px 16px;
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        border-radius: var(--md-sys-shape-corner-medium);
+        margin-bottom: 6px;
       }
 
       custom-icon-button {

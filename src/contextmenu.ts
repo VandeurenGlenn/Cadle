@@ -85,6 +85,9 @@ export class Contextmenu extends LitElement {
         max-width: 280px;
 
         padding: 8px 0;
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
         border-radius: var(--md-sys-shape-corner-extra-small);
         anchor: --contextmenu-anchor;
       }

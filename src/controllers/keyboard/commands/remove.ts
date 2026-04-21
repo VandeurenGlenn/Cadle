@@ -11,9 +11,9 @@ export const remove = () => {
   canvas.discardActiveObject()
   // todo is this really needed?
   for (const object of objects) {
-    if (object.type === 'activeselection') {
-      // @ts-ignore
-      for (const _object of object._objects) {
+    if (object.type === 'activeSelection') {
+      const selectionObjects = (object as any).getObjects?.() ?? []
+      for (const _object of selectionObjects) {
         canvas.remove(_object)
       }
     }

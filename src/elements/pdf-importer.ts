@@ -4,6 +4,7 @@ import '@material/web/button/text-button.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/checkbox/checkbox.js'
 import '@material/web/progress/circular-progress.js'
+import './header.js'
 import * as pdfjsLib from 'pdfjs-dist'
 
 async function getPdfjsLib() {
@@ -64,10 +65,7 @@ export class PDFImporter extends LitElement {
         padding: 20px;
       }
 
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+      cadle-header {
         margin-bottom: 20px;
       }
 
@@ -318,9 +316,11 @@ export class PDFImporter extends LitElement {
 
     return html`
       <div class="container">
-        <div class="header">
+        <cadle-header>
           <div class="title">Select PDF Pages to Import</div>
-          <div class="actions">
+          <div
+            class="actions"
+            slot="end">
             <md-text-button @click=${() => this.handleCancel()}>Cancel</md-text-button>
             <md-filled-button
               @click=${() => this.importSelectedPages()}
@@ -328,7 +328,7 @@ export class PDFImporter extends LitElement {
               Import ${selectedCount} Page${selectedCount !== 1 ? 's' : ''}
             </md-filled-button>
           </div>
-        </div>
+        </cadle-header>
 
         ${this.error ? html`<div class="error">${this.error}</div>` : ''}
         ${this.pages.length > 0

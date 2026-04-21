@@ -16,6 +16,7 @@ import './elements/save-field.js'
 import './elements/panes/project-pane.js'
 import './elements/panes/object-pane.js'
 import './elements/pdf-importer.js'
+import './elements/header.js'
 import { provide } from '@lit/context'
 import { projectsContext } from './context/projects.js'
 import { Catalog } from './context/catalog.js'
@@ -23,8 +24,6 @@ import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import { ContextProvider } from '@lit/context'
-import '@vandeurenglenn/lite-elements/drawer-layout.js'
-import '@vandeurenglenn/lite-elements/theme.js'
 import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
@@ -34,7 +33,6 @@ import '@vandeurenglenn/lite-elements/tabs.js'
 import '@vandeurenglenn/lite-elements/tab.js'
 import { Project } from './types.js'
 import { create, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
-import { randomUUID } from 'crypto'
 import { DrawField } from './fields/draw.js'
 declare global {
   interface HTMLElementTagNameMap {
@@ -50,6 +48,8 @@ declare type dialogAction =
   | 'rename-project'
   | 'rename-page'
   | 'confirm-input'
+
+declare type A4Orientation = 'portrait' | 'landscape'
 
 @customElement('app-shell')
 export class AppShell extends LitElement {
@@ -71,9 +71,6 @@ export class AppShell extends LitElement {
   @query('custom-pages')
   pages
 
-  @query('custom-drawer-layout')
-  drawerLayout
-
   @property({ type: Object })
   manifest: {}
 
@@ -84,12 +81,25 @@ export class AppShell extends LitElement {
 
   set showMeasurements(value) {
     this._showMeasurements = value
-    const objects = this.field.canvas._objects
+    if (this.field) {
+      this.field.showMeasurements = value
+    }
+    if (!this.field?.canvas) return
+
+    const objects = this.field.canvas.getObjects()
     for (const object of objects) {
       if (object.type === 'CadleWall' || object.type === 'CadleWindow') {
         object.set('showMeasurements', value)
       }
+
+      // Legacy labels stay hidden; architectural side overlay is the measurement source.
+      if (object.type === 'CadleWidth' || object.type === 'CadleDepth') {
+        object.set('visible', false)
+      }
     }
+
+    this.field.canvas.requestRenderAll()
+    this.field.requestUpdate()
   }
 
   get showMeasurements() {
@@ -130,6 +140,7 @@ export class AppShell extends LitElement {
   @provide({ context: 'catalogContext' })
   @property({ attribute: false })
   catalog: Catalog
+  _baseCatalog: Catalog = []
 
   private _projectsProvider = new ContextProvider(this, { context: projectsContext, initialValue: [] })
   private _projectProvider = new ContextProvider(this, { context: 'projectContext' })
@@ -139,32 +150,58 @@ export class AppShell extends LitElement {
     globalThis.cadleShell = this
   }
 
-  #beforePrint = (e: Event) => {
-    this.drawerLayout.drawerOpen = false
-    this.drawerLayout.keepClosed = true
+  #mergeCatalogWithBoundSymbols(boundSymbols: Catalog[number]['symbols']) {
+    const baseCatalog = this._baseCatalog ?? []
+    const nextCatalog = [...baseCatalog]
+
+    if (boundSymbols.length > 0) {
+      nextCatalog.unshift({
+        category: 'Bound Situation Elements',
+        symbols: boundSymbols
+      })
+    }
+
+    return nextCatalog
+  }
+
+  #refreshBoundOneLineCatalog = () => {
+    const symbols = this.field?.getBoundOneLineCatalogSymbols?.() ?? []
+    this.catalog = this.#mergeCatalogWithBoundSymbols(symbols)
+  }
+
+  #onBindingLookupUpdated = (event: Event) => {
+    const customEvent = event as CustomEvent<{ symbols?: Catalog[number]['symbols'] }>
+    const symbols = customEvent.detail?.symbols ?? []
+    this.catalog = this.#mergeCatalogWithBoundSymbols(symbols)
+  }
+
+  #beforePrint = async (e: Event) => {
     this.actions.hide()
     this.field.style.position = 'fixed'
     this.field.style.left = '0'
-    // const {width, height} = this.getBoundingClientRect()
-    // this.field.canvas.setWidth(width)
-    // this.field.canvas.setHeight(height)
-    this.field.canvas.renderAll()
-    var dataUrl = this.field.canvas.toDataURL() //attempt to save base64 string to server using this var
-    var windowContent = '<!DOCTYPE html>'
+    const exported = await this.exportA4PNG('auto')
+    const dataUrl = exported.dataUrl
+
+    let windowContent = '<!DOCTYPE html>'
     windowContent += '<html>'
-    windowContent += '<head><title>Print Cadle Project</title></head>'
-    windowContent += '<body>'
-    windowContent += '<img style="width: 100%;" src="' + dataUrl + '" onload=window.print();>'
+    windowContent += '<head><title>Print Cadle Project</title>'
+    windowContent += '<style>'
+    windowContent += `@page{size:A4 ${exported.orientation};margin:0;}`
+    windowContent += 'html,body{margin:0;background:#fff;}'
+    windowContent += 'img{width:100%;display:block;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}'
+    windowContent += '</style></head>'
+    windowContent += '<body style="margin:0;background:#fff;">'
+    windowContent += '<img src="' + dataUrl + '" onload=window.print();>'
     windowContent += '</body>'
     windowContent += '</html>'
-    var printWin = window.open('', '', 'width=340,height=260')
+
+    const printWin = window.open('', '', 'width=340,height=260')
+    if (!printWin) return
     printWin.document.open()
     printWin.document.write(windowContent)
   }
 
   #afterPrint = () => {
-    this.drawerLayout.drawerOpen = true
-    this.drawerLayout.keepClosed = false
     this.field.style.position = 'absolute'
     this.field.style.left = 'auto'
     this.actions.show()
@@ -200,7 +237,8 @@ export class AppShell extends LitElement {
     ])
 
     // @ts-ignore
-    this.catalog = (await import(`${location.origin}${location.pathname}symbols/manifest.js`)).default
+    this._baseCatalog = (await import(`${location.origin}${location.pathname}symbols/manifest.js`)).default
+    this.catalog = this.#mergeCatalogWithBoundSymbols([])
 
     await this.requestUpdate('projects')
 
@@ -214,6 +252,7 @@ export class AppShell extends LitElement {
 
     this.addEventListener('drop', this.#drop.bind(this))
     this.addEventListener('dragover', this.#dragover.bind(this))
+    this.addEventListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
 
     // this.addEventListener('mousedown', () => {
     //   const target = this.shadowRoot.querySelector('[open]')
@@ -374,15 +413,127 @@ export class AppShell extends LitElement {
     cadleShell.dialog.open = true
   }
 
+  #getExportDimensions(orientation: A4Orientation) {
+    return orientation === 'portrait' ? { width: 794, height: 1123 } : { width: 1123, height: 794 }
+  }
+
+  #getCanvasContentBounds(canvas: any) {
+    const objects = canvas.getObjects().filter((obj: any) => obj.visible !== false)
+    if (objects.length === 0) {
+      return {
+        objects,
+        minLeft: 0,
+        minTop: 0,
+        maxRight: 0,
+        maxBottom: 0,
+        contentWidth: 1,
+        contentHeight: 1
+      }
+    }
+
+    let minLeft = Number.POSITIVE_INFINITY
+    let minTop = Number.POSITIVE_INFINITY
+    let maxRight = Number.NEGATIVE_INFINITY
+    let maxBottom = Number.NEGATIVE_INFINITY
+
+    for (const obj of objects) {
+      const bounds = obj.getBoundingRect(true, true)
+      minLeft = Math.min(minLeft, Number(bounds.left ?? 0))
+      minTop = Math.min(minTop, Number(bounds.top ?? 0))
+      maxRight = Math.max(maxRight, Number(bounds.left ?? 0) + Number(bounds.width ?? 0))
+      maxBottom = Math.max(maxBottom, Number(bounds.top ?? 0) + Number(bounds.height ?? 0))
+    }
+
+    return {
+      objects,
+      minLeft,
+      minTop,
+      maxRight,
+      maxBottom,
+      contentWidth: Math.max(1, maxRight - minLeft),
+      contentHeight: Math.max(1, maxBottom - minTop)
+    }
+  }
+
+  #resolveBestOrientation(contentWidth: number, contentHeight: number, margin: number): A4Orientation {
+    const landscape = this.#getExportDimensions('landscape')
+    const portrait = this.#getExportDimensions('portrait')
+
+    const landscapeZoom = Math.min(
+      Math.max(1, landscape.width - margin * 2) / contentWidth,
+      Math.max(1, landscape.height - margin * 2) / contentHeight
+    )
+    const portraitZoom = Math.min(
+      Math.max(1, portrait.width - margin * 2) / contentWidth,
+      Math.max(1, portrait.height - margin * 2) / contentHeight
+    )
+
+    return portraitZoom > landscapeZoom ? 'portrait' : 'landscape'
+  }
+
+  async exportA4PNG(orientation: A4Orientation | 'auto' = 'auto') {
+    const canvas = this.field.canvas
+    const exportMargin = 28
+    const previousDimensions = {
+      width: Number(canvas.getWidth() ?? 1123),
+      height: Number(canvas.getHeight() ?? 794)
+    }
+    const previousViewportTransform = (canvas.viewportTransform ?? [1, 0, 0, 1, 0, 0]).slice() as number[]
+    const bounds = this.#getCanvasContentBounds(canvas)
+
+    const resolvedOrientation: A4Orientation =
+      orientation === 'auto'
+        ? this.#resolveBestOrientation(bounds.contentWidth, bounds.contentHeight, exportMargin)
+        : orientation
+    const { width: exportWidth, height: exportHeight } = this.#getExportDimensions(resolvedOrientation)
+
+    const exportMultiplier = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
+
+    try {
+      canvas.setDimensions({ width: exportWidth, height: exportHeight })
+
+      if (bounds.objects.length === 0) {
+        canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+      } else {
+        const availableWidth = Math.max(1, exportWidth - exportMargin * 2)
+        const availableHeight = Math.max(1, exportHeight - exportMargin * 2)
+        const fitZoom = Math.max(
+          0.1,
+          Math.min(3, Math.min(availableWidth / bounds.contentWidth, availableHeight / bounds.contentHeight))
+        )
+        const translateX = exportWidth / 2 - (bounds.minLeft + bounds.contentWidth / 2) * fitZoom
+        const translateY = exportHeight / 2 - (bounds.minTop + bounds.contentHeight / 2) * fitZoom
+
+        canvas.setViewportTransform([fitZoom, 0, 0, fitZoom, translateX, translateY])
+      }
+
+      canvas.renderAll()
+
+      const dataUrl = canvas.toDataURL({
+        multiplier: exportMultiplier,
+        quality: 100,
+        format: 'png',
+        width: exportWidth,
+        height: exportHeight,
+        enableRetinaScaling: true
+      })
+
+      return {
+        dataUrl,
+        orientation: resolvedOrientation,
+        width: exportWidth,
+        height: exportHeight
+      }
+    } finally {
+      canvas.setDimensions(previousDimensions)
+      canvas.setViewportTransform(previousViewportTransform)
+      canvas.renderAll()
+    }
+  }
+
   async toPNG() {
-    return this.field.canvas.toDataURL({
-      multiplier: 1,
-      quality: 100,
-      format: 'png',
-      width: 1123,
-      height: 794,
-      enableRetinaScaling: true
-    })
+    const exported = await this.exportA4PNG('landscape')
+    return exported.dataUrl
   }
 
   async downloadAsPNG(name) {
@@ -395,7 +546,7 @@ export class AppShell extends LitElement {
   }
 
   get drawer() {
-    return this.renderRoot.querySelector('custom-drawer-layout').shadowRoot.querySelector('custom-drawer')
+    return this.renderRoot.querySelector('.left-rail')
   }
 
   async savePage() {
@@ -414,6 +565,7 @@ export class AppShell extends LitElement {
     console.log(page, key)
 
     await this.renderRoot.querySelector('draw-field').fromJSON(page.schema || {})
+    this.#refreshBoundOneLineCatalog()
   }
 
   undo() {
@@ -457,7 +609,64 @@ export class AppShell extends LitElement {
       :host {
         display: flex;
         flex-direction: column;
-        --custom-top-app-bar-height: 54px;
+        height: 100%;
+        min-height: 0;
+        --custom-top-app-bar-height: 64px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr) 320px;
+        grid-template-rows: 1fr;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+      }
+
+      .left-rail,
+      .right-rail {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        background: var(--md-sys-color-surface);
+      }
+
+      .left-rail {
+        border-right: 1px solid var(--md-sys-color-outline-variant);
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
+      }
+
+      cadle-header project-actions {
+        width: 100%;
+      }
+
+      .right-rail {
+        border-left: 1px solid var(--md-sys-color-outline-variant);
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .center-stage {
+          background: var(--md-sys-color-background);
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .left-rail project-pane,
+      .right-rail object-pane {
+        position: static !important;
+        top: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      .right-rail object-pane {
+        border-left: 0;
       }
 
       section {
@@ -466,10 +675,11 @@ export class AppShell extends LitElement {
       }
 
       custom-pages {
-        border-top: 1px solid var(--md-sys-color-outline);
         display: flex;
-        width: calc(100% - 320px);
+        width: 100%;
         height: calc(100% - 1px);
+        min-width: 0;
+        min-height: 0;
       }
 
       draw-field,
@@ -488,7 +698,7 @@ export class AppShell extends LitElement {
 
       flex-row.main {
         width: calc(100% - 2px);
-        height: calc(100% - 50px);
+        height: calc(100% - 64px);
       }
 
       .file-controls {
@@ -504,9 +714,10 @@ export class AppShell extends LitElement {
 
       custom-tabs {
         width: 100%;
-        padding-top: 12px;
+        padding: 12px 16px 0 16px;
         justify-content: center;
-        border-top: 1px solid var(--md-sys-color-outline);
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
       }
 
       custom-tab {
@@ -515,6 +726,22 @@ export class AppShell extends LitElement {
 
       custom-tab custom-icon {
         margin-right: 6px;
+      }
+
+      @media (max-width: 1280px) {
+        .layout {
+          grid-template-columns: 280px minmax(0, 1fr) 280px;
+        }
+      }
+
+      @media (max-width: 1024px) {
+        .layout {
+          grid-template-columns: 260px minmax(0, 1fr);
+        }
+
+        .right-rail {
+          display: none;
+        }
       }
     `
   ]
@@ -533,8 +760,6 @@ export class AppShell extends LitElement {
   render() {
     return html`
       <md-dialog></md-dialog>
-
-      <project-actions slot="drawer-headline"> </project-actions>
 
       <custom-icon-set>
         <template>
@@ -613,42 +838,45 @@ export class AppShell extends LitElement {
         </template>
       </custom-icon-set>
 
-      <custom-theme load-symbols="false"></custom-theme>
+      <section class="layout">
+        <aside class="left-rail">
+          <cadle-header>
+            <project-actions></project-actions>
+          </cadle-header>
 
-      <custom-drawer-layout>
-        <project-actions slot="drawer-headline"> </project-actions>
+          <project-pane
+            .manifest=${this.manifest}
+            .project=${this.project}></project-pane>
 
-        <project-pane
-          .manifest=${this.manifest}
-          .project=${this.project}
-          slot="drawer-content"></project-pane>
+          <custom-tabs
+            round
+            attr-for-selected="route"
+            default-selected="symbols"
+            @selected=${(e) => this.projectPane.select(e.detail)}>
+            <custom-tab route="project"><custom-icon icon="folder"></custom-icon>project</custom-tab>
+            <custom-tab route="symbols"><custom-icon icon="format_shapes"></custom-icon>symbols</custom-tab>
+          </custom-tabs>
+        </aside>
 
-        <custom-tabs
-          round
-          slot="drawer-footer"
-          attr-for-selected="route"
-          default-selected="symbols"
-          @selected=${(e) => this.projectPane.select(e.detail)}>
-          <custom-tab route="project"><custom-icon icon="folder"></custom-icon>project</custom-tab>
-          <custom-tab route="symbols"><custom-icon icon="shapes"></custom-icon>symbols</custom-tab>
-        </custom-tabs>
+        <main class="center-stage">
+          <cadle-header><cadle-actions></cadle-actions></cadle-header>
+          <custom-pages attr-for-selected="data-route">
+            <home-field data-route="home"></home-field>
+            <draw-field data-route="draw"></draw-field>
+            <save-field data-route="save"></save-field>
+            <projects-field data-route="projects"></projects-field>
 
-        <cadle-actions slot="top-app-bar-end"></cadle-actions>
-        <custom-pages attr-for-selected="data-route">
-          <home-field data-route="home"></home-field>
-          <draw-field data-route="draw"></draw-field>
-          <save-field data-route="save"></save-field>
-          <projects-field data-route="projects"></projects-field>
+            <add-page-field data-route="add-page"></add-page-field>
+            <create-project-field data-route="create-project"></create-project-field>
+            <settings-field data-route="settings"></settings-field>
+          </custom-pages>
+        </main>
 
-          <add-page-field data-route="add-page"></add-page-field>
-          <create-project-field data-route="create-project"></create-project-field>
-          <settings-field data-route="settings"></settings-field>
-        </custom-pages>
-      </custom-drawer-layout>
+        <aside class="right-rail">
+          <object-pane></object-pane>
+        </aside>
+      </section>
 
-      <object-pane
-        right
-        open></object-pane>
       <keyboard-shortcuts></keyboard-shortcuts>
 
       <md-dialog class="color-picker">

@@ -2,6 +2,7 @@ import { LitElement, html, css, PropertyDeclarations, PropertyValueMap } from 'l
 import { customElement, property } from 'lit/decorators.js'
 import './item.js'
 import { map } from 'lit/directives/map.js'
+import { Catalog } from '../../context/catalog.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -15,7 +16,7 @@ export class CatalogCategory extends LitElement {
   category: string
 
   @property({ type: Array })
-  symbols: { name: string; path: string }[]
+  symbols: Catalog[number]['symbols']
 
   @property({ type: Boolean, reflect: true })
   open: boolean
@@ -38,6 +39,9 @@ export class CatalogCategory extends LitElement {
         opacity: 0;
         pointer-events: none;
         padding-left: 24px;
+        transition:
+          opacity 150ms,
+          height 200ms cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       :host([open]) .symbol-container,
@@ -55,10 +59,15 @@ export class CatalogCategory extends LitElement {
       catalog-item:active {
         background: var(--md-sys-color-secondary-container);
         color: var(--md-sys-color-on-secondary-container);
+        transform: scale(0.98);
       }
 
       custom-list-item,
       catalog-item {
+        background: var(--md-sys-color-surface);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        border-radius: var(--md-sys-shape-corner-medium);
+        margin-bottom: 4px;
         color: var(--md-sys-color-on-surface-variant);
         font-family: var(--md-sys-typescale-label-large-font-family-name);
         font-style: var(--md-sys-typescale-label-large-font-family-style);
@@ -68,6 +77,11 @@ export class CatalogCategory extends LitElement {
         line-height: var(--md-sys-typescale-label-large-height);
         text-transform: var(--md-sys-typescale-label-large-text-transform);
         text-decoration: var(--md-sys-typescale-label-large-text-decoration);
+        transition:
+          background 150ms,
+          color 150ms,
+          transform 150ms;
+        cursor: pointer;
       }
 
       custom-list-item:hover,
@@ -75,6 +89,7 @@ export class CatalogCategory extends LitElement {
       catalog-item:hover,
       catalog-item:focus {
         background: var(--md-sys-color-secondary-container-hover);
+        transform: translateX(2px);
         color: var(--md-sys-color-on-secondary-container);
       }
     `
@@ -110,6 +125,7 @@ export class CatalogCategory extends LitElement {
               (symbol, i) => html`
                 <catalog-item
                   tabindex=${i + 1}
+                  .symbol=${symbol}
                   .headline=${symbol.name}
                   image=${symbol.path}></catalog-item>
               `

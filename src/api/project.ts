@@ -121,22 +121,34 @@ export const download = async () => {
   console.log('down')
 
   // const fields: DrawField[] = Array.from(this.renderRoot.querySelectorAll('draw-field'))
-  const pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', dpi: 300 })
-  // only jpeg is supported by jsPDF
+  let pdf: jsPDF | undefined
+
   console.log(cadleShell.project)
 
   let i = 0
   for (const [key, page] of Object.entries(cadleShell.project.pages)) {
     await cadleShell.loadPage(key)
-    const dataUrl = await cadleShell.toPNG()
+    const exported = await cadleShell.exportA4PNG('auto')
     // const svg = await cadleShell.field.canvas.toSVG()
 
-    if (i !== 0) pdf.addPage('a4', 'landscape')
-    // @ts-ignore
-    pdf.addImage(dataUrl, 'a4', 0, 0, cadleShell.field.canvas.width / 2, cadleShell.field.canvas.height / 2)
+    if (!pdf) {
+      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
+    } else {
+      pdf.addPage('a4', exported.orientation)
+    }
+
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    pdf.setFillColor(255, 255, 255)
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+    pdf.addImage(exported.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, `page-${i}`, 'FAST')
     // pdf.addSvgAsImage(svg, 0, 0, undefined, undefined, { autoPaging: true })
     // URL.revokeObjectURL(dataUrl)
     i += 1
+  }
+
+  if (!pdf) {
+    pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', compress: true })
   }
 
   pdf.save(`${cadleShell.project.name}.pdf`)

@@ -102,7 +102,7 @@ export class ObjectOverlay extends LitElement {
       if (this.#isImageObject(obj)) return obj
     }
 
-    const selectionObjects = (activeObject as any)?._objects ?? []
+    const selectionObjects = (activeObject as any)?.getObjects?.() ?? []
     for (const obj of selectionObjects) {
       if (this.#isImageObject(obj)) return obj
     }

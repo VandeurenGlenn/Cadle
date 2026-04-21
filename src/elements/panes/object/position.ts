@@ -97,14 +97,19 @@ export class ObjectPosition extends LitElement {
     for (const obj of activeObjects) {
       if (property === 'width' || property === 'height') {
         // For width/height, we need to account for scale
-        const scale = property === 'width' ? (obj.scaleX ?? 1) : (obj.scaleY ?? 1)
         const originalSize = property === 'width' ? (obj.width ?? 0) : (obj.height ?? 0)
         if (originalSize > 0) {
           const newScale = numValue / originalSize
+          const originX = (obj as any).originX ?? 'left'
+          const originY = (obj as any).originY ?? 'top'
+          const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
           obj.set(property === 'width' ? { scaleX: newScale } : { scaleY: newScale })
+          ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+          obj.setCoords()
         }
       } else {
         obj.set({ [property]: numValue })
+        obj.setCoords()
       }
     }
     canvas.requestRenderAll()

@@ -88,7 +88,12 @@ export class ObjectScale extends LitElement {
     // Scale the active object(s) only
     const activeObjects = canvas.getActiveObjects()
     for (const obj of activeObjects) {
+      const originX = (obj as any).originX ?? 'left'
+      const originY = (obj as any).originY ?? 'top'
+      const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
       obj.set({ scaleX: scale, scaleY: scale })
+      ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+      obj.setCoords()
     }
 
     canvas.requestRenderAll()
@@ -104,7 +109,12 @@ export class ObjectScale extends LitElement {
     // Reset scale to 1 (100%)
     const activeObjects = canvas.getActiveObjects()
     for (const obj of activeObjects) {
+      const originX = (obj as any).originX ?? 'left'
+      const originY = (obj as any).originY ?? 'top'
+      const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
       obj.set({ scaleX: 1, scaleY: 1 })
+      ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+      obj.setCoords()
     }
 
     if (this._field) this._field.value = '100'

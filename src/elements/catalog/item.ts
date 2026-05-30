@@ -308,12 +308,9 @@ export class CatalogItem extends LiteElement {
   }
 
   #click = async (event: Event) => {
-    // Ensure the draw page is active before placing a symbol
-    if (typeof cadleShell !== 'undefined') {
-      // If not already on the draw page, switch to it
-      if (cadleShell.loadedPage && cadleShell.loadedPage !== 'draw') {
-        cadleShell.loadedPage = 'draw'
-      }
+    // Ensure the draw view is active before placing a symbol
+    if (typeof cadleShell !== 'undefined' && location.hash !== '#!/draw') {
+      location.hash = '#!/draw'
     }
 
     const sourcePath = this.symbol?.path ?? this.image
@@ -402,13 +399,13 @@ export class CatalogItem extends LiteElement {
             class="preview"
             aria-hidden="true"
             >${this._svgPreview
-    ? unsafeSVG(this._svgPreview)
-    : previewSource
-      ? html`<img
+              ? unsafeSVG(this._svgPreview)
+              : previewSource
+                ? html`<img
                     class="magnifier-image"
                     src=${previewSource}
                     alt="" />`
-      : ''}</span
+                : ''}</span
           >
         </slot>
       </div>

@@ -9,7 +9,7 @@ import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
 import './../list/item.js'
 import '../../contextmenu.js'
-import { Project } from '../../types.js'
+import { Project, UUID } from '../../types.js'
 import { addPage, getProjectData, setProjectData } from '../../api/project.js'
 import { map } from '@vandeurenglenn/lite/map.js'
 declare global {
@@ -19,8 +19,11 @@ declare global {
 }
 @customElement('project-element')
 export class ProjectElement extends LiteElement {
-  @property({ attribute: false })
-  accessor project!: Project
+  @property({ attribute: false, consumes: 'project' })
+  accessor project: Project | null = null
+
+  @property({ attribute: false, consumes: 'projectKey' })
+  accessor projectKey: UUID = '' as UUID
 
   currentSelected = ''
   @property({ attribute: false })
@@ -54,11 +57,9 @@ export class ProjectElement extends LiteElement {
 
   async handleInput() {
     const page: string = this.pageInput.value
-    if (page.length > 0) {
-      const project = cadleShell.project
-      addPage(cadleShell.projectKey, page, {})
-      cadleShell.project = await getProjectData(cadleShell.projectKey)
-      this.project = cadleShell.project
+    if (page.length > 0 && this.projectKey) {
+      addPage(this.projectKey, page, {})
+      this.project = await getProjectData(this.projectKey)
       this.pageInput.value = ''
     }
   }
@@ -116,14 +117,16 @@ export class ProjectElement extends LiteElement {
     const action = detail.getAttribute('action')
     const projectKey = menu?.currentTarget?.dataset?.project
     if (projectKey && (action === 'remove' || action === 'paste')) {
-      const page = this.project.pages[projectKey]
+      const page = this.project?.pages?.[projectKey]
       console.log({ page })
-      if (action === 'paste') {
-        this.clipboard = undefined
-        addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
-      } else if (action === 'remove') {
-        delete this.project.pages[projectKey]
-        setProjectData(cadleShell.projectKey, this.project)
+      if (page) {
+        if (action === 'paste') {
+          this.clipboard = undefined
+          addPage(this.projectKey, `${page.name} copy`, page.schema)
+        } else if (action === 'remove') {
+          delete this.project!.pages[projectKey]
+          setProjectData(this.projectKey, this.project!)
+        }
       }
     } else if (action === 'copy') {
       this.clipboard = this.currentSelected
@@ -138,7 +141,7 @@ export class ProjectElement extends LiteElement {
   static styles = [styles]
 
   get #projectTemplate() {
-    return Object.entries(this.project.pages).map(
+    return Object.entries(this.project?.pages ?? {}).map(
       ([key, project]) => html`
         <custom-drawer-item
           .headline=${project.name}

@@ -1,6 +1,7 @@
 import { LiteElement, html, css, property, customElement, query } from '@vandeurenglenn/lite'
 import { Canvas, Circle, Line, IText, loadSVGFromURL, util, PencilBrush } from './../fabric-imports.js'
 import { AppShell } from '../shell.js'
+import type { Project } from '../types.js'
 import Rect from './../symbols/rectangle.js'
 import state from '../state.js'
 import './../contextmenu.js'
@@ -93,6 +94,12 @@ export class DrawField extends LiteElement {
 
   @property({ type: Number })
   accessor zoomLevel: number = 1
+
+  @property({ attribute: false, consumes: 'project' })
+  accessor project: Project | null = null
+
+  @property({ attribute: false, consumes: 'loadedPage' })
+  accessor loadedPage
 
   @property({ type: Boolean })
   accessor showMeasurements: boolean = false
@@ -1334,7 +1341,7 @@ export class DrawField extends LiteElement {
           this.canvas.remove(this._current)
           this.canvas.add(this._current)
           if (this.action === 'draw-symbol' || this.action === 'draw-text') {
-            if (this.#shell.loadedPage && this.#shell.project?.pages?.[this.#shell.loadedPage]) {
+            if (this.loadedPage && this.project?.pages?.[this.loadedPage]) {
               void this.#shell
                 .savePage()
                 .catch((error) => console.error('Auto-save failed after drawing symbol/text', error))

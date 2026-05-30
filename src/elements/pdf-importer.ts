@@ -6,6 +6,7 @@ import '@material/web/checkbox/checkbox.js'
 import '@material/web/progress/circular-progress.js'
 import './header.js'
 import * as pdfjsLib from 'pdfjs-dist'
+import type { Project, UUID } from '../types.js'
 async function getPdfjsLib() {
   console.log('pdfjsLib', pdfjsLib)
   // Set up worker with a data URL approach that doesn't require external fetch
@@ -38,6 +39,12 @@ export class PDFImporter extends LiteElement {
   @property()
   accessor pages: PDFPage[] = []
 
+  @property({ attribute: false, consumes: 'projectKey' })
+  accessor projectKey: UUID = '' as UUID
+
+  @property({ attribute: false, consumes: 'project' })
+  accessor project: Project | null = null
+
   @property()
   accessor isLoading = false
 
@@ -45,7 +52,6 @@ export class PDFImporter extends LiteElement {
   accessor error: string | null = null
 
   static styles = [styles]
-
 
   async loadPDF(file: File): Promise<void> {
     try {
@@ -115,9 +121,9 @@ export class PDFImporter extends LiteElement {
 
     try {
       this.isLoading = true
-      const cadleShell = (globalThis as any).cadleShell
       const { setProjectData } = await import('../api/project.js')
       const { FabricImage } = await import('fabric')
+      if (!this.project) throw new Error('No project is currently loaded')
       for (const pageData of selectedPages) {
         const pageName = `Page ${pageData.pageNumber}`
         const pageUuid = crypto.randomUUID()
@@ -136,7 +142,8 @@ export class PDFImporter extends LiteElement {
         )
         // Convert to JSON for storage
         const imageObject = fabricImage.toJSON()
-        cadleShell.project.pages[pageUuid] = {
+        this.project.pages[pageUuid] = {
+          creationTime: Date.now(),
           name: pageName,
           schema: {
             version: '6.0.0',
@@ -145,8 +152,8 @@ export class PDFImporter extends LiteElement {
         }
       }
 
-      await setProjectData(cadleShell.projectKey, cadleShell.project)
-      pubsub.publish('project-updated', { projectKey: cadleShell.projectKey })
+      await setProjectData(this.projectKey, this.project)
+      pubsub.publish('project-updated', { projectKey: this.projectKey })
       pubsub.publish('show-notification', { message: `Imported ${selectedPages.length} page(s) successfully!` })
       // Dispatch event to notify parent that import is complete
       this.dispatchEvent(new CustomEvent('import-complete', { detail: { pagesImported: selectedPages.length } }))
@@ -191,7 +198,7 @@ export class PDFImporter extends LiteElement {
         </cadle-header>
         ${this.error ? html`<div class="error">${this.error}</div>` : ''}
         ${this.pages.length > 0
-    ? html`
+          ? html`
               <div class="select-all-section">
                 <md-checkbox
                   ?checked=${this.pages.every((p) => p.selected)}
@@ -200,32 +207,32 @@ export class PDFImporter extends LiteElement {
                 <span>${selectedCount} of ${this.pages.length} pages selected</span>
               </div>
             `
-    : ''}
+          : ''}
         <div class="pages-container">
           ${this.pages.map(
-    (page) => html`
+            (page) => html`
               <div
                 class="page-item ${page.selected ? 'selected' : ''}"
                 @click=${() => this.togglePageSelection(page.pageNumber)}>
                 <div class="page-preview">
                   ${page.previewImage
-    ? html`<img
+                    ? html`<img
                         src="${page.previewImage}"
                         alt="Page ${page.pageNumber}" />`
-    : 'Loading...'}
+                    : 'Loading...'}
                 </div>
                 <div class="page-footer">
                   <span class="page-number">Page ${page.pageNumber}</span>
                   <md-checkbox
                     ?checked=${page.selected}
                     @click=${(e: Event) => {
-    e.stopPropagation()
-    this.togglePageSelection(page.pageNumber)
-  }}></md-checkbox>
+                      e.stopPropagation()
+                      this.togglePageSelection(page.pageNumber)
+                    }}></md-checkbox>
                 </div>
               </div>
             `
-  )}
+          )}
         </div>
       </div>
     `

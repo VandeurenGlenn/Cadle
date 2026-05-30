@@ -61,8 +61,12 @@ declare type dialogAction =
 export class AppShell extends LiteElement {
   projectStore = projectStore
   symbol: string = ''
-  projectName: string = ''
-  loadedPage: string = ''
+  @property({ attribute: false, provides: 'projectName' })
+  accessor projectName: string = ''
+
+  @property({ attribute: false, provides: 'loadedPage' })
+  accessor loadedPage: string = ''
+
   _currentColor: string = ''
 
   get projectLoaded(): boolean {
@@ -180,7 +184,9 @@ export class AppShell extends LiteElement {
   }
 
   _action: string = ''
-  projectKey: UUID = '' as UUID
+  @property({ attribute: false, provides: 'projectKey' })
+  accessor projectKey: UUID = '' as UUID
+
   set action(value) {
     const canvas = this.field?.canvas as any
     if (canvas) canvas.defaultCursor = value ? 'crosshair' : 'default'

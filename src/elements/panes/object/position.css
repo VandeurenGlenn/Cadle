@@ -1,0 +1,14 @@
+      :host {
+        display: block;
+        border-top: 1px solid var(--md-sys-color-outline);
+      }
+      .position-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--cadle-space-2);
+        padding: var(--cadle-space-2);
+      }
+      md-filled-text-field {
+        width: 100%;
+      }
+    

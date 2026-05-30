@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Refrigerator - top-down: cabinet body with double-door split, handles and freezer band -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Body -->
+    <rect x="18" y="14" width="64" height="72" rx="3" fill="currentColor" fill-opacity="0.05"/>
+    <!-- Freezer band -->
+    <rect x="18" y="14" width="64" height="22" rx="3" fill="currentColor" fill-opacity="0.1"/>
+    <line x1="18" y1="36" x2="82" y2="36"/>
+    <!-- Door split -->
+    <line x1="50" y1="36" x2="50" y2="86"/>
+    <!-- Handles -->
+    <rect x="42" y="50" width="3" height="22" rx="1" fill="currentColor" fill-opacity="0.4"/>
+    <rect x="55" y="50" width="3" height="22" rx="1" fill="currentColor" fill-opacity="0.4"/>
+    <!-- Freezer handle -->
+    <rect x="45" y="22" width="10" height="3" rx="1" fill="currentColor" fill-opacity="0.4"/>
+  </g>
+</svg>

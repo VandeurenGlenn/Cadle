@@ -6,8 +6,9 @@ export const isScale = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
   canvas.getActiveObject() && (key === '/' || key === '*')
 
 export const scale = ({ key }) => {
-  canvas.shouldRender = true
-  const object = canvas.getActiveObject()
+  const canvas_ = canvas as any
+  canvas_.shouldRender = true
+  const object = canvas_.getActiveObject() as any
   console.log(object)
 
   if (key === '/') {
@@ -15,21 +16,23 @@ export const scale = ({ key }) => {
       object.currentScale = 0.9
       object?.scale(object.currentScale)
     } else {
-      let scaleAmount = object.currentScale - 0.1
+      const scaleAmount = object.currentScale - 0.1
       object.currentScale = scaleAmount
       object?.scale(scaleAmount)
     }
-    canvas.history.push({ type: 'scale-down', item: object })
+
+    canvas_.history.push({ type: 'scale-down', item: object })
   } else {
     if (!object.currentScale) {
       object.currentScale = 1.1
       object?.scale(object.currentScale)
     } else {
-      let scaleAmount = object.currentScale + 0.1
+      const scaleAmount = object.currentScale + 0.1
       object.currentScale = scaleAmount
       object?.scale(scaleAmount)
     }
-    canvas.history.push({ type: 'scale-up', item: object })
+
+    canvas_.history.push({ type: 'scale-up', item: object })
   }
 }
 

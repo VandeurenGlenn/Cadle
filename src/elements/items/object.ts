@@ -1,16 +1,12 @@
-import { LitElement, html, css, PropertyValues } from 'lit'
-import { property } from 'lit/decorators.js'
-import { objectItemStyles } from './object.css.js'
+import { LiteElement, html, css, property } from '@vandeurenglenn/lite'
+import styles from './object.css' with { type: 'css' }
+export class ObjectItem extends LiteElement {
+  @property({ reflect: true, type: Boolean }) accessor active: boolean = false
+  @property({ type: String }) accessor label: string = ''
+  @property({ type: String }) accessor icon: string = ''
 
-export class ObjectItem extends LitElement {
-  @property({ reflect: true, type: Boolean }) active: boolean
-
-  @property({ type: String }) label: string
-
-  @property({ type: String }) icon: string
-
-  protected firstUpdated(_changedProperties: PropertyValues): void {
-    this.renderRoot.addEventListener('click', this.#onClick as any)
+  firstRender() {
+    this.shadowRoot?.addEventListener('click', this.#onClick)
   }
 
   #onClick = (e: Event) => {
@@ -20,7 +16,7 @@ export class ObjectItem extends LitElement {
     }
   }
 
-  static styles = [objectItemStyles]
+  static styles = [styles]
 
   render() {
     return html`
@@ -38,5 +34,4 @@ export class ObjectItem extends LitElement {
     `
   }
 }
-
 customElements.define('object-item', ObjectItem)

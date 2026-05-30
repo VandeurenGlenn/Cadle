@@ -1,76 +1,41 @@
-import { LitElement, html, css } from 'lit'
-import { map } from 'lit/directives/map.js'
-import { customElement, property } from 'lit/decorators.js'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
+import styles from './project-pane.css' with { type: 'css' }
+import type { Project, Catalog } from '../../types.js'
 import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/selector.js'
 import '../catalog/catalog.js'
 import '../project/project.js'
-
 @customElement('project-pane')
-export class ProjectPane extends LitElement {
-  get #pages() {
-    return this.renderRoot.querySelector('custom-pages')
+export class ProjectPane extends LiteElement {
+  @property({ type: String }) accessor selected = 'symbols'
+  @property({ attribute: false }) accessor project!: Project
+  @property({ attribute: false }) accessor catalog: Catalog = []
+
+  select(selected: string) {
+    this.selected = selected
   }
 
-  select(selected) {
-    this.#pages.select(selected)
+  set action(value: string) {
+    const shell = document.querySelector('app-shell') as any
+    if (shell) shell.action = value
   }
 
-  set action(value) {
-    document.querySelector('app-shell').action = value
+  set symbol(value: string) {
+    const shell = document.querySelector('app-shell') as any
+    if (shell) shell.symbol = value
   }
 
-  set symbol(value) {
-    document.querySelector('app-shell').symbol = value
-  }
-  static styles = [
-    css`
-      :host {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        width: 100%;
-        --md-list-item-list-item-container-color: #fff;
-        --md-list-item-list-item-leading-avatar-color: #fff;
-        --md-list-item-list-item-leading-avatar-shape: 0;
-        pointer-events: auto;
-        border-top: 1px solid var(--md-sys-color-outline-variant);
-        background: var(--md-sys-color-surface);
-      }
+  static styles = [styles]
 
-      section {
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        box-sizing: border-box;
-        padding: 8px;
-        gap: 4px;
-      }
-
-      custom-button {
-        border-radius: 8px;
-        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      custom-button:hover {
-        background: var(--md-sys-color-surface-variant);
-        transform: translateY(-1px);
-      }
-    `
-  ]
-
-  _dragstart(e) {
+  _dragstart(e: DragEvent) {
     console.log(e)
   }
 
   render() {
     return html`
-      <custom-pages
-        attr-for-selected="data-route"
-        default-selected="symbols">
-        <project-element data-route="project"></project-element>
-        <catalog-element data-route="symbols"></catalog-element>
-      </custom-pages>
+      ${this.selected === 'project'
+        ? html`<project-element .project=${this.project}></project-element>`
+        : html`<catalog-element .catalog=${this.catalog}></catalog-element>`}
     `
   }
 }

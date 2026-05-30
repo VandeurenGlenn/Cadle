@@ -15,10 +15,13 @@ export const cut = async () => {
         canvas.remove(_item)
       }
     }
+
     canvas.remove(item)
   }
+
   canvas.discardActiveObject()
   canvas.shouldRender = true
 }
+
 export const keyCombination = { key: 'x', metaKey: isMac, ctrlKey: !isMac }
 export const keys = [isMac ? ['meta', 'x'] : ['ctrl', 'x']]

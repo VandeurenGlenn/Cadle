@@ -19,6 +19,12 @@ import { bringForward, isBringForward, keys as bringForwardKeys } from './comman
 import { bringToFront, isBringToFront, keys as bringToFrontKeys } from './commands/bring-to-front.js'
 import { isSendBackwards, sendBackwards, keys as sendBackwardsKeys } from './commands/send-backwards.js'
 import { isSendToBack, sendToBack, keys as sendToBackKeys } from './commands/send-to-back.js'
+import { isToolHotkey, tool, keys as toolKeys } from './commands/tool.js'
+import {
+  isWallChainBackspace,
+  wallChainBackspace,
+  keys as wallChainBackspaceKeys
+} from './commands/wall-chain-backspace.js'
 
 // note whenever shiftKey is pressed it will return upperkey
 export const getHotkey = (event: KeyboardEvent): undefined | Function => {
@@ -36,6 +42,10 @@ export const getHotkey = (event: KeyboardEvent): undefined | Function => {
   if (isRotate(event)) return rotate
   if (isScale(event)) return scale
   if (isEscape(event)) return escape
+  // Wall-chain Backspace must run before any generic Backspace handlers.
+  if (isWallChainBackspace(event)) return wallChainBackspace
+  // Single-letter tool hotkeys (V/W/D/N/G).
+  if (isToolHotkey(event)) return tool
   if (isBringForward(event)) return bringForward
   if (isBringToFront(event)) return bringToFront
   if (isSendBackwards(event)) return sendBackwards
@@ -68,7 +78,6 @@ export const getHotkey = (event: KeyboardEvent): undefined | Function => {
   ) {
     return () => moveDown(state.move.amount)
   }
-
   return undefined
 }
 
@@ -82,6 +91,8 @@ export const hotkeyList = {
     { action: 'save', keys: saveKeys }
   ],
   drawing: [
+    { action: 'select tool (V) / wall (W) / door (D) / window (N) / gate (G)', keys: toolKeys },
+    { action: 'undo last wall segment (during chain)', keys: wallChainBackspaceKeys },
     { action: 'group', keys: groupKeys },
     { action: 'ungroup', keys: ungroupKeys },
     { action: 'insert text', keys: insertTextKeys }

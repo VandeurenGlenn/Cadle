@@ -7,7 +7,7 @@ export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) =>
 export const remove = () => {
   canvas.shouldRender = true
 
-  let objects = canvas.getActiveObjects()
+  const objects = canvas.getActiveObjects()
   canvas.discardActiveObject()
   // todo is this really needed?
   for (const object of objects) {
@@ -17,7 +17,8 @@ export const remove = () => {
         canvas.remove(_object)
       }
     }
-    history.push({ type: 'remove', object })
+
+    history.push({ type: 'remove', object, objects: [object] })
     canvas.remove(object)
   }
 }

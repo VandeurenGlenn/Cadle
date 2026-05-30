@@ -14,6 +14,7 @@ export const copy = async () => {
       const clone = await item.clone()
       items.push(clone)
     }
+
     clipboard.object = new Group(await Promise.all(items))
   } else {
     clipboard.object = await cloned[0].clone()

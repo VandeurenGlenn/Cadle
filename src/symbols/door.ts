@@ -1,6 +1,7 @@
 import { Rect, classRegistry } from 'fabric'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
+import { canvasInk } from './canvas-tokens.js'
 
 export default class CadleDoor extends Rect {
   static type = 'CadleDoor'
@@ -24,7 +25,8 @@ export default class CadleDoor extends Rect {
 
   set widthText(value) {
     this._widthText = value
-    cadleShell.field.canvas.add(value)
+    const canvas = cadleShell?.field?.canvas as any | null
+    if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
   get widthText() {
@@ -33,8 +35,6 @@ export default class CadleDoor extends Rect {
 
   constructor(options) {
     super({ ...defaultOptions, ...options })
-    this.set('type', 'CadleDoor')
-
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
@@ -49,7 +49,8 @@ export default class CadleDoor extends Rect {
       this.situationMetadata = options.situationMetadata
     }
 
-    cadleShell.field.canvas.requestRenderAll()
+    const canvas = cadleShell?.field?.canvas as any | undefined
+    canvas?.requestRenderAll()
   }
 
   _render(ctx: CanvasRenderingContext2D) {
@@ -60,7 +61,12 @@ export default class CadleDoor extends Rect {
     const x0 = -boxW / 2
     const y0 = -boxH / 2
 
-    const isHorizontal = this.doorSwingDirection === 'up' || this.doorSwingDirection === 'down'
+    // Orientation is dictated by the door's actual box dimensions — a tall
+    // box (height > width) is a vertical door, a wide box is horizontal.
+    // doorSwingDirection / doorHingeSide only choose WHICH side the leaf
+    // pivots on; if they don't match the current orientation we fall back
+    // to a sensible default.
+    const isHorizontal = boxW >= boxH
     const leafLen = Math.max(1, isHorizontal ? boxW : boxH)
 
     // Normalize hinge side for the current orientation.
@@ -83,7 +89,7 @@ export default class CadleDoor extends Rect {
     const dash = (this.strokeDashArray as any) || [5, 5]
 
     if (isHorizontal) {
-      const swingDown = this.doorSwingDirection === 'down'
+      const swingDown = this.doorSwingDirection === 'down' || this.doorSwingDirection !== 'up'
       // Opening line is on the swing-side wall face.
       const openingY = swingDown ? y0 + boxH : y0
       const hingeX = hingeSide === 'right' ? x0 + boxW : x0
@@ -114,7 +120,7 @@ export default class CadleDoor extends Rect {
       ctx.arc(hingeX, hingeY, leafLen, startAngle, endAngle, anticlockwise)
       ctx.stroke()
     } else {
-      const swingRight = this.doorSwingDirection === 'right'
+      const swingRight = this.doorSwingDirection === 'right' || this.doorSwingDirection !== 'left'
       // Opening line is on the swing-side wall face.
       const openingX = swingRight ? x0 + boxW : x0
       const hingeX = openingX
@@ -148,12 +154,13 @@ export default class CadleDoor extends Rect {
 
     ctx.restore()
   }
+
   initWidthText() {
     this.widthText = new CadleWidth(String((this.width / 50) * 100), {
       left: this.left,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black',
+      fill: canvasInk(),
       visible: cadleShell.showMeasurements
     })
   }
@@ -186,7 +193,7 @@ export default class CadleDoor extends Rect {
     this.updateWidthText(key, value)
   }
 
-  set(key, value) {
+  set(key, value?) {
     let result
     if (typeof key === 'object') {
       result = super.set(key, value)
@@ -198,13 +205,12 @@ export default class CadleDoor extends Rect {
       result = super.set(key, value)
       this.handleSet(key, value)
     }
-
     return result
   }
 
-  toJSON(): any {
+  toJSON(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -217,9 +223,9 @@ export default class CadleDoor extends Rect {
     }
   }
 
-  toObject(): any {
+  toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

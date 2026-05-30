@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Washing machine - front-loader with door, drum and control panel -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Body -->
+    <rect x="15" y="12" width="70" height="76" rx="3" fill="currentColor" fill-opacity="0.05"/>
+    <!-- Control panel -->
+    <rect x="15" y="12" width="70" height="14" rx="3" fill="currentColor" fill-opacity="0.12"/>
+    <line x1="15" y1="26" x2="85" y2="26"/>
+    <!-- Detergent slot -->
+    <rect x="22" y="16" width="16" height="6" rx="1" opacity="0.6"/>
+    <!-- Display -->
+    <rect x="58" y="16" width="22" height="6" rx="1" opacity="0.6"/>
+    <!-- Drum door -->
+    <circle cx="50" cy="56" r="22"/>
+    <circle cx="50" cy="56" r="15" opacity="0.5"/>
+    <circle cx="50" cy="56" r="3" fill="currentColor" fill-opacity="0.3"/>
+  </g>
+</svg>

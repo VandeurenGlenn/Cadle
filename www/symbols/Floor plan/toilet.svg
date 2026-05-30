@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Toilet - cistern + seat ring + bowl with flush button (top-down) -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Cistern -->
+    <rect x="30" y="10" width="40" height="22" rx="3" fill="currentColor" fill-opacity="0.06"/>
+    <!-- Flush button -->
+    <rect x="45" y="16" width="10" height="3" rx="1"/>
+    <!-- Seat (outer) -->
+    <ellipse cx="50" cy="58" rx="22" ry="28" fill="currentColor" fill-opacity="0.04"/>
+    <!-- Bowl (inner ring) -->
+    <ellipse cx="50" cy="60" rx="15" ry="21"/>
+    <!-- Hinges -->
+    <line x1="42" y1="33" x2="42" y2="36"/>
+    <line x1="58" y1="33" x2="58" y2="36"/>
+  </g>
+</svg>

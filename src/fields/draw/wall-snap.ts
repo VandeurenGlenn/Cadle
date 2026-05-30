@@ -1,0 +1,774 @@
+// Wall + opening geometry helpers extracted from `src/fields/draw.ts`.
+//
+// All functions in this module are pure: they take the canvas / configuration
+// values they need as parameters and produce values without touching any
+// instance state. `DrawField` keeps thin private wrappers that pass
+// `this.canvas`, `this.gridSize`, `this.freeDraw`, etc. so call sites inside
+// the Lit element are unchanged.
+//
+// Behavior MUST stay identical to the original inlined implementations —
+// changing geometry semantics here is out of scope for the refactor pass.
+import CadleWall from '../../symbols/wall.js'
+import CadleDoor from '../../symbols/door.js'
+import CadleWindow from '../../symbols/window.js'
+import CadleGate from '../../symbols/gate.js'
+
+function snapToGrid(point, gridSize) {
+  return {
+    left: Math.round(point.left / gridSize) * gridSize,
+    top: Math.round(point.top / gridSize) * gridSize
+  }
+}
+
+export type Point = { x: number; y: number }
+export type LeftTop = { left: number; top: number }
+export type WallBounds = {
+  left: number
+  top: number
+  width: number
+  height: number
+  horizontal: boolean
+}
+export type WallSnap = {
+  wall: any
+  bounds: WallBounds
+  distance: number
+  score: number
+}
+
+export type WallAxisFrame = {
+  p0: Point
+  p1: Point
+  length: number
+  angleDeg: number
+  thickness: number
+  isFreeAngle: boolean
+}
+
+export function getWallAxisFrame(wall: any): WallAxisFrame {
+  const [p0, p1] = getWallEndpoints(wall)
+  const vx = p1.x - p0.x
+  const vy = p1.y - p0.y
+  const length = Math.max(1, Math.hypot(vx, vy))
+  const angleDeg = (Math.atan2(vy, vx) * 180) / Math.PI
+  const w = Math.abs(Number(wall.width ?? 0)) * Number(wall.scaleX ?? 1)
+  const h = Math.abs(Number(wall.height ?? 0)) * Number(wall.scaleY ?? 1)
+  const fabricAngle = Number(wall.angle ?? 0)
+  const originY = wall.originY ?? 'top'
+  const isFreeAngle = originY === 'center' || (fabricAngle !== 0 && fabricAngle !== 180)
+  // For free-angle walls thickness is `height`. For axis-aligned, the
+  // perpendicular dim is the thickness.
+  const thickness = isFreeAngle ? h : w >= h ? h : w
+  return { p0, p1, length, angleDeg, thickness, isFreeAngle }
+}
+
+function projectPointOnAxis(point: LeftTop, frame: WallAxisFrame): { t: number; cx: number; cy: number } {
+  const { p0, p1, length } = frame
+  const vx = p1.x - p0.x
+  const vy = p1.y - p0.y
+  const dx = point.left - p0.x
+  const dy = point.top - p0.y
+  let t = (dx * vx + dy * vy) / (length * length)
+  if (!isFinite(t)) t = 0
+  t = Math.min(1, Math.max(0, t))
+  return { t, cx: p0.x + t * vx, cy: p0.y + t * vy }
+}
+
+export type OpeningLayout = {
+  left: number
+  top: number
+  width: number
+  height: number
+  horizontal: boolean
+  wallThickness: number
+  angle?: number
+  originX?: 'left' | 'center' | 'right'
+  originY?: 'top' | 'center' | 'bottom'
+  dx?: number
+  dy?: number
+}
+
+// Fabric v6 ignores `set('type', 'CadleWall')` (warns "Setting type has
+// no effect") so we cannot rely on obj.type alone — fall back to instanceof
+// which is reliable across construction and JSON load paths.
+export function isWallObject(obj: any): boolean {
+  if (!obj) return false
+  if (obj instanceof CadleWall) return true
+  return obj.type === 'CadleWall'
+}
+
+export function isOpeningObject(obj: any): boolean {
+  if (!obj) return false
+  if (obj instanceof CadleDoor || obj instanceof CadleWindow || obj instanceof CadleGate) return true
+  return obj.type === 'CadleDoor' || obj.type === 'CadleWindow' || obj.type === 'CadleGate'
+}
+
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+export function alignToPixel(value: number): number {
+  return Math.round(value)
+}
+
+export function wallThickness(gridSize: number): number {
+  const rawThickness = Math.max(2, gridSize)
+  // Keep wall thickness even so centering doesn't land on half-pixels.
+  return rawThickness % 2 === 0 ? rawThickness : rawThickness + 1
+}
+
+/**
+ * Return the two endpoints (in canvas coords) of a wall, supporting both
+ * axis-aligned legacy walls (origin top-left, no angle) and free-angle walls
+ * (origin left/center + angle).
+ */
+export function getWallEndpoints(wall: any): [Point, Point] {
+  const left = Number(wall.left ?? 0)
+  const top = Number(wall.top ?? 0)
+  const width = Math.abs(Number(wall.width ?? 0)) * Number(wall.scaleX ?? 1)
+  const height = Math.abs(Number(wall.height ?? 0)) * Number(wall.scaleY ?? 1)
+  const angle = Number(wall.angle ?? 0)
+  const originY = wall.originY ?? 'top'
+
+  // Free-angle walls: origin is left/center, width is the wall length, the
+  // wall extends from (left, top) along its rotated axis.
+  if (originY === 'center' || (angle !== 0 && angle !== 180)) {
+    const rad = (angle * Math.PI) / 180
+    const dx = Math.cos(rad) * width
+    const dy = Math.sin(rad) * width
+    return [
+      { x: left, y: top },
+      { x: left + dx, y: top + dy }
+    ]
+  }
+
+  // Legacy axis-aligned walls: derive endpoints from box dims.
+  if (width >= height) {
+    const y = top + height / 2
+    return [
+      { x: left, y },
+      { x: left + width, y }
+    ]
+  }
+
+  const x = left + width / 2
+  return [
+    { x, y: top },
+    { x, y: top + height }
+  ]
+}
+
+export function getWallBounds(wall: any): WallBounds {
+  const bounds = wall?.getBoundingRect?.(true, true)
+  const left = Number(bounds?.left ?? wall?.left ?? 0)
+  const top = Number(bounds?.top ?? wall?.top ?? 0)
+  const width = Math.abs(Number(bounds?.width ?? wall?.width ?? 0))
+  const height = Math.abs(Number(bounds?.height ?? wall?.height ?? 0))
+  return {
+    left,
+    top,
+    width,
+    height,
+    horizontal: width >= height
+  }
+}
+
+/**
+ * Move one endpoint of a wall to a target point, keeping the opposite
+ * endpoint fixed and preserving thickness. Supports angled walls (origin
+ * left/center + angle); axis-aligned walls keep their legacy shape.
+ */
+export function applyWallEndpoint(wall: any, endIndex: 0 | 1, point: Point, gridSize: number): void {
+  const endpoints = getWallEndpoints(wall)
+  const fixed = endpoints[1 - endIndex]
+  const angle = Number(wall.angle ?? 0)
+  const originY = wall.originY ?? 'top'
+  const isFreeAngle = originY === 'center' || (angle !== 0 && angle !== 180)
+  const width = Math.abs(Number(wall.width ?? 0)) * Number(wall.scaleX ?? 1)
+  const height = Math.abs(Number(wall.height ?? 0)) * Number(wall.scaleY ?? 1)
+  const thickness = isFreeAngle ? height : width >= height ? height : width
+
+  // If the resulting segment would not be axis-aligned with the fixed
+  // endpoint (within a small tolerance), promote the wall to free-angle so
+  // it rotates to follow the connected join. Otherwise the legacy
+  // horizontal/vertical branches would flatten the wall onto the dominant
+  // axis, place it through the fixed endpoint at a wrong offset, and visually
+  // "disappear" the connection.
+  const dxToFixed = point.x - fixed.x
+  const dyToFixed = point.y - fixed.y
+  const axisTol = 1
+  const wouldBeAxisAligned = Math.abs(dxToFixed) <= axisTol || Math.abs(dyToFixed) <= axisTol
+  const useFreeAngle = isFreeAngle || !wouldBeAxisAligned
+
+  if (useFreeAngle) {
+    const length = Math.max(gridSize, Math.hypot(dxToFixed, dyToFixed))
+    const newAngleDeg = (Math.atan2(dyToFixed, dxToFixed) * 180) / Math.PI
+    wall.set({
+      left: alignToPixel(fixed.x),
+      top: alignToPixel(fixed.y),
+      width: alignToPixel(length),
+      height: thickness,
+      angle: newAngleDeg,
+      originX: 'left',
+      originY: 'center',
+      scaleX: 1,
+      scaleY: 1
+    })
+    wall.setCoords?.()
+    return
+  }
+
+  const horizontal = Math.abs(dxToFixed) >= Math.abs(dyToFixed)
+  if (horizontal) {
+    const minX = Math.min(point.x, fixed.x)
+    const maxX = Math.max(point.x, fixed.x)
+    const newWidth = Math.max(gridSize, maxX - minX)
+    wall.set({
+      left: alignToPixel(minX),
+      top: alignToPixel(fixed.y - thickness / 2),
+      width: alignToPixel(newWidth),
+      height: thickness,
+      scaleX: 1,
+      scaleY: 1
+    })
+  } else {
+    const minY = Math.min(point.y, fixed.y)
+    const maxY = Math.max(point.y, fixed.y)
+    const newHeight = Math.max(gridSize, maxY - minY)
+    wall.set({
+      left: alignToPixel(fixed.x - thickness / 2),
+      top: alignToPixel(minY),
+      width: thickness,
+      height: alignToPixel(newHeight),
+      scaleX: 1,
+      scaleY: 1
+    })
+  }
+
+  wall.setCoords?.()
+}
+
+/**
+ * Snapshot which other walls share an endpoint with the wall the user just
+ * grabbed. The returned connections are replayed during object:moving so the
+ * connected walls stretch along with the move.
+ */
+export function collectWallConnections(
+  canvas: any,
+  wall: any,
+  gridSize: number
+): Array<{ wall: any; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> {
+  const movedEndpoints = getWallEndpoints(wall)
+  // Tight tolerance: drawing snaps endpoints to pixel-aligned coordinates, so
+  // truly connected walls match within a couple of pixels. A loose tolerance
+  // (e.g. gridSize/2) caused unrelated walls that just happened to sit near
+  // each other to be dragged along.
+  const tol = 3
+  const connections: Array<{ wall: any; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> = []
+  for (const other of canvas.getObjects()) {
+    if (other === wall || !isWallObject(other)) continue
+    const otherEndpoints = getWallEndpoints(other)
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        const dx = movedEndpoints[i].x - otherEndpoints[j].x
+        const dy = movedEndpoints[i].y - otherEndpoints[j].y
+        if (Math.hypot(dx, dy) <= tol) {
+          connections.push({ wall: other, movedEndIndex: i as 0 | 1, connectedEndIndex: j as 0 | 1 })
+        }
+      }
+    }
+  }
+  return connections
+}
+
+export function findNearestWall(canvas: any, point: LeftTop, maxDistance: number): WallSnap | null {
+  const walls = canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+  let best: WallSnap | null = null
+
+  for (const wall of walls) {
+    const bounds = getWallBounds(wall)
+    if (!bounds.width || !bounds.height) continue
+
+    const frame = getWallAxisFrame(wall)
+    const projection = projectPointOnAxis(point, frame)
+    const onSegment = projection.t >= 0 && projection.t <= 1
+    const segmentPoint = onSegment ? { x: projection.cx, y: projection.cy } : projection.t < 0 ? frame.p0 : frame.p1
+
+    const distance = Math.hypot(point.left - segmentPoint.x, point.top - segmentPoint.y)
+    if (distance > maxDistance) continue
+
+    const insideBody = onSegment
+    const insidePenalty = insideBody ? 0 : 1
+    const score = insidePenalty * 1000 + distance
+
+    if (!best || score < best.score) {
+      best = { wall, bounds, distance, score }
+    }
+  }
+  return best
+}
+
+export type SnapType = 'endpoint' | 'preview-endpoint' | 'midpoint' | 'axis'
+export type SnapResult = LeftTop & { type: SnapType }
+
+// Snap a point to the nearest existing wall endpoint, midpoint, or axis line
+// so that connected walls form clean corners and T-junctions. Snap radius is
+// expressed in SCREEN pixels (industry standard ~10-12px) and converted to
+// world coordinates via the canvas zoom, so the cursor doesn't have to be
+// pixel-perfect when zoomed out, and doesn't grab unrelated walls when
+// zoomed in.
+// When isPreview=true (for live ghost during draw), use tighter radius (6px)
+// to make preview feel less sticky. When false (actual clicks), use full radius
+// (12px) for snappy, forgiving placement.
+export function snapWallEndpoint(
+  canvas: any,
+  point: LeftTop,
+  ignore: any,
+  gridSize: number,
+  isPreview: boolean = false,
+  freeDraw: boolean = false
+): SnapResult | null {
+  const walls = canvas.getObjects().filter((obj: any) => obj && isWallObject(obj) && obj !== ignore)
+  const zoom = typeof canvas.getZoom === 'function' ? canvas.getZoom() : 1
+  const screenRadius = isPreview ? 6 : 12
+  const minRadius = isPreview ? gridSize / 2 : gridSize
+  const radius = Math.max(screenRadius / Math.max(zoom, 0.01), minRadius)
+
+  let closestEndpoint: SnapResult | null = null
+  let minEndpointDistance = Infinity
+  for (const wall of walls) {
+    const endpoints = getWallEndpoints(wall)
+    for (const endpoint of endpoints) {
+      const distance = Math.hypot(point.left - endpoint.x, point.top - endpoint.y)
+      if (distance <= radius && distance < minEndpointDistance) {
+        closestEndpoint = {
+          left: endpoint.x,
+          top: endpoint.y,
+          type: isPreview ? 'preview-endpoint' : 'endpoint'
+        }
+        minEndpointDistance = distance
+      }
+    }
+  }
+
+  if (closestEndpoint) return closestEndpoint
+
+  let closest: SnapResult | null = null
+  let minDistance = Infinity
+  for (const wall of walls) {
+    const frame = getWallAxisFrame(wall)
+    const proj = projectPointOnAxis(point, frame)
+    const distance = Math.hypot(point.left - proj.cx, point.top - proj.cy)
+    if (distance <= radius && distance < minDistance) {
+      const midpointTolerance = 0.12
+      const snapType: SnapType = Math.abs(proj.t - 0.5) <= midpointTolerance ? 'midpoint' : 'axis'
+      closest = {
+        left: proj.cx,
+        top: proj.cy,
+        type: snapType
+      }
+      minDistance = distance
+    }
+  }
+
+  if (closest) return closest
+
+  if (freeDraw) return { left: point.left, top: point.top, type: 'axis' }
+
+  const gridSnap = snapToGrid(point, gridSize)
+  return { ...gridSnap, type: 'axis' }
+}
+
+// Default opening sizes (in canvas pixels). 50px ≈ 1m at the standard scale.
+export function getOpeningDefaultLength(action: string | undefined, gridSize: number): number {
+  if (action === 'draw-door') return Math.max(gridSize * 2, 40) // ~80cm
+  if (action === 'draw-window') return Math.max(gridSize * 2, 50) // ~100cm
+  if (action === 'draw-gate') return Math.max(gridSize * 4, 100) // ~200cm
+  return gridSize * 2
+}
+
+export type ProjectOptions = {
+  freeDraw: boolean
+  snap: (value: number) => number
+}
+
+export function projectPointToWall(
+  point: LeftTop,
+  wallSnap: { bounds: WallBounds; wall?: any },
+  opts: ProjectOptions
+): LeftTop {
+  const { bounds } = wallSnap
+  const snapAxis = (value: number) => {
+    if (opts.freeDraw) return value
+    return opts.snap(value)
+  }
+
+  // Free-angle walls: project along the actual wall axis.
+  if (wallSnap.wall) {
+    const frame = getWallAxisFrame(wallSnap.wall)
+    if (frame.isFreeAngle) {
+      const proj = projectPointOnAxis(point, frame)
+      return { left: proj.cx, top: proj.cy }
+    }
+  }
+
+  if (bounds.horizontal) {
+    const projectedLeft = clamp(point.left, bounds.left, bounds.left + bounds.width)
+    return {
+      left: snapAxis(projectedLeft),
+      top: bounds.top + bounds.height / 2
+    }
+  }
+
+  const projectedTop = clamp(point.top, bounds.top, bounds.top + bounds.height)
+  return {
+    left: bounds.left + bounds.width / 2,
+    top: snapAxis(projectedTop)
+  }
+}
+
+// Compute the opening rectangle for a click-to-place opening centered on
+// the projected click point along the snapped wall.
+export function getCenteredOpeningLayout(
+  action: string | undefined,
+  clickPoint: LeftTop,
+  wallSnap: { bounds: WallBounds; wall?: any },
+  gridSize: number,
+  opts: ProjectOptions
+): OpeningLayout {
+  const { bounds } = wallSnap
+  const length = getOpeningDefaultLength(action, gridSize)
+
+  if (wallSnap.wall) {
+    const frame = getWallAxisFrame(wallSnap.wall)
+    if (frame.isFreeAngle) {
+      // Project click onto wall axis, clamp the opening so its full width
+      // stays inside the wall length.
+      const proj = projectPointOnAxis(clickPoint, frame)
+      const halfL = length / 2 / frame.length // in t units
+      const tCenter = clamp(proj.t, halfL, 1 - halfL)
+      const cx = frame.p0.x + tCenter * (frame.p1.x - frame.p0.x)
+      const cy = frame.p0.y + tCenter * (frame.p1.y - frame.p0.y)
+      return {
+        left: alignToPixel(cx),
+        top: alignToPixel(cy),
+        width: alignToPixel(length),
+        height: alignToPixel(frame.thickness),
+        horizontal: true,
+        wallThickness: frame.thickness,
+        angle: frame.angleDeg,
+        originX: 'center',
+        originY: 'center'
+      }
+    }
+  }
+
+  const projected = projectPointToWall(clickPoint, wallSnap, opts)
+
+  if (bounds.horizontal) {
+    const left = clamp(projected.left - length / 2, bounds.left, bounds.left + bounds.width - length)
+    return {
+      left: alignToPixel(left),
+      top: alignToPixel(bounds.top),
+      width: alignToPixel(length),
+      height: alignToPixel(bounds.height),
+      horizontal: true,
+      wallThickness: bounds.height
+    }
+  }
+
+  const top = clamp(projected.top - length / 2, bounds.top, bounds.top + bounds.height - length)
+  return {
+    left: alignToPixel(bounds.left),
+    top: alignToPixel(top),
+    width: alignToPixel(bounds.width),
+    height: alignToPixel(length),
+    horizontal: false,
+    wallThickness: bounds.width
+  }
+}
+
+export function getWallDrawLayout(
+  canvas: any,
+  startPoint: LeftTop,
+  currentPoint: LeftTop,
+  gridSize: number,
+  ignore?: any
+) {
+  // Snap both endpoints to existing walls for clean joins.
+  const startSnap = snapWallEndpoint(canvas, startPoint, ignore, gridSize)
+  const endSnap = snapWallEndpoint(canvas, currentPoint, ignore, gridSize)
+  const start = startSnap ?? startPoint
+  const snappedEnd = endSnap ?? currentPoint
+  const dx = snappedEnd.left - start.left
+  const dy = snappedEnd.top - start.top
+  const absDx = Math.abs(dx)
+  const absDy = Math.abs(dy)
+  const thickness = wallThickness(gridSize)
+
+  // NOTE: We deliberately do NOT extend the wall body past the snapped
+  // endpoints. Doing so was tried before and caused the geometric endpoint
+  // to drift away from the snap point by t/2, which broke
+  // `collectWallConnections` (3px tolerance) and the bound-wall move/resize
+  // behavior. Corner gaps are filled visually by the corner-cap overlay
+  // (see DrawField.#drawWallCornerCaps), not by mutating geometry.
+
+  if (absDx >= absDy) {
+    // Horizontal wall.
+    const minX = Math.min(start.left, snappedEnd.left)
+    const maxX = Math.max(start.left, snappedEnd.left)
+    return {
+      left: alignToPixel(minX),
+      top: alignToPixel(start.top - thickness / 2),
+      width: alignToPixel(Math.max(gridSize, maxX - minX)),
+      height: thickness,
+      angle: 0,
+      originX: 'left' as const,
+      originY: 'top' as const
+    }
+  }
+
+  // Vertical wall.
+  const minY = Math.min(start.top, snappedEnd.top)
+  const maxY = Math.max(start.top, snappedEnd.top)
+  return {
+    left: alignToPixel(start.left - thickness / 2),
+    top: alignToPixel(minY),
+    width: thickness,
+    height: alignToPixel(Math.max(gridSize, maxY - minY)),
+    angle: 0,
+    originX: 'left' as const,
+    originY: 'top' as const
+  }
+}
+
+/**
+ * Free-angle wall layout used when the user holds Shift while drawing.
+ * Origin is left/center so the wall rotates around its start endpoint.
+ * Auto-snaps to the nearest 15° within a 7° tolerance, AND hard-snaps to
+ * 0/90/180/270 within 4° so straight walls stay easy.
+ */
+export function getWallDrawLayoutFree(
+  canvas: any,
+  startPoint: LeftTop,
+  currentPoint: LeftTop,
+  gridSize: number,
+  ignore?: any
+) {
+  // Allow snapping both endpoints to nearby existing wall endpoints.
+  const startSnap = snapWallEndpoint(canvas, startPoint, ignore, gridSize, false, true)
+  const endSnap = snapWallEndpoint(canvas, currentPoint, ignore, gridSize, false, true)
+  const start = startSnap ?? startPoint
+  const snappedEnd = endSnap ?? currentPoint
+  const dx = snappedEnd.left - start.left
+  const dy = snappedEnd.top - start.top
+  const rawLength = Math.hypot(dx, dy)
+  const baseLength = Math.max(gridSize, rawLength)
+  const thickness = wallThickness(gridSize)
+
+  // Compute angle in degrees, normalize to [-180, 180].
+  let angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
+
+  // Snap to nearest 15° increment.
+  const stepDeg = 15
+  const nearestStep = Math.round(angleDeg / stepDeg) * stepDeg
+  if (Math.abs(angleDeg - nearestStep) <= 7) angleDeg = nearestStep
+
+  // Hard-snap to cardinal axes within 4° so straight walls are reliable.
+  for (const cardinal of [-180, -90, 0, 90, 180]) {
+    if (Math.abs(angleDeg - cardinal) <= 4) {
+      angleDeg = cardinal
+      break
+    }
+  }
+  // NOTE: No t/2 corner extension here either. See comment in
+  // `getWallDrawLayout` above. Corner gaps are filled by the cap overlay.
+  return {
+    left: alignToPixel(start.left),
+    top: alignToPixel(start.top),
+    width: alignToPixel(baseLength),
+    height: thickness,
+    angle: angleDeg,
+    originX: 'left' as const,
+    originY: 'center' as const
+  }
+}
+
+export function getOpeningWallLayout(
+  startPoint: LeftTop,
+  currentPoint: LeftTop,
+  wallSnap: { bounds: WallBounds; wall?: any },
+  gridSize: number,
+  opts: ProjectOptions
+): OpeningLayout {
+  const { bounds } = wallSnap
+
+  if (wallSnap.wall) {
+    const frame = getWallAxisFrame(wallSnap.wall)
+    if (frame.isFreeAngle) {
+      const projStart = projectPointOnAxis(startPoint, frame)
+      const projCur = projectPointOnAxis(currentPoint, frame)
+      const dragLen = Math.abs(projCur.t - projStart.t) * frame.length
+      const length = Math.max(gridSize, dragLen)
+      const halfL = length / 2 / frame.length
+      const tMid = clamp((projStart.t + projCur.t) / 2, halfL, 1 - halfL)
+      const cx = frame.p0.x + tMid * (frame.p1.x - frame.p0.x)
+      const cy = frame.p0.y + tMid * (frame.p1.y - frame.p0.y)
+      // Perpendicular sign of the original drag (across the wall). Used by
+      // door drag to choose swing side: positive = right of wall axis.
+      const ux = (frame.p1.x - frame.p0.x) / frame.length
+      const uy = (frame.p1.y - frame.p0.y) / frame.length
+      const dragDx = currentPoint.left - startPoint.left
+      const dragDy = currentPoint.top - startPoint.top
+      const perp = -uy * dragDx + ux * dragDy
+      const along = ux * dragDx + uy * dragDy
+      return {
+        left: alignToPixel(cx),
+        top: alignToPixel(cy),
+        width: alignToPixel(length),
+        height: alignToPixel(frame.thickness),
+        horizontal: true,
+        wallThickness: frame.thickness,
+        angle: frame.angleDeg,
+        originX: 'center',
+        originY: 'center',
+        // Map back to old contract: dx = along-wall, dy = across-wall.
+        dx: along,
+        dy: perp
+      }
+    }
+  }
+
+  const snappedStart = projectPointToWall(startPoint, wallSnap, opts)
+  const snappedCurrent = projectPointToWall(currentPoint, wallSnap, opts)
+
+  if (bounds.horizontal) {
+    const startX = clamp(snappedStart.left, bounds.left, bounds.left + bounds.width)
+    const currentX = clamp(snappedCurrent.left, bounds.left, bounds.left + bounds.width)
+    return {
+      left: alignToPixel(Math.min(startX, currentX)),
+      top: alignToPixel(bounds.top),
+      width: alignToPixel(Math.max(gridSize, Math.abs(currentX - startX))),
+      height: alignToPixel(bounds.height),
+      horizontal: true,
+      wallThickness: bounds.height,
+      dx: currentX - startX,
+      dy: currentPoint.top - startPoint.top
+    }
+  }
+
+  const startY = clamp(snappedStart.top, bounds.top, bounds.top + bounds.height)
+  const currentY = clamp(snappedCurrent.top, bounds.top, bounds.top + bounds.height)
+  return {
+    left: alignToPixel(bounds.left),
+    top: alignToPixel(Math.min(startY, currentY)),
+    width: alignToPixel(bounds.width),
+    height: alignToPixel(Math.max(gridSize, Math.abs(currentY - startY))),
+    horizontal: false,
+    wallThickness: bounds.width,
+    dx: currentPoint.left - startPoint.left,
+    dy: currentY - startY
+  }
+}
+
+export function snapOpeningToWall(
+  target: any,
+  point: LeftTop,
+  wallSnap: { bounds: WallBounds; wall?: any },
+  gridSize: number,
+  opts: ProjectOptions
+): boolean {
+  const { bounds } = wallSnap
+  const currentWidth = Math.abs(Number(target.width ?? 0) * Number(target.scaleX ?? 1)) || gridSize
+  const currentHeight = Math.abs(Number(target.height ?? 0) * Number(target.scaleY ?? 1)) || gridSize
+  // The "length" of an opening is its long axis; preserve it across wall
+  // orientation changes (so dragging a door from a horizontal wall onto a
+  // vertical one keeps its size). The short axis becomes the wall thickness.
+  const openingLength = Math.max(currentWidth, currentHeight)
+
+  // Free-angle wall: align the opening to the wall axis with center origin.
+  if (wallSnap.wall) {
+    const frame = getWallAxisFrame(wallSnap.wall)
+    if (frame.isFreeAngle) {
+      const proj = projectPointOnAxis(point, frame)
+      const halfL = openingLength / 2 / frame.length
+      const tCenter = clamp(proj.t, halfL, 1 - halfL)
+      const cx = frame.p0.x + tCenter * (frame.p1.x - frame.p0.x)
+      const cy = frame.p0.y + tCenter * (frame.p1.y - frame.p0.y)
+      const updates: Record<string, any> = {
+        left: alignToPixel(cx),
+        top: alignToPixel(cy),
+        width: alignToPixel(openingLength),
+        height: alignToPixel(frame.thickness),
+        scaleX: 1,
+        scaleY: 1,
+        angle: frame.angleDeg,
+        originX: 'center',
+        originY: 'center'
+      }
+      if (target.type === 'CadleDoor') {
+        updates.wallThickness = frame.thickness
+        // Default hinge/swing for a diagonal wall — user can flip later.
+        if (target.doorSwingDirection !== 'up' && target.doorSwingDirection !== 'down')
+          updates.doorSwingDirection = 'down'
+        if (target.doorHingeSide !== 'left' && target.doorHingeSide !== 'right') updates.doorHingeSide = 'left'
+      }
+
+      target.set(updates)
+      target.setCoords()
+      return true
+    }
+  }
+
+  const projected = projectPointToWall(point, wallSnap, opts)
+
+  if (bounds.horizontal) {
+    const left = clamp(projected.left - openingLength / 2, bounds.left, bounds.left + bounds.width - openingLength)
+    const updates: Record<string, any> = {
+      left: alignToPixel(left),
+      top: alignToPixel(bounds.top),
+      width: alignToPixel(openingLength),
+      height: alignToPixel(bounds.height),
+      scaleX: 1,
+      scaleY: 1,
+      angle: 0,
+      originX: 'left',
+      originY: 'top'
+    }
+
+    if (target.type === 'CadleDoor') {
+      updates.wallThickness = bounds.height
+      if (target.doorSwingDirection !== 'up' && target.doorSwingDirection !== 'down')
+        updates.doorSwingDirection = 'down'
+      if (target.doorHingeSide !== 'left' && target.doorHingeSide !== 'right') updates.doorHingeSide = 'left'
+    }
+
+    target.set(updates)
+    target.setCoords()
+    return true
+  }
+
+  const top = clamp(projected.top - openingLength / 2, bounds.top, bounds.top + bounds.height - openingLength)
+  const updates: Record<string, any> = {
+    left: alignToPixel(bounds.left),
+    top: alignToPixel(top),
+    width: alignToPixel(bounds.width),
+    height: alignToPixel(openingLength),
+    scaleX: 1,
+    scaleY: 1,
+    angle: 0,
+    originX: 'left',
+    originY: 'top'
+  }
+
+  if (target.type === 'CadleDoor') {
+    updates.wallThickness = bounds.width
+    if (target.doorSwingDirection !== 'left' && target.doorSwingDirection !== 'right')
+      updates.doorSwingDirection = 'right'
+    if (target.doorHingeSide !== 'top' && target.doorHingeSide !== 'bottom') updates.doorHingeSide = 'top'
+  }
+
+  target.set(updates)
+  target.setCoords()
+  return true
+}

@@ -1,0 +1,52 @@
+:host {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--cadle-space-1);
+  padding: 0 var(--cadle-space-2);
+  box-sizing: border-box;
+  transition: opacity var(--cadle-motion-fast);
+}
+flex-it {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--cadle-space-1);
+  background: color-mix(in srgb, var(--md-sys-color-outline-variant) 60%, transparent);
+  border-radius: 1px;
+}
+button.tool {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-surface-variant);
+  flex: 0 0 auto;
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast),
+    box-shadow var(--cadle-motion-fast);
+}
+button.tool:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  color: var(--md-sys-color-on-surface);
+}
+button.tool[active] {
+  color: var(--md-sys-color-primary);
+  box-shadow: inset 0 -2px 0 0 var(--md-sys-color-primary);
+}
+button.tool:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+button.tool custom-icon {
+  --custom-icon-color: currentColor;
+  font-size: 20px;
+}

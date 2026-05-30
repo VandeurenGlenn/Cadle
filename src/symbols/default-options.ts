@@ -35,7 +35,7 @@ const options: symbolOptions = {
   originY: 'top',
   angle: 0,
   fill: 'transparent',
-  stroke: '#555',
+  stroke: '#000',
   borderScaleFactor: 0,
   strokeWidth: 1,
   centeredRotation: true,

@@ -1,146 +1,66 @@
-import { LitElement, html, css } from 'lit'
-import { map } from 'lit/directives/map.js'
-import { customElement, property } from 'lit/decorators.js'
+import { LiteElement, html, css, property, customElement } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
-import '@vandeurenglenn/lite-elements/toggle-button.js'
-import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/it.js'
-import '@vandeurenglenn/flex-elements/row.js'
-import { field, incrementLetter, incrementSocket, positionObject, shell } from '../../utils.js'
 import { Textbox } from 'fabric'
 import state from '../../state.js'
-import { Color } from '../../symbols/default-options.js'
-import { Contextmenu } from '../../contextmenu.js'
-
+import { field, positionObject, shell } from '../../utils.js'
+import pubsub from '../../pubsub.js'
+import styles from './actions.css' with { type: 'css' }
+import { map } from '@vandeurenglenn/lite/map.js'
 declare global {
   interface HTMLElementTagNameMap {
     'cadle-actions': CadleActions
   }
 }
-
+type DrawTool = { action: string; icon: string; title: string }
+const DRAW_TOOLS: DrawTool[] = [
+  { action: 'select', icon: 'arrow_selector_tool', title: 'Select' },
+  { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
+  { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
+  { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
+  { action: 'draw-window', icon: 'window', title: 'Draw window' },
+  { action: 'draw', icon: 'draw', title: 'Freedraw' }
+]
 @customElement('cadle-actions')
-export class CadleActions extends LitElement {
-  @property({ type: Boolean, reflect: true })
-  shown: boolean = true
-  static styles = [
-    css`
-      :host {
-        display: flex;
-        flex-direction: row;
-        width: 100%;
-        opacity: 0;
-        align-items: center;
-        height: 57px;
-        box-sizing: border-box;
-      }
-      custom-list-item {
-        width: 100%;
-      }
-      :host([shown]) {
-        opacity: 1;
-      }
-    `
-  ]
+export class CadleActions extends LiteElement {
+  @property({ type: Boolean }) accessor snap = true
+  @property({ type: Boolean }) accessor measurements = false
+  @property({ type: String }) accessor currentAction = ''
+  static styles = [styles]
 
-  @property()
-  fill: Color = state.styling.fill
-
-  show() {
-    this.shown = true
+  firstRender(): void {
+    const sh = (globalThis as any).cadleShell
+    this.snap = !sh?.freeDraw
+    this.measurements = !!sh?.showMeasurements
+    this.currentAction = sh?.action ?? ''
+    pubsub.subscribe('shell.snap', this.#onSnap)
+    pubsub.subscribe('shell.measurements', this.#onMeasurements)
+    pubsub.subscribe('shell.action', this.#onAction)
   }
 
-  hide() {
-    this.shown = false
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    pubsub.unsubscribe('shell.snap', this.#onSnap)
+    pubsub.unsubscribe('shell.measurements', this.#onMeasurements)
+    pubsub.unsubscribe('shell.action', this.#onAction)
   }
 
-  firstUpdated() {
-    this.addEventListener('mousedown', () => {
-      const menu = this.renderRoot.querySelector('context-menu') as Contextmenu
-      if (menu?.open) menu.open = false
-    })
-    this.shadowRoot?.addEventListener('contextmenu', this.#showMenu)
+  #onSnap = (value: boolean) => {
+    this.snap = !!value
   }
 
-  #showMenu = (event) => {
-    event.preventDefault()
-    console.log(event.composedPath())
-
-    const target = event.composedPath()[0]
-    console.log({ target })
-    const menu = this.renderRoot.querySelector('context-menu') as Contextmenu
-    if (target.dataset.menu === 'insert-text') {
-      menu.innerHTML = `
-      <custom-list-item type="menu" name="normal">
-        <custom-toggle active="${state.text.type === 'normal' ? 1 : 0}" slot="end">
-          <custom-icon-font slot="icon">check_box_outline_blank</custom-icon-font>
-          <custom-icon-font slot="icon">check_box</custom-icon-font>
-        </custom-toggle>
-        normal
-      </custom-list-item>
-
-      <custom-list-item type="menu" name="socket">
-        <custom-toggle active="${state.text.type === 'socket' ? 1 : 0}" slot="end">
-          <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font slot="icon">check_box</custom-icon-font>
-        </custom-toggle>
-        sockets
-      </custom-list-item>
-
-      <custom-list-item type="menu" name="switch">
-        <custom-toggle active="${state.text.type === 'switch' ? 1 : 0}" slot="end">
-          <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font slot="icon">check_box</custom-icon-font>
-        </custom-toggle>
-        switches
-      </custom-list-item>
-
-      <custom-list-item type="menu" name="alphabet">
-        <custom-toggle active="${state.text.type === 'alphabet' ? 1 : 0}" slot="end">
-          <custom-icon-font >check_box_outline_blank</custom-icon-font>
-          <custom-icon-font slot="icon">check_box</custom-icon-font>
-        </custom-toggle>
-        alphabet
-      </custom-list-item>
-      `
-      menu.show({
-        clientX: event.clientX + menu?.shadowRoot?.querySelector('custom-dropdown')?.getBoundingClientRect().width,
-        clientY: event.clientY + menu?.shadowRoot?.querySelector('custom-dropdown')?.getBoundingClientRect().height * 2,
-        target
-      })
-    }
-    // drop.style.opacity = 0
-    // drop.addEventListener('transitionend', () => {
-    //   drop.style.left = `${left - width - drop.getBoundingClientRect().width}px`
-    // })
+  #onMeasurements = (value: boolean) => {
+    this.measurements = !!value
   }
 
-  #selected = async ({ detail }) => {
-    if (detail === 'alphabet' || detail === 'normal' || detail === 'switch' || detail === 'socket') {
-      state.text.type = detail
-      cadleShell.dialog.innerHTML = `
-      <form id="text-input" slot="content" method="dialog">
-        <md-filled-text-field
-          label="input"
-          value="${state.text.current}"
-          dialogFocus>
-        </md-filled-text-field>
-      </form>
-      <div slot="actions">
-        <md-filled-button form="text-input" value="confirm-input">
-          done
-        </md-filled-button>
-      </div>
-      `
-      cadleShell.dialog.open = true
-    }
+  #onAction = (value: string) => {
+    this.currentAction = value ?? ''
   }
 
-  drawText() {
+  drawText = () => {
     shell.action = 'draw-text'
-
     const { left, top } = positionObject()
-
     field._current = new Textbox(state.text.current, {
       fontFamily: 'system-ui',
       fontSize: 12,
@@ -152,153 +72,84 @@ export class CadleActions extends LitElement {
     })
   }
 
-  @property({ type: Array })
-  actions = [
-    {
-      title: 'undo changes',
-      icon: 'undo',
-      action: globalThis.cadleShell.undo
-    },
-    {
-      title: 'redo changes',
-      icon: 'redo',
-      action: globalThis.cadleShell.redo
-    },
-    {
-      title: 'select',
-      icon: 'arrow_selector_tool',
-      action: () => (globalThis.cadleShell.action = 'select')
-    },
-    {
-      title: 'snap to grid',
-      togglers: ['grid_on', 'grid_off'],
-      action: () => (globalThis.cadleShell.freeDraw = !globalThis.cadleShell.freeDraw),
-      separates: true
-    },
-    {
-      title: 'toggle measurements',
-      icon: 'measuring_tape',
-      action: () => (globalThis.cadleShell.showMeasurements = !globalThis.cadleShell.showMeasurements)
-    },
-    {
-      title: 'zoom out',
-      icon: 'zoom_out',
-      action: () => globalThis.cadleShell.field.zoomOut()
-    },
-    {
-      title: 'reset zoom',
-      icon: 'zoom_in_map',
-      action: () => globalThis.cadleShell.field.resetZoom()
-    },
-    {
-      title: 'zoom in',
-      icon: 'zoom_in',
-      action: () => globalThis.cadleShell.field.zoomIn(),
-      separates: true
-    },
-    {
-      title: 'insert text',
-      icon: 'insert_text',
-      action: this.drawText,
-      menu: 'insert-text',
-      separates: true
-    },
-    {
-      title: 'draw wall',
-      icon: 'polyline',
-      action: () => (globalThis.cadleShell.action = 'draw-wall')
-    },
-    {
-      title: 'draw door',
-      icon: 'door_front',
-      action: () => (globalThis.cadleShell.action = 'draw-door')
-    },
-    {
-      title: 'draw gate',
-      icon: 'fence',
-      action: () => (globalThis.cadleShell.action = 'draw-gate')
-    },
-    {
-      title: 'draw window',
-      icon: 'window',
-      action: () => (globalThis.cadleShell.action = 'draw-window'),
-      separates: true
-    },
-    {
-      title: 'freedraw',
-      icon: 'draw',
-      action: () => (globalThis.cadleShell.action = 'draw')
-    },
-    {
-      title: 'draw square',
-      icon: 'square',
-      menu: 'draw-square',
-      menuPosition: 'right',
-      action: () => (globalThis.cadleShell.action = 'draw-square')
-    },
-    {
-      title: 'draw circle',
-      icon: 'circle',
-      action: () => (globalThis.cadleShell.action = 'draw-circle')
-    },
-    {
-      title: 'draw arc',
-      icon: 'line_curve',
-      action: () => (globalThis.cadleShell.action = 'draw-arc')
-    },
-    {
-      title: 'draw line',
-      icon: 'horizontal_rule',
-      action: () => (globalThis.cadleShell.action = 'draw-line')
-    },
-    {
-      title: 'pick color',
-      color: true,
-      action: globalThis.cadleShell.pickColor
-    }
-  ]
+  #undo = () => (globalThis as any).cadleShell?.undo?.()
+  #redo = () => (globalThis as any).cadleShell?.redo?.()
+  #toggleSnap = () => {
+    const sh = (globalThis as any).cadleShell
+    if (sh) sh.freeDraw = !sh.freeDraw
+  }
+
+  #toggleMeasurements = () => {
+    const sh = (globalThis as any).cadleShell
+    if (sh) sh.showMeasurements = !sh.showMeasurements
+  }
+
+  #pickTool = (tool: DrawTool) => {
+    const sh = (globalThis as any).cadleShell
+    if (!sh) return
+    sh.action = tool.action
+  }
+
+  #isToolActive(tool: DrawTool) {
+    if (tool.action === '') return !this.currentAction || this.currentAction === 'select'
+    return this.currentAction === tool.action
+  }
 
   render() {
     return html`
-      ${map(this.actions, ({ action, icon, title, separates, togglers, menu, menuPosition, color }) => {
-        if (togglers)
-          return html` <md-icon-button
-              @click=${action}
-              toggle>
-              <custom-icon icon=${togglers[0]}>${togglers[0]}</custom-icon>
-              <custom-icon
-                slot="selected"
-                icon=${togglers[1]}></custom-icon>
-            </md-icon-button>
-            ${separates ? html`<flex-it></flex-it>` : ''}`
-
-        if (color) {
-          return html` <custom-button
-              @mouseup=${action}
-              title=${title}
-              data-menu=${menu}
-              .menu-position=${menuPosition}
-              style="width: 40px; border-radius: 50%;">
-              <div
-                style="width: 24px; height: 24px; border: 1px solid #555; border-radius: 50%; background-color: ${this
-                  .fill}"
-                slot="icon"></div>
-            </custom-button>
-            ${separates ? html`<flex-it></flex-it>` : ''}`
-        }
-
-        return html`
-          <custom-icon-button
-            @mouseup=${action}
-            title=${title}
-            data-menu=${menu}
-            .menu-position=${menuPosition}
-            .icon=${icon}></custom-icon-button>
-          ${separates ? html`<flex-it></flex-it>` : ''}
+      <button
+        class="tool"
+        title="Undo"
+        aria-label="Undo"
+        @click=${this.#undo}>
+        <custom-icon icon="undo"></custom-icon>
+      </button>
+      <button
+        class="tool"
+        title="Redo"
+        aria-label="Redo"
+        @click=${this.#redo}>
+        <custom-icon icon="redo"></custom-icon>
+      </button>
+      <flex-it></flex-it>
+      ${map(
+    DRAW_TOOLS,
+    (tool) => html`
+          <button
+            class="tool"
+            title=${tool.title}
+            aria-label=${tool.title}
+            ?active=${this.#isToolActive(tool)}
+            @click=${() => this.#pickTool(tool)}>
+            <custom-icon icon=${tool.icon}></custom-icon>
+          </button>
         `
-      })}
-
-      <context-menu @selected=${this.#selected}> </context-menu>
+  )}
+      <button
+        class="tool"
+        title="Insert text"
+        aria-label="Insert text"
+        ?active=${this.currentAction === 'draw-text'}
+        @click=${this.drawText}>
+        <custom-icon icon="insert_text"></custom-icon>
+      </button>
+      <flex-it></flex-it>
+      <button
+        class="tool"
+        title="Snap to grid"
+        aria-label="Snap to grid"
+        ?active=${this.snap}
+        @click=${this.#toggleSnap}>
+        <custom-icon icon=${this.snap ? 'grid_on' : 'grid_off'}></custom-icon>
+      </button>
+      <button
+        class="tool"
+        title="Toggle measurements"
+        aria-label="Toggle measurements"
+        ?active=${this.measurements}
+        @click=${this.#toggleMeasurements}>
+        <custom-icon icon="measuring_tape"></custom-icon>
+      </button>
     `
   }
 }

@@ -1,6 +1,5 @@
-import { LitElement, html, css, PropertyValues } from 'lit'
-import { customElement, property, query, state } from 'lit/decorators.js'
-import { consume } from '@lit/context'
+import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import styles from './project.css' with { type: 'css' }
 import '@material/web/textfield/outlined-text-field.js'
 import '@material/web/iconbutton/filled-icon-button.js'
 import '@vandeurenglenn/lite-elements/drawer-item.js'
@@ -12,30 +11,31 @@ import './../list/item.js'
 import '../../contextmenu.js'
 import { Project } from '../../types.js'
 import { addPage, getProjectData, setProjectData } from '../../api/project.js'
-
+import { map } from '@vandeurenglenn/lite/map.js'
 declare global {
   interface HTMLElementTagNameMap {
     'project-element': ProjectElement
   }
 }
-
 @customElement('project-element')
-export class ProjectElement extends LitElement {
-  @consume({ context: 'projectContext', subscribe: true })
+export class ProjectElement extends LiteElement {
   @property({ attribute: false })
-  @state()
-  project: Project
+  accessor project!: Project
 
-  currentSelected: string
-
-  @property()
-  clipboard
+  currentSelected = ''
+  @property({ attribute: false })
+  accessor clipboard: unknown = undefined
 
   @query('.page-input')
-  pageInput: HTMLInputElement
+  accessor pageInput!: HTMLInputElement
 
-  protected firstUpdated(_changedProperties: PropertyValues): void {
+  firstRender(): void {
     this.addEventListener('keydown', this.#keydown.bind(this))
+    this.addEventListener('contextmenu', this.#showMenu)
+    this.shadowRoot?.addEventListener('click', this.#onclick.bind(this))
+
+    const menu = this.shadowRoot?.querySelector('context-menu')
+    menu?.addEventListener('selected', this.#contextMenuItemSelected.bind(this) as EventListener)
   }
 
   set addingPage(value: boolean) {
@@ -48,7 +48,8 @@ export class ProjectElement extends LitElement {
         this.removeAttribute('addingPage')
         this.handleInput()
       }
-    this.requestUpdate('addingPage')
+
+    this.requestRender()
   }
 
   async handleInput() {
@@ -62,36 +63,39 @@ export class ProjectElement extends LitElement {
     }
   }
 
-  async #keydown(event) {
+  async #keydown(event: KeyboardEvent) {
     console.log(event)
-
     if (event.key === 'Escape') {
       this.addingPage = false
-      this.shadowRoot.querySelector('context-menu').open = false
-      this.renderRoot.querySelector('.add-page').selected = false
+      const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
+      const addPageButton = this.shadowRoot?.querySelector('.add-page') as { selected?: boolean } | null
+      if (menu) menu.open = false
+      if (addPageButton) addPageButton.selected = false
     } else if (event.key === 'Enter') {
       await this.handleInput()
       this.addingPage = false
-      this.renderRoot.querySelector('.add-page').selected = false
+      const addPageButton = this.shadowRoot?.querySelector('.add-page') as { selected?: boolean } | null
+      if (addPageButton) addPageButton.selected = false
     }
   }
 
-  #showMenu = (event) => {
+  #showMenu = (event: MouseEvent) => {
     console.log(event.composedPath())
     console.log(event)
-
     const paths = event.composedPath()
-    if (paths[0].localName === 'custom-drawer-item' || paths[0].localName === 'custom-selector') {
+    const target = paths[0] as HTMLElement | undefined
+    if (target?.localName === 'custom-drawer-item' || target?.localName === 'custom-selector') {
       event.preventDefault()
-      const menu = this.renderRoot.querySelector('context-menu')
-      paths[0].setAttribute('id', 'contextmenu-anchor')
-      console.log(paths[0])
+      const menu = this.shadowRoot?.querySelector('context-menu') as {
+        show?: (args: { clientY: number; target: EventTarget }) => void
+      } | null
+      target.setAttribute('id', 'contextmenu-anchor')
+      console.log(target)
       console.log(paths)
-      console.log(paths[0].dataset.project)
-      this.currentSelected = paths[0].dataset.project
+      console.log(target.dataset.project)
+      this.currentSelected = target.dataset.project ?? ''
       console.log({ currentSelected: this.currentSelected })
-
-      menu.show({ clientY: event.clientY, target: paths[0] })
+      menu?.show?.({ clientY: event.clientY, target })
     }
   }
 
@@ -100,94 +104,38 @@ export class ProjectElement extends LitElement {
   }
 
   #onclick() {
-    const menu = this.renderRoot.querySelector('context-menu')
-    if (menu.open) menu.open = false
+    const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
+    if (menu?.open) menu.open = false
   }
 
-  async connectedCallback(): void {
-    super.connectedCallback()
-    this.addEventListener('contextmenu', this.#showMenu)
-    this.shadowRoot.addEventListener('click', this.#onclick.bind(this))
-    await this.updateComplete
-
-    const menu = this.renderRoot.querySelector('context-menu')
-    menu.addEventListener('selected', this.#contextMenuItemSelected.bind(this))
-  }
-
-  #contextMenuItemSelected(event) {
+  #contextMenuItemSelected(event: CustomEvent) {
     const detail = event.detail
-    const menu = this.renderRoot.querySelector('context-menu')
+    const menu = this.shadowRoot?.querySelector('context-menu') as {
+      currentTarget?: { dataset?: { project?: string } }
+    } | null
     const action = detail.getAttribute('action')
-
-    if (action === 'remove' || action === 'paste') {
-      const page = this.project.pages[menu.currentTarget.dataset.project]
+    const projectKey = menu?.currentTarget?.dataset?.project
+    if (projectKey && (action === 'remove' || action === 'paste')) {
+      const page = this.project.pages[projectKey]
       console.log({ page })
-
       if (action === 'paste') {
         this.clipboard = undefined
         addPage(cadleShell.projectKey, `${page.name} copy`, page.schema)
       } else if (action === 'remove') {
-        delete this.project.pages[menu.currentTarget.dataset.project]
+        delete this.project.pages[projectKey]
         setProjectData(cadleShell.projectKey, this.project)
       }
     } else if (action === 'copy') {
       this.clipboard = this.currentSelected
+    } else if (action === 'clone-page' && projectKey) {
+      cadleShell.openClonePageDialog(projectKey)
     }
 
     console.log({ clipboard: this.clipboard })
-
-    this.requestUpdate()
+    this.requestRender()
   }
-  static styles = [
-    css`
-      :host {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-      }
 
-      .page-input {
-        pointer-events: none;
-        opacity: 0;
-        padding: 3px;
-        outline: none;
-        border: 1px solid var(--md-sys-color-outline-variant);
-        background: var(--md-sys-color-surface, #fef7ff);
-        color: var(--md-sys-color-on-surface);
-        font-size: 14px;
-        font-weight: 500;
-        border-radius: 8px;
-        padding: 8px 12px;
-        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      :host([addingPage]) .page-input {
-        pointer-events: auto;
-        opacity: 1;
-        border-color: var(--md-sys-color-primary);
-        box-shadow: 0 0 0 2px var(--md-sys-color-primary-container);
-      }
-
-      .add-container {
-        box-sizing: border-box;
-        padding: 12px 24px;
-        align-items: center;
-        bottom: 12px;
-        right: 12px;
-        width: 240px;
-      }
-
-      .input-container {
-        box-sizing: border-box;
-        padding: 12px 24px;
-        align-items: center;
-      }
-
-      custom-selector {
-        height: 100%;
-      }
-    `
-  ]
+  static styles = [styles]
 
   get #projectTemplate() {
     return Object.entries(this.project.pages).map(
@@ -195,7 +143,7 @@ export class ProjectElement extends LitElement {
         <custom-drawer-item
           .headline=${project.name}
           data-project=${key}
-          @click=${async (event) => {
+          @click=${async (_event: Event) => {
             await cadleShell.savePage()
             cadleShell.loadPage(key)
             location.hash = '#!/draw'
@@ -209,39 +157,46 @@ export class ProjectElement extends LitElement {
   render() {
     return html`
       <custom-selector> ${this.project?.pages ? this.#projectTemplate : ''} </custom-selector>
-
-      <flex-row
-        class="input-container"
-        slot="footer">
+      <flex-row class="input-container">
         <input class="page-input" />
-        <flex-it></flex-it>
         <custom-icon-button
           class="add-page"
           icon="${this.addingPage ? 'check' : 'add'}"
           @click=${() => (this.addingPage = !this.addingPage)}></custom-icon-button>
       </flex-row>
-
       <context-menu>
         <custom-list-item
           type="menu"
           action="copy">
-          <custom-icon-font slot="start">copy</custom-icon-font>
-          copy
+          <custom-icon
+            slot="start"
+            icon="content_copy"></custom-icon>
+          <p>copy</p>
         </custom-list-item>
-
         <custom-list-item
           type="menu"
           ?disabled=${!this.clipboard}
           action="paste">
-          <custom-icon-font slot="start">paste</custom-icon-font>
-          paste
+          <custom-icon
+            slot="start"
+            icon="content_paste"></custom-icon>
+          <p>paste</p>
         </custom-list-item>
-
+        <custom-list-item
+          type="menu"
+          action="clone-page">
+          <custom-icon
+            slot="start"
+            icon="content_copy"></custom-icon>
+          <p>clone page</p>
+        </custom-list-item>
         <custom-list-item
           type="menu"
           action="remove">
-          <custom-icon-font slot="start">delete</custom-icon-font>
-          delete
+          <custom-icon
+            slot="start"
+            icon="delete"></custom-icon>
+          <p>delete</p>
         </custom-list-item>
       </context-menu>
     `

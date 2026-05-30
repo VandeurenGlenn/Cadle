@@ -1,0 +1,71 @@
+    :host {
+      line-height: var(--md-sys-typescale-label-medium-line-height);
+      font-weight: var(--md-sys-typescale-label-medium-font-weight);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--cadle-space-2);
+      flex: 0 0 auto;
+    }
+    .item .label {
+      color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 70%, transparent);
+    }
+    .item .value {
+      color: var(--md-sys-color-on-surface);
+    }
+    .item.tool .value {
+      color: var(--md-sys-color-primary);
+    }
+    .mono {
+      font-family: var(--cadle-font-mono);
+      letter-spacing: 0;
+      text-transform: none;
+      font-variant-numeric: tabular-nums;
+      min-width: 5ch;
+      text-align: right;
+    }
+    .spacer {
+      flex: 1 1 auto;
+    }
+    .separator {
+      width: 1px;
+      height: 16px;
+      background: var(--md-sys-color-outline-variant);
+      flex: 0 0 auto;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--cadle-space-1);
+      background: transparent;
+      border: 0;
+      padding: 0 var(--cadle-space-2);
+      margin: 0;
+      height: 22px;
+      border-radius: var(--cadle-radius-xs);
+      cursor: pointer;
+      color: inherit;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      transition:
+        background-color var(--cadle-motion-fast),
+        color var(--cadle-motion-fast);
+    }
+    button:hover {
+      background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+      color: var(--md-sys-color-on-surface);
+    }
+    button:focus-visible {
+      outline: none;
+      box-shadow: var(--cadle-focus-ring);
+    }
+    button[aria-pressed='true'] {
+      color: var(--md-sys-color-primary);
+    }
+  

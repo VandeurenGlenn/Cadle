@@ -1,48 +1,16 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import styles from './export.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/button/filled-button.js'
 import './../../items/object.js'
-
 @customElement('object-export')
-export class ObjectExport extends LitElement {
-  @property({ reflect: true, type: Boolean }) active: boolean
+export class ObjectExport extends LiteElement {
+  @property({ reflect: true, type: Boolean }) accessor active: boolean = false
+  static styles = [styles]
 
-  static styles = [
-    css`
-      :host {
-        display: block;
-        border-top: 1px solid var(--md-sys-color-outline);
-      }
 
-      .export-actions {
-        padding: 8px 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .action-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px;
-        cursor: pointer;
-        border-radius: 4px;
-      }
-
-      .action-row:hover {
-        background: rgba(0, 0, 0, 0.05);
-      }
-
-      custom-icon {
-        margin-right: 4px;
-      }
-    `
-  ]
-
-  firstUpdated(): void {
-    this.renderRoot.addEventListener('click', this.#onClick as any)
+  firstRender(): void {
+    this.shadowRoot?.addEventListener('click', this.#onClick as any)
   }
 
   #onClick = (e: Event) => {
@@ -55,7 +23,6 @@ export class ObjectExport extends LitElement {
   #exportAsSVG() {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObject = canvas.getActiveObject()
     if (!activeObject) {
       alert('Please select an object to export')
@@ -66,19 +33,16 @@ export class ObjectExport extends LitElement {
     const svg = activeObject.toSVG()
     const blob = new Blob([svg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
-
     const a = document.createElement('a')
     a.href = url
     a.download = `object-${Date.now()}.svg`
     a.click()
-
     URL.revokeObjectURL(url)
   }
 
   #exportAsJSON() {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObject = canvas.getActiveObject()
     if (!activeObject) {
       alert('Please select an object to export')
@@ -89,19 +53,16 @@ export class ObjectExport extends LitElement {
     const json = JSON.stringify(activeObject.toJSON(), null, 2)
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
-
     const a = document.createElement('a')
     a.href = url
     a.download = `object-${Date.now()}.json`
     a.click()
-
     URL.revokeObjectURL(url)
   }
 
   #addToCatalog() {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObject = canvas.getActiveObject()
     if (!activeObject) {
       alert('Please select an object to add to catalog')
@@ -125,14 +86,12 @@ export class ObjectExport extends LitElement {
             <custom-icon icon="image"></custom-icon>
             Export as SVG
           </div>
-
           <div
             class="action-row"
             @click=${this.#exportAsJSON}>
             <custom-icon icon="code"></custom-icon>
             Export as JSON
           </div>
-
           <div
             class="action-row"
             @click=${this.#addToCatalog}>

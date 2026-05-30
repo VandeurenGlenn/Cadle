@@ -1,0 +1,13 @@
+      :host {
+        display: block;
+        border-top: 1px solid var(--md-sys-color-outline);
+      }
+      md-filled-text-field {
+        width: 100%;
+      }
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: var(--cadle-space-2);
+      }
+    

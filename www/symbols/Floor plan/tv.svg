@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- TV - flat screen on stand, top-down view -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Wall mount / cabinet -->
+    <rect x="10" y="60" width="80" height="22" rx="3" fill="currentColor" fill-opacity="0.06"/>
+    <line x1="10" y1="71" x2="90" y2="71" opacity="0.4"/>
+    <!-- TV screen (depth) -->
+    <rect x="20" y="50" width="60" height="6" rx="1" fill="currentColor" fill-opacity="0.85" stroke="currentColor"/>
+    <!-- Stand neck -->
+    <line x1="50" y1="56" x2="50" y2="60" stroke-width="2.4"/>
+  </g>
+</svg>

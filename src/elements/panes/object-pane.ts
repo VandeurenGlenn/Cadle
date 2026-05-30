@@ -1,5 +1,6 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, state } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import styles from './object-pane.css' with { type: 'css' }
+import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
 import './object/color.js'
 import './object/export.js'
 import './object/position.js'
@@ -10,86 +11,18 @@ import './object/overlay.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
-
+import '@vandeurenglenn/lite-elements/icon.js'
 @customElement('object-pane')
-export class ObjectPane extends LitElement {
-  @state()
-  private _activeObjectLabel = 'No selection'
+export class ObjectPane extends LiteElement {
+  @property()
+  private accessor _activeObjectLabel = 'No selection'
 
-  @state()
-  private _selectionCount = 0
+  @property({ type: Number })
+  private accessor _selectionCount = 0
 
   private _selectionHandlersBound = false
+  static styles = [styles]
 
-  static styles = [
-    css`
-      :host {
-        position: absolute;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        width: 100%;
-        --md-list-item-list-item-container-color: #fff;
-        --md-list-item-list-item-leading-avatar-color: #fff;
-        --md-list-item-list-item-leading-avatar-shape: 0;
-        pointer-events: auto;
-        top: 64px;
-        right: 0;
-        bottom: 0;
-        width: 320px;
-
-        border-left: 1px solid var(--md-sys-color-outline-variant);
-        background: var(--md-sys-color-surface);
-        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.06);
-      }
-
-      section {
-        min-height: 0;
-        flex: 1 1 auto;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        padding: 8px;
-        gap: 8px;
-      }
-
-      .title {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--md-sys-color-on-surface);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding: 4px 8px;
-      }
-
-      .meta {
-        font-size: 12px;
-        color: var(--md-sys-color-on-surface-variant);
-        padding: 0 8px;
-        font-weight: 500;
-      }
-
-      .toolbar {
-        padding: 12px 8px;
-        border-top: 1px solid var(--md-sys-color-outline-variant);
-        background: var(--md-sys-color-surface-variant);
-        display: flex;
-        gap: 8px;
-      }
-
-      custom-button {
-        pointer-events: auto;
-        border-radius: 8px;
-        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      custom-button:hover {
-        background: var(--md-sys-color-primary-container);
-        transform: translateY(-1px);
-      }
-    `
-  ]
 
   connectedCallback(): void {
     super.connectedCallback()
@@ -127,10 +60,8 @@ export class ObjectPane extends LitElement {
   #formatObjectLabel(object: any): string {
     const customName = object?.name || object?.label || object?.bindingName
     if (typeof customName === 'string' && customName.trim().length > 0) return customName
-
     const rawType = object?.type || object?.constructor?.name || 'Object'
     if (typeof rawType !== 'string') return 'Object'
-
     return rawType
       .replace(/^Cadle/i, '')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -141,10 +72,8 @@ export class ObjectPane extends LitElement {
   #syncSelectionLabel = () => {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObjects = canvas.getActiveObjects?.() ?? []
     this._selectionCount = activeObjects.length
-
     if (activeObjects.length === 0) {
       this._activeObjectLabel = 'No selection'
       return
@@ -159,31 +88,76 @@ export class ObjectPane extends LitElement {
   }
 
   render() {
+    const hasSelection = this._selectionCount > 0
     return html`
-      <cadle-header>
-        <div class="title">${this._activeObjectLabel}</div>
-        <div
-          class="meta"
-          slot="end">
-          ${this._selectionCount === 0 ? '0 selected' : `${this._selectionCount} selected`}
-        </div>
-      </cadle-header>
-
-      <section>
-        <object-color></object-color>
-        <object-text></object-text>
-        <object-binding></object-binding>
-        <object-scale></object-scale>
-        <object-position></object-position>
-        <object-overlay></object-overlay>
-        <object-export></object-export>
-      </section>
-
-      <div class="toolbar">
-        <custom-icon-button
-          icon="measuring_tape"
-          @click=${() => (cadleShell.showMeasurements = !cadleShell.showMeasurements)}></custom-icon-button>
-      </div>
+      ${hasSelection
+    ? html`
+            <cadle-header>
+              <div class="title">${this._activeObjectLabel}</div>
+              <div
+                class="meta"
+                slot="end">
+                ${`${this._selectionCount} selected`}
+              </div>
+            </cadle-header>
+            <section>
+              <object-color></object-color>
+              <object-text></object-text>
+              <object-binding></object-binding>
+              <object-scale></object-scale>
+              <object-position></object-position>
+              <object-overlay></object-overlay>
+              <object-export></object-export>
+            </section>
+            <div class="toolbar">
+              <span class="toolbar-label">Measurements</span>
+              <custom-icon-button
+                icon="measuring_tape"
+                title="Toggle measurement labels on the canvas"
+                @click=${() => (cadleShell.showMeasurements = !cadleShell.showMeasurements)}></custom-icon-button>
+              <custom-icon-button
+                icon="table_view"
+                title="Export panel labels/TSV"
+                @click=${this.exportPanelLabels}></custom-icon-button>
+            </div>
+          `
+    : html`
+            <div class="empty-state">
+              <div class="empty-card">
+                <custom-icon icon="arrow_selector_tool"></custom-icon>
+                <span class="empty-title">No selection</span>
+                <span class="empty-hint">Select an object to inspect.</span>
+              </div>
+            </div>
+          `}
     `
+  }
+
+  exportPanelLabels() {
+    const field = cadleShell?.field
+    if (!field) return
+    const groups = field.getBindingGroups()
+    // Map draw.ts group objects to PanelLabelRow[]
+    const rows = groups.map((g) => ({
+      bindingId: g.bindingId,
+      letter: g.letter,
+      number: g.number,
+      description: '',
+      wireSection: g.wireSection,
+      breakerAmperage: g.breakerAmperage,
+      switches: g.switches,
+      loads: g.loads,
+      ready: g.ready
+    }))
+    // Export TSV
+    const tsv = buildKlemmenlijstTSV(rows)
+    downloadText('panel-klemmenlijst.tsv', tsv, 'text/tab-separated-values')
+    // Export printable label sheet (HTML)
+    const html = buildLabelSheetHTML(rows, cadleShell?.projectName || 'Project')
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+    }
   }
 }

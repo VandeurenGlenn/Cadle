@@ -35,28 +35,33 @@ export const del = (key) => projectStore.delete(new TextEncoder().encode(key))
 
 export const set = (key, value) => projectStore.put(key, value)
 
-export const create = async (project: ProjectInput, pageName) => {
+export const create = async (project: ProjectInput, pageName: string) => {
   const creationTime = new Date().getTime()
   const uuid = crypto.randomUUID()
 
   const pageUuid = crypto.randomUUID()
-  const pages = {}
+  const pages: Project['pages'] = {}
   pages[pageUuid] = {
-    name: pageName
+    creationTime,
+    name: pageName,
+    schema: { version: '6.0.0', objects: [] }
   }
   const _project = { creationTime, ...project, pages }
   await projectDataStore.put(uuid, JSON.stringify(_project))
   await projectStore.put(uuid, project.name)
 
-  cadleShell.pages.select('projects')
   cadleShell.projects = await getProjects()
+  cadleShell.project = (await getProjectData(uuid as UUID)) as Project
+  cadleShell.projectKey = uuid as UUID
+  await cadleShell.loadPage(pageUuid)
+  location.hash = '#!/draw'
   return
 }
 
 export const addPage = async (uuid: UUID, pageName: string, schema) => {
   const project = await getProjectData(uuid)
   const pageUuid = crypto.randomUUID() as UUID
-  project.pages[pageUuid] = { name: pageName, schema }
+  project.pages[pageUuid] = { creationTime: Date.now(), name: pageName, schema }
   await setProjectData(uuid, project)
 }
 
@@ -73,7 +78,7 @@ export const save = async () => {
 export const share = () => {
   const project = JSON.stringify({
     name: cadleShell.projectName,
-    schema: cadleShell.renderRoot.querySelector('draw-field')?.toJSON()
+    schema: cadleShell.shadowRoot?.querySelector('draw-field')?.toJSON()
   })
   const data = {
     title: cadleShell.projectName,
@@ -89,13 +94,15 @@ export const upload = async () => {
   const input = document.createElement('input')
   input.type = 'file'
   input.addEventListener('change', (e) => {
-    var fr = new FileReader()
+    const fr = new FileReader()
 
     fr.onload = async (e) => {
       console.log(e.target.result)
       console.log(e)
 
-      var result = JSON.parse(e.target.result)
+      const payload = e.target?.result
+      if (typeof payload !== 'string') return
+      const result = JSON.parse(payload)
       console.log(result)
       const projectKey = result.projectKey
       delete result.projectKey
@@ -177,6 +184,7 @@ export const download = async () => {
   //   a.click()
   // }
 }
+
 export const importPlan = async () => {
   const input = document.createElement('input')
   input.type = 'file'

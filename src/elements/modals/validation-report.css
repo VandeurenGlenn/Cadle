@@ -1,0 +1,152 @@
+      :host {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        pointer-events: none;
+        background: var(--cadle-scrim);
+        z-index: 10010;
+        transition: opacity var(--cadle-motion-fast);
+      }
+      :host([open]) {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .panel {
+        width: min(820px, calc(100vw - var(--cadle-space-7)));
+        max-height: min(84vh, 920px);
+        overflow: auto;
+        border-radius: var(--cadle-radius-lg);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: color-mix(in srgb, var(--md-sys-color-surface) 96%, var(--md-sys-color-primary-container));
+        color: var(--md-sys-color-on-surface);
+        box-shadow: var(--cadle-elevation-4);
+      }
+      .header,
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 20px 22px;
+      }
+      .header {
+        border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      }
+      .title {
+        display: grid;
+        gap: 4px;
+      }
+      .title h3,
+      .title p {
+        margin: 0;
+      }
+      .content {
+        display: grid;
+        gap: 18px;
+        padding: 20px 22px 12px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .stat {
+        border-radius: 16px;
+        padding: 14px;
+        background: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 72%, transparent);
+      }
+      .stat strong,
+      .stat span {
+        display: block;
+      }
+      .stat strong {
+        font-size: 24px;
+        line-height: 1.1;
+      }
+      .stat span {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .issues,
+      .groups {
+        display: grid;
+        gap: 10px;
+      }
+      .issue,
+      .group {
+        display: grid;
+        gap: 6px;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
+      }
+      .issue {
+        cursor: pointer;
+      }
+      .issue[data-severity='error'] {
+        border-color: color-mix(in srgb, var(--md-sys-color-error) 30%, var(--md-sys-color-outline-variant));
+        background: color-mix(in srgb, var(--md-sys-color-error-container) 45%, var(--md-sys-color-surface));
+      }
+      .issue[data-severity='warn'] {
+        border-color: color-mix(in srgb, #b56a00 32%, var(--md-sys-color-outline-variant));
+        background: color-mix(in srgb, #ffddb2 45%, var(--md-sys-color-surface));
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        justify-content: space-between;
+      }
+      .pill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .pill.error {
+        background: color-mix(in srgb, var(--md-sys-color-error) 14%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-error);
+      }
+      .pill.warn {
+        background: rgba(181, 106, 0, 0.12);
+        color: #8a5200;
+      }
+      .pill.ok {
+        background: rgba(31, 106, 56, 0.12);
+        color: #1f6a38;
+      }
+      button {
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        border-radius: 12px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: color-mix(in srgb, var(--md-sys-color-primary) 30%, var(--md-sys-color-outline-variant));
+        background: color-mix(in srgb, var(--md-sys-color-primary-container) 70%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-on-primary-container);
+      }
+      .footer {
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+      }
+      .footer-actions {
+        display: flex;
+        gap: 10px;
+      }
+      @media (max-width: 720px) {
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    

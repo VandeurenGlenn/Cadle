@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Stairs - top-down architectural plan: parallel treads + UP direction arrow -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Stair outline -->
+    <rect x="10" y="8" width="80" height="84" rx="2" fill="currentColor" fill-opacity="0.04"/>
+    <!-- Treads (horizontal lines) -->
+    <line x1="10" y1="20" x2="90" y2="20"/>
+    <line x1="10" y1="32" x2="90" y2="32"/>
+    <line x1="10" y1="44" x2="90" y2="44"/>
+    <line x1="10" y1="56" x2="90" y2="56"/>
+    <line x1="10" y1="68" x2="90" y2="68"/>
+    <line x1="10" y1="80" x2="90" y2="80"/>
+    <!-- Direction arrow (UP) -->
+    <line x1="50" y1="88" x2="50" y2="12" stroke-width="2.2"/>
+    <polyline points="43,19 50,12 57,19" stroke-width="2.2"/>
+  </g>
+</svg>

@@ -1,5 +1,4 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { LiteElement, html, css, property, customElement, query } from '@vandeurenglenn/lite'
 import { Canvas, Circle, Line, IText, loadSVGFromURL, util, PencilBrush } from './../fabric-imports.js'
 import { AppShell } from '../shell.js'
 import Rect from './../symbols/rectangle.js'
@@ -9,6 +8,41 @@ import CadleWindow from '../symbols/window.js'
 import CadleWall from './../symbols/wall.js'
 import CadleDoor from '../symbols/door.js'
 import CadleGate from '../symbols/gate.js'
+import {
+  getBoundOneLineCatalogSymbols,
+  normalizeBindingId,
+  getBindingGroups,
+  getBindingGroupCatalogSymbols,
+  getBindingValidationReport,
+  buildAutoOneWireSchema
+} from './draw/binding-utils.js'
+import {
+  findNearestWall,
+  isOpeningObject,
+  isWallObject,
+  getWallAxisFrame,
+  getWallEndpoints,
+  projectPointToWall,
+  getWallDrawLayout,
+  getWallDrawLayoutFree,
+  getOpeningWallLayout,
+  getCenteredOpeningLayout,
+  snapOpeningToWall,
+  snapWallEndpoint,
+  LeftTop
+} from './draw/wall-snap.js'
+import { OpeningHoverGhost } from './draw/opening-placement.js'
+import { sceneToViewport } from './draw/overlay-geometry.js'
+import { renderArchitecturalMeasurements, getMeasurementOverlayContext } from './draw/measurement-utils.js'
+import { canvasInk } from '../symbols/canvas-tokens.js'
+import {
+  BINDING_AND_SYMBOL_PROPS,
+  instantiateSpecials,
+  partitionRawObjects,
+  reapplyBindingProps
+} from './draw/json-io.js'
+import { ZoomController } from './draw/zoom-controller.js'
+import styles from './draw.css' with { type: 'css' }
 // import 'fabric-history';
 
 declare type x = number
@@ -23,7 +57,7 @@ declare global {
 }
 
 @customElement('draw-field')
-export class DrawField extends LitElement {
+export class DrawField extends LiteElement {
   #canvas: Canvas
   #height = 0
   #width = 0
@@ -32,11 +66,15 @@ export class DrawField extends LitElement {
   readonly #a4LandscapeAspect = this.#a4LandscapeWidth / this.#a4LandscapeHeight
   #startPoints: { left: number; top: number } = { left: 0, top: 0 }
   #drawSnapWall: any = null
+  #openingHoverGhost = new OpeningHoverGhost()
   #lastMoveSnap = new WeakMap<any, { left: number; top: number }>()
+  #overlayPointer: LeftTop | null = null
+  #keydownListener = (event: KeyboardEvent) => this._keydown(event)
   #bindingLookup = new Map<string, any[]>()
   #bindingLookupVersion = 0
   #bindingLookupScheduled = false
   #measurementOverlayScheduled = false
+  #zoomController?: ZoomController
 
   moving = false
   drawing = false
@@ -51,18 +89,28 @@ export class DrawField extends LitElement {
   _currentGroup: any
 
   @property({ type: Number })
-  gridSize: number
+  accessor gridSize: number
 
   @property({ type: Number })
-  zoomLevel: number = 1
+  accessor zoomLevel: number = 1
 
   @property({ type: Boolean })
-  showMeasurements: boolean = false
+  accessor showMeasurements: boolean = false
+
+  @property({ type: Array })
+  accessor remoteCursors: Array<{ id: string; name: string; color: string; x: number; y: number }> = []
 
   @query('context-menu')
-  contextMenu!: any
+  accessor contextMenu!: any
+
+  @query('.canvas-container')
+  accessor canvasContainer!: any
 
   _current: any = null
+
+  #historyEntries: Array<{ id: string; label: string; timestamp: number; json: unknown }> = []
+  #historyRecordingEnabled = true
+  #historySnapshotCounter = 0
 
   get #shell() {
     return document.querySelector('app-shell') as AppShell
@@ -100,21 +148,107 @@ export class DrawField extends LitElement {
     css`
       :host {
         display: flex;
-        background: transparent;
-        overflow: hidden;
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        box-sizing: border-box;
         width: 100%;
         height: 100%;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        overflow: hidden;
+        --grid-size: 10px;
+        --grid-line-color: color-mix(in srgb, var(--md-sys-color-outline-light, #79747e) 55%, transparent);
+        --grid-major-line-color: color-mix(in srgb, var(--md-sys-color-outline-light, #79747e) 80%, transparent);
       }
 
+      .canvas-stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .canvas-stage .canvas-container {
+        margin: auto;
+        background-color: transparent;
+        background-image:
+          linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px),
+          linear-gradient(to right, var(--grid-major-line-color) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid-major-line-color) 1px, transparent 1px);
+        background-size:
+          var(--grid-size) var(--grid-size),
+          var(--grid-size) var(--grid-size),
+          calc(var(--grid-size) * 5) calc(var(--grid-size) * 5),
+          calc(var(--grid-size) * 5) calc(var(--grid-size) * 5);
+        background-position:
+          0 0,
+          0 0,
+          0 0,
+          0 0;
+      }
+
+      .shadow {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        box-shadow: inset 0 0 9px 2px #0000001f;
+        z-index: 2;
+        pointer-events: none;
+      }
       canvas {
         background: transparent !important;
-        transition: none;
+      }
+
+      .zoom-controls {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: var(--md-sys-color-surface);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 3;
+      }
+
+      .zoom-buttons {
+        display: flex;
+        gap: 6px;
+      }
+
+      .canvas-button {
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        background: var(--md-sys-color-surface-container-high, #fff);
+        color: var(--md-sys-color-on-surface, #222);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .canvas-button.active {
+        border-color: #a85427;
+        color: #a85427;
+        background: rgba(168, 84, 39, 0.08);
+      }
+
+      .zoom-level {
+        font-size: 12px;
+        color: var(--md-sys-color-on-surface);
+        text-align: center;
+        padding: 4px;
       }
     `
   ]
-
-  @query('.convas-container')
-  canvasContainer!: any
 
   snap(value) {
     return Math.round(value / this.gridSize) * this.gridSize
@@ -141,76 +275,81 @@ export class DrawField extends LitElement {
           y: Number(input.pointer.y ?? 0)
         }
       }
-
       return { x: 0, y: 0 }
     }
   }
 
   #normalizeBindingId(value: unknown) {
-    if (typeof value !== 'string') return ''
-    return value.trim().toUpperCase()
+    return normalizeBindingId(value)
   }
 
-  #inferBindingRole(obj: any): 'switch' | 'load' | 'neutral' {
-    const explicitRole = String(obj?.bindingRole ?? '').toLowerCase()
-    if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
+  getBindingGroups() {
+    return getBindingGroups(this, this.#canvas)
+  }
 
-    const haystack = `${obj?.symbolPath ?? ''} ${obj?.symbolName ?? ''}`.toLowerCase()
-    if (haystack.includes('/switches/') || haystack.includes(' switch')) return 'switch'
-    if (
-      haystack.includes('/consumption appliances/') ||
-      haystack.includes('/electrical devices/') ||
-      haystack.includes('light') ||
-      haystack.includes('lamp')
-    ) {
-      return 'load'
+  getBindingGroupCatalogSymbols() {
+    return getBindingGroupCatalogSymbols(this, this.#canvas)
+  }
+
+  getBindingValidationReport() {
+    return getBindingValidationReport(this.getBindingGroups())
+  }
+
+  buildAutoOneWireSchema() {
+    return buildAutoOneWireSchema(this.getBindingValidationReport(), this.#canvas)
+  }
+
+  getHistoryEntries() {
+    return this.#historyEntries.map(({ id, label, timestamp }) => ({ id, label, timestamp }))
+  }
+
+  async restoreHistoryEntry(id: string) {
+    const entry = this.#historyEntries.find((item) => item.id === id)
+    if (!entry) return
+    await this.fromJSON(entry.json as { objects?: any[]; version: string })
+  }
+
+  refreshLookup(canvas: Canvas) {
+    if (canvas === this.#canvas) {
+      this.#refreshBindingLookup()
     }
-
-    return 'neutral'
   }
 
-  #displayTypeForObject(obj: any) {
-    if (typeof obj?.situationElementType === 'string') return obj.situationElementType
-    if (typeof obj?.type === 'string' && obj.type.startsWith('Cadle'))
-      return obj.type.replace('Cadle', '').toLowerCase()
-    return String(obj?.type ?? 'symbol')
+  getLookup() {
+    return this.#bindingLookup
   }
 
-  #buildBoundSymbolPath(bindingId: string, role: string, type: string) {
-    const roleLabel = role === 'neutral' ? '' : ` ${role.toUpperCase()}`
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="44" viewBox="0 0 120 44"><rect x="1" y="1" width="118" height="42" rx="6" fill="#fff" stroke="#444" stroke-width="1.5"/><text x="10" y="19" font-family="Arial, sans-serif" font-size="11" fill="#222">${bindingId}${roleLabel}</text><text x="10" y="34" font-family="Arial, sans-serif" font-size="10" fill="#666">${type}</text></svg>`
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+  #recordHistorySnapshot(label = 'Change') {
+    if (!this.#historyRecordingEnabled || !this.#canvas) return
+
+    requestAnimationFrame(() => {
+      try {
+        const snapshot = this.toJSON()
+        if (!snapshot || !Array.isArray((snapshot as any).objects)) return
+
+        this.#historySnapshotCounter += 1
+        this.#historyEntries.unshift({
+          id: crypto.randomUUID(),
+          label: `${label} #${this.#historySnapshotCounter}`,
+          timestamp: Date.now(),
+          json: snapshot
+        })
+        this.#historyEntries = this.#historyEntries.slice(0, 30)
+        this.dispatchEvent(
+          new CustomEvent('canvas-history-updated', {
+            bubbles: true,
+            composed: true,
+            detail: { entries: this.getHistoryEntries() }
+          })
+        )
+      } catch (error) {
+        console.warn('Unable to record history snapshot', error)
+      }
+    })
   }
 
   getBoundOneLineCatalogSymbols() {
-    const symbols: {
-      name: string
-      path: string
-      metadata: Record<string, unknown>
-    }[] = []
-
-    for (const [bindingId, objects] of this.#bindingLookup.entries()) {
-      for (const obj of objects) {
-        const role = this.#inferBindingRole(obj)
-        const type = this.#displayTypeForObject(obj)
-        const uniqueId = obj?.uuid ?? `${obj?.type ?? 'symbol'}-${obj?.index ?? Math.random().toString(36).slice(2)}`
-
-        symbols.push({
-          name: `${bindingId} - ${type}`,
-          path: this.#buildBoundSymbolPath(bindingId, role, type),
-          metadata: {
-            bindingId,
-            bindingRole: role,
-            situationElementType: type,
-            sourceObjectUuid: uniqueId,
-            oneLineEligible: true,
-            sourceType: 'situation-binding'
-          }
-        })
-      }
-    }
-
-    return symbols
+    return getBoundOneLineCatalogSymbols(this.#bindingLookup)
   }
 
   #refreshBindingLookup() {
@@ -288,325 +427,255 @@ export class DrawField extends LitElement {
     ctx.restore()
   }
 
-  #drawArrowHead(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, size = 7) {
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(x + Math.cos(angle + Math.PI / 6) * size, y + Math.sin(angle + Math.PI / 6) * size)
-    ctx.moveTo(x, y)
-    ctx.lineTo(x + Math.cos(angle - Math.PI / 6) * size, y + Math.sin(angle - Math.PI / 6) * size)
-    ctx.stroke()
-  }
-
-  #drawHorizontalDimension(
-    ctx: CanvasRenderingContext2D,
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    label: string
-  ) {
-    const extension = 12
-    const offset = Math.max(20, Math.min(32, height + 8))
-    const y = top - offset
-    const x1 = left
-    const x2 = left + width
-
-    ctx.beginPath()
-    ctx.moveTo(x1, top)
-    ctx.lineTo(x1, y + extension)
-    ctx.moveTo(x2, top)
-    ctx.lineTo(x2, y + extension)
-    ctx.moveTo(x1, y)
-    ctx.lineTo(x2, y)
-    ctx.stroke()
-
-    this.#drawArrowHead(ctx, x1, y, 0)
-    this.#drawArrowHead(ctx, x2, y, Math.PI)
-
-    this.#drawDimensionLabel(ctx, left + width / 2, y - 4, label)
-  }
-
-  #drawVerticalDimension(
-    ctx: CanvasRenderingContext2D,
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    label: string
-  ) {
-    const extension = 12
-    const offset = Math.max(20, Math.min(32, width + 8))
-    const x = left - offset
-    const y1 = top
-    const y2 = top + height
-
-    ctx.beginPath()
-    ctx.moveTo(left, y1)
-    ctx.lineTo(x + extension, y1)
-    ctx.moveTo(left, y2)
-    ctx.lineTo(x + extension, y2)
-    ctx.moveTo(x, y1)
-    ctx.lineTo(x, y2)
-    ctx.stroke()
-
-    this.#drawArrowHead(ctx, x, y1, Math.PI / 2)
-    this.#drawArrowHead(ctx, x, y2, -Math.PI / 2)
-
-    this.#drawDimensionLabel(ctx, x - 4, top + height / 2, label, true)
-  }
-
-  #sceneToViewport(point: { x: number; y: number }) {
-    const vpt = (this.#canvas as any).viewportTransform as number[] | undefined
-    if (!vpt || vpt.length < 6) return point
-
-    return {
-      x: point.x * vpt[0] + point.y * vpt[2] + vpt[4],
-      y: point.x * vpt[1] + point.y * vpt[3] + vpt[5]
-    }
-  }
-
-  #getMeasurementOverlayContext() {
-    const topContext = (this.#canvas as any).contextTop as CanvasRenderingContext2D | undefined
-    if (!topContext) return undefined
-
-    this.#canvas.clearContext(topContext)
-    return topContext
-  }
-
-  #getMeasurementTargets() {
-    return this.#canvas.getObjects().filter((obj: any) => obj.type === 'CadleWall' || obj.type === 'CadleWindow')
-  }
-
-  #intervalsOverlap(a: [number, number], b: [number, number], margin = 12) {
-    return !(a[1] + margin < b[0] || b[1] + margin < a[0])
-  }
-
-  #assignDimensionLane(lanes: Array<Array<[number, number]>>, interval: [number, number]) {
-    for (let laneIndex = 0; laneIndex < lanes.length; laneIndex += 1) {
-      const lane = lanes[laneIndex]
-      const blocked = lane.some((existing) => this.#intervalsOverlap(existing, interval))
-      if (!blocked) {
-        lane.push(interval)
-        return laneIndex
-      }
-    }
-
-    lanes.push([interval])
-    return lanes.length - 1
-  }
-
-  #drawArchitecturalSideDimension(
-    ctx: CanvasRenderingContext2D,
-    segment: {
-      left: number
-      top: number
-      width: number
-      height: number
-      centerX: number
-      centerY: number
-      isHorizontal: boolean
-      label: string
-    },
-    planBounds: { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number },
-    laneState: {
-      top: Array<Array<[number, number]>>
-      bottom: Array<Array<[number, number]>>
-      left: Array<Array<[number, number]>>
-      right: Array<Array<[number, number]>>
-    }
-  ) {
-    const baseOffset = 28
-    const laneStep = 24
-
-    if (segment.isHorizontal) {
-      const side = segment.centerY <= planBounds.centerY ? 'top' : 'bottom'
-      const interval: [number, number] = [segment.left, segment.left + segment.width]
-      const laneIndex = this.#assignDimensionLane(laneState[side], interval)
-      const y =
-        side === 'top'
-          ? planBounds.top - (baseOffset + laneIndex * laneStep)
-          : planBounds.bottom + (baseOffset + laneIndex * laneStep)
-
-      const x1 = segment.left
-      const x2 = segment.left + segment.width
-      const yRef = side === 'top' ? segment.top : segment.top + segment.height
-
-      ctx.beginPath()
-      ctx.moveTo(x1, yRef)
-      ctx.lineTo(x1, y)
-      ctx.moveTo(x2, yRef)
-      ctx.lineTo(x2, y)
-      ctx.moveTo(x1, y)
-      ctx.lineTo(x2, y)
-      ctx.stroke()
-
-      this.#drawArrowHead(ctx, x1, y, 0)
-      this.#drawArrowHead(ctx, x2, y, Math.PI)
-
-      this.#drawDimensionLabel(ctx, (x1 + x2) / 2, side === 'top' ? y - 4 : y + 18, segment.label)
-      return
-    }
-
-    const side = segment.centerX <= planBounds.centerX ? 'left' : 'right'
-    const interval: [number, number] = [segment.top, segment.top + segment.height]
-    const laneIndex = this.#assignDimensionLane(laneState[side], interval)
-    const x =
-      side === 'left'
-        ? planBounds.left - (baseOffset + laneIndex * laneStep)
-        : planBounds.right + (baseOffset + laneIndex * laneStep)
-
-    const y1 = segment.top
-    const y2 = segment.top + segment.height
-    const xRef = side === 'left' ? segment.left : segment.left + segment.width
-
-    ctx.beginPath()
-    ctx.moveTo(xRef, y1)
-    ctx.lineTo(x, y1)
-    ctx.moveTo(xRef, y2)
-    ctx.lineTo(x, y2)
-    ctx.moveTo(x, y1)
-    ctx.lineTo(x, y2)
-    ctx.stroke()
-
-    this.#drawArrowHead(ctx, x, y1, Math.PI / 2)
-    this.#drawArrowHead(ctx, x, y2, -Math.PI / 2)
-
-    this.#drawDimensionLabel(ctx, side === 'left' ? x - 4 : x + 14, (y1 + y2) / 2, segment.label, true)
-  }
-
-  #getViewportBoundsForObject(obj: any) {
-    const coords = typeof obj?.getCoords === 'function' ? obj.getCoords() : []
-    if (!coords || coords.length === 0) return null
-
-    const transformed = coords.map((point: any) =>
-      this.#sceneToViewport({
-        x: Number(point?.x ?? 0),
-        y: Number(point?.y ?? 0)
-      })
-    )
-
-    const xs = transformed.map((point: { x: number; y: number }) => point.x)
-    const ys = transformed.map((point: { x: number; y: number }) => point.y)
-    const left = Math.min(...xs)
-    const top = Math.min(...ys)
-    const right = Math.max(...xs)
-    const bottom = Math.max(...ys)
-
-    return {
-      left,
-      top,
-      width: Math.abs(right - left),
-      height: Math.abs(bottom - top)
-    }
-  }
-
   #scheduleMeasurementOverlayRender() {
     if (this.#measurementOverlayScheduled) return
     this.#measurementOverlayScheduled = true
 
     requestAnimationFrame(() => {
       this.#measurementOverlayScheduled = false
-      this.#renderArchitecturalMeasurements()
+      this.#renderOverlay()
     })
   }
 
-  #renderArchitecturalMeasurements() {
-    const ctx = this.#getMeasurementOverlayContext()
+  #renderOverlay() {
+    const ctx = getMeasurementOverlayContext(this.#canvas)
     if (!ctx) return
 
-    if (!this.showMeasurements) return
+    this.#drawWallCornerCaps(ctx)
+
+    this.#drawWallMarkers(ctx)
+
+    this.#drawWallSnapGhost(ctx, this.#overlayPointer)
+
+    if (this.#openingHoverGhost.hasGhost()) {
+      this.#openingHoverGhost.draw(ctx, (point) => sceneToViewport(this.#canvas, point))
+    }
+
+    this.#drawWallPreviewDimensions(ctx, this.#overlayPointer)
+
+    if (this.showMeasurements) {
+      renderArchitecturalMeasurements(this.#canvas, this.showMeasurements, ctx)
+    }
+  }
+
+  #drawWallSnapGhost(ctx: CanvasRenderingContext2D, currentPoints: LeftTop | null) {
+    if (!this.drawing || this.action !== 'draw-wall' || !currentPoints) return
+
+    const snap = snapWallEndpoint(this.canvas, currentPoints, this._current, this.gridSize, true, this.freeDraw)
+    if (!snap) return
+
+    const point = sceneToViewport(this.#canvas, { x: snap.left, y: snap.top })
+    const radius = snap.type === 'midpoint' ? 6 : 5
+    const inkColor = canvasInk() || '#000'
+    ctx.save()
+    ctx.globalAlpha = 0.18
+    ctx.fillStyle = inkColor
+    ctx.strokeStyle = inkColor
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    if (snap.type === 'midpoint') {
+      ctx.beginPath()
+      ctx.globalAlpha = 0.45
+      ctx.moveTo(point.x - radius * 0.8, point.y)
+      ctx.lineTo(point.x + radius * 0.8, point.y)
+      ctx.moveTo(point.x, point.y - radius * 0.8)
+      ctx.lineTo(point.x, point.y + radius * 0.8)
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    const label =
+      snap.type === 'midpoint'
+        ? 'midpoint'
+        : snap.type === 'endpoint' || snap.type === 'preview-endpoint'
+          ? 'endpoint'
+          : 'axis'
+    const labelPadding = 4
+    ctx.save()
+    ctx.font = '600 11px "IBM Plex Sans", "Segoe UI", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    const textWidth = ctx.measureText(label).width
+    const boxWidth = textWidth + labelPadding * 2
+    const boxHeight = 18
+    const labelX = point.x
+    const labelY = point.y - radius - 8
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+    ctx.fillRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(labelX - boxWidth / 2, labelY - boxHeight, boxWidth, boxHeight)
+    ctx.fillStyle = inkColor
+    ctx.fillText(label, labelX, labelY - 4)
+    ctx.restore()
+  }
+
+  #drawWallPreviewDimensions(ctx: CanvasRenderingContext2D, currentPoints: LeftTop | null) {
+    if (!this.drawing || this.action !== 'draw-wall' || !currentPoints) return
+
+    const wallLayout = getWallDrawLayout(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
+    if (!wallLayout) return
+
+    const label = this.#formatDimensionLabel(
+      wallLayout.width >= wallLayout.height ? wallLayout.width : wallLayout.height
+    )
+    const center = {
+      x: wallLayout.left + wallLayout.width / 2,
+      y: wallLayout.top + wallLayout.height / 2
+    }
+    const screenCenter = sceneToViewport(this.#canvas, center)
 
     ctx.save()
-    ctx.strokeStyle = '#3d2f25'
-    ctx.fillStyle = '#3d2f25'
-    ctx.lineWidth = 1.2
-    ctx.setLineDash([])
-    ctx.font = '600 11px "IBM Plex Sans", "Segoe UI", sans-serif'
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
+    ctx.lineWidth = 1
 
-    const targets = this.#getMeasurementTargets()
-    if (targets.length === 0) {
-      ctx.restore()
-      return
-    }
-
-    const segments: Array<{
-      left: number
-      top: number
-      width: number
-      height: number
-      centerX: number
-      centerY: number
-      isHorizontal: boolean
-      label: string
-    }> = []
-
-    for (const obj of targets) {
-      const bounds = this.#getViewportBoundsForObject(obj)
-      if (!bounds) continue
-      const { left, top, width, height } = bounds
-
-      if (!width || !height) continue
-
-      const isHorizontal = width >= height
-      const sceneLength = isHorizontal
-        ? Math.abs(Number(obj?.width ?? 0) * Number(obj?.scaleX ?? 1))
-        : Math.abs(Number(obj?.height ?? 0) * Number(obj?.scaleY ?? 1))
-      const label = this.#formatDimensionLabel(sceneLength)
-
-      segments.push({
-        left,
-        top,
-        width,
-        height,
-        centerX: left + width / 2,
-        centerY: top + height / 2,
-        isHorizontal,
-        label
-      })
-    }
-
-    if (segments.length === 0) {
-      ctx.restore()
-      return
-    }
-
-    const planBounds = {
-      left: Math.min(...segments.map((segment) => segment.left)),
-      top: Math.min(...segments.map((segment) => segment.top)),
-      right: Math.max(...segments.map((segment) => segment.left + segment.width)),
-      bottom: Math.max(...segments.map((segment) => segment.top + segment.height)),
-      centerX: 0,
-      centerY: 0
-    }
-    planBounds.centerX = (planBounds.left + planBounds.right) / 2
-    planBounds.centerY = (planBounds.top + planBounds.bottom) / 2
-
-    const laneState = {
-      top: [] as Array<Array<[number, number]>>,
-      bottom: [] as Array<Array<[number, number]>>,
-      left: [] as Array<Array<[number, number]>>,
-      right: [] as Array<Array<[number, number]>>
-    }
-
-    const orderedSegments = [...segments].sort((a, b) =>
-      a.isHorizontal === b.isHorizontal ? 0 : a.isHorizontal ? -1 : 1
-    )
-    for (const segment of orderedSegments) {
-      this.#drawArchitecturalSideDimension(ctx, segment, planBounds, laneState)
+    if (wallLayout.width >= wallLayout.height) {
+      const start = sceneToViewport(this.#canvas, { x: wallLayout.left, y: center.y })
+      const end = sceneToViewport(this.#canvas, { x: wallLayout.left + wallLayout.width, y: center.y })
+      ctx.setLineDash([4, 4])
+      ctx.beginPath()
+      ctx.moveTo(start.x, start.y - 10)
+      ctx.lineTo(start.x, start.y + 10)
+      ctx.moveTo(end.x, end.y - 10)
+      ctx.lineTo(end.x, end.y + 10)
+      ctx.moveTo(start.x, start.y)
+      ctx.lineTo(end.x, end.y)
+      ctx.stroke()
+      ctx.setLineDash([])
+      this.#drawDimensionLabel(ctx, screenCenter.x, screenCenter.y - 12, label)
+    } else {
+      const start = sceneToViewport(this.#canvas, { x: center.x, y: wallLayout.top })
+      const end = sceneToViewport(this.#canvas, { x: center.x, y: wallLayout.top + wallLayout.height })
+      ctx.setLineDash([4, 4])
+      ctx.beginPath()
+      ctx.moveTo(start.x - 10, start.y)
+      ctx.lineTo(start.x + 10, start.y)
+      ctx.moveTo(end.x - 10, end.y)
+      ctx.lineTo(end.x + 10, end.y)
+      ctx.moveTo(start.x, start.y)
+      ctx.lineTo(end.x, end.y)
+      ctx.stroke()
+      ctx.setLineDash([])
+      this.#drawDimensionLabel(ctx, screenCenter.x + 12, screenCenter.y, label, true)
     }
 
     ctx.restore()
   }
 
+  #drawWallMarkers(ctx: CanvasRenderingContext2D) {
+    if (this.action !== 'draw-wall') return
+
+    const walls = this.#canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+    const inkColor = canvasInk() || '#000'
+    ctx.save()
+    ctx.font = '600 11px "IBM Plex Sans", "Segoe UI", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.lineWidth = 1.5
+
+    for (const wall of walls) {
+      const endpoints = getWallEndpoints(wall)
+      const frame = getWallAxisFrame(wall)
+      const midpoint = {
+        x: (endpoints[0].x + endpoints[1].x) / 2,
+        y: (endpoints[0].y + endpoints[1].y) / 2
+      }
+
+      for (const endpoint of endpoints) {
+        const point = sceneToViewport(this.#canvas, { x: endpoint.x, y: endpoint.y })
+        ctx.save()
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+        ctx.strokeStyle = inkColor
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+        ctx.fillStyle = inkColor
+        ctx.fillText('end', point.x, point.y - 6)
+        ctx.restore()
+      }
+
+      const midPoint = sceneToViewport(this.#canvas, midpoint)
+      ctx.save()
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+      ctx.strokeStyle = inkColor
+      ctx.beginPath()
+      ctx.arc(midPoint.x, midPoint.y, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      ctx.fillStyle = inkColor
+      ctx.fillText('mid', midPoint.x, midPoint.y - 6)
+      ctx.restore()
+    }
+
+    ctx.restore()
+  }
+
+  #drawWallCornerCaps(ctx: CanvasRenderingContext2D) {
+    const walls = this.#canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+    if (!walls.length) return
+
+    const endpoints: Array<{ x: number; y: number; thickness: number }> = []
+    for (const wall of walls) {
+      const frame = getWallAxisFrame(wall)
+      const wallEndpoints = getWallEndpoints(wall)
+      for (const point of wallEndpoints) {
+        endpoints.push({ x: point.x, y: point.y, thickness: frame.thickness })
+      }
+    }
+
+    const tolerance = 3
+    const caps: Array<{ x: number; y: number; radius: number }> = []
+    for (const endpoint of endpoints) {
+      const connected = endpoints.some((other) => {
+        if (other === endpoint) return false
+        return Math.hypot(endpoint.x - other.x, endpoint.y - other.y) <= tolerance
+      })
+      if (connected) {
+        caps.push({ x: endpoint.x, y: endpoint.y, radius: Math.max(1, Math.round(endpoint.thickness / 2)) })
+      }
+    }
+
+    if (!caps.length) return
+
+    ctx.save()
+    ctx.fillStyle = canvasInk() || '#000'
+    for (const cap of caps) {
+      const screenPoint = sceneToViewport(this.#canvas, { x: cap.x, y: cap.y })
+      ctx.beginPath()
+      ctx.arc(screenPoint.x, screenPoint.y, cap.radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+
+  #maybeUpdateOpeningHoverGhost(pointer: LeftTop) {
+    return this.#openingHoverGhost.update(this.action, pointer, {
+      findNearestWall: (pointer, maxDistance) => findNearestWall(this.#canvas, pointer, maxDistance),
+      getCenteredLayout: (action, pointer, wallSnap) =>
+        getCenteredOpeningLayout(action, pointer, wallSnap, this.gridSize, {
+          freeDraw: this.freeDraw,
+          snap: (value: number) => this.snap(value)
+        })
+    })
+  }
+
   updateMeasures(evt) {
-    var obj = evt.target
+    const obj = evt.target
     if (obj.type != 'group') {
       return
     }
+
     const groupObjects = obj.getObjects?.() ?? []
     if (groupObjects.length < 3) return
-    var width = obj.getWidth()
-    var height = obj.getWidth()
+    const width = obj.getWidth()
+    const height = obj.getWidth()
     groupObjects[1].text = width.toFixed(2) + 'px'
     groupObjects[1].scaleX = 1 / obj.scaleX
     groupObjects[1].scaleY = 1 / obj.scaleY
@@ -615,10 +684,7 @@ export class DrawField extends LitElement {
     groupObjects[2].scaleY = 1 / obj.scaleX
   }
 
-  async connectedCallback(): Promise<void> {
-    super.connectedCallback()
-    await this.updateComplete
-
+  firstRender() {
     // Start with default A4 landscape dimensions
     const defaultWidth = this.#a4LandscapeWidth
     const defaultHeight = this.#a4LandscapeHeight
@@ -627,7 +693,7 @@ export class DrawField extends LitElement {
     this.#height = defaultHeight
 
     // @ts-ignore
-    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), {
+    this.#canvas = new Canvas(this.shadowRoot.querySelector('canvas'), {
       selection: true,
       selectionKey: 'shiftKey',
       evented: true,
@@ -642,6 +708,16 @@ export class DrawField extends LitElement {
     // Set initial zoom to 1 (100%)
     this.zoomLevel = 1
     this.#canvas.setZoom(1)
+    this.#zoomController = new ZoomController({
+      getCanvas: () => this.#canvas,
+      getWidth: () => this.#width,
+      getHeight: () => this.#height,
+      onChange: (zoom) => {
+        this.zoomLevel = zoom
+        this.requestRender()
+      }
+    })
+    this.#zoomController.loadInitial()
 
     // Resize canvas to fit container after layout is complete
     // Use setTimeout to ensure layout is fully settled
@@ -654,15 +730,18 @@ export class DrawField extends LitElement {
       const target = options.target
       if (!target) return
 
-      if (this.#isOpeningObject(target)) {
+      if (isOpeningObject(target)) {
         const centerPoint = {
           left: Number(target.left ?? 0) + Math.abs(Number(target.width ?? 0) * Number(target.scaleX ?? 1)) / 2,
           top: Number(target.top ?? 0) + Math.abs(Number(target.height ?? 0) * Number(target.scaleY ?? 1)) / 2
         }
-        const wallSnap = this.#findNearestWall(centerPoint)
+        const wallSnap = findNearestWall(this.#canvas, centerPoint, Math.max(24, this.gridSize * 2))
 
         if (wallSnap) {
-          this.#snapOpeningToWall(target, centerPoint, wallSnap)
+          snapOpeningToWall(target, centerPoint, wallSnap, this.gridSize, {
+            freeDraw: this.freeDraw,
+            snap: (value: number) => this.snap(value)
+          })
           return
         }
       }
@@ -714,22 +793,33 @@ export class DrawField extends LitElement {
     this.#canvas.on('mouse:up', () => {
       this.#lastMoveSnap = new WeakMap()
       for (const obj of this.#canvas.getObjects()) {
+        if (!obj || typeof obj.setCoords !== 'function') continue
         obj.setCoords()
       }
     })
 
-    this.#canvas.on('object:added', () => this.#scheduleBindingLookupRefresh())
-    this.#canvas.on('object:removed', () => this.#scheduleBindingLookupRefresh())
-    this.#canvas.on('object:modified', () => this.#scheduleBindingLookupRefresh())
+    this.#canvas.on('object:added', () => {
+      this.#scheduleBindingLookupRefresh()
+      this.#recordHistorySnapshot('Object added')
+    })
+    this.#canvas.on('object:removed', () => {
+      this.#scheduleBindingLookupRefresh()
+      this.#recordHistorySnapshot('Object removed')
+    })
+    this.#canvas.on('object:modified', () => {
+      this.#scheduleBindingLookupRefresh()
+      this.#recordHistorySnapshot('Object modified')
+    })
 
     this.#canvas.on('mouse:down', this._mousedown.bind(this))
     this.#canvas.on('mouse:up', this._mouseup.bind(this))
     this.addEventListener('mouseenter', this._mouseenter.bind(this))
     this.addEventListener('mouseleave', this._mouseleave.bind(this))
     this.#canvas.on('mouse:dblclick', this._dblclick.bind(this))
-    // this.renderRoot.addEventListener('mousemove', this._mousemove.bind(this))
+    // this.shadowRoot.addEventListener('mousemove', this._mousemove.bind(this))
     this.#canvas.on('mouse:move', this._mousemove.bind(this))
-    this.renderRoot.addEventListener('drop', this._drop.bind(this))
+    this.shadowRoot.addEventListener('drop', this._drop.bind(this))
+    window.addEventListener('keydown', this.#keydownListener)
 
     this.addEventListener('contextmenu', this.#contextmenu)
 
@@ -741,6 +831,7 @@ export class DrawField extends LitElement {
 
     // this.#canvas
     this.#scheduleBindingLookupRefresh()
+    this.#recordHistorySnapshot('Initial canvas state')
   }
 
   #contextmenu = (event) => {
@@ -773,201 +864,50 @@ export class DrawField extends LitElement {
       snappedLeft = Math.round(snappedLeft / this.gridSize) * this.gridSize
       snappedTop = Math.round(snappedTop / this.gridSize) * this.gridSize
     }
-
     return { left: snappedLeft, top: snappedTop }
   }
 
-  #isWallObject(obj: any) {
-    return obj?.type === 'CadleWall'
-  }
-
-  #isOpeningObject(obj: any) {
-    return obj?.type === 'CadleDoor' || obj?.type === 'CadleWindow' || obj?.type === 'CadleGate'
-  }
-
-  #getWallBounds(wall: any) {
-    const left = Number(wall?.left ?? 0)
-    const top = Number(wall?.top ?? 0)
-    const width = Math.abs(Number(wall?.width ?? 0) * Number(wall?.scaleX ?? 1))
-    const height = Math.abs(Number(wall?.height ?? 0) * Number(wall?.scaleY ?? 1))
-    return {
-      left,
-      top,
-      width,
-      height,
-      horizontal: width >= height
-    }
-  }
-
-  #clamp(value: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, value))
-  }
-
-  #findNearestWall(point: { left: number; top: number }, maxDistance = Math.max(24, this.gridSize * 2)) {
-    const walls = this.canvas.getObjects().filter((obj: any) => this.#isWallObject(obj))
-    let best: any = null
-
-    for (const wall of walls) {
-      const bounds = this.#getWallBounds(wall)
-      if (!bounds.width || !bounds.height) continue
-
-      let distance = Number.POSITIVE_INFINITY
-
-      if (bounds.horizontal) {
-        const centerY = bounds.top + bounds.height / 2
-        const projectedX = this.#clamp(point.left, bounds.left, bounds.left + bounds.width)
-        distance = Math.hypot(point.left - projectedX, point.top - centerY)
-      } else {
-        const centerX = bounds.left + bounds.width / 2
-        const projectedY = this.#clamp(point.top, bounds.top, bounds.top + bounds.height)
-        distance = Math.hypot(point.left - centerX, point.top - projectedY)
-      }
-
-      if (distance <= maxDistance && (!best || distance < best.distance)) {
-        best = { wall, bounds, distance }
-      }
-    }
-
-    return best
-  }
-
-  #projectPointToWall(point: { left: number; top: number }, wallSnap: any) {
-    const { bounds } = wallSnap
-    const snapAxis = (value: number) => {
-      if (this.freeDraw) return value
-      return this.snap(value)
-    }
-
-    if (bounds.horizontal) {
-      const projectedLeft = this.#clamp(point.left, bounds.left, bounds.left + bounds.width)
-      return {
-        left: snapAxis(projectedLeft),
-        top: bounds.top + bounds.height / 2
-      }
-    }
-
-    const projectedTop = this.#clamp(point.top, bounds.top, bounds.top + bounds.height)
-    return {
-      left: bounds.left + bounds.width / 2,
-      top: snapAxis(projectedTop)
-    }
-  }
-
-  #getWallDrawLayout(startPoint: { left: number; top: number }, currentPoint: { left: number; top: number }) {
-    const dx = currentPoint.left - startPoint.left
-    const dy = currentPoint.top - startPoint.top
-    const absDx = Math.abs(dx)
-    const absDy = Math.abs(dy)
-    const thickness = Math.max(2, this.gridSize)
-
-    if (absDx >= absDy) {
-      return {
-        left: Math.min(startPoint.left, currentPoint.left),
-        top: startPoint.top - thickness / 2,
-        width: Math.max(this.gridSize, absDx),
-        height: thickness
-      }
-    }
-
-    return {
-      left: startPoint.left - thickness / 2,
-      top: Math.min(startPoint.top, currentPoint.top),
-      width: thickness,
-      height: Math.max(this.gridSize, absDy)
-    }
-  }
-
-  #getOpeningWallLayout(
-    startPoint: { left: number; top: number },
-    currentPoint: { left: number; top: number },
-    wallSnap: any
-  ) {
-    const { bounds } = wallSnap
-    const snappedStart = this.#projectPointToWall(startPoint, wallSnap)
-    const snappedCurrent = this.#projectPointToWall(currentPoint, wallSnap)
-
-    if (bounds.horizontal) {
-      const startX = this.#clamp(snappedStart.left, bounds.left, bounds.left + bounds.width)
-      const currentX = this.#clamp(snappedCurrent.left, bounds.left, bounds.left + bounds.width)
-      return {
-        left: Math.min(startX, currentX),
-        top: bounds.top,
-        width: Math.max(this.gridSize, Math.abs(currentX - startX)),
-        height: bounds.height,
-        horizontal: true,
-        wallThickness: bounds.height,
-        dx: currentX - startX,
-        dy: currentPoint.top - startPoint.top
-      }
-    }
-
-    const startY = this.#clamp(snappedStart.top, bounds.top, bounds.top + bounds.height)
-    const currentY = this.#clamp(snappedCurrent.top, bounds.top, bounds.top + bounds.height)
-    return {
-      left: bounds.left,
-      top: Math.min(startY, currentY),
-      width: bounds.width,
-      height: Math.max(this.gridSize, Math.abs(currentY - startY)),
-      horizontal: false,
-      wallThickness: bounds.width,
-      dx: currentPoint.left - startPoint.left,
-      dy: currentY - startY
-    }
-  }
-
-  #snapOpeningToWall(target: any, point: { left: number; top: number }, wallSnap: any) {
-    const { bounds } = wallSnap
-    const currentWidth = Math.abs(Number(target.width ?? 0) * Number(target.scaleX ?? 1)) || this.gridSize
-    const currentHeight = Math.abs(Number(target.height ?? 0) * Number(target.scaleY ?? 1)) || this.gridSize
-    const projected = this.#projectPointToWall(point, wallSnap)
-
-    if (bounds.horizontal) {
-      const left = this.#clamp(
-        projected.left - currentWidth / 2,
-        bounds.left,
-        bounds.left + bounds.width - currentWidth
-      )
-      const updates: Record<string, any> = {
-        left,
-        top: bounds.top,
-        width: currentWidth,
-        height: bounds.height
-      }
-
-      if (target.type === 'CadleDoor') {
-        updates.wallThickness = bounds.height
-        if (target.doorSwingDirection !== 'up' && target.doorSwingDirection !== 'down')
-          updates.doorSwingDirection = 'down'
-        if (target.doorHingeSide !== 'left' && target.doorHingeSide !== 'right') updates.doorHingeSide = 'left'
-      }
-
-      target.set(updates)
-      target.setCoords()
-      return true
-    }
-
-    const top = this.#clamp(projected.top - currentHeight / 2, bounds.top, bounds.top + bounds.height - currentHeight)
-    const updates: Record<string, any> = {
-      left: bounds.left,
-      top,
-      width: bounds.width,
-      height: currentHeight
-    }
-
-    if (target.type === 'CadleDoor') {
-      updates.wallThickness = bounds.width
-      if (target.doorSwingDirection !== 'left' && target.doorSwingDirection !== 'right')
-        updates.doorSwingDirection = 'right'
-      if (target.doorHingeSide !== 'top' && target.doorHingeSide !== 'bottom') updates.doorHingeSide = 'top'
-    }
-
-    target.set(updates)
-    target.setCoords()
-    return true
-  }
-
   _mousedown(e) {
-    if (e.target) return
+    if (this.action === 'draw-wall' && this.drawing && this._current) {
+      const pointer = this.#extractPointer(e)
+      const snappedPointer = this.snapToGrid({ left: pointer.x, top: pointer.y })
+      const snap = snapWallEndpoint(this.canvas, snappedPointer, this._current, this.gridSize, false, this.freeDraw)
+      const endPoint = { left: snap.left, top: snap.top }
+      const wallLayout = this.freeDraw
+        ? getWallDrawLayoutFree(this.canvas, this.#startPoints, endPoint, this.gridSize, this._current)
+        : getWallDrawLayout(this.canvas, this.#startPoints, endPoint, this.gridSize, this._current)
+      this._current.set(wallLayout)
+      this._current.set({ fill: cadleShell._currentColor || canvasInk() || '#000', opacity: 1 })
+      this._current = undefined
+      this.drawing = false
+      this.canvas.selection = true
+      this.#drawSnapWall = null
+      return
+    }
+
+    if (this.action === 'draw-symbol' || this.action === 'draw-text') {
+      if (this._current && !this.drawing && !this.moving) {
+        const pointer = this.#extractPointer(e)
+        const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+        this._current.set({ left: Math.abs(currentPoints.left), top: Math.abs(currentPoints.top) })
+        if (!this.canvas.getObjects().includes(this._current)) {
+          this.canvas.add(this._current)
+        }
+        this.drawing = true
+      }
+    }
+
+    if (
+      e.target &&
+      this.action !== 'draw-door' &&
+      this.action !== 'draw-window' &&
+      this.action !== 'draw-gate' &&
+      this.action !== 'draw-wall' &&
+      this.action !== 'draw-symbol' &&
+      this.action !== 'draw-text'
+    )
+      return
+
     if (!this._current && !this.drawing && !this.moving) {
       if (this.isNaming) {
         if (this.namingType === 'socket') {
@@ -996,18 +936,35 @@ export class DrawField extends LitElement {
           return
         default:
           this.drawing = true
+          if (this.#openingHoverGhost.clear()) this.#scheduleMeasurementOverlayRender()
           const pointer = this.#extractPointer(e)
           const snappedPointer = this.snapToGrid({ left: pointer.x, top: pointer.y })
           this.#drawSnapWall = null
           this.#startPoints = snappedPointer
 
+          if (this.action === 'draw-wall') {
+            const startSnap = snapWallEndpoint(
+              this.canvas,
+              this.#startPoints,
+              undefined,
+              this.gridSize,
+              false,
+              this.freeDraw
+            )
+            this.#startPoints = { left: startSnap.left, top: startSnap.top }
+          }
+
           if (this.action === 'draw-door' || this.action === 'draw-window' || this.action === 'draw-gate') {
-            const wallSnap = this.#findNearestWall(snappedPointer)
+            const wallSnap = findNearestWall(this.#canvas, snappedPointer, Math.max(24, this.gridSize * 2))
             if (wallSnap) {
               this.#drawSnapWall = wallSnap
-              this.#startPoints = this.#projectPointToWall(snappedPointer, wallSnap)
+              this.#startPoints = projectPointToWall(snappedPointer, wallSnap, {
+                freeDraw: this.freeDraw,
+                snap: (value: number) => this.snap(value)
+              })
             }
           }
+
           const id = Math.random().toString(36).slice(-12)
           const index = this.canvas.getObjects().length
 
@@ -1074,7 +1031,9 @@ export class DrawField extends LitElement {
               height: pointer.y - this.#startPoints.top
             })
           } else if (this.action === 'draw-wall') {
-            const wallLayout = this.#getWallDrawLayout(this.#startPoints, snappedPointer)
+            const wallLayout = this.freeDraw
+              ? getWallDrawLayoutFree(this.canvas, this.#startPoints, snappedPointer, this.gridSize)
+              : getWallDrawLayout(this.canvas, this.#startPoints, snappedPointer, this.gridSize)
             this._current = new CadleWall({
               ...sharedDrawOptions,
               left: wallLayout.left,
@@ -1082,49 +1041,66 @@ export class DrawField extends LitElement {
               width: wallLayout.width,
               height: wallLayout.height,
               strokeWidth: 0,
-              fill: cadleShell._currentColor
+              fill: canvasInk() || 'rgba(0, 0, 0, 0.12)',
+              opacity: 0.5
             })
           } else if (this.action === 'draw-window') {
             const wallLayout = this.#drawSnapWall
-              ? this.#getOpeningWallLayout(this.#startPoints, this.#startPoints, this.#drawSnapWall)
+              ? getCenteredOpeningLayout(this.action, this.#startPoints, this.#drawSnapWall, this.gridSize, {
+                  freeDraw: this.freeDraw,
+                  snap: (value: number) => this.snap(value)
+                })
               : null
             this._current = new CadleWindow({
               ...sharedDrawOptions,
-              left: wallLayout?.left ?? this.#startPoints.left,
-              top: wallLayout?.top ?? this.#startPoints.top,
-              width: wallLayout?.width ?? pointer.x - this.#startPoints.left,
-              height: wallLayout?.height ?? pointer.y - this.#startPoints.top,
+              ...(wallLayout ?? {
+                left: this.#startPoints.left,
+                top: this.#startPoints.top,
+                width: pointer.x - this.#startPoints.left,
+                height: pointer.y - this.#startPoints.top
+              }),
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
           } else if (this.action === 'draw-door') {
             const wallLayout = this.#drawSnapWall
-              ? this.#getOpeningWallLayout(this.#startPoints, this.#startPoints, this.#drawSnapWall)
+              ? getCenteredOpeningLayout(this.action, this.#startPoints, this.#drawSnapWall, this.gridSize, {
+                  freeDraw: this.freeDraw,
+                  snap: (value: number) => this.snap(value)
+                })
               : null
             this._current = new CadleDoor({
               ...sharedDrawOptions,
-              left: wallLayout?.left ?? this.#startPoints.left,
-              top: wallLayout?.top ?? this.#startPoints.top,
-              width: wallLayout?.width ?? pointer.x - this.#startPoints.left,
-              height: wallLayout?.height ?? pointer.y - this.#startPoints.top,
-              wallThickness: wallLayout?.wallThickness,
+              ...(wallLayout ?? {
+                left: this.#startPoints.left,
+                top: this.#startPoints.top,
+                width: pointer.x - this.#startPoints.left,
+                height: pointer.y - this.#startPoints.top,
+                wallThickness: undefined
+              }),
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
           } else if (this.action === 'draw-gate') {
             const wallLayout = this.#drawSnapWall
-              ? this.#getOpeningWallLayout(this.#startPoints, this.#startPoints, this.#drawSnapWall)
+              ? getCenteredOpeningLayout(this.action, this.#startPoints, this.#drawSnapWall, this.gridSize, {
+                  freeDraw: this.freeDraw,
+                  snap: (value: number) => this.snap(value)
+                })
               : null
             this._current = new CadleGate({
               ...sharedDrawOptions,
-              left: wallLayout?.left ?? this.#startPoints.left,
-              top: wallLayout?.top ?? this.#startPoints.top,
-              width: wallLayout?.width ?? pointer.x - this.#startPoints.left,
-              height: wallLayout?.height ?? pointer.y - this.#startPoints.top,
+              ...(wallLayout ?? {
+                left: this.#startPoints.left,
+                top: this.#startPoints.top,
+                width: pointer.x - this.#startPoints.left,
+                height: pointer.y - this.#startPoints.top
+              }),
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
           }
+
           if (this.action !== 'draw') this.canvas.add(this._current)
           break
       }
@@ -1147,6 +1123,7 @@ export class DrawField extends LitElement {
       if (this.#startPoints.left > currentPoints.left) {
         this._current.set({ left: Math.abs(currentPoints.left) })
       }
+
       if (this.#startPoints.top > currentPoints.top) {
         this._current.set({ top: Math.abs(currentPoints.top) })
       }
@@ -1155,19 +1132,18 @@ export class DrawField extends LitElement {
       this._current.set({ height: Math.max(this.gridSize, Math.abs(this.#startPoints.top - currentPoints.top)) })
     } else if (this.action === 'draw-window') {
       if (this.#drawSnapWall) {
-        const wallLayout = this.#getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall)
-        this._current.set({
-          left: wallLayout.left,
-          top: wallLayout.top,
-          width: wallLayout.width,
-          height: wallLayout.height
+        const wallLayout = getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall, this.gridSize, {
+          freeDraw: this.freeDraw,
+          snap: (value: number) => this.snap(value)
         })
+        this._current.set(wallLayout)
         return
       }
 
       if (this.#startPoints.left > currentPoints.left) {
         this._current.set({ left: Math.abs(currentPoints.left) })
       }
+
       if (this.#startPoints.top > currentPoints.top) {
         this._current.set({ top: Math.abs(currentPoints.top) })
       }
@@ -1176,14 +1152,11 @@ export class DrawField extends LitElement {
       this._current.set({ height: Math.max(this.gridSize, Math.abs(this.#startPoints.top - currentPoints.top)) })
     } else if (this.action === 'draw-door') {
       if (this.#drawSnapWall) {
-        const wallLayout = this.#getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall)
-        this._current.set({
-          left: wallLayout.left,
-          top: wallLayout.top,
-          width: wallLayout.width,
-          height: wallLayout.height,
-          wallThickness: wallLayout.wallThickness
+        const wallLayout = getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall, this.gridSize, {
+          freeDraw: this.freeDraw,
+          snap: (value: number) => this.snap(value)
         })
+        this._current.set(wallLayout)
 
         if (wallLayout.horizontal) {
           this._current.set({
@@ -1202,6 +1175,7 @@ export class DrawField extends LitElement {
       if (this.#startPoints.left > currentPoints.left) {
         this._current.set({ left: Math.abs(currentPoints.left) })
       }
+
       if (this.#startPoints.top > currentPoints.top) {
         this._current.set({ top: Math.abs(currentPoints.top) })
       }
@@ -1241,19 +1215,18 @@ export class DrawField extends LitElement {
       }
     } else if (this.action === 'draw-gate') {
       if (this.#drawSnapWall) {
-        const wallLayout = this.#getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall)
-        this._current.set({
-          left: wallLayout.left,
-          top: wallLayout.top,
-          width: wallLayout.width,
-          height: wallLayout.height
+        const wallLayout = getOpeningWallLayout(this.#startPoints, currentPoints, this.#drawSnapWall, this.gridSize, {
+          freeDraw: this.freeDraw,
+          snap: (value: number) => this.snap(value)
         })
+        this._current.set(wallLayout)
         return
       }
 
       if (this.#startPoints.left > currentPoints.left) {
         this._current.set({ left: Math.abs(currentPoints.left) })
       }
+
       if (this.#startPoints.top > currentPoints.top) {
         this._current.set({ top: Math.abs(currentPoints.top) })
       }
@@ -1271,7 +1244,9 @@ export class DrawField extends LitElement {
       })
       // this._current.set({ radius: Math.abs(this.#startPoints.top - currentPoints.top) });
     } else if (this.action === 'draw-wall') {
-      const wallLayout = this.#getWallDrawLayout(this.#startPoints, currentPoints)
+      const wallLayout = this.freeDraw
+        ? getWallDrawLayoutFree(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
+        : getWallDrawLayout(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
       this._current.set(wallLayout)
     } else if (this.action === 'draw-symbol') {
       this._current.set({ left: Math.abs(currentPoints.left) })
@@ -1285,6 +1260,13 @@ export class DrawField extends LitElement {
   _mousemove(e) {
     const pointer = this.#extractPointer(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
+    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+    this.#overlayPointer = currentPoints
+
+    if (this.#maybeUpdateOpeningHoverGhost(currentPoints)) {
+      this.#renderOverlay()
+      this.#scheduleMeasurementOverlayRender()
+    }
 
     if (this.action === 'draw') {
       return
@@ -1294,7 +1276,6 @@ export class DrawField extends LitElement {
     if (!this.drawing) return
     if (!this._current) return
 
-    const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
     this.updateObjects(currentPoints)
     this.canvas.requestRenderAll()
   }
@@ -1312,6 +1293,7 @@ export class DrawField extends LitElement {
       this._current.set({ top: Math.abs(currentPoints.top) })
       this.canvas.add(this._current)
     }
+
     this.canvas.renderAll()
   }
 
@@ -1319,6 +1301,7 @@ export class DrawField extends LitElement {
     const pointer = this.#extractPointer(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
     this.drawing = false
+    this.#overlayPointer = null
     if (!this._current) return
     if (this._current) this.canvas.remove(this._current)
     if (this.action === 'draw-symbol') {
@@ -1328,6 +1311,10 @@ export class DrawField extends LitElement {
       const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
       this.updateObjects(currentPoints)
       this._current = undefined
+    }
+
+    if (this.#openingHoverGhost.clear()) {
+      this.#scheduleMeasurementOverlayRender()
     }
 
     this.#drawSnapWall = null
@@ -1341,111 +1328,104 @@ export class DrawField extends LitElement {
     console.log(this.action)
 
     if (this.drawing && !this.moving) {
-      // this.action = undefined
-      this.drawing = false
-      if (this.action !== 'draw') {
-        this.canvas.remove(this._current)
-        this.canvas.add(this._current)
-      }
-      this.canvas.selection = true
-      this._current = undefined
-      this.#drawSnapWall = null
-      this.#canvas.isDrawingMode = false
-      if (this.action === 'draw') {
+      if (this.action !== 'draw-wall') {
+        this.drawing = false
+        if (this.action !== 'draw' && this._current) {
+          this.canvas.remove(this._current)
+          this.canvas.add(this._current)
+          if (this.action === 'draw-symbol' || this.action === 'draw-text') {
+            if (this.#shell.loadedPage && this.#shell.project?.pages?.[this.#shell.loadedPage]) {
+              void this.#shell
+                .savePage()
+                .catch((error) => console.error('Auto-save failed after drawing symbol/text', error))
+            }
+          }
+        }
+
         this.canvas.selection = true
-        this.canvas.isDrawingMode = false
-        this.action = undefined
+        this._current = undefined
+        this.#drawSnapWall = null
+        this.#canvas.isDrawingMode = false
+        if (this.action === 'draw') {
+          this.canvas.selection = true
+          this.#canvas.isDrawingMode = false
+          this.action = undefined
+        }
+
+        if (this._selectionWasTrue) {
+          this.canvas.selection = true
+          this._selectionWasTrue = false
+        }
       }
-      if (this._selectionWasTrue) {
-        this.canvas.selection = true
-        this._selectionWasTrue = false
+    } else {
+      const activeObjects = this.canvas.getActiveObjects() ?? []
+      if (activeObjects.length > 1) {
+        this._drawState = 'group'
+        this._currentGroup = activeObjects[0]?.group ?? undefined
+        this.canvas.renderAll()
       }
-      // this.canvas.renderAll()
-    } else if (this.canvas.getActiveObjects().length > 1) {
-      this._drawState = 'group'
-      this._currentGroup = this.canvas.getActiveObjects()[0].group
-      this.canvas.renderAll()
     }
+  }
+
+  _keydown(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return
+    if (this.action !== 'draw-wall' || !this.drawing || !this._current) return
+
+    this.drawing = false
+    this.canvas.selection = true
+    this.canvas.remove(this._current)
+    this._current = undefined
+    this.#drawSnapWall = null
+    this.#overlayPointer = null
+    this.#scheduleMeasurementOverlayRender()
+    this.canvas.renderAll()
   }
 
   toJSON() {
-    const json = (this.#canvas as any).toJSON([
-      'bindingId',
-      'bindingRole',
-      'symbolName',
-      'symbolPath',
-      'oneLineEligible',
-      'situationElementType',
-      'situationMetadata',
-      'sourceObjectUuid'
-    ])
-    return json
+    if (!this.#canvas) return { version: '6.0.0', objects: [] }
+
+    return this.#canvas.toJSON()
+  }
+
+  #sanitizeCanvasObjects(canvas: Canvas) {
+    for (const object of canvas.getObjects()) {
+      this.#sanitizeObjectForSerialization(object)
+    }
+  }
+
+  #sanitizeObjectForSerialization(object: any) {
+    if (!object || typeof object !== 'object') return
+
+    if (Array.isArray(object._objects)) {
+      object._objects = object._objects.filter((child: any) => child != null)
+      for (const child of object._objects) {
+        this.#sanitizeObjectForSerialization(child)
+      }
+    }
+
+    if (Array.isArray(object.objects)) {
+      object.objects = object.objects.filter((child: any) => child != null)
+      for (const child of object.objects) {
+        this.#sanitizeObjectForSerialization(child)
+      }
+    }
   }
 
   async fromJSON(json: { objects?: any[]; version: string }) {
-    console.log({ json })
     if (!json.objects) return
-    const objects: any[] = []
 
-    const specials: any[] = []
+    const { standard, specials } = partitionRawObjects(json.objects)
 
-    for (const obj of json.objects) {
-      if (
-        obj.type === 'wall' ||
-        obj.type === 'door' ||
-        obj.type === 'window' ||
-        obj.type === 'gate' ||
-        obj.type === 'CadleWall' ||
-        obj.type === 'CadleWidth' ||
-        obj.type === 'CadleDepth' ||
-        obj.type === 'CadleWindow' ||
-        obj.type === 'CadleDoor' ||
-        obj.type === 'CadleGate'
-      ) {
-        specials.push(obj)
-      } else if (obj.type) {
-        if (!String(obj.radius).startsWith('-')) {
-          objects.push(obj)
-        }
-      }
-      if (!obj.type) {
-        obj.type = 'CadleWall'
-        specials.push(obj)
-      }
-
-      if (obj.type === 'wall') obj.type = 'CadleWall'
-      if (obj.type === 'door') obj.type = 'CadleDoor'
-      if (obj.type === 'window') obj.type = 'CadleWindow'
-      if (obj.type === 'gate') obj.type = 'CadleGate'
-
-      if (!obj) console.log(obj)
-    }
-
-    await this.#canvas.loadFromJSON({ objects, version: json.version })
-    console.log({ specials })
-
-    for (const obj of specials) {
-      if (obj.type === 'CadleWall') {
-        // delete obj.type
-        const wall = new CadleWall(obj)
-        this.#canvas.add(wall as any)
-      } else if (obj.type === 'CadleDoor') {
-        // delete obj.type
-        const door = new CadleDoor(obj)
-        this.#canvas.add(door as any)
-      } else if (obj.type === 'CadleWindow') {
-        // delete obj.type
-        const width = new CadleWindow(obj)
-        this.#canvas.add(width as any)
-      } else if (obj.type === 'CadleGate') {
-        const gate = new CadleGate(obj)
-        this.#canvas.add(gate as any)
-      }
-    }
+    this.#historyRecordingEnabled = false
+    await this.#canvas.loadFromJSON({ objects: standard, version: json.version })
+    reapplyBindingProps(standard, this.#canvas.getObjects())
+    instantiateSpecials(this.#canvas, specials)
+    this.#historyRecordingEnabled = true
 
     this.#canvas.renderAll()
     this.#scheduleBindingLookupRefresh()
     this.fitToContainer()
+    this.#recordHistorySnapshot('Loaded page')
   }
 
   toDataURL() {
@@ -1453,7 +1433,7 @@ export class DrawField extends LitElement {
   }
 
   resizeCanvas() {
-    const stage = this.renderRoot.querySelector('.canvas-stage') as HTMLElement | null
+    const stage = this.shadowRoot.querySelector('.canvas-stage') as HTMLElement | null
     const container =
       stage?.getBoundingClientRect() ?? this.parentElement?.getBoundingClientRect() ?? this.getBoundingClientRect()
 
@@ -1508,7 +1488,7 @@ export class DrawField extends LitElement {
     let maxBottom = Number.NEGATIVE_INFINITY
 
     for (const obj of objects) {
-      const bounds = obj.getBoundingRect(true, true)
+      const bounds = obj.getBoundingRect()
       minLeft = Math.min(minLeft, Number(bounds.left ?? 0))
       minTop = Math.min(minTop, Number(bounds.top ?? 0))
       maxRight = Math.max(maxRight, Number(bounds.left ?? 0) + Number(bounds.width ?? 0))
@@ -1531,155 +1511,40 @@ export class DrawField extends LitElement {
   }
 
   fitToContainer() {
-    this.#fitContentInCanvas()
-    this.#canvas.renderAll()
-    this.requestUpdate()
-  }
-
-  setZoom(zoom: number) {
-    // Clamp zoom between 0.1 and 3
-    const newZoom = Math.max(0.1, Math.min(3, zoom))
-    if (this.zoomLevel !== newZoom) {
-      const center = { x: this.#width / 2, y: this.#height / 2 }
-      this.zoomLevel = newZoom
-      this.#canvas.zoomToPoint(center as any, this.zoomLevel)
+    if (this.#zoomController) {
+      this.#zoomController.fitToContainer()
+    } else {
+      this.#fitContentInCanvas()
       this.#canvas.renderAll()
-      this.requestUpdate() // Trigger re-render to update zoom display
+      this.requestRender()
     }
   }
 
+  setZoom(zoom: number) {
+    this.#zoomController?.setZoom(zoom)
+  }
+
   zoomIn() {
-    this.setZoom(this.zoomLevel * 1.2)
+    this.#zoomController?.zoomIn()
   }
 
   zoomOut() {
-    this.setZoom(this.zoomLevel / 1.2)
+    this.#zoomController?.zoomOut()
   }
 
   resetZoom() {
-    this.fitToContainer()
+    this.#zoomController?.reset()
   }
 
   toggleMeasurements() {
     const next = !this.showMeasurements
     this.showMeasurements = next
     cadleShell.showMeasurements = next
-    this.requestUpdate()
     this.#canvas.requestRenderAll()
   }
 
-  updated(changedProperties: Map<string, any>) {
-    super.updated(changedProperties)
-    if (changedProperties.has('zoomLevel')) {
-      // Zoom level updated, display is already re-rendered
-    }
-  }
-
   render() {
-    return html` <style>
-        :host {
-          display: flex;
-          position: relative;
-          flex: 1 1 auto;
-          min-width: 0;
-          min-height: 0;
-          box-sizing: border-box;
-          width: 100%;
-          height: 100%;
-          align-items: center;
-          justify-content: center;
-          background: transparent;
-          overflow: hidden;
-          --grid-size: ${this.gridSize || 10}px;
-          --grid-line-color: color-mix(in srgb, var(--md-sys-color-outline-light, #79747e) 55%, transparent);
-          --grid-major-line-color: color-mix(in srgb, var(--md-sys-color-outline-light, #79747e) 80%, transparent);
-        }
-
-        .canvas-stage {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .canvas-stage .canvas-container {
-          margin: auto;
-          background-color: transparent;
-          background-image:
-            linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
-            linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px),
-            linear-gradient(to right, var(--grid-major-line-color) 1px, transparent 1px),
-            linear-gradient(to bottom, var(--grid-major-line-color) 1px, transparent 1px);
-          background-size:
-            var(--grid-size) var(--grid-size),
-            var(--grid-size) var(--grid-size),
-            calc(var(--grid-size) * 5) calc(var(--grid-size) * 5),
-            calc(var(--grid-size) * 5) calc(var(--grid-size) * 5);
-          background-position:
-            0 0,
-            0 0,
-            0 0,
-            0 0;
-        }
-
-        .shadow {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          box-shadow: inset 0 0 9px 2px #0000001f;
-          z-index: 2;
-          pointer-events: none;
-        }
-        canvas {
-          background: transparent !important;
-        }
-
-        .zoom-controls {
-          position: absolute;
-          bottom: 16px;
-          right: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          background: var(--md-sys-color-surface);
-          border-radius: 8px;
-          padding: 8px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          z-index: 3;
-        }
-
-        .zoom-buttons {
-          display: flex;
-          gap: 6px;
-        }
-
-        .canvas-button {
-          border: 1px solid rgba(0, 0, 0, 0.14);
-          background: var(--md-sys-color-surface-container-high, #fff);
-          color: var(--md-sys-color-on-surface, #222);
-          border-radius: 6px;
-          padding: 4px 8px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .canvas-button.active {
-          border-color: #a85427;
-          color: #a85427;
-          background: rgba(168, 84, 39, 0.08);
-        }
-
-        .zoom-level {
-          font-size: 12px;
-          color: var(--md-sys-color-on-surface);
-          text-align: center;
-          padding: 4px;
-        }
-      </style>
-      <context-menu>
+    return html` <context-menu>
         <custom-list-item
           type="menu"
           action="add-to-catalog">

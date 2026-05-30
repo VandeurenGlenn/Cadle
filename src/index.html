@@ -12,7 +12,16 @@
     <link
       rel="stylesheet"
       href="./themes/default/theme.css" />
-    // @material-symbols-link
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com" />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,400,0,0&display=block" />
   </head>
   <body>
     <style>
@@ -40,6 +49,30 @@
     </style>
 
     <app-shell> </app-shell>
+
+    <script>
+      // One-time cleanup: a previously-deployed service worker (from an older
+      // build) can intercept fetches and keep serving stale hashed bundles
+      // even after a hard reload. Unregister anything still hanging around
+      // and wipe its caches so the page falls back to the network.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations?.().then((regs) => {
+          if (!regs?.length) return
+          Promise.all(regs.map((r) => r.unregister().catch(() => false))).then((results) => {
+            const removed = results.filter(Boolean).length
+            const wipe = window.caches?.keys
+              ? window.caches.keys().then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+              : Promise.resolve([])
+            wipe.then((wiped) => {
+              if (removed > 0 || (Array.isArray(wiped) && wiped.length > 0)) {
+                console.warn('[cadle] cleared stale service worker(s) — reloading')
+                location.reload()
+              }
+            })
+          })
+        })
+      }
+    </script>
 
     <script
       src="./shell.js"

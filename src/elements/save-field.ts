@@ -1,50 +1,45 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js'
+import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
+import styles from './save-field.css' with { type: 'css' }
 import { Canvas } from 'fabric'
-
 @customElement('save-field')
-export class SaveField extends LitElement {
+export class SaveField extends LiteElement {
   #canvas: Canvas
   #height: number
   #width: number
   gridSize: number
-
   get #biggest() {
     return this.#width > this.#height ? this.#width : this.#height
   }
 
-  static styles = [
-    css`
-      :host {
-        display: flex;
-      }
-    `
-  ];
+  static styles = [styles]
 
   async loadFromJSON(json) {
-    await this.#canvas.loadFromJSON(json);
+    await this.#canvas.loadFromJSON(json)
     await this.#canvas.renderAll()
   }
 
   toDataURL() {
-    return this.#canvas.toDataURL({multiplier: 3, quality: 100, enableRetinaScaling: true})
+    return this.#canvas.toDataURL({ multiplier: 3, quality: 100, enableRetinaScaling: true })
   }
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
-    await this.updateComplete
+    await this.rendered
     const { width, height } = this.getBoundingClientRect()
     this.#width = width
     this.#height = height
-    this.renderRoot.querySelector('canvas').width = width + document.querySelector('app-shell').drawer.getBoundingClientRect().width
-    this.renderRoot.querySelector('canvas').height = height
-    this.#canvas = new Canvas(this.renderRoot.querySelector('canvas'), { selection: false });
-    
+    const canvasEl = this.shadowRoot?.querySelector('canvas')
+    if (canvasEl) {
+      canvasEl.width = width + document.querySelector('app-shell').drawer.getBoundingClientRect().width
+      canvasEl.height = height
+      this.#canvas = new Canvas(canvasEl, { selection: false })
+    }
   }
 
   render() {
-    return html`
-    
-    <canvas id="canvas" width="" height="600"></canvas>`;
+    return html` <canvas
+      id="canvas"
+      width=""
+      height="600"></canvas>`
   }
 }

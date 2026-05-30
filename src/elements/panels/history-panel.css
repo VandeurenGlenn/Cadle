@@ -1,0 +1,90 @@
+      :host {
+        position: fixed;
+        top: 76px;
+        right: 18px;
+        width: min(360px, calc(100vw - 32px));
+        max-height: calc(100vh - 96px);
+        display: block;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(18px);
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+        z-index: 10005;
+      }
+      :host([open]) {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+      }
+      .panel {
+        border-radius: 18px;
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: color-mix(in srgb, var(--md-sys-color-surface) 94%, var(--md-sys-color-primary-container));
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+        overflow: hidden;
+      }
+      .header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 18px 14px;
+        border-bottom: 1px solid var(--md-sys-color-outline-variant);
+      }
+      .header h3,
+      .header p {
+        margin: 0;
+      }
+      .header p {
+        margin-top: 6px;
+        color: var(--md-sys-color-on-surface-variant);
+        font-size: 12px;
+      }
+      button {
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .content {
+        max-height: calc(100vh - 190px);
+        overflow: auto;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .entry {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 80%, transparent);
+        background: var(--md-sys-color-surface);
+      }
+      .entry-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .entry-title strong {
+        font-size: 13px;
+      }
+      .timestamp {
+        font-size: 11px;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .empty {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px dashed var(--md-sys-color-outline-variant);
+        color: var(--md-sys-color-on-surface-variant);
+        background: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
+      }
+    

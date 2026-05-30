@@ -1,13 +1,11 @@
-import { LitElement, html } from 'lit'
-import { customElement } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/toggle.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
-
 @customElement('settings-field')
-export class SettingsField extends LitElement {
-  protected render() {
+export class SettingsField extends LiteElement {
+  render() {
     return html`
       <md-list-item>
         <custom-icon

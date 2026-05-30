@@ -20,42 +20,43 @@ const loop = async (items: Group['_objects'], { top, left }) => {
     let object
     if (item.type !== 'group') object = item.toObject()
     switch (item.type) {
-      case 'rect':
-        object = await Rect.fromObject(object)
-        break
-      case 'circle':
-        object = await Circle.fromObject(object)
-        break
-      case 'line':
-        object = await Line.fromObject(object)
-        break
-      case 'path':
-        object = await Path.fromObject(object)
-        break
-      case 'text':
-        object = await FabricText.fromObject(object)
-        break
-      case 'textbox':
-        object = await Textbox.fromObject(object)
-        break
-      case 'image':
-        object = await FabricImage.fromObject(object)
-        break
-      case 'ellipse':
-        object = await Ellipse.fromObject(object)
-        break
-      case 'group':
-        // item.group = undefined
-        // await loop(item.getObjects(), { top, left })
+    case 'rect':
+      object = await Rect.fromObject(object)
+      break
+    case 'circle':
+      object = await Circle.fromObject(object)
+      break
+    case 'line':
+      object = await Line.fromObject(object)
+      break
+    case 'path':
+      object = await Path.fromObject(object)
+      break
+    case 'text':
+      object = await FabricText.fromObject(object)
+      break
+    case 'textbox':
+      object = await Textbox.fromObject(object)
+      break
+    case 'image':
+      object = await FabricImage.fromObject(object)
+      break
+    case 'ellipse':
+      object = await Ellipse.fromObject(object)
+      break
+    case 'group':
+      // item.group = undefined
+      // await loop(item.getObjects(), { top, left })
 
-        canvas.remove(item)
-        item.set({ left: left + item.left, top: top + item.top })
-        canvas.add(await item.clone())
-        break
-      default:
-        alert(`encountered unsupported type ${item.type}`)
-        break
+      canvas.remove(item)
+      item.set({ left: left + item.left, top: top + item.top })
+      canvas.add(await item.clone())
+      break
+    default:
+      alert(`encountered unsupported type ${item.type}`)
+      break
     }
+
     if (object) {
       // object.strokeWidth = 1
       object.top += top
@@ -66,6 +67,7 @@ const loop = async (items: Group['_objects'], { top, left }) => {
 
     // }
   }
+
   console.log('done')
 
   canvas.discardActiveObject()
@@ -80,6 +82,7 @@ export const ungroup = async () => {
   if (!object) {
     return
   }
+
   if (object.type !== 'group') {
     return
   }

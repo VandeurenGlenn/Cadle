@@ -1,0 +1,15 @@
+      :host {
+        min-height: 0;
+        overflow-y: auto;
+        gap: var(--cadle-space-2);
+      }
+      .search-status {
+        margin: 0;
+        padding: var(--cadle-space-1) var(--cadle-space-2);
+        border-radius: var(--cadle-radius-sm);
+        background: color-mix(in srgb, var(--md-sys-color-primary-container) 55%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-on-primary-container);
+        font-size: 12px;
+        font-weight: 600;
+      }
+    

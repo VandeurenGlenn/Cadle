@@ -1,0 +1,67 @@
+:host {
+  display: block;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-sm);
+  background: var(--md-sys-color-surface-container);
+  overflow: hidden;
+  transition:
+    border-color var(--cadle-motion-fast),
+    background-color var(--cadle-motion-fast);
+}
+
+:host(:hover) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, var(--md-sys-color-surface-container));
+}
+
+:host([active]) {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline-variant));
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.item {
+  cursor: pointer;
+  padding: var(--cadle-space-2);
+  box-sizing: border-box;
+  gap: var(--cadle-space-2);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-small);
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast);
+}
+
+.item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+:host([active]) .item {
+  color: var(--md-sys-color-on-surface);
+}
+
+.dropdown {
+  box-sizing: border-box;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+:host([active]) .dropdown {
+  height: auto;
+  opacity: 1;
+  pointer-events: auto;
+  padding: var(--cadle-space-2);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+custom-icon {
+  --custom-icon-color: var(--md-sys-color-on-surface-variant);
+  width: 16px;
+  height: 16px;
+  transition: color var(--cadle-motion-fast);
+}
+
+:host([active]) custom-icon {
+  --custom-icon-color: var(--md-sys-color-primary);
+}

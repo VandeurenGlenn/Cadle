@@ -5,10 +5,11 @@ import { isMac } from '../utils.js'
 export const isPaste = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'v' && (isMac ? metaKey : ctrlKey)
 
 export const paste = async () => {
+  const canvas_ = canvas as any
   const { left, top } = positionObject()
   const cloned = await clipboard.object?.clone()
 
-  await canvas.discardActiveObject()
+  await canvas_.discardActiveObject()
 
   if (cloned) {
     const pointer = state.mouse.position
@@ -21,20 +22,20 @@ export const paste = async () => {
     cloned.set(currentPoints)
     if (cloned.type === 'activeSelection') {
       // active selection needs a reference to the canvas.
-      cloned.canvas = canvas
-      cloned.forEachObject(function (obj) {
-        canvas.add(obj)
+      cloned.canvas = canvas_
+      ;(cloned as any).forEachObject(function (obj) {
+        canvas_.add(obj)
       })
       // this should solve the unselectability
       cloned.setCoords()
     } else {
-      canvas.add(cloned)
+      canvas_.add(cloned)
     }
 
-    canvas.shouldRender = true
-    canvas.requestRenderAll()
-    canvas.history.push({ type: 'add', item: cloned })
-    await canvas.setActiveObject(cloned)
+    canvas_.shouldRender = true
+    canvas_.requestRenderAll()
+    canvas_.history.push({ type: 'add', item: cloned })
+    await canvas_.setActiveObject(cloned)
   }
 }
 

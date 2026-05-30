@@ -1,0 +1,103 @@
+      :host {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: var(--md-sys-color-surface);
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 20px;
+      }
+      cadle-header {
+        margin-bottom: 20px;
+      }
+      .title {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--md-sys-color-on-surface);
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+      }
+      .pages-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 16px;
+        overflow-y: auto;
+        flex: 1;
+        padding: 10px;
+      }
+      .page-item {
+        border: 2px solid var(--md-sys-color-outline);
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: var(--md-sys-color-surface-variant);
+      }
+      .page-item:hover {
+        border-color: var(--md-sys-color-primary);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+      .page-item.selected {
+        border-color: var(--md-sys-color-primary);
+        background: var(--md-sys-color-primary-container);
+      }
+      .page-preview {
+        position: relative;
+        width: 100%;
+        aspect-ratio: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        min-height: 200px;
+      }
+      .page-preview img {
+        max-width: 100%;
+        max-height: 300px;
+        object-fit: contain;
+      }
+      .page-footer {
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--md-sys-color-outline);
+      }
+      .page-number {
+        font-size: 14px;
+        color: var(--md-sys-color-on-surface-variant);
+        font-weight: 500;
+      }
+      md-checkbox {
+        margin: 0;
+      }
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+      }
+      .error {
+        color: var(--md-sys-color-error);
+        padding: 16px;
+        background: var(--md-sys-color-error-container);
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      .select-all-section {
+        padding: 10px;
+        border-bottom: 1px solid var(--md-sys-color-outline);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      md-text-button,
+      md-filled-button {
+        pointer-events: auto;
+      }
+    

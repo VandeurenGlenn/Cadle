@@ -1,6 +1,7 @@
 import { Rect, classRegistry } from 'fabric'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
+import { canvasInk } from './canvas-tokens.js'
 
 export default class CadleWindow extends Rect {
   static type = 'CadleWindow'
@@ -19,7 +20,8 @@ export default class CadleWindow extends Rect {
 
   set widthText(value) {
     this._widthText = value
-    cadleShell.field.canvas.add(value)
+    const canvas = cadleShell?.field?.canvas as any | null
+    if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
   get widthText() {
@@ -28,19 +30,19 @@ export default class CadleWindow extends Rect {
 
   constructor(options) {
     super({ ...defaultOptions, ...options })
-    this.set('type', 'CadleWindow')
-
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
       this.uuid = options.uuid
     }
+
     if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
     if (options?.situationMetadata && typeof options.situationMetadata === 'object') {
       this.situationMetadata = options.situationMetadata
     }
 
-    cadleShell.field.canvas.requestRenderAll()
+    const canvas = cadleShell?.field?.canvas as any | undefined
+    canvas?.requestRenderAll()
   }
 
   _render(ctx: CanvasRenderingContext2D) {
@@ -97,7 +99,7 @@ export default class CadleWindow extends Rect {
       left: this.left,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black',
+      fill: canvasInk(),
       visible: cadleShell.showMeasurements
     })
   }
@@ -142,13 +144,12 @@ export default class CadleWindow extends Rect {
       result = super.set(key, value)
       this.handleSet(key, value)
     }
-
     return result
   }
 
-  toJSON(): any {
+  toJSON(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -158,9 +159,9 @@ export default class CadleWindow extends Rect {
     }
   }
 
-  toObject(): any {
+  toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

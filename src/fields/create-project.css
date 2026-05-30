@@ -1,0 +1,91 @@
+    flex-container {
+      width: 100%;
+      max-width: 920px;
+      align-items: stretch;
+      --flex-display-max-width: 100%;
+    }
+    .panel {
+      width: 100%;
+      border-radius: var(--cadle-radius-lg);
+      border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface);
+      box-shadow: var(--cadle-elevation-3);
+      padding: var(--cadle-space-6);
+      box-sizing: border-box;
+    }
+    .title {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: var(--md-sys-color-on-surface);
+    }
+    .subtitle {
+      margin: var(--cadle-space-2) 0 0;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .sections {
+      margin-top: var(--cadle-space-5);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--cadle-space-4);
+    }
+    .block {
+      border: 1px solid var(--md-sys-color-outline-variant);
+      border-radius: var(--cadle-radius-md);
+      padding: var(--cadle-space-4);
+      box-sizing: border-box;
+      background: var(--md-sys-color-surface-container);
+    }
+    .block h4,
+    .block h5 {
+      margin: 0 0 var(--cadle-space-3);
+      color: var(--md-sys-color-on-surface);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .block h5 {
+      margin-top: var(--cadle-space-2);
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    md-outlined-text-field {
+      width: 100%;
+      margin-bottom: var(--cadle-space-3);
+      --md-outlined-text-field-focus-outline-color: var(--md-sys-color-primary);
+      --md-outlined-text-field-caret-color: var(--md-sys-color-primary);
+    }
+    md-outlined-text-field:last-of-type {
+      margin-bottom: 0;
+    }
+    .actions {
+      margin-top: var(--cadle-space-5);
+      padding-top: var(--cadle-space-4);
+      border-top: 1px solid var(--md-sys-color-outline-variant);
+      align-items: center;
+      gap: var(--cadle-space-3);
+    }
+    md-filled-button {
+      --md-filled-button-container-color: var(--md-sys-color-primary);
+      --md-filled-button-label-text-color: var(--md-sys-color-on-primary);
+    }
+    md-outlined-button,
+    md-filled-button {
+      min-width: 140px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    @media (max-width: 900px) {
+      :host {
+        padding: var(--cadle-space-3);
+      }
+      .panel {
+        padding: var(--cadle-space-4);
+        border-radius: var(--cadle-radius-md);
+      }
+      .sections {
+        grid-template-columns: 1fr;
+      }
+    }
+  

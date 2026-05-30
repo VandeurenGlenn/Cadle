@@ -6,8 +6,9 @@ export const isRotate = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
   canvas.getActiveObject() && isMac ? metaKey && (key === '+' || key === '-') : ctrlKey && (key === '+' || key === '-')
 
 export const rotate = ({ key }) => {
-  canvas.shouldRender = true
-  const object = canvas.getActiveObject()
+  const canvas_ = canvas as any
+  canvas_.shouldRender = true
+  const object = canvas_.getActiveObject() as any
   console.log(object)
 
   if (key === '-') {
@@ -21,10 +22,12 @@ export const rotate = ({ key }) => {
       } else {
         rotationAmount = object.currentRotation > 0 ? object.currentRotation - 45 : object.currentRotation + -45
       }
+
       object.currentRotation = rotationAmount
       object?.rotate(rotationAmount)
     }
-    canvas.history.push({ type: 'rotate-up', item: object })
+
+    canvas_.history.push({ type: 'rotate-up', item: object })
   } else {
     if (!object.currentRotation) {
       object.currentRotation = 45
@@ -36,10 +39,12 @@ export const rotate = ({ key }) => {
       } else {
         rotationAmount = object.currentRotation + 45
       }
+
       object.currentRotation = rotationAmount
       object?.rotate(rotationAmount)
     }
-    canvas.history.push({ type: 'rotate-down', item: object })
+
+    canvas_.history.push({ type: 'rotate-down', item: object })
   }
 }
 

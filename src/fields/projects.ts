@@ -1,110 +1,30 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
-import { map } from 'lit/directives/map.js'
-
-import { consume } from '@lit/context'
-import { Projects, projectsContext } from '../context/projects.js'
+import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import styles from './projects.css' with { type: 'css' }
+import { Projects } from './../types.js'
 import '@material/web/elevation/elevation.js'
 import '@material/web/button/outlined-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
-
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { del, getProjects, upload } from '../api/project.js'
-import { get } from 'http'
-
+import { map } from '@vandeurenglenn/lite/map.js'
 @customElement('projects-field')
-export class ProjectsField extends LitElement {
-  @consume({ context: projectsContext, subscribe: true })
+export class ProjectsField extends LiteElement {
   @property({ attribute: false })
-  projects: Projects
+  accessor projects: Projects = []
 
   @query('.contextmenu')
-  contextmenu: CustomDropdown
+  accessor contextmenu!: CustomDropdown
 
   _currentSelected
+  _transitionEnd?: () => void
+  static styles = [styles]
 
-  static styles = [
-    css`
-      :host {
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .contextmenu {
-        transform-origin: top right;
-        border-radius: var(--md-sys-shape-corner-large);
-        background: var(--md-sys-color-surface);
-        color: var(--md-sys-color-on-surface);
-        border: 1px solid var(--md-sys-color-outline);
-        width: 260px;
-        left: none;
-      }
-
-      .contextmenu custom-list-item {
-        width: 260px;
-        background: var(--md-sys-color-surface);
-        border-bottom: 1px solid var(--md-sys-color-outline-variant);
-      }
-
-      .contextmenu custom-list-item:last-of-type {
-        border-bottom: none;
-      }
-
-      custom-list-item {
-        width: 100%;
-        max-width: none;
-        cursor: pointer;
-        overflow: hidden;
-        padding: 8px 8px 8px 16px;
-        background: var(--md-sys-color-surface);
-        color: var(--md-sys-color-on-surface);
-        border: 1px solid var(--md-sys-color-outline-variant);
-        border-radius: var(--md-sys-shape-corner-medium);
-        margin-bottom: 6px;
-      }
-
-      custom-icon-button {
-        pointer-events: auto;
-      }
-
-      summary {
-        border-radius: var(--md-sys-shape-corner-large);
-        border: 1px solid var(--md-sys-color-outline);
-        padding: 12px 24px;
-        box-sizing: border-box;
-      }
-
-      flex-container {
-        align-items: center;
-        gap: 4px;
-      }
-
-      flex-container custom-list-item {
-        background: var(--md-sys-color-surface-variant);
-        color: var(--md-sys-color-on-surface-variant);
-        border-radius: var(--md-sys-shape-corner-extra-large);
-      }
-
-      flex-row {
-        width: 100%;
-        margin-top: 24px;
-      }
-
-      custom-list-item:hover {
-        background: var(--md-sys-color-secondary-container-hover);
-        color: var(--md-sys-color-on-secondary-container);
-      }
-    `
-  ]
-
-  connectedCallback(): void {
+  async connectedCallback(): Promise<void> {
     super.connectedCallback()
+    this.projects = await getProjects()
     this.shadowRoot?.addEventListener('click', this._click.bind(this))
   }
 
@@ -113,17 +33,16 @@ export class ProjectsField extends LitElement {
   }
 
   _click(event: Event) {
-    console.log(event.target)
-
-    const action = event.target.getAttribute('data-action')
-
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    console.log(target)
+    const action = target.getAttribute('data-action')
     if (this[`_${action}`]) {
-      const dropdown = this.shadowRoot?.querySelector('custom-dropdown')
+      const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as any
       if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
-      const id = event.target.getAttribute('data-id')
-      const name = event.target.getAttribute('data-name')
+      const id = target.getAttribute('data-id')
+      const name = target.getAttribute('data-name')
       console.log({ id })
-
       if (action === 'showContextMenu') {
         if (this._currentSelected !== undefined && id !== this._currentSelected) {
           // close open menu & reopen on new location
@@ -132,6 +51,7 @@ export class ProjectsField extends LitElement {
             this._currentSelected = id
             dropdown?.removeEventListener('transitionend', this._transitionEnd)
           }
+
           dropdown.addEventListener('transitionend', this._transitionEnd)
           this[`_${action}`](this._currentSelected)
         } else {
@@ -148,14 +68,13 @@ export class ProjectsField extends LitElement {
   async _delete(id) {
     await del(id)
     const projects = []
-
     for (const [key, value] of await getProjects()) {
       projects.push([key, value])
     }
-    const dropdown = this.shadowRoot?.querySelector('custom-dropdown')
 
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as any
     cadleShell.projects = projects
-    dropdown.shown = false
+    if (dropdown) dropdown.shown = false
   }
 
   __showContextMenu(projectName) {
@@ -171,12 +90,15 @@ export class ProjectsField extends LitElement {
   }
 
   get #projectsTemplate() {
-    return html`${this.projects.map(
+    return html`<div class="list">
+      ${this.projects.map(
         ([key, name]) =>
           html` <custom-list-item
+            type="one-line"
             data-id=${key}
             data-name=${name}
-            data-action="loadProject">
+            data-action="loadProject"
+            tabindex="0">
             <span>${name}</span>
             <custom-icon-button
               icon="more_vert"
@@ -185,11 +107,7 @@ export class ProjectsField extends LitElement {
               slot="end"></custom-icon-button>
           </custom-list-item>`
       )}
-      <flex-row>
-        <md-outlined-button @click=${() => upload()}>upload</md-outlined-button>
-        <flex-it></flex-it>
-        <md-filled-button @click=${() => (location.hash = '#!/create-project')}>create</md-filled-button>
-      </flex-row> `
+    </div> `
   }
 
   render() {
@@ -201,7 +119,6 @@ export class ProjectsField extends LitElement {
             icon="abc"
             slot="end"></custom-icon>
         </custom-list-item>
-
         <custom-list-item data-action="delete">
           <span>delete</span>
           <custom-icon
@@ -209,22 +126,25 @@ export class ProjectsField extends LitElement {
             slot="end"></custom-icon>
         </custom-list-item>
       </custom-dropdown>
-
       <flex-container>
+        <header class="header">
+          <h1>Projects</h1>
+          <p>Pick up where you left off, or start something new.</p>
+        </header>
+        <div class="actions-row">
+          <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
+          <flex-it></flex-it>
+          <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
+        </div>
         ${this.projects?.length > 0
           ? this.#projectsTemplate
-          : html` <summary>
+          : html` <section class="empty-state">
               <h3>Welcome to Cadle</h3>
-              <h4>Seems this is your first time here</h4>
-              <h5>Next time I wont be greeting you like this<br />Go and create or upload (or else...)</h5>
-              <h5>Kind regards, HAL 9000</h5>
-              <h6>small note: This project is not finished at all!</h6>
-              <flex-row>
-                <md-outlined-button @click=${upload}>upload</md-outlined-button>
-                <flex-it></flex-it>
-                <md-filled-button @click=${() => (location.hash = '#!/create-project')}>create</md-filled-button>
-              </flex-row>
-            </summary>`}
+              <h4>Start by creating a project or uploading an existing one.</h4>
+              <p>
+                Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.
+              </p>
+            </section>`}
       </flex-container>
     `
   }

@@ -1,0 +1,137 @@
+      :host {
+        display: block;
+      }
+      .binding-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--cadle-space-2);
+        padding: var(--cadle-space-2) 0 0;
+      }
+      md-filled-text-field {
+        width: 100%;
+      }
+      .status-card {
+        border-radius: var(--cadle-radius-md);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: color-mix(in srgb, var(--md-sys-color-surface) 95%, var(--md-sys-color-primary-container));
+        padding: var(--cadle-space-2);
+        display: grid;
+        gap: var(--cadle-space-1);
+      }
+      .status-card[data-tone='ok'] {
+        border-color: color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
+        background: color-mix(in srgb, var(--md-sys-color-primary-container) 42%, var(--md-sys-color-surface));
+      }
+      .status-card[data-tone='warn'] {
+        border-color: color-mix(in srgb, var(--md-sys-color-error) 28%, var(--md-sys-color-outline-variant));
+        background: color-mix(in srgb, var(--md-sys-color-error-container) 55%, var(--md-sys-color-surface));
+      }
+      .status-label {
+        font-size: 13px;
+        font-weight: 650;
+        color: var(--md-sys-color-on-surface);
+      }
+      .status-hint,
+      .role-label {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .role-pill {
+        width: fit-content;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--md-sys-color-secondary-container) 70%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-on-secondary-container);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .wire-section-row {
+        display: grid;
+        gap: var(--cadle-space-2);
+        margin-top: var(--cadle-space-1);
+      }
+      .wire-section-select {
+        width: 100%;
+      }
+      .wire-section-meta {
+        display: flex;
+        align-items: center;
+        gap: var(--cadle-space-2);
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--md-sys-color-on-surface-variant);
+      }
+      .override-pill,
+      .derived-pill {
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .derived-pill {
+        background: color-mix(in srgb, var(--md-sys-color-primary-container) 60%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-on-primary-container);
+      }
+      .override-pill {
+        background: color-mix(in srgb, var(--md-sys-color-tertiary-container) 70%, var(--md-sys-color-surface));
+        color: var(--md-sys-color-on-tertiary-container);
+      }
+      .reset-btn {
+        --md-text-button-label-text-size: 11px;
+      }
+      .compliance-card {
+        margin-top: var(--cadle-space-2);
+        padding: var(--cadle-space-2);
+        border-radius: var(--cadle-radius-md);
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: color-mix(in srgb, var(--md-sys-color-surface-container) 60%, transparent);
+        display: grid;
+        gap: var(--cadle-space-2);
+      }
+      .compliance-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: var(--cadle-space-2);
+        font-size: 12px;
+      }
+      .compliance-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      .compliance-dot[data-status='ok'],
+      .compliance-dot[data-status='total'] {
+        background: #1f6a38;
+      }
+      .compliance-dot[data-status='warn'],
+      .compliance-dot[data-status='partial'] {
+        background: #b56a00;
+      }
+      .compliance-dot[data-status='error'],
+      .compliance-dot[data-status='risk'] {
+        background: var(--md-sys-color-error);
+      }
+      .compliance-dot[data-status='unknown'] {
+        background: var(--md-sys-color-outline-variant);
+      }
+      .compliance-inputs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--cadle-space-2);
+      }
+      .compliance-inputs md-filled-text-field {
+        --md-filled-text-field-container-shape: 8px;
+      }
+      .compliance-hint {
+        font-size: 11px;
+        color: var(--md-sys-color-on-surface-variant);
+        line-height: 1.4;
+      }
+    

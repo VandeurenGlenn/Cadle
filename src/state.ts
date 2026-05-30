@@ -6,6 +6,8 @@ export declare type Text = {
   type: 'normal' | 'alphabet' | 'socket' | 'switch'
 }
 
+export declare type DesignMode = 'free' | 'situation-first' | 'one-line-first'
+
 export declare type State = {
   text: Text
   move: {
@@ -23,6 +25,7 @@ export declare type State = {
   }
   freeDraw: boolean
   gridSize: number
+  designMode: DesignMode
 }
 
 const state: State = {
@@ -41,11 +44,12 @@ const state: State = {
     }
   },
   styling: {
-    fill: '#ffffff',
+    fill: '#000',
     stroke: '#000'
   },
   freeDraw: false,
-  gridSize: 10
+  gridSize: 10,
+  designMode: 'free'
 }
 
 export const { text } = state

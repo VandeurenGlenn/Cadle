@@ -11,8 +11,6 @@ export default class CadleGate extends Rect {
 
   constructor(options) {
     super({ ...defaultOptions, ...options })
-    this.set('type', 'CadleGate')
-
     if (!options?.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
@@ -24,7 +22,8 @@ export default class CadleGate extends Rect {
       this.situationMetadata = options.situationMetadata
     }
 
-    cadleShell.field.canvas.requestRenderAll()
+    const canvas = cadleShell?.field?.canvas as any | undefined
+    canvas?.requestRenderAll()
   }
 
   _render(ctx: CanvasRenderingContext2D) {
@@ -96,9 +95,9 @@ export default class CadleGate extends Rect {
     ctx.restore()
   }
 
-  toJSON(): any {
+  toJSON(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -107,9 +106,9 @@ export default class CadleGate extends Rect {
     }
   }
 
-  toObject(): any {
+  toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

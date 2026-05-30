@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Stove - cooktop with 4 burners + control knobs and oven outline (top-down) -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Body -->
+    <rect x="12" y="12" width="76" height="76" rx="4" fill="currentColor" fill-opacity="0.05"/>
+    <!-- Cooktop area -->
+    <rect x="18" y="22" width="64" height="50" rx="3"/>
+    <!-- Burners -->
+    <circle cx="34" cy="38" r="9"/>
+    <circle cx="34" cy="38" r="3" fill="currentColor" fill-opacity="0.25"/>
+    <circle cx="66" cy="38" r="9"/>
+    <circle cx="66" cy="38" r="3" fill="currentColor" fill-opacity="0.25"/>
+    <circle cx="34" cy="58" r="7"/>
+    <circle cx="34" cy="58" r="2.5" fill="currentColor" fill-opacity="0.25"/>
+    <circle cx="66" cy="58" r="7"/>
+    <circle cx="66" cy="58" r="2.5" fill="currentColor" fill-opacity="0.25"/>
+    <!-- Knobs -->
+    <circle cx="24" cy="80" r="2.5"/>
+    <circle cx="40" cy="80" r="2.5"/>
+    <circle cx="60" cy="80" r="2.5"/>
+    <circle cx="76" cy="80" r="2.5"/>
+  </g>
+</svg>

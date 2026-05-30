@@ -2,6 +2,7 @@ import { Rect, Group, IText, classRegistry } from 'fabric'
 import defaultOptions from './default-options.js'
 import { CadleDepth } from './depth.js'
 import { CadleWidth } from './width.js'
+import { canvasInk } from './canvas-tokens.js'
 
 export default class CadleWall extends Rect {
   static type = 'CadleWall'
@@ -21,12 +22,14 @@ export default class CadleWall extends Rect {
 
   set widthText(value) {
     this._widthText = value
-    cadleShell.field.canvas.add(value)
+    const canvas = cadleShell?.field?.canvas as any | null
+    if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
   set depthText(value) {
     this._depthText = value
-    cadleShell.field.canvas.add(value)
+    const canvas = cadleShell?.field?.canvas as any | null
+    if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
   get widthText() {
@@ -42,7 +45,7 @@ export default class CadleWall extends Rect {
       left: this.left,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black',
+      fill: canvasInk(),
       visible: cadleShell.showMeasurements
     })
   }
@@ -52,12 +55,12 @@ export default class CadleWall extends Rect {
       left: this.left + this.width / 2,
       top: this.top + this.height + 20,
       fontSize: 16,
-      fill: 'black',
+      fill: canvasInk(),
       visible: cadleShell.showMeasurements
     })
   }
 
-  constructor(options) {
+  constructor(options: Record<string, any> = {}) {
     super()
 
     if (!options.uuid) {
@@ -65,19 +68,21 @@ export default class CadleWall extends Rect {
     } else {
       this.uuid = options.uuid
     }
+
     if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
     if (options?.situationMetadata && typeof options.situationMetadata === 'object') {
       this.situationMetadata = options.situationMetadata
     }
+
     this.initWidthText()
     // this.initDepthText()
     this.set({ ...defaultOptions, ...options })
-    this.set('type', 'CadleWall')
 
-    cadleShell.field.canvas.requestRenderAll()
+    const canvas = cadleShell?.field?.canvas as any | undefined
+    canvas?.requestRenderAll()
   }
 
-  updateWidthText(key, value) {
+  updateWidthText(key: string, value: any) {
     // if (!this.widthText) this.initWidthText()
     if (key === 'scaleX') this.scaleX = value
     if (this.isHorizontal) {
@@ -97,7 +102,7 @@ export default class CadleWall extends Rect {
     }
   }
 
-  updateDepthText(key, value) {
+  updateDepthText(key: string, value: any) {
     // if (!this.depthText) this.initDepthText()
     if (key === 'scaleY') this.scaleY = value
     if (this.isHorizontal) {
@@ -117,14 +122,14 @@ export default class CadleWall extends Rect {
     }
   }
 
-  handleSet(key, value) {
+  handleSet(key: string, value: any) {
     // console.log({ key, value }) // todo only set when needed
     this.isHorizontal = this.width > this.height
     this.updateWidthText(key, value)
     // this.updateDepthText(key, value)
   }
 
-  set(key, value?) {
+  set(key: string | Record<string, any>, value?: any) {
     let result
     if (typeof key === 'object') {
       result = super.set(key, value)
@@ -136,17 +141,16 @@ export default class CadleWall extends Rect {
       result = super.set(key, value)
       this.handleSet(key, value)
     }
-
     return result
   }
 
-  isType(type) {
+  isType(type: string): boolean {
     return type === 'CadleWall'
   }
 
-  toJSON(): any {
+  toJSON(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -155,9 +159,9 @@ export default class CadleWall extends Rect {
     }
   }
 
-  toObject(): any {
+  toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(),
+      ...super.toObject(propertiesToInclude as any),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

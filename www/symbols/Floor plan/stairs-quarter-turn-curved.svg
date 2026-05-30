@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Quarter-turn curved stairs -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 12h76v76H12z" fill="currentColor" fill-opacity="0.03"/>
+    <path d="M16 84A68 68 0 0 0 84 16"/>
+    <path d="M24 84A60 60 0 0 0 84 24"/>
+    <path d="M32 84A52 52 0 0 0 84 32"/>
+    <path d="M40 84A44 44 0 0 0 84 40"/>
+    <path d="M48 84A36 36 0 0 0 84 48"/>
+    <path d="M56 84A28 28 0 0 0 84 56"/>
+    <path d="M64 84A20 20 0 0 0 84 64"/>
+    <path d="M72 84A12 12 0 0 0 84 72"/>
+    <path d="M20 76A56 56 0 0 1 76 20" stroke-width="2.2"/>
+    <polyline points="66,22 76,20 74,30" stroke-width="2.2"/>
+  </g>
+</svg>

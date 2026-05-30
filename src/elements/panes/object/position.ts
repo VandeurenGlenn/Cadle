@@ -1,48 +1,28 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import styles from './position.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/textfield/filled-text-field.js'
 import './../../items/object.js'
-
 @customElement('object-position')
-export class ObjectPosition extends LitElement {
-  @property({ reflect: true, type: Boolean }) active: boolean
-
+export class ObjectPosition extends LiteElement {
+  @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('#pos-left')
-  private _leftInput!: any
+  private accessor _leftInput!: any
 
   @query('#pos-top')
-  private _topInput!: any
+  private accessor _topInput!: any
 
   @query('#pos-width')
-  private _widthInput!: any
+  private accessor _widthInput!: any
 
   @query('#pos-height')
-  private _heightInput!: any
+  private accessor _heightInput!: any
 
-  static styles = [
-    css`
-      :host {
-        display: block;
-        border-top: 1px solid var(--md-sys-color-outline);
-      }
+  static styles = [styles]
 
-      .position-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        padding: 8px 12px;
-      }
 
-      md-filled-text-field {
-        width: 100%;
-      }
-    `
-  ]
-
-  firstUpdated(): void {
-    this.renderRoot.addEventListener('click', this.#onClick as any)
-
+  firstRender(): void {
+    this.shadowRoot?.addEventListener('click', this.#onClick as any)
     // Listen to canvas selection changes
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -51,6 +31,7 @@ export class ObjectPosition extends LitElement {
       canvas.on('selection:cleared', () => this.#syncFromCanvas())
       canvas.on('object:modified', () => this.#syncFromCanvas())
     }
+
     this.#syncFromCanvas()
   }
 
@@ -65,7 +46,6 @@ export class ObjectPosition extends LitElement {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = canvas.getActiveObject()
-
     if (!activeObject) {
       // Reset when nothing selected
       if (this._leftInput) this._leftInput.value = '0'
@@ -87,13 +67,10 @@ export class ObjectPosition extends LitElement {
   #applyPosition(property: 'left' | 'top' | 'width' | 'height', value: string) {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObjects = canvas.getActiveObjects()
     if (activeObjects.length === 0) return
-
     const numValue = Number(value)
     if (!Number.isFinite(numValue)) return
-
     for (const obj of activeObjects) {
       if (property === 'width' || property === 'height') {
         // For width/height, we need to account for scale
@@ -103,7 +80,13 @@ export class ObjectPosition extends LitElement {
           const originX = (obj as any).originX ?? 'left'
           const originY = (obj as any).originY ?? 'top'
           const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
-          obj.set(property === 'width' ? { scaleX: newScale } : { scaleY: newScale })
+          const isSymbolObject = Boolean((obj as any).symbolPath || (obj as any).symbolName)
+          if (isSymbolObject) {
+            obj.set({ scaleX: newScale, scaleY: newScale })
+          } else {
+            obj.set(property === 'width' ? { scaleX: newScale } : { scaleY: newScale })
+          }
+
           ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
           obj.setCoords()
         }
@@ -112,6 +95,7 @@ export class ObjectPosition extends LitElement {
         obj.setCoords()
       }
     }
+
     canvas.requestRenderAll()
   }
 
@@ -128,7 +112,6 @@ export class ObjectPosition extends LitElement {
             value="0"
             @change=${(e: Event) => this.#applyPosition('left', (e.target as any).value)}>
           </md-filled-text-field>
-
           <md-filled-text-field
             id="pos-top"
             label="Top (y)"
@@ -136,7 +119,6 @@ export class ObjectPosition extends LitElement {
             value="0"
             @change=${(e: Event) => this.#applyPosition('top', (e.target as any).value)}>
           </md-filled-text-field>
-
           <md-filled-text-field
             id="pos-width"
             label="Width"
@@ -144,7 +126,6 @@ export class ObjectPosition extends LitElement {
             value="0"
             @change=${(e: Event) => this.#applyPosition('width', (e.target as any).value)}>
           </md-filled-text-field>
-
           <md-filled-text-field
             id="pos-height"
             label="Height"

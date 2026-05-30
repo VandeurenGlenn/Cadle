@@ -1,0 +1,104 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.symbol-container,
+.symbol-container catalog-item {
+  height: 0;
+  will-change: height;
+  opacity: 0;
+  pointer-events: none;
+  padding-left: 24px;
+  transition:
+    opacity 150ms,
+    height 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+:host([open]) .symbol-container,
+:host([open]) .symbol-container catalog-item,
+.symbol-container[data-visible='true'],
+.symbol-container[data-visible='true'] catalog-item {
+  height: auto;
+  pointer-events: auto;
+  opacity: 1;
+}
+:host([open]) .symbol-container catalog-item,
+.symbol-container[data-visible='true'] catalog-item {
+  min-height: 36px;
+}
+.category-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  text-align: left;
+}
+.match-pill {
+  padding: 2px 6px;
+  border-radius: var(--cadle-radius-pill);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-small);
+}
+.category-header {
+  min-height: 28px;
+  height: 28px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cadle-space-1);
+  padding: 0 var(--cadle-space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--cadle-radius-sm);
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast);
+}
+.category-header:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  color: var(--md-sys-color-on-surface);
+}
+.category-header:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+  color: var(--md-sys-color-on-surface);
+}
+/* Catalog rows — dense, body-small, neutral at rest. No border at rest
+         to avoid the "fenced cage" look; reveal border on hover/focus only. */
+catalog-item {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cadle-radius-sm);
+  margin-bottom: var(--cadle-space-1);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-small);
+  cursor: pointer;
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast),
+    border-color var(--cadle-motion-fast),
+    box-shadow var(--cadle-motion-fast);
+}
+catalog-item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  border-color: var(--md-sys-color-outline-variant);
+}
+catalog-item:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+  border-color: var(--md-sys-color-outline-variant);
+}
+catalog-item:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline-variant));
+  color: var(--md-sys-color-primary);
+}

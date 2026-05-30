@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Sofa - back, arms, three seat cushions (top-down) -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Back -->
+    <rect x="8" y="18" width="84" height="14" rx="4" fill="currentColor" fill-opacity="0.12"/>
+    <!-- Frame -->
+    <rect x="8" y="32" width="84" height="54" rx="4" fill="currentColor" fill-opacity="0.04"/>
+    <!-- Arms -->
+    <rect x="8" y="32" width="10" height="54" rx="3" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="82" y="32" width="10" height="54" rx="3" fill="currentColor" fill-opacity="0.1"/>
+    <!-- Cushions -->
+    <rect x="21" y="36" width="18" height="46" rx="3"/>
+    <rect x="41" y="36" width="18" height="46" rx="3"/>
+    <rect x="61" y="36" width="18" height="46" rx="3"/>
+  </g>
+</svg>

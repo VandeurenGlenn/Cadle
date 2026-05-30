@@ -8,6 +8,7 @@ export class CadleDepth extends IText {
 
     this.uuid = options.uuid || crypto.randomUUID()
   }
+
   toObject(): any {
     return {
       ...super.toObject(),

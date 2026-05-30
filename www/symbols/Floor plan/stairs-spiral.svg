@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Spiral stairs -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="50" cy="50" r="40" fill="currentColor" fill-opacity="0.04"/>
+    <circle cx="50" cy="50" r="8"/>
+    <path d="M50 10A40 40 0 0 1 90 50"/>
+    <path d="M50 18A32 32 0 0 1 82 50"/>
+    <path d="M50 26A24 24 0 0 1 74 50"/>
+    <path d="M50 34A16 16 0 0 1 66 50"/>
+    <path d="M50 42A8 8 0 0 1 58 50"/>
+    <line x1="50" y1="86" x2="50" y2="62" stroke-width="2.2"/>
+    <polyline points="44,68 50,62 56,68" stroke-width="2.2"/>
+  </g>
+</svg>

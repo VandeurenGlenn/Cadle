@@ -28,11 +28,22 @@ export interface Project extends ProjectInput {
   }
 }
 
-export type Projects = { [uuid: UUID]: string }
+export type Projects = [string, string][]
 
 export type HistoryAction = {
   type: 'add' | 'remove' | 'modify' | 'move'
   objects: FabricObject[]
+  object?: FabricObject
+  item?: FabricObject
   prevState?: any
   newState?: any
 }
+
+export declare type Catalog = {
+  category: string
+  symbols: {
+    name: string
+    path: string
+    metadata?: Record<string, unknown>
+  }[]
+}[]

@@ -6,17 +6,18 @@ export const isFlip = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
   canvas.getActiveObject() && (key === 'f' || (key === 'F' && shiftKey)) && (isMac ? metaKey : ctrlKey)
 
 export const flip = ({ shiftKey }) => {
-  canvas.shouldRender = true
-  const object = canvas.getActiveObject()
+  const canvas_ = canvas as any
+  canvas_.shouldRender = true
+  const object = canvas_.getActiveObject() as any
   console.log(object)
   console.log(shiftKey)
 
   if (shiftKey) {
     object.flipX = !object.flipX
-    canvas.history.push({ type: 'flipX', item: object })
+    canvas_.history.push({ type: 'flipX', item: object })
   } else {
     object.flipY = !object.flipY
-    canvas.history.push({ type: 'flipY', item: object })
+    canvas_.history.push({ type: 'flipY', item: object })
   }
 }
 

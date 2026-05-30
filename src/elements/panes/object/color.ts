@@ -1,54 +1,21 @@
-import { LitElement, html, css, PropertyValues } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import styles from './color.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import './../../items/object.js'
-
 @customElement('object-color')
-export class ObjectColor extends LitElement {
-  @property({ reflect: true, type: Boolean }) active: boolean
-
+export class ObjectColor extends LiteElement {
+  @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('#stroke-color')
-  private _strokeInput!: HTMLInputElement
+  private accessor _strokeInput!: HTMLInputElement
 
   @query('#fill-color')
-  private _fillInput!: HTMLInputElement
+  private accessor _fillInput!: HTMLInputElement
 
-  static styles = [
-    css`
-      :host {
-        display: block;
-        border-top: 1px solid var(--md-sys-color-outline);
-      }
+  static styles = [styles]
 
-      .color-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        cursor: pointer;
-      }
 
-      .color-row:hover {
-        background: rgba(0, 0, 0, 0.05);
-      }
-
-      input[type='color'] {
-        width: 32px;
-        height: 32px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-
-      custom-icon {
-        margin-right: 4px;
-      }
-    `
-  ]
-
-  protected firstUpdated(_changedProperties: PropertyValues): void {
-    this.renderRoot.addEventListener('click', this.#onClick as any)
-
+  firstRender(): void {
+    this.shadowRoot?.addEventListener('click', this.#onClick as any)
     // Listen to canvas selection changes to sync colors
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -56,6 +23,7 @@ export class ObjectColor extends LitElement {
       canvas.on('selection:updated', () => this.#syncFromCanvas())
       canvas.on('selection:cleared', () => this.#syncFromCanvas())
     }
+
     this.#syncFromCanvas()
   }
 
@@ -70,7 +38,6 @@ export class ObjectColor extends LitElement {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = canvas.getActiveObject()
-
     if (!activeObject) {
       // Reset to defaults when nothing selected
       if (this._strokeInput) this._strokeInput.value = '#000000'
@@ -82,6 +49,7 @@ export class ObjectColor extends LitElement {
     if (this._strokeInput && activeObject.stroke) {
       this._strokeInput.value = String(activeObject.stroke)
     }
+
     if (this._fillInput && activeObject.fill) {
       this._fillInput.value = String(activeObject.fill)
     }
@@ -91,13 +59,12 @@ export class ObjectColor extends LitElement {
     const input = e.target as HTMLInputElement
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObjects = canvas.getActiveObjects()
     if (activeObjects.length === 0) return
-
     for (const obj of activeObjects) {
       obj.set({ stroke: input.value })
     }
+
     canvas.requestRenderAll()
   }
 
@@ -105,13 +72,12 @@ export class ObjectColor extends LitElement {
     const input = e.target as HTMLInputElement
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObjects = canvas.getActiveObjects()
     if (activeObjects.length === 0) return
-
     for (const obj of activeObjects) {
       obj.set({ fill: input.value })
     }
+
     canvas.requestRenderAll()
   }
 
@@ -131,7 +97,6 @@ export class ObjectColor extends LitElement {
             @input=${this.#onStrokeChange}
             @change=${this.#onStrokeChange} />
         </div>
-
         <div class="color-row">
           <custom-icon icon="format_color_fill"></custom-icon>
           fill

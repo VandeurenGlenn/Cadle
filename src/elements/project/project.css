@@ -1,0 +1,79 @@
+      :host {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+      }
+      custom-selector {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: var(--cadle-space-2);
+        box-sizing: border-box;
+      }
+      /* Tighter, calmer drawer items. Lite-elements ships them at 54px with
+         a pill radius + secondary-container at-rest tint via the selector;
+         override both so the resting state has zero tint and the row reads
+         as a list, not a stack of pills. */
+      custom-drawer-item {
+        min-height: 36px !important;
+        max-height: 36px !important;
+        padding-left: var(--cadle-space-3) !important;
+        padding-right: var(--cadle-space-3) !important;
+        border-radius: var(--cadle-radius-sm) !important;
+        font: var(--md-sys-typescale-body-medium);
+        color: var(--md-sys-color-on-surface);
+        background: transparent;
+        transition:
+          background-color var(--cadle-motion-fast),
+          color var(--cadle-motion-fast);
+      }
+      custom-drawer-item:hover {
+        background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+      }
+      custom-drawer-item.custom-selected {
+        background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+        color: var(--md-sys-color-on-surface);
+      }
+      custom-drawer-item:focus-visible {
+        outline: none;
+        box-shadow: var(--cadle-focus-ring);
+      }
+      .input-container {
+        flex: 0 0 auto;
+        box-sizing: border-box;
+        width: 100%;
+        padding: var(--cadle-space-2) var(--cadle-space-3);
+        align-items: center;
+        gap: var(--cadle-space-2);
+        border-top: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface-container);
+      }
+      .page-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        pointer-events: none;
+        opacity: 0;
+        outline: none;
+        border: 1px solid var(--md-sys-color-outline-variant);
+        background: var(--md-sys-color-surface);
+        color: var(--md-sys-color-on-surface);
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: var(--cadle-radius-sm);
+        padding: var(--cadle-space-2) var(--cadle-space-3);
+        transition:
+          opacity var(--cadle-motion-fast),
+          border-color var(--cadle-motion-fast),
+          box-shadow var(--cadle-motion-fast);
+      }
+      :host([addingPage]) .page-input {
+        pointer-events: auto;
+        opacity: 1;
+        border-color: var(--md-sys-color-primary);
+        box-shadow: var(--cadle-focus-ring);
+      }
+    

@@ -1,16 +1,19 @@
-import { LitElement, html, css, render } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { LiteElement, html, customElement, query } from '@vandeurenglenn/lite'
+import styles from './project-actions.css' with { type: 'css' }
 import '@material/web/button/text-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/icon.js'
-import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
-import { download, save, share, upload, create, importPlan } from '../../api/project.js'
-import { map } from 'lit/directives/map.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
+import '@vandeurenglenn/flex-elements/row.js'
 
+import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
+import { download, save, share, upload, importPlan } from '../../api/project.js'
+import { map } from '@vandeurenglenn/lite/map.js'
+import { render } from 'lit-html'
 @customElement('project-actions')
-export class ProjectActions extends LitElement {
-  lastAction: string
+export class ProjectActions extends LiteElement {
+  lastAction: string = ''
   actions = {
     file: [
       {
@@ -39,6 +42,31 @@ export class ProjectActions extends LitElement {
         icon: 'save'
       },
       {
+        title: 'new from template',
+        action: 'new-from-template',
+        icon: 'create_new_folder'
+      },
+      {
+        title: 'import custom symbol',
+        action: 'import-custom-symbol',
+        icon: 'upload_file'
+      },
+      {
+        title: 'validate bindings',
+        action: 'validate-bindings',
+        icon: 'check'
+      },
+      {
+        title: 'export BOM',
+        action: 'export-bom',
+        icon: 'download'
+      },
+      {
+        title: 'generate one-wire schema',
+        action: 'generate-one-wire',
+        icon: 'output'
+      },
+      {
         title: 'open project',
         action: 'open',
         icon: 'folder_open'
@@ -47,6 +75,11 @@ export class ProjectActions extends LitElement {
         title: 'share project',
         action: 'share',
         icon: 'share'
+      },
+      {
+        title: 'history panel',
+        action: 'toggle-history-panel',
+        icon: 'menu'
       }
     ],
     help: [
@@ -58,122 +91,50 @@ export class ProjectActions extends LitElement {
     ]
   }
 
-  static styles = [
-    css`
-      :host {
-        display: block;
-      }
+  static styles = [styles]
 
-      md-text-button {
-        pointer-events: auto;
-      }
+  @query('custom-dropdown') accessor dropdown!: CustomDropdown
 
-      custom-dropdown {
-        margin-left: 6px;
-        margin-top: 6px;
+  #openMenu(kind: 'file' | 'help', target: HTMLElement) {
+    const { left, bottom } = target.getBoundingClientRect()
+    this.dropdown.style.position = 'fixed'
+    this.dropdown.style.left = `${left}px`
+    this.dropdown.style.top = `${bottom}px`
+    this.dropdown.style.zIndex = '10020'
+    if (kind === 'file') {
+      render(this._fileDropDownTemplate(), this.dropdown)
+    } else {
+      render(this._helpDropDownTemplate(), this.dropdown)
+    }
 
-        background-color: var(--md-sys-color-surface);
-        color: var(--md-sys-color-on-surface);
-        border: 1px solid var(--md-sys-color-outline-variant);
-        border-radius: var(--md-sys-shape-corner-medium);
-        box-shadow: 0 10px 24px rgba(16, 24, 40, 0.12);
-      }
+    console.log('open menu', { kind, left, bottom })
 
-      custom-elevation {
-        border-radius: var(--md-sys-shape-corner-medium);
-      }
-
-      custom-button {
-        border-radius: var(--md-sys-shape-corner-medium);
-      }
-
-      flex-row {
-        width: 100%;
-      }
-
-      custom-icon {
-        margin-right: 12px;
-      }
-
-      custom-list-item:active {
-        background: var(--md-sys-color-secondary-container);
-        color: var(--md-sys-color-on-secondary-container);
-      }
-
-      custom-list-item {
-        background: var(--md-sys-color-surface);
-        color: var(--md-sys-color-on-surface-variant);
-        font-family: var(--md-sys-typescale-label-large-font-family-name);
-        font-style: var(--md-sys-typescale-label-large-font-family-style);
-        font-weight: var(--md-sys-typescale-label-large-font-weight);
-        font-size: var(--md-sys-typescale-label-large-font-size);
-        letter-spacing: var(--md-sys-typescale-label-large-tracking);
-        line-height: var(--md-sys-typescale-label-large-height);
-        text-transform: var(--md-sys-typescale-label-large-text-transform);
-        text-decoration: var(--md-sys-typescale-label-large-text-decoration);
-        border-bottom: 1px solid var(--md-sys-color-outline-variant);
-      }
-
-      custom-list-item:last-of-type {
-        border-bottom: none;
-      }
-
-      custom-list-item:hover,
-      custom-list-item:focus {
-        background: var(--md-sys-color-secondary-container-hover);
-        color: var(--md-sys-color-on-secondary-container);
-      }
-    `
-  ]
-
-  @query('custom-dropdown') dropdown: CustomDropdown
-
-  connectedCallback(): void {
-    super.connectedCallback()
-
-    this._click = this._click.bind(this)
-    this.shadowRoot.addEventListener('click', this._click)
+    this.dropdown.open = true
+    this.lastAction = kind
   }
 
-  disconnectedCallback(): void {
-    super.disconnectedCallback()
-    this.shadowRoot.removeEventListener('click', this._click)
-  }
-
-  _click(event) {
-    const action = event.target.dataset.action
-    console.log(action)
-
+  #handleMenuAction(action: string) {
     switch (action) {
-      case 'file':
-        const handleFileDropdown = () => {
-          this.dropdown.style.left = `${event.target.getBoundingClientRect().left}px`
-          render(this._fileDropDownTemplate(), this.dropdown)
-        }
-        if (!this.dropdown.open) {
-          handleFileDropdown()
-        } else if (this.dropdown.open && this.lastAction === 'help') {
-          this.dropdown.open = false
-          handleFileDropdown()
-        }
-        break
-      case 'help':
-        const handleHelpDropdown = () => {
-          this.dropdown.style.left = `${event.target.getBoundingClientRect().left}px`
-          render(this._helpDropDownTemplate(), this.dropdown)
-        }
-        if (!this.dropdown.open) {
-          handleHelpDropdown()
-        } else if (this.dropdown.open && this.lastAction === 'file') {
-          this.dropdown.open = false
-          handleHelpDropdown()
-        }
-        break
       case 'import-pdf':
         importPlan()
         break
       case 'save':
         save()
+        break
+      case 'new-from-template':
+        cadleShell.openTemplateLibrary()
+        break
+      case 'import-custom-symbol':
+        cadleShell.openCustomSymbolImport()
+        break
+      case 'validate-bindings':
+        cadleShell.validateBindingsForOneWire()
+        break
+      case 'export-bom':
+        cadleShell.generateBOM()
+        break
+      case 'generate-one-wire':
+        cadleShell.generateAutoOneWireSchema()
         break
       case 'upload':
         upload()
@@ -184,10 +145,12 @@ export class ProjectActions extends LitElement {
       case 'share':
         share()
         break
-      case 'create':
-        cadleShell.createProject()
+      case 'toggle-history-panel':
+        cadleShell.toggleHistoryPanel()
         break
-
+      case 'create':
+        location.hash = '#!/create-project'
+        break
       case 'showShortcuts':
         cadleShell.showShortcuts.call(this)
         break
@@ -197,57 +160,90 @@ export class ProjectActions extends LitElement {
       default:
         break
     }
-    this.dropdown.open = !this.dropdown.open
-    this.lastAction = action
+  }
+
+  #toggleMenu = (event: Event) => {
+    const target = event.currentTarget as HTMLElement | null
+    const action = target?.getAttribute('data-action') as 'file' | 'help' | null
+    console.log('toggle menu', { action, target })
+    if (!target || !action) return
+    if (this.dropdown.open && this.lastAction === action) {
+      this.dropdown.open = false
+      this.lastAction = ''
+      return
+    }
+
+    this.#openMenu(action, target)
+  }
+
+  #onMenuItemClick = (event: Event) => {
+    event.stopPropagation()
+    const target = event.currentTarget as HTMLElement | null
+    const action = target?.getAttribute('data-action')
+    if (!action) return
+    this.#handleMenuAction(action)
+    this.dropdown.open = false
+    this.lastAction = ''
   }
 
   _fileDropDownTemplate() {
     return html`
-      ${map(
-        this.actions.file,
-        (action, i) => html`
-          <custom-list-item
-            title=${action.title}
-            data-action=${action.action}
-            tabindex=${i + 1}>
-            <flex-row center>
-              <custom-icon .icon=${action.icon}></custom-icon>
-              <flex-it></flex-it>
-              ${action.title}
-            </flex-row>
-          </custom-list-item>
-        `
-      )}
+      <custom-menu>
+        ${map(
+          this.actions.file,
+          (action, i) => html`
+            <custom-list-item
+              title=${action.title}
+              data-action=${action.action}
+              @click=${this.#onMenuItemClick}
+              tabindex=${i + 1}>
+              <custom-icon
+                slot="start"
+                .icon=${action.icon}></custom-icon>
+              <span slot="end">${action.title}</span>
+            </custom-list-item>
+          `
+        )}
+      </custom-menu>
     `
   }
 
   _helpDropDownTemplate() {
     return html`
-      ${map(
-        this.actions.help,
-        (action, i) => html`
-          <custom-list-item
-            title=${action.title}
-            data-action=${action.action}
-            tabindex=${i + 1}>
-            <flex-row center>
-              <custom-icon .icon=${action.icon}></custom-icon>
-              <flex-it></flex-it>
-              ${action.title}
-            </flex-row>
-          </custom-list-item>
-        `
-      )}
+      <custom-menu>
+        ${map(
+          this.actions.help,
+          (action, i) => html`
+            <custom-list-item
+              title=${action.title}
+              data-action=${action.action}
+              @click=${this.#onMenuItemClick}
+              tabindex=${i + 1}>
+              <custom-icon
+                slot="start"
+                .icon=${action.icon}></custom-icon>
+              <span slot="end">${action.title}</span>
+            </custom-list-item>
+          `
+        )}
+      </custom-menu>
     `
   }
 
   render() {
     return html`
       <flex-row>
-        <md-text-button data-action="file">File</md-text-button>
-        <md-text-button data-action="help">Help</md-text-button>
+        <md-text-button
+          data-action="file"
+          @click=${this.#toggleMenu}
+          >File</md-text-button
+        >
+        <md-text-button
+          data-action="help"
+          @click=${this.#toggleMenu}
+          >Help</md-text-button
+        >
       </flex-row>
-
       <custom-dropdown>
         <custom-elevation level="1"></custom-elevation>
       </custom-dropdown>

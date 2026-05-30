@@ -1,42 +1,22 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import styles from './text.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/textfield/filled-text-field.js'
 import './../../items/object.js'
-
 @customElement('object-text')
-export class ObjectText extends LitElement {
-  @property({ reflect: true, type: Boolean }) active: boolean
-
+export class ObjectText extends LiteElement {
+  @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('#text-content')
-  private _textInput!: any
+  private accessor _textInput!: any
 
   @query('#font-size')
-  private _fontSizeInput!: any
+  private accessor _fontSizeInput!: any
 
-  static styles = [
-    css`
-      :host {
-        display: block;
-        border-top: 1px solid var(--md-sys-color-outline);
-      }
+  static styles = [styles]
 
-      .text-content {
-        padding: 8px 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
 
-      md-filled-text-field {
-        width: 100%;
-      }
-    `
-  ]
-
-  firstUpdated(): void {
-    this.renderRoot.addEventListener('click', this.#onClick as any)
-
+  firstRender(): void {
+    this.shadowRoot?.addEventListener('click', this.#onClick as any)
     // Listen to canvas selection changes
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -44,6 +24,7 @@ export class ObjectText extends LitElement {
       canvas.on('selection:updated', () => this.#syncFromCanvas())
       canvas.on('selection:cleared', () => this.#syncFromCanvas())
     }
+
     this.#syncFromCanvas()
   }
 
@@ -58,7 +39,6 @@ export class ObjectText extends LitElement {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = canvas.getActiveObject()
-
     if (!activeObject || activeObject.type !== 'i-text') {
       // Reset when nothing selected or not a text object
       if (this._textInput) this._textInput.value = ''
@@ -66,12 +46,14 @@ export class ObjectText extends LitElement {
       return
     }
 
+    const textObject = activeObject as any
     // Sync current text properties
-    if (this._textInput && activeObject.text) {
-      this._textInput.value = activeObject.text
+    if (this._textInput && textObject.text) {
+      this._textInput.value = textObject.text
     }
-    if (this._fontSizeInput && activeObject.fontSize) {
-      this._fontSizeInput.value = String(activeObject.fontSize)
+
+    if (this._fontSizeInput && textObject.fontSize) {
+      this._fontSizeInput.value = String(textObject.fontSize)
     }
   }
 
@@ -79,10 +61,8 @@ export class ObjectText extends LitElement {
     const input = e.target as any
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObject = canvas.getActiveObject()
     if (!activeObject || activeObject.type !== 'i-text') return
-
     activeObject.set({ text: input.value })
     canvas.requestRenderAll()
   }
@@ -91,10 +71,8 @@ export class ObjectText extends LitElement {
     const input = e.target as any
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-
     const activeObject = canvas.getActiveObject()
     if (!activeObject || activeObject.type !== 'i-text') return
-
     const size = Number(input.value)
     if (Number.isFinite(size) && size > 0) {
       activeObject.set({ fontSize: size })
@@ -116,7 +94,6 @@ export class ObjectText extends LitElement {
             @input=${this.#onTextChange}
             @change=${this.#onTextChange}>
           </md-filled-text-field>
-
           <md-filled-text-field
             id="font-size"
             label="Font Size"

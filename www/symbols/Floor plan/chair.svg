@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Chair - backrest + seat with armrests, top-down -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Backrest -->
+    <rect x="20" y="10" width="60" height="11" rx="3" fill="currentColor" fill-opacity="0.14"/>
+    <!-- Seat -->
+    <rect x="16" y="23" width="68" height="64" rx="6" fill="currentColor" fill-opacity="0.05"/>
+    <!-- Armrests -->
+    <rect x="16" y="23" width="7" height="46" rx="2" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="77" y="23" width="7" height="46" rx="2" fill="currentColor" fill-opacity="0.1"/>
+    <!-- Seat cushion outline -->
+    <rect x="27" y="30" width="46" height="50" rx="4" opacity="0.5"/>
+  </g>
+</svg>

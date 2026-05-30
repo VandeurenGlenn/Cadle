@@ -1,125 +1,91 @@
-import { LitElement, html, css } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import styles from './styles/catalog.css' with { type: 'css' }
 import './category.js'
-import { Catalog } from '../../context/catalog.js'
-import { consume } from '@lit-labs/context'
+import type { Catalog } from '../../types.js'
 import './../search.js'
-
 declare global {
   interface HTMLElementTagNameMap {
     'catalog-element': CatalogElement
   }
 }
-
 @customElement('catalog-element')
-export class CatalogElement extends LitElement {
-  #catalogBackup
+export class CatalogElement extends LiteElement {
+  @property({ attribute: false, consumes: 'catalog' })
+  accessor catalog: Catalog = []
 
-  @consume({ context: 'catalogContext', subscribe: true })
-  @property({ attribute: false })
-  set catalog(value: Catalog) {
-    this._catalog = value
-    this.requestUpdate('catalog')
+  @property()
+  private accessor _searchQuery = ''
+
+  static styles = [styles]
+
+  firstRender() {
+    this.addListener('dragover', this.#dragover)
+    this.addListener('dragleave', () => this.removeAttribute('show-drop'))
+    this.addListener('drop', this.#drop)
   }
-
-  get catalog() {
-    return this._catalog
-  }
-
-  private _catalog: Catalog
-
-  static styles = [
-    css`
-      :host {
-        display: flex;
-        flex-direction: column;
-      }
-      flex-column {
-        height: 100%;
-        overflow-y: auto;
-      }
-
-      input[type='search'] {
-        height: 40px;
-        margin: 12px;
-        padding: 6px 12px;
-        box-sizing: border-box;
-        border: none;
-        border-radius: var(--md-sys-shape-corner-large);
-        background: var(--md-sys-color-surface-variant);
-        color: var(--md-sys-color-on-surface);
-        border: 1px solid var(--md-sys-color-outline-variant);
-        font-size: 14px;
-        font-weight: 500;
-        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      input[type='search']:focus {
-        outline: none;
-        background: var(--md-sys-color-surface);
-        border-color: var(--md-sys-color-primary);
-        box-shadow: 0 0 0 2px var(--md-sys-color-primary-container);
-      }
-
-      input[type='search']::placeholder {
-        color: var(--md-sys-color-on-surface-variant);
-      }
-    `
-  ]
 
   get #catalogTemplate() {
-    console.log(this.catalog)
-
-    return this.catalog.map(
+    return this.#filteredCatalog.map(
       (item) => html`
         <catalog-category
           .category=${item.category}
-          .symbols=${item.symbols}></catalog-category>
+          .symbols=${item.symbols}
+          .searchActive=${Boolean(this._searchQuery)}
+          .matchCount=${item.symbols.length}></catalog-category>
       `
     )
   }
 
-  connectedCallback(): void {
-    super.connectedCallback()
-    this.addEventListener('drop', this.#drop.bind(this))
-    this.addEventListener('dragover', this.#dragover.bind(this))
-
-    // this.addEventListener('mousedown', () => {
-    //   const target = this.shadowRoot.querySelector('[open]')
-    //   if (target) target.open = false
-    // })
+  get #filteredCatalog() {
+    const query = this._searchQuery.trim().toLowerCase()
+    if (!query) return this.catalog ?? []
+    return (this.catalog ?? [])
+      .map((item) => {
+        const categoryMatch = item.category.toLowerCase().includes(query)
+        const symbols = categoryMatch
+          ? item.symbols
+          : item.symbols.filter((symbol) => {
+              const haystack = `${symbol.name} ${symbol.path} ${JSON.stringify(symbol.metadata ?? {})}`.toLowerCase()
+              return haystack.includes(query)
+            })
+        return {
+          ...item,
+          symbols
+        }
+      })
+      .filter((item) => item.symbols.length > 0)
   }
 
-  #dragover(event) {
+  get #resultCount() {
+    return this.#filteredCatalog.reduce((count, item) => count + item.symbols.length, 0)
+  }
+
+  #dragover = (event) => {
     event.preventDefault()
     this.setAttribute('show-drop', '')
   }
 
-  #drop(event) {
+  #drop = (event) => {
     event.preventDefault()
     console.log(event)
   }
 
   #search = (event: CustomEvent) => {
-    if (!this.#catalogBackup) this.#catalogBackup = this._catalog
-    if (!event.detail) {
-      this.catalog = this.#catalogBackup
-      this.#catalogBackup = undefined
-    } else {
-      this.catalog = JSON.parse(JSON.stringify(this.#catalogBackup)).filter((item) => {
-        item.symbols = [...item.symbols].filter((symbol) => symbol.name.includes(event.detail))
-        return item.symbols.length > 0 || item.category.includes(event.detail)
-      })
-    }
+    this._searchQuery = String(event.detail ?? '')
   }
 
   render() {
     return html`
-      <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
       <search-element
         @search=${this.#search}
         name="search_catalog"
         placeholder="search symbol"></search-element>
+      ${this._searchQuery
+        ? html`<div class="search-status">
+            ${this.#resultCount} result${this.#resultCount === 1 ? '' : 's'} for "${this._searchQuery}"
+          </div>`
+        : ''}
+      <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
     `
   }
 }

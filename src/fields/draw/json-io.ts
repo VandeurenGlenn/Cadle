@@ -12,10 +12,16 @@
 //
 // Behavior MUST stay identical to the original inlined implementation.
 import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
+import type { JsonValue } from '../../types.js'
 import CadleWall from './../../symbols/wall.js'
 import CadleDoor from './../../symbols/door.js'
 import CadleWindow from './../../symbols/window.js'
 import CadleGate from './../../symbols/gate.js'
+
+export type SerializedObject = Record<string, JsonValue> & {
+  type?: string
+}
 
 /**
  * Custom properties that must travel through `toJSON` / `fromJSON`. Fabric
@@ -43,8 +49,8 @@ export const BINDING_AND_SYMBOL_PROPS = [
 
 /**
  * Subset of the above that we re-apply explicitly after `loadFromJSON` as a
- * safety net. `situationMetadata` is intentionally omitted to mirror the
- * original behavior.
+ * safety net. This restores symbol and binding metadata that Fabric may drop
+ * during subclass hydration.
  */
 const RE_APPLY_PROPS = [
   'bindingId',
@@ -60,6 +66,7 @@ const RE_APPLY_PROPS = [
   'symbolPath',
   'oneLineEligible',
   'situationElementType',
+  'situationMetadata',
   'sourceObjectUuid',
   'themeSourceFill',
   'themeSourceStroke'
@@ -83,7 +90,7 @@ const CADLE_TYPES = new Set([
  * `CadleX` equivalents. Mutates the object in place to match the original
  * inlined behavior.
  */
-function normalizeLegacyType(obj: any) {
+function normalizeLegacyType(obj: SerializedObject) {
   const type = String(obj.type ?? '').toLowerCase()
   if (type === 'wall' || type === 'cadlewall') obj.type = 'CadleWall'
   else if (type === 'door' || type === 'cadledoor') obj.type = 'CadleDoor'
@@ -91,11 +98,27 @@ function normalizeLegacyType(obj: any) {
   else if (type === 'gate' || type === 'cadlegate') obj.type = 'CadleGate'
 }
 
+function normalizeLegacyTypes(obj: SerializedObject) {
+  normalizeLegacyType(obj)
+
+  const nested = obj as { _objects?: SerializedObject[]; objects?: SerializedObject[] }
+  if (Array.isArray(nested._objects)) {
+    nested._objects.forEach((child) => {
+      if (child && typeof child === 'object') normalizeLegacyTypes(child)
+    })
+  }
+  if (Array.isArray(nested.objects)) {
+    nested.objects.forEach((child) => {
+      if (child && typeof child === 'object') normalizeLegacyTypes(child)
+    })
+  }
+}
+
 export type PartitionedObjects = {
   /** Standard Fabric objects that `loadFromJSON` can handle. */
-  standard: any[]
+  standard: SerializedObject[]
   /** Cadle-specific objects we instantiate manually. */
-  specials: any[]
+  specials: SerializedObject[]
 }
 
 /**
@@ -104,12 +127,15 @@ export type PartitionedObjects = {
  * to manually instantiate as `CadleWall` / `CadleDoor` / `CadleWindow` /
  * `CadleGate`. Mutates entries in place to normalize legacy type names.
  */
-export function partitionRawObjects(rawObjects: any[]): PartitionedObjects {
-  const standard: any[] = []
-  const specials: any[] = []
+export function partitionRawObjects(rawObjects: SerializedObject[]): PartitionedObjects {
+  const standard: SerializedObject[] = []
+  const specials: SerializedObject[] = []
 
   for (const obj of rawObjects) {
     if (!obj) continue
+
+    normalizeLegacyTypes(obj)
+
     if (CADLE_TYPES.has(obj.type)) {
       specials.push(obj)
     } else if (obj.type) {
@@ -124,10 +150,6 @@ export function partitionRawObjects(rawObjects: any[]): PartitionedObjects {
       obj.type = 'CadleWall'
       specials.push(obj)
     }
-
-    normalizeLegacyType(obj)
-
-    if (!obj) console.log(obj)
   }
   return { standard, specials }
 }
@@ -135,41 +157,60 @@ export function partitionRawObjects(rawObjects: any[]): PartitionedObjects {
 /**
  * Re-apply binding + symbol metadata onto loaded canvas objects in case the
  * Fabric subclass constructor stripped unknown keys. Pairs `loaded[i]` with
- * `serialized[i]`; only sets a property when the loaded object doesn't
- * already have a value for it.
+ * `serialized[i]` and recursively restores nested properties from groups.
  */
-export function reapplyBindingProps(serialized: any[], loaded: any[]) {
+function reapplyBindingPropsToNestedObjects(
+  serialized: SerializedObject[] | undefined,
+  loaded: Array<FabricObject | undefined> | undefined
+) {
+  if (!Array.isArray(serialized) || !Array.isArray(loaded)) return
+
   const pairCount = Math.min(serialized.length, loaded.length)
   for (let i = 0; i < pairCount; i++) {
     const src = serialized[i]
-    const dest = loaded[i] as any
+    const dest = loaded[i]
     if (!src || !dest) continue
-    for (const prop of RE_APPLY_PROPS) {
-      if (src[prop] !== undefined && (dest[prop] === undefined || dest[prop] === null)) {
-        dest[prop] = src[prop]
-      }
+    reapplyBindingPropsToObject(src, dest)
+  }
+}
+
+function reapplyBindingPropsToObject(src: SerializedObject, dest: FabricObject) {
+  const recordDest = dest as FabricObject & Record<string, JsonValue | undefined>
+  const nestedSrc = src as { _objects?: SerializedObject[]; objects?: SerializedObject[] }
+  const nestedDest = dest as { _objects?: Array<FabricObject | undefined>; objects?: Array<FabricObject | undefined> }
+
+  for (const prop of RE_APPLY_PROPS) {
+    if (src[prop] !== undefined) {
+      recordDest[prop] = src[prop]
     }
   }
+
+  reapplyBindingPropsToNestedObjects(nestedSrc._objects, nestedDest._objects)
+  reapplyBindingPropsToNestedObjects(nestedSrc.objects, nestedDest.objects)
+}
+
+export function reapplyBindingProps(serialized: SerializedObject[], loaded: FabricObject[]) {
+  reapplyBindingPropsToNestedObjects(serialized, loaded)
 }
 
 /**
  * Add the manually-instantiated specials to the canvas. Returns the count
  * added so the caller can decide whether to render.
  */
-export function instantiateSpecials(canvas: Canvas, specials: any[]): number {
+export function instantiateSpecials(canvas: Canvas, specials: SerializedObject[]): number {
   let added = 0
   for (const obj of specials) {
     if (obj.type === 'CadleWall') {
-      canvas.add(new CadleWall(obj) as any)
+      canvas.add(new CadleWall(obj) as FabricObject)
       added += 1
     } else if (obj.type === 'CadleDoor') {
-      canvas.add(new CadleDoor(obj) as any)
+      canvas.add(new CadleDoor(obj) as FabricObject)
       added += 1
     } else if (obj.type === 'CadleWindow') {
-      canvas.add(new CadleWindow(obj) as any)
+      canvas.add(new CadleWindow(obj) as FabricObject)
       added += 1
     } else if (obj.type === 'CadleGate') {
-      canvas.add(new CadleGate(obj) as any)
+      canvas.add(new CadleGate(obj) as FabricObject)
       added += 1
     }
   }

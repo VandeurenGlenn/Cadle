@@ -1,17 +1,19 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './scale.css' with { type: 'css' }
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/text-button.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
 import './../../items/object.js'
+
+type ScaleField = HTMLElement & { value: string }
+
 @customElement('object-scale')
 export class ObjectScale extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('md-filled-text-field')
-  private accessor _field!: any
+  private accessor _field!: ScaleField
 
   static styles = [styles]
-
 
   #onClick = (e: Event) => {
     const target = e.target as HTMLElement
@@ -22,13 +24,13 @@ export class ObjectScale extends LiteElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    this.removeEventListener('keydown', this.#onKeyDown as any)
-    this.removeEventListener('click', this.#onClick as any)
+    this.removeEventListener('keydown', this.#onKeyDown)
+    this.removeEventListener('click', this.#onClick)
   }
 
   firstRender(): void {
-    this.shadowRoot?.addEventListener('keydown', this.#onKeyDown as any)
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('keydown', this.#onKeyDown)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
     // Listen to canvas selection changes to keep scale value in sync
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -68,11 +70,11 @@ export class ObjectScale extends LiteElement {
     // Scale the active object(s) only
     const activeObjects = canvas.getActiveObjects()
     for (const obj of activeObjects) {
-      const originX = (obj as any).originX ?? 'left'
-      const originY = (obj as any).originY ?? 'top'
-      const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
+      const originX = obj.originX ?? 'left'
+      const originY = obj.originY ?? 'top'
+      const anchorPoint = obj.getPointByOrigin(originX, originY)
       obj.set({ scaleX: scale, scaleY: scale })
-      ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+      obj.setPositionByOrigin(anchorPoint, originX, originY)
       obj.setCoords()
     }
 
@@ -88,11 +90,11 @@ export class ObjectScale extends LiteElement {
     // Reset scale to 1 (100%)
     const activeObjects = canvas.getActiveObjects()
     for (const obj of activeObjects) {
-      const originX = (obj as any).originX ?? 'left'
-      const originY = (obj as any).originY ?? 'top'
-      const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
+      const originX = obj.originX ?? 'left'
+      const originY = obj.originY ?? 'top'
+      const anchorPoint = obj.getPointByOrigin(originX, originY)
       obj.set({ scaleX: 1, scaleY: 1 })
-      ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+      obj.setPositionByOrigin(anchorPoint, originX, originY)
       obj.setCoords()
     }
 
@@ -102,8 +104,8 @@ export class ObjectScale extends LiteElement {
 
   #onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Enter') return
-    const path = event.composedPath()
-    if (path.some((n: any) => n?.tagName?.toLowerCase?.() === 'md-filled-text-field')) {
+    const path = event.composedPath() as EventTarget[]
+    if (path.some((node) => node instanceof Element && node.tagName.toLowerCase() === 'md-filled-text-field')) {
       event.preventDefault()
       this.#apply()
     }

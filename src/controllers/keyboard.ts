@@ -1,4 +1,4 @@
-import { canvas, field, moveDown, moveLeft, moveRight, moveUp } from '../utils.js'
+import { canvas } from '../utils.js'
 import { getHotkey } from './keyboard/hotkeys.js'
 
 const isEditableKeyEvent = (event: KeyboardEvent): boolean => {

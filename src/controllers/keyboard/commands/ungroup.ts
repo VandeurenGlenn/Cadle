@@ -1,4 +1,4 @@
-import { ActiveSelection, Circle, FabricText, Group, Line, Path, Rect, Textbox, FabricImage, Ellipse } from 'fabric'
+import { Circle, FabricText, Group, Line, Path, Rect, Textbox, FabricImage, Ellipse } from 'fabric'
 import { canvas, getActiveObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
@@ -20,41 +20,41 @@ const loop = async (items: Group['_objects'], { top, left }) => {
     let object
     if (item.type !== 'group') object = item.toObject()
     switch (item.type) {
-    case 'rect':
-      object = await Rect.fromObject(object)
-      break
-    case 'circle':
-      object = await Circle.fromObject(object)
-      break
-    case 'line':
-      object = await Line.fromObject(object)
-      break
-    case 'path':
-      object = await Path.fromObject(object)
-      break
-    case 'text':
-      object = await FabricText.fromObject(object)
-      break
-    case 'textbox':
-      object = await Textbox.fromObject(object)
-      break
-    case 'image':
-      object = await FabricImage.fromObject(object)
-      break
-    case 'ellipse':
-      object = await Ellipse.fromObject(object)
-      break
-    case 'group':
-      // item.group = undefined
-      // await loop(item.getObjects(), { top, left })
+      case 'rect':
+        object = await Rect.fromObject(object)
+        break
+      case 'circle':
+        object = await Circle.fromObject(object)
+        break
+      case 'line':
+        object = await Line.fromObject(object)
+        break
+      case 'path':
+        object = await Path.fromObject(object)
+        break
+      case 'text':
+        object = await FabricText.fromObject(object)
+        break
+      case 'textbox':
+        object = await Textbox.fromObject(object)
+        break
+      case 'image':
+        object = await FabricImage.fromObject(object)
+        break
+      case 'ellipse':
+        object = await Ellipse.fromObject(object)
+        break
+      case 'group':
+        // item.group = undefined
+        // await loop(item.getObjects(), { top, left })
 
-      canvas.remove(item)
-      item.set({ left: left + item.left, top: top + item.top })
-      canvas.add(await item.clone())
-      break
-    default:
-      alert(`encountered unsupported type ${item.type}`)
-      break
+        canvas.remove(item)
+        item.set({ left: left + item.left, top: top + item.top })
+        canvas.add(await item.clone())
+        break
+      default:
+        alert(`encountered unsupported type ${item.type}`)
+        break
     }
 
     if (object) {

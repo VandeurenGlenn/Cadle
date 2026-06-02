@@ -117,10 +117,16 @@ export const sceneToViewport = (point: { x: number; y: number }, viewportTransfo
   }
 }
 
-export const getMeasurementOverlayContext = (canvas: any) => {
-  const topContext =
-    (canvas?.contextTop as CanvasRenderingContext2D | undefined) ||
-    (canvas?.upperCanvasEl?.getContext('2d') as CanvasRenderingContext2D | undefined)
+import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
+
+type CanvasWithMeasurementContext = Canvas & {
+  contextTop?: CanvasRenderingContext2D
+  upperCanvasEl?: HTMLCanvasElement
+}
+
+export const getMeasurementOverlayContext = (canvas: CanvasWithMeasurementContext) => {
+  const topContext = canvas.contextTop || canvas.upperCanvasEl?.getContext('2d')
   if (!topContext) return undefined
 
   if (!canvas?.contextTop) canvas.contextTop = topContext
@@ -128,8 +134,10 @@ export const getMeasurementOverlayContext = (canvas: any) => {
   return topContext
 }
 
-export const getMeasurementTargets = (canvas: any) =>
-  canvas.getObjects().filter((obj: any) => obj && (obj.type === 'CadleWall' || obj.type === 'CadleWindow'))
+export const getMeasurementTargets = (canvas: Canvas) =>
+  canvas
+    .getObjects()
+    .filter((obj): obj is FabricObject => !!obj && (obj.type === 'CadleWall' || obj.type === 'CadleWindow'))
 
 export const intervalsOverlap = (a: [number, number], b: [number, number], margin = 12) =>
   !(a[1] + margin < b[0] || b[1] + margin < a[0])
@@ -225,17 +233,17 @@ export const drawArchitecturalSideDimension = (
   drawDimensionLabel(ctx, side === 'left' ? x - 4 : x + 14, (y1 + y2) / 2, segment.label, true)
 }
 
-export const getViewportBoundsForObject = (canvas: any, obj: any) => {
-  const coords = typeof obj?.getCoords === 'function' ? obj.getCoords() : []
+export const getViewportBoundsForObject = (canvas: Canvas, obj: FabricObject) => {
+  const coords = typeof obj?.getCoords === 'function' ? obj.getCoords() : ([] as Array<{ x: number; y: number }>)
   if (!coords || coords.length === 0) return null
 
-  const transformed = coords.map((point: any) =>
+  const transformed = coords.map((point) =>
     sceneToViewport(
       {
         x: Number(point?.x ?? 0),
         y: Number(point?.y ?? 0)
       },
-      canvas?.viewportTransform as number[] | undefined
+      canvas.viewportTransform as number[] | undefined
     )
   )
 
@@ -254,7 +262,7 @@ export const getViewportBoundsForObject = (canvas: any, obj: any) => {
 }
 
 export const renderArchitecturalMeasurements = (
-  canvas: any,
+  canvas: CanvasWithMeasurementContext,
   showMeasurements: boolean,
   ctx?: CanvasRenderingContext2D
 ) => {

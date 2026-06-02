@@ -19,7 +19,9 @@
  * the transport's responsibility, not Cadle's.
  */
 
-export type MultiUserMessage<T = unknown> = {
+import type { JsonValue } from '../types.js'
+
+export type MultiUserMessage<T = JsonValue> = {
   type: string
   /** Stable per-session sender id; opaque to the transport. */
   senderId: string
@@ -121,7 +123,8 @@ export class PeernetTransport implements MultiUserTransport {
 
   async connect(): Promise<void> {
     if (this.node) return
-    const { default: Peernet } = (await import('@leofcoin/peernet')) as unknown as { default: PeernetCtor }
+    const peernetImport = '@leofcoin/peernet/browser.js'
+    const { default: Peernet } = (await import(peernetImport)) as unknown as { default: PeernetCtor }
     const password = readOrCreatePassword()
     const node = await new Peernet(
       {
@@ -156,11 +159,11 @@ export class PeernetTransport implements MultiUserTransport {
     return () => this.handlers.delete(handler)
   }
 
-  #onPubSub = (data: unknown) => {
+  #onPubSub = (data) => {
     let raw: string | undefined
     if (typeof data === 'string') raw = data
     else if (data instanceof Uint8Array) raw = new TextDecoder().decode(data)
-    else if (data && typeof (data as { data?: unknown }).data === 'string') raw = (data as { data: string }).data
+    else if (data && typeof (data as { data?: string }).data === 'string') raw = (data as { data: string }).data
     if (!raw) return
     let parsed: MultiUserMessage
     try {
@@ -176,8 +179,8 @@ export class PeernetTransport implements MultiUserTransport {
 
 interface PeernetNodeLike {
   start?: () => Promise<void>
-  publish: (topic: string, data: unknown) => Promise<void>
-  subscribe: (topic: string, cb: (data: unknown) => void) => Promise<void>
+  publish: (topic: string, data) => Promise<void>
+  subscribe: (topic: string, cb: (data) => void) => Promise<void>
 }
 
 type PeernetCtor = new (config: PeernetConfig, password: string) => Promise<PeernetNodeLike>

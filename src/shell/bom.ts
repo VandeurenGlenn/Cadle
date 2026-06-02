@@ -1,3 +1,6 @@
+import type { Canvas } from '../fabric-imports.js'
+import type { FabricObject } from 'fabric'
+
 /**
  * Bill-of-materials export.
  *
@@ -5,12 +8,21 @@
  * + JSON pair as user downloads.
  */
 
-export function normalizeBindingId(value: unknown): string {
+export function normalizeBindingId(value: string | number | null | undefined): string {
   if (typeof value !== 'string') return ''
   return value.trim().toUpperCase()
 }
 
-export function inferBindingRole(object: any): 'switch' | 'load' | 'neutral' {
+type BOMObject = FabricObject & {
+  bindingRole?: string
+  bindingId?: string
+  symbolPath?: string
+  symbolName?: string
+  type?: string
+  situationElementType?: string
+}
+
+export function inferBindingRole(object: BOMObject): 'switch' | 'load' | 'neutral' {
   const explicitRole = String(object?.bindingRole ?? '').toLowerCase()
   if (explicitRole === 'socket') return 'load'
   if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
@@ -31,7 +43,7 @@ export function inferBindingRole(object: any): 'switch' | 'load' | 'neutral' {
   return 'neutral'
 }
 
-export function displayObjectType(object: any): string {
+export function displayObjectType(object: BOMObject): string {
   if (typeof object?.symbolName === 'string' && object.symbolName) return object.symbolName
   if (typeof object?.situationElementType === 'string' && object.situationElementType)
     return object.situationElementType
@@ -56,9 +68,9 @@ export type BOMRow = { bindingId: string; componentType: string; role: string; c
 /**
  * Aggregates bindable items on the canvas. Returns null if nothing relevant.
  */
-export function collectBOMRows(canvas: any): BOMRow[] | null {
+export function collectBOMRows(canvas: Canvas): BOMRow[] | null {
   const rows = new Map<string, BOMRow>()
-  const objects = canvas.getObjects() as any[]
+  const objects = canvas.getObjects() as BOMObject[]
 
   for (const object of objects) {
     const bindingId = normalizeBindingId(String(object?.bindingId ?? '')) || 'UNBOUND'
@@ -85,7 +97,7 @@ export function collectBOMRows(canvas: any): BOMRow[] | null {
  * Generates BOM CSV + JSON for the given canvas and triggers downloads.
  * Returns false if no bindable items were found (caller should alert the user).
  */
-export function generateBOMFiles(canvas: any, projectName: string): boolean {
+export function generateBOMFiles(canvas: Canvas, projectName: string): boolean {
   const entries = collectBOMRows(canvas)
   if (!entries) return false
 

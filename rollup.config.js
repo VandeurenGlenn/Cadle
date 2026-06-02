@@ -42,7 +42,7 @@ export default [
         placeholderPrefix: 'symbol'
       }),
       json(),
-      nodeResolve({ browser: true }),
+      nodeResolve({ browser: true, preferBuiltins: false }),
       commonjs(),
       typescript()
     ]

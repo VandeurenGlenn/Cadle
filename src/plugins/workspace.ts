@@ -3,7 +3,7 @@
  * https://github.com/nihaojob/vue-fabric-editor/blob/main/src/core/plugin/WorkspacePlugin.ts
  */
 
-import { Canvas, Rect, iMatrix, Point } from 'fabric'
+import { Rect, iMatrix, Point } from 'fabric'
 import type { DrawField } from '../fields/draw.js'
 
 export default class WorkspacePlugin {

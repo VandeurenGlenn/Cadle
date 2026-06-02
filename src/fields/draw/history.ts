@@ -1,3 +1,5 @@
+import type { FabricObject } from 'fabric'
+
 export interface HistorySnapshotSchedulerOptions {
   takeSnapshot: (label: string) => void
 }
@@ -38,8 +40,9 @@ export class HistorySnapshotScheduler {
    * Best-effort human label for a Fabric target, used to describe what
    * changed in the history entry.
    */
-  describeTarget(target: any): string {
-    if (typeof target?.symbolName === 'string' && target.symbolName) return target.symbolName
+  describeTarget(target: FabricObject | null | undefined): string {
+    const symbolName = (target as FabricObject & { symbolName?: string }).symbolName
+    if (typeof symbolName === 'string' && symbolName) return symbolName
     if (typeof target?.type === 'string') return target.type.replace('Cadle', '')
     return 'object'
   }

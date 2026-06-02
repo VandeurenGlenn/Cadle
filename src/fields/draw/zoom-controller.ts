@@ -1,4 +1,5 @@
 import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject, Point } from 'fabric'
 
 const STORAGE_KEY = 'cadle.zoomLevel'
 const MIN_ZOOM = 0.1
@@ -48,9 +49,12 @@ export class ZoomController {
     if (this.#zoomLevel === newZoom) return
 
     const canvas = this.#options.getCanvas()
-    const center = { x: this.#options.getWidth() / 2, y: this.#options.getHeight() / 2 }
+    const center = {
+      x: this.#options.getWidth() / 2,
+      y: this.#options.getHeight() / 2
+    } as unknown as Point
     this.#zoomLevel = newZoom
-    canvas.zoomToPoint(center as any, newZoom)
+    canvas.zoomToPoint(center, newZoom)
     canvas.renderAll()
     this.#options.onChange(newZoom)
     try {
@@ -85,7 +89,7 @@ export class ZoomController {
     const canvas = this.#options.getCanvas()
     const width = this.#options.getWidth()
     const height = this.#options.getHeight()
-    const objects = canvas.getObjects().filter((obj: any) => obj && obj.visible !== false)
+    const objects = canvas.getObjects().filter((obj): obj is FabricObject => !!obj && obj.visible !== false)
 
     if (objects.length === 0) {
       this.#zoomLevel = 1

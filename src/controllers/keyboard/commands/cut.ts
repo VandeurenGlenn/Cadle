@@ -1,5 +1,8 @@
+import type { FabricObject } from 'fabric'
 import { clipboard, canvas, getActiveObject } from '../../../utils.js'
 import { isMac } from '../utils.js'
+
+type FabricObjectWithChildren = FabricObject & { getObjects?: () => FabricObject[] }
 
 export const isCut = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'x' && (isMac ? metaKey : ctrlKey)
 
@@ -10,7 +13,7 @@ export const cut = async () => {
   clipboard.object = cloned
   for (const item of items) {
     if (item.type === 'activeSelection') {
-      const selectionObjects = (item as any).getObjects?.() ?? []
+      const selectionObjects = (item as FabricObjectWithChildren).getObjects?.() ?? []
       for (const _item of selectionObjects) {
         canvas.remove(_item)
       }

@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './design-mode-toggle.css' with { type: 'css' }
 import state_, { type DesignMode } from '../state.js'
 /**
@@ -19,7 +19,6 @@ export class DesignModeToggle extends LiteElement {
   private accessor mode: DesignMode = state_.designMode
 
   static styles = [styles]
-
 
   #set(mode: DesignMode) {
     this.mode = mode

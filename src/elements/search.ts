@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './search.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/elevation.js'
 declare global {
@@ -13,7 +13,6 @@ export class SearchElement extends LiteElement {
   @property({ type: String }) accessor name = ''
   @query('input') accessor _inputEl!: HTMLInputElement
   static styles = [styles]
-
 
   #input = () => {
     if (this.#timeout) clearTimeout(this.#timeout)

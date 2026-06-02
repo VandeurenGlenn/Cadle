@@ -1,16 +1,16 @@
-import { clipboard, canvas, positionObject } from '../../../utils.js'
+import { canvas } from '../../../utils.js'
+import type { FabricObject } from 'fabric'
 import { isMac } from '../utils.js'
 
 // only flip on active object
 export const isFlip = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
-  canvas.getActiveObject() && (key === 'f' || (key === 'F' && shiftKey)) && (isMac ? metaKey : ctrlKey)
+  Boolean(canvas.getActiveObject()) && (key === 'f' || (key === 'F' && shiftKey)) && (isMac ? metaKey : ctrlKey)
 
-export const flip = ({ shiftKey }) => {
-  const canvas_ = canvas as any
+export const flip = ({ shiftKey }: KeyboardEvent) => {
+  const canvas_ = canvas
   canvas_.shouldRender = true
-  const object = canvas_.getActiveObject() as any
-  console.log(object)
-  console.log(shiftKey)
+  const object = canvas_.getActiveObject() as FabricObject | null
+  if (!object) return
 
   if (shiftKey) {
     object.flipX = !object.flipX

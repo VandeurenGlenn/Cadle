@@ -1,3 +1,5 @@
+import type { Canvas, FabricObject } from 'fabric'
+
 /**
  * Pure-ish helpers for exporting a Fabric canvas to an A4-sized PNG.
  *
@@ -22,7 +24,7 @@ export function getExportDimensions(orientation: A4Orientation): { width: number
 }
 
 export type CanvasContentBounds = {
-  objects: any[]
+  objects: FabricObject[]
   minLeft: number
   minTop: number
   maxRight: number
@@ -31,8 +33,8 @@ export type CanvasContentBounds = {
   contentHeight: number
 }
 
-export function getCanvasContentBounds(canvas: any): CanvasContentBounds {
-  const objects = canvas.getObjects().filter((obj: any) => obj.visible !== false)
+export function getCanvasContentBounds(canvas: Canvas): CanvasContentBounds {
+  const objects = canvas.getObjects().filter((obj): obj is FabricObject => obj.visible !== false)
   if (objects.length === 0) {
     return {
       objects,
@@ -88,7 +90,7 @@ export function resolveBestOrientation(contentWidth: number, contentHeight: numb
  * The original viewport transform and dimensions are restored after export.
  */
 export async function exportCanvasToA4PNG(
-  canvas: any,
+  canvas: Canvas,
   orientation: A4Orientation | 'auto' = 'auto'
 ): Promise<A4ExportResult> {
   const exportMargin = A4_EXPORT_MARGIN
@@ -108,11 +110,9 @@ export async function exportCanvasToA4PNG(
   const exportMultiplier = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
 
   try {
-    const retinaScaling = (canvas.getRetinaScaling?.() ?? window.devicePixelRatio) || 1
-    canvas.setDimensions({ width: exportWidth, height: exportHeight }, retinaScaling)
-
     if (bounds.objects.length === 0) {
-      canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+      const defaultViewport: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0]
+      canvas.setViewportTransform(defaultViewport)
     } else {
       const availableWidth = Math.max(1, exportWidth - exportMargin * 2)
       const availableHeight = Math.max(1, exportHeight - exportMargin * 2)
@@ -143,10 +143,10 @@ export async function exportCanvasToA4PNG(
       height: exportHeight
     }
   } finally {
-    const retinaScaling = (canvas.getRetinaScaling?.() ?? window.devicePixelRatio) || 1
-    canvas.setDimensions(previousDimensions, retinaScaling)
+    const previousDimensionsTyped = previousDimensions as Parameters<Canvas['setDimensions']>[0]
+    canvas.setDimensions(previousDimensionsTyped)
     if (previousViewportTransform && previousViewportTransform.length === 6) {
-      canvas.setViewportTransform(previousViewportTransform as any)
+      canvas.setViewportTransform(previousViewportTransform as [number, number, number, number, number, number])
     }
 
     canvas.renderAll()

@@ -15,13 +15,23 @@ export const isWallChainBackspace = (event: KeyboardEvent): boolean => {
   if (event.key !== 'Backspace') return false
   if (event.metaKey || event.ctrlKey || event.altKey) return false
   if (isTextEntry(event.target)) return false
-  const field = (cadleShell as any)?.field
+  const field = window.cadleShell?.field as
+    | {
+        popWallChainSegment?: () => void
+        isWallChainActive?: () => boolean
+      }
+    | undefined
   return Boolean(field && typeof field.popWallChainSegment === 'function' && field.isWallChainActive?.())
 }
 
 export const wallChainBackspace = () => {
-  const field = (cadleShell as any)?.field
-  if (field && typeof field.popWallChainSegment === 'function') field.popWallChainSegment()
+  const field = window.cadleShell?.field as
+    | {
+        popWallChainSegment?: () => void
+        isWallChainActive?: () => boolean
+      }
+    | undefined
+  field?.popWallChainSegment?.()
 }
 
 export const keys = [['Backspace']]

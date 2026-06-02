@@ -41,7 +41,7 @@ const SECTION_LOOKUP = new Map<string, (typeof WIRE_SECTION_BREAKER_TABLE)[numbe
  * entry from the table. Returns the closest known entry, or the default
  * 2.5 mm² entry as a safe fallback.
  */
-export function normalizeWireSection(value: unknown): (typeof WIRE_SECTION_BREAKER_TABLE)[number] {
+export function normalizeWireSection(value): (typeof WIRE_SECTION_BREAKER_TABLE)[number] {
   if (value == null) return WIRE_SECTION_BREAKER_TABLE[1]
   const key = String(value).trim().toLowerCase().replace(/\s+/g, '')
   // Try a few canonical forms.
@@ -63,7 +63,7 @@ export function normalizeWireSection(value: unknown): (typeof WIRE_SECTION_BREAK
  * Single source of truth for wire-section → breaker amperage.
  * Always go through this helper; never hard-code the mapping elsewhere.
  */
-export function wireSectionToBreakerAmperage(section: unknown): number {
+export function wireSectionToBreakerAmperage(section): number {
   return normalizeWireSection(section).breakerAmperage
 }
 

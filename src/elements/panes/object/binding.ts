@@ -1,11 +1,12 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './binding.css' with { type: 'css' }
-import { map } from '@vandeurenglenn/lite/map.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/select/filled-select.js'
 import '@material/web/select/select-option.js'
 import '@material/web/button/text-button.js'
 import './../../items/object.js'
+import { Canvas, FabricObject } from 'fabric'
+import type { JsonValue } from '../../../types.js'
 import {
   WIRE_SECTION_BREAKER_TABLE,
   defaultWireSectionForGroupMembers,
@@ -14,6 +15,13 @@ import {
 } from '../../../helpers/wire-section.js'
 import { voltageDrop, inferCircuitType, type VoltageDropResult } from '../../../helpers/voltage-drop.js'
 import { selectivityBetween, type SelectivityResult } from '../../../helpers/selectivity.js'
+
+type BindingAwareFabricObject = FabricObject & Record<string, JsonValue>
+
+interface FabricEvent {
+  target: BindingAwareFabricObject
+}
+
 @customElement('object-binding')
 export class ObjectBinding extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active = false
@@ -46,13 +54,12 @@ export class ObjectBinding extends LiteElement {
   private accessor _selectivity: SelectivityResult | null = null
 
   @query('#binding-id')
-  private accessor _bindingInput!: any
+  private accessor _bindingInput!: HTMLElement & { value?: string }
 
   @query('#binding-label')
-  private accessor _bindingLabelInput!: any
+  private accessor _bindingLabelInput!: HTMLElement & { value?: string }
 
   static styles = [styles]
-
 
   firstRender(): void {
     const canvas = cadleShell?.field?.canvas
@@ -70,7 +77,7 @@ export class ObjectBinding extends LiteElement {
     return value.trim()
   }
 
-  #normalizedBindingKey(value: unknown) {
+  #normalizedBindingKey(value) {
     if (typeof value !== 'string') return ''
     return value.trim().toUpperCase()
   }
@@ -79,7 +86,7 @@ export class ObjectBinding extends LiteElement {
     return /^[A-Z]\d+$/.test(this.#normalizedBindingKey(value))
   }
 
-  #inferBindingRole(object: any) {
+  #inferBindingRole(object: BindingAwareFabricObject) {
     const explicitRole = String(object?.bindingRole ?? '').toLowerCase()
     if (explicitRole === 'socket') return 'load'
     if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
@@ -101,7 +108,7 @@ export class ObjectBinding extends LiteElement {
 
   #updateBindingStatus() {
     const canvas = cadleShell?.field?.canvas
-    const activeObjects = (canvas?.getActiveObjects?.() ?? []) as any[]
+    const activeObjects = (canvas?.getActiveObjects?.() ?? []) as BindingAwareFabricObject[]
     const rawValue = String(this._bindingInput?.value ?? '')
     const normalized = this.#normalizedBindingKey(rawValue)
     // Dispatch highlighting event for net visualization
@@ -112,13 +119,10 @@ export class ObjectBinding extends LiteElement {
         detail: { bindingId: normalized }
       })
     )
-    // Get current design mode from state
-    let designMode = 'free'
-    try {
-      // Dynamically import state to avoid circular deps
-      // @ts-ignore
-      designMode = window.state?.designMode || window.cadleShell?.state?.designMode || 'free'
-    } catch {}
+    const designMode =
+      (window as unknown as { state?: { designMode?: string } }).state?.designMode ||
+      (window.cadleShell as unknown as { state?: { designMode?: string } })?.state?.designMode ||
+      'free'
 
     if (activeObjects.length === 0) {
       this._selectionRole = 'No role detected'
@@ -156,7 +160,7 @@ export class ObjectBinding extends LiteElement {
       return
     }
 
-    const linkedObjects = ((canvas?.getObjects?.() ?? []) as any[]).filter(
+    const linkedObjects = ((canvas?.getObjects?.() ?? []) as BindingAwareFabricObject[]).filter(
       (object) => this.#normalizedBindingKey(String(object?.bindingId ?? '')) === normalized
     )
     const switchCount = linkedObjects.filter((object) => this.#inferBindingRole(object) === 'switch').length
@@ -165,29 +169,29 @@ export class ObjectBinding extends LiteElement {
     // Group-level wire section + breaker amperage. Read any explicit
     // override stored on a member, otherwise derive from member roles.
     if (linkedObjects.length > 0) {
-      const overrideMember = linkedObjects.find((o: any) => !!o?.bindingGroupWireSectionOverride)
-      const explicitSection = linkedObjects.find((o: any) => !!o?.bindingGroupWireSection)?.bindingGroupWireSection
+      const overrideMember = linkedObjects.find((o) => !!o?.bindingGroupWireSectionOverride)
+      const explicitSection = linkedObjects.find((o) => !!o?.bindingGroupWireSection)?.bindingGroupWireSection as
+        | string
+        | undefined
       const wireSection = explicitSection
         ? normalizeWireSection(explicitSection).section
         : defaultWireSectionForGroupMembers(
-          linkedObjects.map((o: any) => ({
-            role: this.#inferBindingRole(o),
-            symbolPath: o?.symbolPath,
-            symbolName: o?.symbolName
-          }))
-        )
+            linkedObjects.map((o) => ({
+              role: this.#inferBindingRole(o),
+              symbolPath: String(o?.symbolPath ?? ''),
+              symbolName: String(o?.symbolName ?? '')
+            }))
+          )
       this._groupSummary = {
         wireSection,
         breakerAmperage: wireSectionToBreakerAmperage(wireSection),
         override: !!overrideMember
       }
       // Read persisted compliance inputs from any member.
-      const persistedLen = linkedObjects.find(
-        (o: any) => typeof o?.bindingGroupCableLengthMeters === 'number'
-      )?.bindingGroupCableLengthMeters
-      const persistedUp = linkedObjects.find(
-        (o: any) => typeof o?.bindingGroupUpstreamProtectionA === 'number'
-      )?.bindingGroupUpstreamProtectionA
+      const persistedLen = linkedObjects.find((o) => typeof o?.bindingGroupCableLengthMeters === 'number')
+        ?.bindingGroupCableLengthMeters as number | undefined
+      const persistedUp = linkedObjects.find((o) => typeof o?.bindingGroupUpstreamProtectionA === 'number')
+        ?.bindingGroupUpstreamProtectionA as number | undefined
       if (typeof persistedLen === 'number' && persistedLen >= 0) this._cableLength = persistedLen
       if (typeof persistedUp === 'number' && persistedUp > 0) this._upstreamA = persistedUp
       this.#recomputeCompliance(linkedObjects)
@@ -213,7 +217,7 @@ export class ObjectBinding extends LiteElement {
   #syncFromCanvas() {
     const canvas = cadleShell?.field?.canvas
     if (!canvas || !this._bindingInput) return
-    const activeObject = canvas.getActiveObject() as any
+    const activeObject = canvas.getActiveObject() as BindingAwareFabricObject | null
     if (!activeObject) {
       this._bindingInput.value = ''
       if (this._bindingLabelInput) this._bindingLabelInput.value = ''
@@ -231,11 +235,11 @@ export class ObjectBinding extends LiteElement {
 
   #linkedObjectsForActiveBinding() {
     const canvas = cadleShell?.field?.canvas
-    if (!canvas) return { canvas: null as any, linked: [] as any[], bindingKey: '' }
+    if (!canvas) return { canvas: null as Canvas | null, linked: [] as BindingAwareFabricObject[], bindingKey: '' }
     const rawValue = String(this._bindingInput?.value ?? '')
     const bindingKey = this.#normalizedBindingKey(rawValue)
-    if (!bindingKey) return { canvas, linked: [] as any[], bindingKey }
-    const linked = ((canvas.getObjects?.() ?? []) as any[]).filter(
+    if (!bindingKey) return { canvas, linked: [] as BindingAwareFabricObject[], bindingKey }
+    const linked = ((canvas.getObjects?.() ?? []) as BindingAwareFabricObject[]).filter(
       (object) => this.#normalizedBindingKey(String(object?.bindingId ?? '')) === bindingKey
     )
     return { canvas, linked, bindingKey }
@@ -248,7 +252,7 @@ export class ObjectBinding extends LiteElement {
     for (const obj of linked) {
       obj.set({ bindingGroupWireSection: section, bindingGroupWireSectionOverride: true })
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
@@ -261,7 +265,7 @@ export class ObjectBinding extends LiteElement {
     for (const obj of linked) {
       obj.set({ bindingGroupCableLengthMeters: value })
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
@@ -273,7 +277,7 @@ export class ObjectBinding extends LiteElement {
     for (const obj of linked) {
       obj.set({ bindingGroupUpstreamProtectionA: value })
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
@@ -285,7 +289,7 @@ export class ObjectBinding extends LiteElement {
     for (const obj of linked) {
       obj.set({ bindingGroupWireSection: undefined, bindingGroupWireSectionOverride: false })
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
@@ -295,7 +299,7 @@ export class ObjectBinding extends LiteElement {
   #applyBindingId(value: string) {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-    const activeObjects = canvas.getActiveObjects() as any[]
+    const activeObjects = canvas.getActiveObjects() as BindingAwareFabricObject[]
     if (activeObjects.length === 0) return
     const bindingId = this.#normalizeBindingId(value)
     for (const obj of activeObjects) {
@@ -306,7 +310,7 @@ export class ObjectBinding extends LiteElement {
       }
 
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
@@ -316,7 +320,7 @@ export class ObjectBinding extends LiteElement {
   #applyBindingLabel(value: string) {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
-    const activeObjects = canvas.getActiveObjects() as any[]
+    const activeObjects = canvas.getActiveObjects() as BindingAwareFabricObject[]
     if (activeObjects.length === 0) return
 
     const bindingLabel = this.#normalizeBindingId(value)
@@ -328,14 +332,14 @@ export class ObjectBinding extends LiteElement {
       }
 
       obj.setCoords()
-      canvas.fire('object:modified', { target: obj } as any)
+      canvas.fire('object:modified', { target: obj } as FabricEvent)
     }
 
     canvas.requestRenderAll()
     this.#syncFromCanvas()
   }
 
-  #recomputeCompliance(linkedObjects: any[]) {
+  #recomputeCompliance(linkedObjects: BindingAwareFabricObject[]) {
     if (!this._groupSummary) {
       this._voltageDrop = null
       this._selectivity = null
@@ -345,9 +349,9 @@ export class ObjectBinding extends LiteElement {
     const sectionMm2 = normalizeWireSection(this._groupSummary.wireSection).sectionMm2
     const breakerA = this._groupSummary.breakerAmperage
     const circuitType = inferCircuitType(
-      linkedObjects.map((o: any) => ({
-        symbolPath: o?.symbolPath,
-        symbolName: o?.symbolName,
+      linkedObjects.map((o) => ({
+        symbolPath: String(o?.symbolPath ?? ''),
+        symbolName: String(o?.symbolName ?? ''),
         role: this.#inferBindingRole(o)
       }))
     )
@@ -369,30 +373,32 @@ export class ObjectBinding extends LiteElement {
             type="number"
             .value=${String(this._cableLength)}
             @input=${(e: Event) => {
-    const v = parseFloat((e.target as any).value)
-    if (!isNaN(v) && v >= 0) {
-      this._cableLength = v
-      this.#applyCableLength(v)
-      this.#updateBindingStatus()
-    }
-  }}>
+              const target = e.target as HTMLInputElement
+              const v = parseFloat(target.value)
+              if (!isNaN(v) && v >= 0) {
+                this._cableLength = v
+                this.#applyCableLength(v)
+                this.#updateBindingStatus()
+              }
+            }}>
           </md-filled-text-field>
           <md-filled-text-field
             label="Upstream protection (A)"
             type="number"
             .value=${String(this._upstreamA)}
             @input=${(e: Event) => {
-    const v = parseFloat((e.target as any).value)
-    if (!isNaN(v) && v > 0) {
-      this._upstreamA = v
-      this.#applyUpstreamProtection(v)
-      this.#updateBindingStatus()
-    }
-  }}>
+              const target = e.target as HTMLInputElement
+              const v = parseFloat(target.value)
+              if (!isNaN(v) && v > 0) {
+                this._upstreamA = v
+                this.#applyUpstreamProtection(v)
+                this.#updateBindingStatus()
+              }
+            }}>
           </md-filled-text-field>
         </div>
         ${vd
-    ? html`<div class="compliance-row">
+          ? html`<div class="compliance-row">
                 <span
                   class="compliance-dot"
                   data-status=${vd.status}></span>
@@ -400,9 +406,9 @@ export class ObjectBinding extends LiteElement {
                 <span>${vd.dropVolts.toFixed(1)} V</span>
               </div>
               <div class="compliance-hint">${vd.hint}</div>`
-    : ''}
+          : ''}
         ${sel
-    ? html`<div class="compliance-row">
+          ? html`<div class="compliance-row">
                 <span
                   class="compliance-dot"
                   data-status=${sel.status}></span>
@@ -410,7 +416,7 @@ export class ObjectBinding extends LiteElement {
                 <span>${sel.status}</span>
               </div>
               <div class="compliance-hint">${sel.hint}</div>`
-    : ''}
+          : ''}
       </div>
     `
   }
@@ -427,14 +433,14 @@ export class ObjectBinding extends LiteElement {
             type="text"
             supporting-text="Shared ID used to link switches, loads, and bound one-line symbols"
             @input=${() => this.#updateBindingStatus()}
-            @change=${(e: Event) => this.#applyBindingId((e.target as any).value)}>
+            @change=${(e: Event) => this.#applyBindingId((e.target as HTMLInputElement).value)}>
           </md-filled-text-field>
           <md-filled-text-field
             id="binding-label"
             label="Binding label"
             type="text"
             supporting-text="Synced with Binding ID. Editing one updates the other."
-            @change=${(e: Event) => this.#applyBindingLabel((e.target as any).value)}>
+            @change=${(e: Event) => this.#applyBindingLabel((e.target as HTMLInputElement).value)}>
           </md-filled-text-field>
           <div
             class="status-card"
@@ -443,33 +449,33 @@ export class ObjectBinding extends LiteElement {
             <div class="status-label">${this._statusLabel}</div>
             <div class="status-hint">${this._statusHint}</div>
             ${this._groupSummary
-    ? html`<div class="wire-section-row">
+              ? html`<div class="wire-section-row">
                   <md-filled-select
                     class="wire-section-select"
                     label="Wire section"
                     .value=${this._groupSummary.wireSection}
-                    @change=${(e: Event) => this.#applyWireSection((e.target as any).value)}>
+                    @change=${(e: Event) => this.#applyWireSection((e.target as HTMLInputElement).value)}>
                     ${WIRE_SECTION_BREAKER_TABLE.map(
-    (row) =>
-      html`<md-select-option value=${row.section}>
+                      (row) =>
+                        html`<md-select-option value=${row.section}>
                           <div slot="headline">${row.section} → ${row.breakerAmperage} A</div>
                         </md-select-option>`
-  )}
+                    )}
                   </md-filled-select>
                   <div class="wire-section-meta">
                     Breaker:
                     <strong>${this._groupSummary.breakerAmperage} A</strong>
                     ${this._groupSummary.override
-    ? html`<span class="override-pill">override</span>
+                      ? html`<span class="override-pill">override</span>
                           <md-text-button
                             class="reset-btn"
                             @click=${() => this.#resetWireSection()}
                             >Reset</md-text-button
                           >`
-    : html`<span class="derived-pill">derived (AREI)</span>`}
+                      : html`<span class="derived-pill">derived (AREI)</span>`}
                   </div>
                 </div>`
-    : ''}
+              : ''}
             ${this._groupSummary ? this.#renderComplianceCard() : ''}
           </div>
         </div>

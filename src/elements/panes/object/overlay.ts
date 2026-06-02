@@ -1,9 +1,26 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
+import type { FabricObject } from 'fabric'
 import styles from './overlay.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/switch/switch.js'
 import '@material/web/slider/slider.js'
 import './../../items/object.js'
+
+type ImageObject = FabricObject & {
+  getSrc?: () => unknown
+  src?: string
+  opacity?: number
+  lockMovementX?: boolean
+  lockMovementY?: boolean
+  lockRotation?: boolean
+  lockScalingX?: boolean
+  lockScalingY?: boolean
+}
+
+type SwitchTarget = EventTarget & { selected?: boolean }
+
+type SliderTarget = EventTarget & { value?: string }
+
 @customElement('object-overlay')
 export class ObjectOverlay extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false
@@ -11,9 +28,8 @@ export class ObjectOverlay extends LiteElement {
   @property({ type: Number }) accessor opacity: number = 100
   static styles = [styles]
 
-
   firstRender(): void {
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
     // Listen to canvas selection changes
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -32,7 +48,7 @@ export class ObjectOverlay extends LiteElement {
     }
   }
 
-  #isImageObject(activeObject: any): boolean {
+  #isImageObject(activeObject: FabricObject | null | undefined): activeObject is ImageObject {
     if (!activeObject) return false
     const type = String(activeObject.type ?? '')
     const ctor = String(activeObject.constructor?.name ?? '')
@@ -42,12 +58,12 @@ export class ObjectOverlay extends LiteElement {
       type === 'fabricImage' ||
       type === 'FabricImage' ||
       ctor === 'FabricImage' ||
-      typeof activeObject.getSrc === 'function' ||
-      typeof activeObject.src === 'string'
+      typeof (activeObject as unknown as { getSrc?: () => unknown }).getSrc === 'function' ||
+      typeof (activeObject as unknown as { src?: unknown }).src === 'string'
     )
   }
 
-  #getSelectedImageObject(): any | null {
+  #getSelectedImageObject(): ImageObject | null {
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return null
     const activeObject = canvas.getActiveObject()
@@ -57,16 +73,19 @@ export class ObjectOverlay extends LiteElement {
       if (this.#isImageObject(obj)) return obj
     }
 
-    const selectionObjects = (activeObject as any)?.getObjects?.() ?? []
+    const selectionObjects =
+      activeObject && 'getObjects' in activeObject
+        ? ((activeObject as unknown as { getObjects?: () => FabricObject[] }).getObjects?.() ?? [])
+        : []
     for (const obj of selectionObjects) {
       if (this.#isImageObject(obj)) return obj
     }
 
     const allObjects = canvas.getObjects?.() ?? []
-    const imageObjects = allObjects.filter((obj: any) => this.#isImageObject(obj))
+    const imageObjects = allObjects.filter((obj) => this.#isImageObject(obj))
     if (imageObjects.length === 0) return null
     const lockedImages = imageObjects.filter(
-      (obj: any) =>
+      (obj) =>
         obj.selectable === false ||
         obj.lockMovementX ||
         obj.lockMovementY ||
@@ -99,8 +118,8 @@ export class ObjectOverlay extends LiteElement {
   }
 
   #toggleOverlay(e: Event) {
-    const target = e.target as any
-    const isChecked = target.selected
+    const target = e.target as SwitchTarget
+    const isChecked = Boolean(target.selected)
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = this.#getSelectedImageObject()
@@ -122,7 +141,7 @@ export class ObjectOverlay extends LiteElement {
   }
 
   #onOpacityChange(e: Event) {
-    const slider = e.target as any
+    const slider = e.target as SliderTarget
     const value = Number(slider.value)
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
@@ -169,8 +188,8 @@ export class ObjectOverlay extends LiteElement {
           </div>
           <div class="info-text">
             ${this.isOverlay
-    ? 'Image is locked and can be used as reference'
-    : 'Toggle to lock image as static overlay'}
+              ? 'Image is locked and can be used as reference'
+              : 'Toggle to lock image as static overlay'}
           </div>
         </div>
       </object-item>

@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/category.css' with { type: 'css' }
 import { map } from '@vandeurenglenn/lite/map.js'
 import './item.js'

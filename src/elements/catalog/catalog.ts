@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/catalog.css' with { type: 'css' }
 import './category.js'
 import type { Catalog } from '../../types.js'

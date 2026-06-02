@@ -1,4 +1,4 @@
-import { LiteElement, html, css, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, property } from '@vandeurenglenn/lite'
 import styles from './object.css' with { type: 'css' }
 export class ObjectItem extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false

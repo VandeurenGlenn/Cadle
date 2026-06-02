@@ -1,20 +1,21 @@
-import { clipboard, canvas, positionObject } from '../../../utils.js'
-import { isMac } from '../utils.js'
+import { canvas } from '../../../utils.js'
+import type { FabricObject } from 'fabric'
+
+type FabricObjectWithScale = FabricObject & { currentScale?: number }
 
 // only flip on active object
-export const isScale = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
-  canvas.getActiveObject() && (key === '/' || key === '*')
+export const isScale = ({ key }: KeyboardEvent) => Boolean(canvas.getActiveObject()) && (key === '/' || key === '*')
 
-export const scale = ({ key }) => {
-  const canvas_ = canvas as any
+export const scale = ({ key }: KeyboardEvent) => {
+  const canvas_ = canvas
   canvas_.shouldRender = true
-  const object = canvas_.getActiveObject() as any
-  console.log(object)
+  const object = canvas_.getActiveObject() as FabricObjectWithScale | null
+  if (!object) return
 
   if (key === '/') {
     if (!object.currentScale) {
       object.currentScale = 0.9
-      object?.scale(object.currentScale)
+      object.scale(object.currentScale)
     } else {
       const scaleAmount = object.currentScale - 0.1
       object.currentScale = scaleAmount

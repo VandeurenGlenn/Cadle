@@ -91,7 +91,9 @@ export const iconSetTemplate = html`
       <span name="crop_rotate">@symbol-crop_rotate</span>
       <span name="crop_square">@symbol-crop_square</span>
       <span name="filter_center_focus">@symbol-filter_center_focus</span>
-
+      <span name="image">@symbol-image</span>
+      <span name="code">@symbol-code</span>
+      <span name="table_view">@symbol-table_view</span>
       <span name="content_copy">@symbol-content_copy</span>
       <span name="content_cut">@symbol-content_cut</span>
       <span name="content_paste">@symbol-content_paste</span>

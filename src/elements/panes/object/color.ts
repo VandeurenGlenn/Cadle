@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './color.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import './../../items/object.js'
@@ -13,9 +13,8 @@ export class ObjectColor extends LiteElement {
 
   static styles = [styles]
 
-
   firstRender(): void {
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
     // Listen to canvas selection changes to sync colors
     const canvas = cadleShell?.field?.canvas
     if (canvas) {

@@ -1,7 +1,23 @@
-import { Rect, classRegistry } from 'fabric'
+import {
+  Rect,
+  classRegistry,
+  type Canvas,
+  type RectProps,
+  type SerializedRectProps,
+  type TClassProperties
+} from 'fabric'
+import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
-import { canvasInk } from './canvas-tokens.js'
+import { canvasInk, canvasSurface } from './canvas-tokens.js'
+
+type WindowOptions = {
+  uuid?: string
+  bindingId?: string
+  situationMetadata?: Record<string, JsonValue>
+  backgroundColor?: string
+  [key: string]: unknown
+}
 
 export default class CadleWindow extends Rect {
   static type = 'CadleWindow'
@@ -10,17 +26,17 @@ export default class CadleWindow extends Rect {
   _widthText: CadleWidth
   uuid: `${string}-${string}-${string}-${string}-${string}`
   bindingId?: string
-  situationElementType: 'window' = 'window'
-  situationMetadata?: Record<string, unknown>
+  readonly situationElementType = 'window' as const
+  situationMetadata?: Record<string, JsonValue>
 
   declare scaleX: number
   declare scaleY: number
 
   isHorizontal: boolean
 
-  set widthText(value) {
+  set widthText(value: CadleWidth) {
     this._widthText = value
-    const canvas = cadleShell?.field?.canvas as any | null
+    const canvas = cadleShell?.field?.canvas as Canvas | null
     if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
@@ -28,12 +44,20 @@ export default class CadleWindow extends Rect {
     return this._widthText
   }
 
-  constructor(options) {
-    super({ ...defaultOptions, ...options })
+  constructor(options: WindowOptions = {}) {
+    super({ ...defaultOptions, ...options } as unknown as ConstructorParameters<typeof Rect>[0])
+
+    this.on('added', () => {
+      const self = this as unknown as { bringToFront?: () => void }
+      self.bringToFront?.()
+    })
+
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
-      this.uuid = options.uuid
+      this.uuid = (
+        typeof options.uuid === 'string' ? options.uuid : crypto.randomUUID()
+      ) as `${string}-${string}-${string}-${string}-${string}`
     }
 
     if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
@@ -41,7 +65,7 @@ export default class CadleWindow extends Rect {
       this.situationMetadata = options.situationMetadata
     }
 
-    const canvas = cadleShell?.field?.canvas as any | undefined
+    const canvas = cadleShell?.field?.canvas as Canvas | undefined
     canvas?.requestRenderAll()
   }
 
@@ -59,11 +83,12 @@ export default class CadleWindow extends Rect {
 
     ctx.save()
 
-    // Clear the wall segment beneath the window so it reads as an opening.
-    ctx.fillStyle = (this as any).backgroundColor || '#fff'
+    // Fill the wall opening with the current canvas surface color.
+    const fillColor = (this as { backgroundColor?: string }).backgroundColor ?? canvasSurface()
+    ctx.fillStyle = fillColor
     ctx.fillRect(x0, y0, boxW, boxH)
 
-    const stroke = (this.stroke as any) || '#555'
+    const stroke = (this.stroke as string | undefined) ?? '#555'
     ctx.strokeStyle = stroke
     ctx.lineWidth = frameStroke
     ctx.setLineDash([])
@@ -126,46 +151,49 @@ export default class CadleWindow extends Rect {
     }
   }
 
-  handleSet(key, value) {
+  handleSet(key: string, value: number) {
     // console.log({ key, value }) // todo only set when needed
     this.isHorizontal = this.width > this.height
     this.updateWidthText(key, value)
   }
 
-  set(key, value) {
+  set(key: string | Record<string, unknown>, value?: unknown) {
     let result
     if (typeof key === 'object') {
       result = super.set(key, value)
 
       for (const [k, v] of Object.entries(key)) {
-        this.handleSet(k, v)
+        this.handleSet(k, Number(v ?? 0))
       }
     } else {
       result = super.set(key, value)
-      this.handleSet(key, value)
+      this.handleSet(key, Number(value ?? 0))
     }
     return result
   }
 
-  toJSON(propertiesToInclude?: any[]): any {
+  toJSON(): ReturnType<Rect['toJSON']> {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
+      backgroundColor: (this as { backgroundColor?: string }).backgroundColor,
       type: 'CadleWindow'
       // children: [this.widthText.uuid]
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
+      backgroundColor: (this as { backgroundColor?: string }).backgroundColor,
       type: 'CadleWindow'
       // children: [this.widthText.uuid]
     }

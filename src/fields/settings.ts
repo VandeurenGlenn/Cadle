@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/toggle.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/flex-elements/it.js'

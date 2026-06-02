@@ -1,5 +1,6 @@
 import Storage from '@leofcoin/storage'
 import jsPDF from 'jspdf'
+import type { PDFImporter } from '../elements/pdf-importer.js'
 import { Project, ProjectInput, UUID } from '../types.js'
 
 export const decoder = new TextDecoder()
@@ -44,7 +45,8 @@ export const create = async (project: ProjectInput, pageName: string) => {
   pages[pageUuid] = {
     creationTime,
     name: pageName,
-    schema: { version: '6.0.0', objects: [] }
+    schema: { version: '6.0.0', objects: [] },
+    order: 0
   }
   const _project = { creationTime, ...project, pages }
   await projectDataStore.put(uuid, JSON.stringify(_project))
@@ -61,7 +63,16 @@ export const create = async (project: ProjectInput, pageName: string) => {
 export const addPage = async (uuid: UUID, pageName: string, schema) => {
   const project = await getProjectData(uuid)
   const pageUuid = crypto.randomUUID() as UUID
-  project.pages[pageUuid] = { creationTime: Date.now(), name: pageName, schema }
+  const maxOrder = Math.max(
+    -1,
+    ...Object.values(project.pages ?? {}).map((page) => (typeof page.order === 'number' ? page.order : -1))
+  )
+  project.pages[pageUuid] = {
+    creationTime: Date.now(),
+    name: pageName,
+    schema,
+    order: maxOrder + 1
+  }
   await setProjectData(uuid, project)
 }
 
@@ -70,9 +81,8 @@ export const save = async () => {
   console.log(cadleShell.project)
   await setProjectData(cadleShell.projectKey, cadleShell.project)
   if (cadleShell.project.uuid) {
-    // await set(cadleShell.project.uuid, cadleShell.project.name ?? cadleShell.projectName)
+    // If needed, save project metadata separately here.
   }
-  // await setProjectData(cadleShell.project.uuid ?? new TextEncoder().encode(cadleShell.projectName), cadleShell.project)
 }
 
 export const share = () => {
@@ -93,7 +103,7 @@ export const share = () => {
 export const upload = async () => {
   const input = document.createElement('input')
   input.type = 'file'
-  input.addEventListener('change', (e) => {
+  input.addEventListener('change', () => {
     const fr = new FileReader()
 
     fr.onload = async (e) => {
@@ -133,7 +143,7 @@ export const download = async () => {
   console.log(cadleShell.project)
 
   let i = 0
-  for (const [key, page] of Object.entries(cadleShell.project.pages)) {
+  for (const [key] of Object.entries(cadleShell.project.pages)) {
     await cadleShell.loadPage(key)
     const exported = await cadleShell.exportA4PNG('auto')
     // const svg = await cadleShell.field.canvas.toSVG()
@@ -189,7 +199,7 @@ export const importPlan = async () => {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'application/pdf'
-  input.addEventListener('change', async (e) => {
+  input.addEventListener('change', async () => {
     const file = input.files[0]
     if (!file) return
 
@@ -230,7 +240,8 @@ export const importPlan = async () => {
     dialog.showModal()
 
     // Load PDF into importer
-    await (importer as any).loadPDF(file)
+    const typedImporter = importer as PDFImporter
+    await typedImporter.loadPDF(file)
   })
   input.click()
 }

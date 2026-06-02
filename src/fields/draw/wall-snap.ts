@@ -8,12 +8,38 @@
 //
 // Behavior MUST stay identical to the original inlined implementations —
 // changing geometry semantics here is out of scope for the refactor pass.
+import type { FabricObject } from 'fabric'
+import type { Canvas } from '../../fabric-imports.js'
 import CadleWall from '../../symbols/wall.js'
 import CadleDoor from '../../symbols/door.js'
 import CadleWindow from '../../symbols/window.js'
 import CadleGate from '../../symbols/gate.js'
 
-function snapToGrid(point, gridSize) {
+export type WallObject = FabricObject & {
+  left?: number
+  top?: number
+  width?: number
+  height?: number
+  scaleX?: number
+  scaleY?: number
+  angle?: number
+  originY?: 'top' | 'center' | 'bottom'
+  type?: string
+  doorSwingDirection?: string
+  doorHingeSide?: string
+}
+
+type OpeningTarget = FabricObject & {
+  type?: string
+  width?: number
+  height?: number
+  scaleX?: number
+  scaleY?: number
+  doorSwingDirection?: string
+  doorHingeSide?: string
+}
+
+function snapToGrid(point: LeftTop, gridSize: number): LeftTop {
   return {
     left: Math.round(point.left / gridSize) * gridSize,
     top: Math.round(point.top / gridSize) * gridSize
@@ -30,7 +56,7 @@ export type WallBounds = {
   horizontal: boolean
 }
 export type WallSnap = {
-  wall: any
+  wall: WallObject
   bounds: WallBounds
   distance: number
   score: number
@@ -45,7 +71,7 @@ export type WallAxisFrame = {
   isFreeAngle: boolean
 }
 
-export function getWallAxisFrame(wall: any): WallAxisFrame {
+export function getWallAxisFrame(wall: WallObject): WallAxisFrame {
   const [p0, p1] = getWallEndpoints(wall)
   const vx = p1.x - p0.x
   const vy = p1.y - p0.y
@@ -88,16 +114,31 @@ export type OpeningLayout = {
   dy?: number
 }
 
+type OpeningUpdate = {
+  left: number
+  top: number
+  width: number
+  height: number
+  scaleX: number
+  scaleY: number
+  angle: number
+  originX: 'left' | 'center' | 'right'
+  originY: 'top' | 'center' | 'bottom'
+  wallThickness?: number
+  doorSwingDirection?: 'up' | 'down' | 'left' | 'right'
+  doorHingeSide?: 'left' | 'right' | 'top' | 'bottom'
+}
+
 // Fabric v6 ignores `set('type', 'CadleWall')` (warns "Setting type has
 // no effect") so we cannot rely on obj.type alone — fall back to instanceof
 // which is reliable across construction and JSON load paths.
-export function isWallObject(obj: any): boolean {
+export function isWallObject(obj: FabricObject | null | undefined): obj is WallObject {
   if (!obj) return false
   if (obj instanceof CadleWall) return true
   return obj.type === 'CadleWall'
 }
 
-export function isOpeningObject(obj: any): boolean {
+export function isOpeningObject(obj: FabricObject | null | undefined): boolean {
   if (!obj) return false
   if (obj instanceof CadleDoor || obj instanceof CadleWindow || obj instanceof CadleGate) return true
   return obj.type === 'CadleDoor' || obj.type === 'CadleWindow' || obj.type === 'CadleGate'
@@ -122,7 +163,7 @@ export function wallThickness(gridSize: number): number {
  * axis-aligned legacy walls (origin top-left, no angle) and free-angle walls
  * (origin left/center + angle).
  */
-export function getWallEndpoints(wall: any): [Point, Point] {
+export function getWallEndpoints(wall: WallObject): [Point, Point] {
   const left = Number(wall.left ?? 0)
   const top = Number(wall.top ?? 0)
   const width = Math.abs(Number(wall.width ?? 0)) * Number(wall.scaleX ?? 1)
@@ -158,8 +199,8 @@ export function getWallEndpoints(wall: any): [Point, Point] {
   ]
 }
 
-export function getWallBounds(wall: any): WallBounds {
-  const bounds = wall?.getBoundingRect?.(true, true)
+export function getWallBounds(wall: WallObject): WallBounds {
+  const bounds = wall?.getBoundingRect?.()
   const left = Number(bounds?.left ?? wall?.left ?? 0)
   const top = Number(bounds?.top ?? wall?.top ?? 0)
   const width = Math.abs(Number(bounds?.width ?? wall?.width ?? 0))
@@ -178,7 +219,7 @@ export function getWallBounds(wall: any): WallBounds {
  * endpoint fixed and preserving thickness. Supports angled walls (origin
  * left/center + angle); axis-aligned walls keep their legacy shape.
  */
-export function applyWallEndpoint(wall: any, endIndex: 0 | 1, point: Point, gridSize: number): void {
+export function applyWallEndpoint(wall: WallObject, endIndex: 0 | 1, point: Point, gridSize: number): void {
   const endpoints = getWallEndpoints(wall)
   const fixed = endpoints[1 - endIndex]
   const angle = Number(wall.angle ?? 0)
@@ -254,17 +295,16 @@ export function applyWallEndpoint(wall: any, endIndex: 0 | 1, point: Point, grid
  * connected walls stretch along with the move.
  */
 export function collectWallConnections(
-  canvas: any,
-  wall: any,
-  gridSize: number
-): Array<{ wall: any; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> {
+  canvas: Canvas,
+  wall: WallObject
+): Array<{ wall: WallObject; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> {
   const movedEndpoints = getWallEndpoints(wall)
   // Tight tolerance: drawing snaps endpoints to pixel-aligned coordinates, so
   // truly connected walls match within a couple of pixels. A loose tolerance
   // (e.g. gridSize/2) caused unrelated walls that just happened to sit near
   // each other to be dragged along.
   const tol = 3
-  const connections: Array<{ wall: any; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> = []
+  const connections: Array<{ wall: WallObject; movedEndIndex: 0 | 1; connectedEndIndex: 0 | 1 }> = []
   for (const other of canvas.getObjects()) {
     if (other === wall || !isWallObject(other)) continue
     const otherEndpoints = getWallEndpoints(other)
@@ -281,8 +321,8 @@ export function collectWallConnections(
   return connections
 }
 
-export function findNearestWall(canvas: any, point: LeftTop, maxDistance: number): WallSnap | null {
-  const walls = canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+export function findNearestWall(canvas: Canvas, point: LeftTop, maxDistance: number): WallSnap | null {
+  const walls = canvas.getObjects().filter((obj): obj is WallObject => !!obj && isWallObject(obj))
   let best: WallSnap | null = null
 
   for (const wall of walls) {
@@ -321,14 +361,14 @@ export type SnapResult = LeftTop & { type: SnapType }
 // to make preview feel less sticky. When false (actual clicks), use full radius
 // (12px) for snappy, forgiving placement.
 export function snapWallEndpoint(
-  canvas: any,
+  canvas: Canvas,
   point: LeftTop,
-  ignore: any,
+  ignore: WallObject | null,
   gridSize: number,
   isPreview: boolean = false,
   freeDraw: boolean = false
 ): SnapResult | null {
-  const walls = canvas.getObjects().filter((obj: any) => obj && isWallObject(obj) && obj !== ignore)
+  const walls = canvas.getObjects().filter((obj): obj is WallObject => !!obj && isWallObject(obj) && obj !== ignore)
   const zoom = typeof canvas.getZoom === 'function' ? canvas.getZoom() : 1
   const screenRadius = isPreview ? 6 : 12
   const minRadius = isPreview ? gridSize / 2 : gridSize
@@ -394,7 +434,7 @@ export type ProjectOptions = {
 
 export function projectPointToWall(
   point: LeftTop,
-  wallSnap: { bounds: WallBounds; wall?: any },
+  wallSnap: { bounds: WallBounds; wall?: WallObject },
   opts: ProjectOptions
 ): LeftTop {
   const { bounds } = wallSnap
@@ -432,7 +472,7 @@ export function projectPointToWall(
 export function getCenteredOpeningLayout(
   action: string | undefined,
   clickPoint: LeftTop,
-  wallSnap: { bounds: WallBounds; wall?: any },
+  wallSnap: { bounds: WallBounds; wall?: WallObject },
   gridSize: number,
   opts: ProjectOptions
 ): OpeningLayout {
@@ -489,11 +529,11 @@ export function getCenteredOpeningLayout(
 }
 
 export function getWallDrawLayout(
-  canvas: any,
+  canvas: Canvas,
   startPoint: LeftTop,
   currentPoint: LeftTop,
   gridSize: number,
-  ignore?: any
+  ignore?: WallObject | null
 ) {
   // Snap both endpoints to existing walls for clean joins.
   const startSnap = snapWallEndpoint(canvas, startPoint, ignore, gridSize)
@@ -549,11 +589,11 @@ export function getWallDrawLayout(
  * 0/90/180/270 within 4° so straight walls stay easy.
  */
 export function getWallDrawLayoutFree(
-  canvas: any,
+  canvas: Canvas,
   startPoint: LeftTop,
   currentPoint: LeftTop,
   gridSize: number,
-  ignore?: any
+  ignore?: WallObject | null
 ) {
   // Allow snapping both endpoints to nearby existing wall endpoints.
   const startSnap = snapWallEndpoint(canvas, startPoint, ignore, gridSize, false, true)
@@ -597,7 +637,7 @@ export function getWallDrawLayoutFree(
 export function getOpeningWallLayout(
   startPoint: LeftTop,
   currentPoint: LeftTop,
-  wallSnap: { bounds: WallBounds; wall?: any },
+  wallSnap: { bounds: WallBounds; wall?: WallObject },
   gridSize: number,
   opts: ProjectOptions
 ): OpeningLayout {
@@ -672,9 +712,9 @@ export function getOpeningWallLayout(
 }
 
 export function snapOpeningToWall(
-  target: any,
+  target: OpeningTarget,
   point: LeftTop,
-  wallSnap: { bounds: WallBounds; wall?: any },
+  wallSnap: { bounds: WallBounds; wall?: WallObject },
   gridSize: number,
   opts: ProjectOptions
 ): boolean {
@@ -695,7 +735,7 @@ export function snapOpeningToWall(
       const tCenter = clamp(proj.t, halfL, 1 - halfL)
       const cx = frame.p0.x + tCenter * (frame.p1.x - frame.p0.x)
       const cy = frame.p0.y + tCenter * (frame.p1.y - frame.p0.y)
-      const updates: Record<string, any> = {
+      const updates: OpeningUpdate = {
         left: alignToPixel(cx),
         top: alignToPixel(cy),
         width: alignToPixel(openingLength),
@@ -724,7 +764,7 @@ export function snapOpeningToWall(
 
   if (bounds.horizontal) {
     const left = clamp(projected.left - openingLength / 2, bounds.left, bounds.left + bounds.width - openingLength)
-    const updates: Record<string, any> = {
+    const updates: OpeningUpdate = {
       left: alignToPixel(left),
       top: alignToPixel(bounds.top),
       width: alignToPixel(openingLength),
@@ -749,7 +789,7 @@ export function snapOpeningToWall(
   }
 
   const top = clamp(projected.top - openingLength / 2, bounds.top, bounds.top + bounds.height - openingLength)
-  const updates: Record<string, any> = {
+  const updates: OpeningUpdate = {
     left: alignToPixel(bounds.left),
     top: alignToPixel(top),
     width: alignToPixel(bounds.width),

@@ -1,4 +1,6 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
+import type { FabricObject } from 'fabric'
+import type { JsonValue } from '../../types.js'
 import styles from './object-pane.css' with { type: 'css' }
 import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
 import './object/color.js'
@@ -22,7 +24,6 @@ export class ObjectPane extends LiteElement {
 
   private _selectionHandlersBound = false
   static styles = [styles]
-
 
   connectedCallback(): void {
     super.connectedCallback()
@@ -57,8 +58,9 @@ export class ObjectPane extends LiteElement {
     this.#syncSelectionLabel()
   }
 
-  #formatObjectLabel(object: any): string {
-    const customName = object?.name || object?.label || object?.bindingName
+  #formatObjectLabel(object: FabricObject | Record<string, JsonValue> | null | undefined): string {
+    const objectRecord = object as Record<string, JsonValue>
+    const customName = objectRecord?.name || objectRecord?.label || objectRecord?.bindingName
     if (typeof customName === 'string' && customName.trim().length > 0) return customName
     const rawType = object?.type || object?.constructor?.name || 'Object'
     if (typeof rawType !== 'string') return 'Object'
@@ -91,7 +93,7 @@ export class ObjectPane extends LiteElement {
     const hasSelection = this._selectionCount > 0
     return html`
       ${hasSelection
-    ? html`
+        ? html`
             <cadle-header>
               <div class="title">${this._activeObjectLabel}</div>
               <div
@@ -121,7 +123,7 @@ export class ObjectPane extends LiteElement {
                 @click=${this.exportPanelLabels}></custom-icon-button>
             </div>
           `
-    : html`
+        : html`
             <div class="empty-state">
               <div class="empty-card">
                 <custom-icon icon="arrow_selector_tool"></custom-icon>

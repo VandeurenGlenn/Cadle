@@ -1,5 +1,5 @@
 import { MdListItem } from '@material/web/list/list-item.js'
-import { css, customElement, property } from '@vandeurenglenn/lite'
+import { css, customElement } from '@vandeurenglenn/lite'
 
 @customElement('cadle-list-item')
 export class CadleListItem extends MdListItem {

@@ -14,7 +14,6 @@ export const group = async () => {
     field.canvas.remove(item)
   }
 
-  // @ts-ignore
   field.canvas.add(
     new Group(items, {
       left,

@@ -16,12 +16,12 @@ export class ProjectPane extends LiteElement {
   }
 
   set action(value: string) {
-    const shell = document.querySelector('app-shell') as any
+    const shell = document.querySelector('app-shell') as (HTMLElement & { action?: string }) | null
     if (shell) shell.action = value
   }
 
   set symbol(value: string) {
-    const shell = document.querySelector('app-shell') as any
+    const shell = document.querySelector('app-shell') as (HTMLElement & { symbol?: string }) | null
     if (shell) shell.symbol = value
   }
 

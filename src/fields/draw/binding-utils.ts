@@ -4,15 +4,33 @@ import {
   wireSectionToBreakerAmperage,
   type WireSection
 } from '../../helpers/wire-section.js'
+import type { Canvas } from '../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
+import type { BindingOverlay } from './binding-overlay.js'
+import type { JsonValue } from '../../types.js'
 
-export const normalizeBindingId = (value: unknown) => {
+type BindingObject = FabricObject & {
+  bindingId?: string
+  bindingRole?: string
+  bindingGroupWireSectionOverride?: boolean
+  bindingGroupWireSection?: string
+  bindingLabel?: string
+  bindingLabelOffset?: { dx: number; dy: number }
+  symbolName?: string
+  symbolPath?: string
+  situationElementType?: string
+  uuid?: string
+  index?: number
+}
+
+export const normalizeBindingId = (value: string | number | null | undefined) => {
   if (typeof value !== 'string') return ''
   return value.trim().toUpperCase()
 }
 
 export const isValidBindingId = (value: string) => /^[A-Z]\d+$/.test(value)
 
-export const inferBindingRole = (obj: any): 'switch' | 'load' | 'neutral' => {
+export const inferBindingRole = (obj: BindingObject): 'switch' | 'load' | 'neutral' => {
   const explicitRole = String(obj?.bindingRole ?? '').toLowerCase()
   if (explicitRole === 'socket') return 'load'
   if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
@@ -33,7 +51,7 @@ export const inferBindingRole = (obj: any): 'switch' | 'load' | 'neutral' => {
   return 'neutral'
 }
 
-export const displayTypeForObject = (obj: any) => {
+export const displayTypeForObject = (obj: BindingObject) => {
   if (typeof obj?.situationElementType === 'string') return obj.situationElementType
   if (typeof obj?.type === 'string' && obj.type.startsWith('Cadle')) return obj.type.replace('Cadle', '').toLowerCase()
   return String(obj?.type ?? 'symbol')
@@ -85,7 +103,7 @@ export type BindingGroup = {
   switches: number
   loads: number
   neutral: number
-  objects: any[]
+  objects: BindingObject[]
   validId: boolean
   ready: boolean
   wireSection: WireSection
@@ -104,7 +122,7 @@ export type BindingReport = {
   valid: boolean
 }
 
-export const getBindingGroups = (bindingOverlay: any, canvas: any): BindingGroup[] => {
+export const getBindingGroups = (bindingOverlay: BindingOverlay, canvas: Canvas): BindingGroup[] => {
   bindingOverlay.refreshLookup(canvas)
   const groups: BindingGroup[] = []
 
@@ -124,8 +142,9 @@ export const getBindingGroups = (bindingOverlay: any, canvas: any): BindingGroup
 
     const validId = isValidBindingId(bindingId)
     const ready = validId && switches > 0 && loads > 0
-    const overrideMember = objects.find((o: any) => !!o?.bindingGroupWireSectionOverride)
-    const explicitSection = objects.find((o: any) => !!o?.bindingGroupWireSection)?.bindingGroupWireSection
+    const overrideMember = objects.find((o) => !!(o as BindingObject).bindingGroupWireSectionOverride)
+    const explicitSection = (objects.find((o) => !!(o as BindingObject).bindingGroupWireSection) as BindingObject)
+      ?.bindingGroupWireSection
     const wireSectionOverride = !!overrideMember
     const wireSection: WireSection = wireSectionOverride
       ? (normalizeWireSection(explicitSection).section as WireSection)
@@ -212,10 +231,10 @@ export const getBindingValidationReport = (groups: BindingGroup[]): BindingRepor
   }
 }
 
-export const buildAutoOneWireSchema = (report: BindingReport, canvas: any) => {
+export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) => {
   const now = new Date(report.generatedAt)
-  const version = canvas?.version ?? '6.0.0'
-  const objects: any[] = []
+  const version = (canvas as unknown as { version?: string })?.version ?? '6.0.0'
+  const objects: Array<Record<string, JsonValue>> = []
 
   objects.push({
     type: 'i-text',
@@ -523,8 +542,8 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: any) => {
   return { version, objects }
 }
 
-export const getBoundOneLineCatalogSymbols = (bindingLookup: Map<string, any[]>) => {
-  const symbols: Array<{ name: string; path: string; metadata: Record<string, unknown> }> = []
+export const getBoundOneLineCatalogSymbols = (bindingLookup: Map<string, BindingObject[]>) => {
+  const symbols: Array<{ name: string; path: string; metadata: Record<string, JsonValue> }> = []
   for (const [bindingId, objects] of bindingLookup.entries()) {
     for (const obj of objects) {
       const role = inferBindingRole(obj)
@@ -547,7 +566,7 @@ export const getBoundOneLineCatalogSymbols = (bindingLookup: Map<string, any[]>)
   return symbols
 }
 
-export const getBindingGroupCatalogSymbols = (bindingOverlay: any, canvas: any) => {
+export const getBindingGroupCatalogSymbols = (bindingOverlay: BindingOverlay, canvas: Canvas) => {
   const groups = getBindingGroups(bindingOverlay, canvas)
   const byLetter = new Map<
     string,
@@ -576,7 +595,7 @@ export const getBindingGroupCatalogSymbols = (bindingOverlay: any, canvas: any) 
     }
   }
 
-  const symbols: Array<{ name: string; path: string; metadata: Record<string, unknown> }> = []
+  const symbols: Array<{ name: string; path: string; metadata: Record<string, JsonValue> }> = []
   for (const bucket of byLetter.values()) {
     let aggregateSection: WireSection = bucket.wireSection
     let aggregateAmps = bucket.breakerAmperage

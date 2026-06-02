@@ -1,9 +1,7 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './project.css' with { type: 'css' }
-import '@material/web/textfield/outlined-text-field.js'
-import '@material/web/iconbutton/filled-icon-button.js'
-import '@vandeurenglenn/lite-elements/drawer-item.js'
 import '@vandeurenglenn/lite-elements/selector.js'
+import '@vandeurenglenn/lite-elements/drawer-item.js'
 import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
@@ -11,7 +9,6 @@ import './../list/item.js'
 import '../../contextmenu.js'
 import { Project, UUID } from '../../types.js'
 import { addPage, getProjectData, setProjectData } from '../../api/project.js'
-import { map } from '@vandeurenglenn/lite/map.js'
 declare global {
   interface HTMLElementTagNameMap {
     'project-element': ProjectElement
@@ -25,9 +22,12 @@ export class ProjectElement extends LiteElement {
   @property({ attribute: false, consumes: 'projectKey' })
   accessor projectKey: UUID = '' as UUID
 
+  @property({ attribute: false, consumes: 'loadedPage' })
+  accessor loadedPage: string = ''
+
   currentSelected = ''
   @property({ attribute: false })
-  accessor clipboard: unknown = undefined
+  accessor clipboard = undefined
 
   @query('.page-input')
   accessor pageInput!: HTMLInputElement
@@ -39,6 +39,15 @@ export class ProjectElement extends LiteElement {
 
     const menu = this.shadowRoot?.querySelector('context-menu')
     menu?.addEventListener('selected', this.#contextMenuItemSelected.bind(this) as EventListener)
+  }
+
+  onChange(name: string): void {
+    if (name === 'loadedPage') {
+      queueMicrotask(() => {
+        const selector = this.shadowRoot?.querySelector('custom-selector') as { selected?: string } | null
+        if (selector) selector.selected = this.loadedPage
+      })
+    }
   }
 
   set addingPage(value: boolean) {
@@ -58,8 +67,9 @@ export class ProjectElement extends LiteElement {
   async handleInput() {
     const page: string = this.pageInput.value
     if (page.length > 0 && this.projectKey) {
-      addPage(this.projectKey, page, {})
+      await addPage(this.projectKey, page, {})
       this.project = await getProjectData(this.projectKey)
+      cadleShell.project = this.project
       this.pageInput.value = ''
     }
   }
@@ -109,7 +119,7 @@ export class ProjectElement extends LiteElement {
     if (menu?.open) menu.open = false
   }
 
-  #contextMenuItemSelected(event: CustomEvent) {
+  async #contextMenuItemSelected(event: CustomEvent) {
     const detail = event.detail
     const menu = this.shadowRoot?.querySelector('context-menu') as {
       currentTarget?: { dataset?: { project?: string } }
@@ -123,13 +133,20 @@ export class ProjectElement extends LiteElement {
         if (action === 'paste') {
           this.clipboard = undefined
           addPage(this.projectKey, `${page.name} copy`, page.schema)
+          this.project = await getProjectData(this.projectKey)
+          cadleShell.project = this.project
         } else if (action === 'remove') {
           delete this.project!.pages[projectKey]
           setProjectData(this.projectKey, this.project!)
+          cadleShell.project = this.project
         }
       }
+    } else if (projectKey && (action === 'move-page-up' || action === 'move-page-down')) {
+      this.#movePage(projectKey, action === 'move-page-up' ? -1 : 1)
     } else if (action === 'copy') {
       this.clipboard = this.currentSelected
+    } else if (action === 'rename-page' && projectKey) {
+      cadleShell.openRenamePageDialog(projectKey)
     } else if (action === 'clone-page' && projectKey) {
       cadleShell.openClonePageDialog(projectKey)
     }
@@ -138,15 +155,54 @@ export class ProjectElement extends LiteElement {
     this.requestRender()
   }
 
+  async #movePage(pageKey: string, direction: -1 | 1) {
+    const ordered = this.#orderedPages.map(([key, project], index) => ({ key, project, index }))
+    const currentIndex = ordered.findIndex((item) => item.key === pageKey)
+    if (currentIndex === -1) return
+    const targetIndex = currentIndex + direction
+    if (targetIndex < 0 || targetIndex >= ordered.length) return
+
+    const current = ordered[currentIndex]
+    const target = ordered[targetIndex]
+    const currentOrder = typeof current.project.order === 'number' ? current.project.order : currentIndex
+    const targetOrder = typeof target.project.order === 'number' ? target.project.order : targetIndex
+
+    current.project.order = targetOrder
+    target.project.order = currentOrder
+
+    ordered.sort((a, b) => {
+      const orderA = typeof a.project.order === 'number' ? a.project.order : Number.MAX_SAFE_INTEGER
+      const orderB = typeof b.project.order === 'number' ? b.project.order : Number.MAX_SAFE_INTEGER
+      return orderA - orderB || a.project.creationTime - b.project.creationTime
+    })
+
+    ordered.forEach((entry, index) => {
+      this.project!.pages[entry.key].order = index
+    })
+
+    await setProjectData(this.projectKey, this.project!)
+    this.project = await getProjectData(this.projectKey)
+    cadleShell.project = this.project
+    this.requestRender()
+  }
+
   static styles = [styles]
 
+  get #orderedPages() {
+    return Object.entries(this.project?.pages ?? {}).sort(([_, a], [__, b]) => {
+      const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
+      const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
+      return orderA - orderB || a.creationTime - b.creationTime
+    })
+  }
+
   get #projectTemplate() {
-    return Object.entries(this.project?.pages ?? {}).map(
+    return this.#orderedPages.map(
       ([key, project]) => html`
         <custom-drawer-item
           .headline=${project.name}
           data-project=${key}
-          @click=${async (_event: Event) => {
+          @click=${async () => {
             await cadleShell.savePage()
             cadleShell.loadPage(key)
             location.hash = '#!/draw'
@@ -158,13 +214,20 @@ export class ProjectElement extends LiteElement {
   }
 
   render() {
+    console.log(this.loadedPage)
+    const projectTemplate = this.#projectTemplate
+    console.log({ projectTemplate })
     return html`
-      <custom-selector> ${this.project?.pages ? this.#projectTemplate : ''} </custom-selector>
+      <custom-selector
+        .selected=${this.loadedPage}
+        attr-for-selected="data-project">
+        ${projectTemplate}
+      </custom-selector>
       <flex-row class="input-container">
         <input class="page-input" />
         <custom-icon-button
           class="add-page"
-          icon="${this.addingPage ? 'check' : 'add'}"
+          .icon="${this.addingPage ? 'check' : 'add'}"
           @click=${() => (this.addingPage = !this.addingPage)}></custom-icon-button>
       </flex-row>
       <context-menu>
@@ -184,6 +247,30 @@ export class ProjectElement extends LiteElement {
             slot="start"
             icon="content_paste"></custom-icon>
           <p>paste</p>
+        </custom-list-item>
+        <custom-list-item
+          type="menu"
+          action="move-page-up">
+          <custom-icon
+            slot="start"
+            icon="arrow_upward"></custom-icon>
+          <p>move up</p>
+        </custom-list-item>
+        <custom-list-item
+          type="menu"
+          action="move-page-down">
+          <custom-icon
+            slot="start"
+            icon="arrow_downward"></custom-icon>
+          <p>move down</p>
+        </custom-list-item>
+        <custom-list-item
+          type="menu"
+          action="rename-page">
+          <custom-icon
+            slot="start"
+            icon="edit"></custom-icon>
+          <p>rename</p>
         </custom-list-item>
         <custom-list-item
           type="menu"

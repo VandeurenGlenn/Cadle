@@ -33,13 +33,13 @@ export const tool = (event: KeyboardEvent) => {
   if (!key || !(key in TOOL_MAP)) return
   const action = TOOL_MAP[key]
   // End any active wall chain when switching tools.
-  const field = (cadleShell as any)?.field
-  if (field && typeof field.endWallChain === 'function') field.endWallChain()
-  cadleShell.action = action
-  if (cadleShell.field?.canvas) {
-    cadleShell.field.canvas.isDrawingMode = false
-    cadleShell.field.canvas.discardActiveObject?.()
-    cadleShell.field.canvas.requestRenderAll?.()
+  const field = window.cadleShell?.field as { endWallChain?: () => void } | undefined
+  field?.endWallChain?.()
+  if (window.cadleShell) window.cadleShell.action = action
+  if (window.cadleShell?.field?.canvas) {
+    window.cadleShell.field.canvas.isDrawingMode = false
+    window.cadleShell.field.canvas.discardActiveObject?.()
+    window.cadleShell.field.canvas.requestRenderAll?.()
   }
 }
 

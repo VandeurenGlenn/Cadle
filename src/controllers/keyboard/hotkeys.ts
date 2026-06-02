@@ -1,7 +1,6 @@
 import { moveDown, moveLeft, moveRight, moveUp } from '../../utils.js'
 import { isMac } from './utils.js'
 import state from '../../state.js'
-import { print, isPrint } from './commands/print.js'
 import { selectAll, isSelectAll, keys as selectAllKeys } from './commands/select-all.js'
 import { cut, isCut, keys as cutKeys } from './commands/cut.js'
 import { isGroup, group, keys as groupKeys } from './commands/group.js'
@@ -27,7 +26,7 @@ import {
 } from './commands/wall-chain-backspace.js'
 
 // note whenever shiftKey is pressed it will return upperkey
-export const getHotkey = (event: KeyboardEvent): undefined | Function => {
+export const getHotkey = (event: KeyboardEvent): undefined | ((event: KeyboardEvent) => void | Promise<void>) => {
   // if (isPrint(event)) return print
   if (isSelectAll(event)) return selectAll
   if (isCopy(event)) return copy

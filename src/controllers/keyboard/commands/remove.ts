@@ -1,5 +1,8 @@
+import type { FabricObject } from 'fabric'
 import { canvas, getActiveObjects, history } from '../../../utils.js'
 import { isMac } from '../utils.js'
+
+type FabricObjectWithChildren = FabricObject & { getObjects?: () => FabricObject[] }
 
 export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) =>
   key === 'Delete' ? true : key === 'Backspace' && (isMac ? metaKey : ctrlKey)
@@ -7,12 +10,12 @@ export const isRemove = ({ metaKey, ctrlKey, key }: KeyboardEvent) =>
 export const remove = () => {
   canvas.shouldRender = true
 
-  const objects = canvas.getActiveObjects()
+  const objects = getActiveObjects()
   canvas.discardActiveObject()
   // todo is this really needed?
   for (const object of objects) {
     if (object.type === 'activeSelection') {
-      const selectionObjects = (object as any).getObjects?.() ?? []
+      const selectionObjects = (object as FabricObjectWithChildren).getObjects?.() ?? []
       for (const _object of selectionObjects) {
         canvas.remove(_object)
       }

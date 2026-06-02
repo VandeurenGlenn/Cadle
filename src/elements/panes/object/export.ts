@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './export.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/button/filled-button.js'
@@ -8,9 +8,8 @@ export class ObjectExport extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   static styles = [styles]
 
-
   firstRender(): void {
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
   }
 
   #onClick = (e: Event) => {

@@ -23,7 +23,6 @@ export default () => {
 
   console.log('add')
 
-  // @ts-ignore
   canvas.add(
     new Textbox(state.text.current, {
       fontFamily: 'system-ui',

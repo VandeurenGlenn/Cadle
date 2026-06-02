@@ -11,7 +11,12 @@
 //
 // Behavior MUST stay identical to the original inlined implementation.
 import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
 import { getViewportBoundsForObject } from './overlay-geometry.js'
+
+type CanvasWithContextTop = Canvas & {
+  contextTop?: CanvasRenderingContext2D
+}
 
 export interface MeasurementOverlayDeps {
   /** Always called before the architectural dimensions, even when the
@@ -96,8 +101,8 @@ export class MeasurementOverlay {
 
       const isHorizontal = width >= height
       const sceneLength = isHorizontal
-        ? Math.abs(Number((obj as any)?.width ?? 0) * Number((obj as any)?.scaleX ?? 1))
-        : Math.abs(Number((obj as any)?.height ?? 0) * Number((obj as any)?.scaleY ?? 1))
+        ? Math.abs(Number(obj.width ?? 0) * Number(obj.scaleX ?? 1))
+        : Math.abs(Number(obj.height ?? 0) * Number(obj.scaleY ?? 1))
       const label = formatDimensionLabel(sceneLength)
 
       segments.push({
@@ -147,14 +152,16 @@ export class MeasurementOverlay {
 
   // ── Internals ──────────────────────────────────────────────────────────
   #getContext(canvas: Canvas): CanvasRenderingContext2D | undefined {
-    const topContext = (canvas as any).contextTop as CanvasRenderingContext2D | undefined
+    const topContext = (canvas as CanvasWithContextTop).contextTop
     if (!topContext) return undefined
     canvas.clearContext(topContext)
     return topContext
   }
 
   #getTargets(canvas: Canvas) {
-    return canvas.getObjects().filter((obj: any) => obj && (obj.type === 'CadleWall' || obj.type === 'CadleWindow'))
+    return canvas
+      .getObjects()
+      .filter((obj): obj is FabricObject => !!obj && (obj.type === 'CadleWall' || obj.type === 'CadleWindow'))
   }
 }
 

@@ -1,14 +1,12 @@
-import { canvas, clipboard, getActiveObjects } from '../../../utils.js'
+import { canvas } from '../../../utils.js'
 
 export const isEscape = ({ key }: KeyboardEvent) => key === 'Escape'
 
 export const escape = () => {
   // End an in-flight wall chain first so Esc always cancels the next
   // segment immediately (matches Sweet Home 3D / AutoCAD).
-  const field = (cadleShell as any)?.field
-  if (field && typeof field.endWallChain === 'function') {
-    field.endWallChain()
-  }
+  const field = window.cadleShell?.field as { endWallChain?: () => void } | undefined
+  field?.endWallChain?.()
 
   if (canvas.getActiveObjects()?.length) {
     canvas.discardActiveObject()

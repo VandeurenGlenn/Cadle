@@ -27,6 +27,7 @@ export default [
       'object-curly-spacing': ['error', 'always'],
       'comma-dangle': ['error', 'never'],
       'arrow-parens': ['error', 'always'],
+      '@typescript-eslint/no-explicit-any': ['warn', { ignoreRestArgs: true }],
       'lines-between-class-members': ['error', 'always', { exceptAfterSingleLine: true }],
       'padding-line-between-statements': [
         'error',

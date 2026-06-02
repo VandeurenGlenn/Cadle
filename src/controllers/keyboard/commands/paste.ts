@@ -1,15 +1,19 @@
+import type { FabricObject } from 'fabric'
 import state from '../../../state.js'
-import { clipboard, canvas, positionObject, snapToGrid } from '../../../utils.js'
+import { clipboard, canvas, snapToGrid } from '../../../utils.js'
 import { isMac } from '../utils.js'
 
 export const isPaste = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'v' && (isMac ? metaKey : ctrlKey)
 
 export const paste = async () => {
-  const canvas_ = canvas as any
-  const { left, top } = positionObject()
-  const cloned = await clipboard.object?.clone()
+  const cloned = (await clipboard.object?.clone()) as
+    | (FabricObject & {
+        canvas?: typeof canvas
+        forEachObject?: (fn: (obj: FabricObject) => void) => void
+      })
+    | null
 
-  await canvas_.discardActiveObject()
+  await canvas.discardActiveObject()
 
   if (cloned) {
     const pointer = state.mouse.position
@@ -22,20 +26,24 @@ export const paste = async () => {
     cloned.set(currentPoints)
     if (cloned.type === 'activeSelection') {
       // active selection needs a reference to the canvas.
-      cloned.canvas = canvas_
-      ;(cloned as any).forEachObject(function (obj) {
-        canvas_.add(obj)
+      const activeSelection = cloned as FabricObject & {
+        canvas?: typeof canvas
+        forEachObject?: (fn: (obj: FabricObject) => void) => void
+      }
+      activeSelection.canvas = canvas
+      activeSelection.forEachObject?.(function (obj: FabricObject) {
+        canvas.add(obj)
       })
       // this should solve the unselectability
       cloned.setCoords()
     } else {
-      canvas_.add(cloned)
+      canvas.add(cloned)
     }
 
-    canvas_.shouldRender = true
-    canvas_.requestRenderAll()
-    canvas_.history.push({ type: 'add', item: cloned })
-    await canvas_.setActiveObject(cloned)
+    canvas.shouldRender = true
+    canvas.requestRenderAll()
+    canvas.history.push({ type: 'add', item: cloned })
+    await canvas.setActiveObject(cloned)
   }
 }
 

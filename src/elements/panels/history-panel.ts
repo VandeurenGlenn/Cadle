@@ -1,11 +1,10 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './history-panel.css' with { type: 'css' }
 @customElement('history-panel')
 export class HistoryPanel extends LiteElement {
   @property({ type: Boolean, reflect: true }) accessor open = false
   @property({ type: Array }) accessor entries: Array<{ id: string; label: string; timestamp: number }> = []
   static styles = [styles]
-
 
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
@@ -27,9 +26,9 @@ export class HistoryPanel extends LiteElement {
         </div>
         <div class="content">
           ${this.entries.length === 0
-    ? html`<div class="empty">No history snapshots yet. Start drawing or editing to capture states.</div>`
-    : this.entries.map(
-      (entry) => html`
+            ? html`<div class="empty">No history snapshots yet. Start drawing or editing to capture states.</div>`
+            : this.entries.map(
+                (entry) => html`
                   <div class="entry">
                     <div class="entry-title">
                       <strong>${entry.label}</strong>
@@ -38,7 +37,7 @@ export class HistoryPanel extends LiteElement {
                     <button @click=${() => this.#restore(entry.id)}>Restore this state</button>
                   </div>
                 `
-    )}
+              )}
         </div>
       </div>
     `

@@ -2,6 +2,11 @@ import { FabricObject } from 'fabric'
 
 export type UUID = `${string}-${string}-${string}-${string}-${string}`
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject
+export interface JsonObject {
+  [key: string]: JsonValue
+}
+
 export type ProjectInput = {
   name: string
   installer: {
@@ -24,6 +29,7 @@ export interface Project extends ProjectInput {
       creationTime: EpochTimeStamp
       name: string
       schema: { version: string; objects: object[] }
+      order?: number
     }
   }
 }
@@ -31,12 +37,24 @@ export interface Project extends ProjectInput {
 export type Projects = [string, string][]
 
 export type HistoryAction = {
-  type: 'add' | 'remove' | 'modify' | 'move'
-  objects: FabricObject[]
+  type:
+    | 'add'
+    | 'remove'
+    | 'modify'
+    | 'move'
+    | 'flipX'
+    | 'flipY'
+    | 'rotate-up'
+    | 'rotate-down'
+    | 'scale-down'
+    | 'scale-up'
+    | 'move-left'
+    | 'move-right'
+  objects?: FabricObject[]
   object?: FabricObject
   item?: FabricObject
-  prevState?: any
-  newState?: any
+  prevState?: JsonValue
+  newState?: JsonValue
 }
 
 export declare type Catalog = {
@@ -44,6 +62,6 @@ export declare type Catalog = {
   symbols: {
     name: string
     path: string
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, JsonValue>
   }[]
 }[]

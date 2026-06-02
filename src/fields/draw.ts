@@ -1,5 +1,7 @@
 import { LiteElement, html, css, property, customElement, query } from '@vandeurenglenn/lite'
-import { Canvas, Circle, Line, IText, loadSVGFromURL, util, PencilBrush } from './../fabric-imports.js'
+import { Canvas, Circle, Line, Textbox, PencilBrush } from './../fabric-imports.js'
+import type { FabricObject } from 'fabric'
+import type { JsonValue, HistoryAction } from '../types.js'
 import { AppShell } from '../shell.js'
 import type { Project } from '../types.js'
 import Rect from './../symbols/rectangle.js'
@@ -30,31 +32,37 @@ import {
   getCenteredOpeningLayout,
   snapOpeningToWall,
   snapWallEndpoint,
-  LeftTop
+  LeftTop,
+  type WallObject,
+  type WallSnap
 } from './draw/wall-snap.js'
 import { OpeningHoverGhost } from './draw/opening-placement.js'
 import { sceneToViewport } from './draw/overlay-geometry.js'
+import type { BindingOverlay } from './draw/binding-overlay.js'
 import { renderArchitecturalMeasurements, getMeasurementOverlayContext } from './draw/measurement-utils.js'
-import { canvasInk } from '../symbols/canvas-tokens.js'
+import { canvasInk, canvasSurface, invertColor } from '../symbols/canvas-tokens.js'
 import {
   BINDING_AND_SYMBOL_PROPS,
   instantiateSpecials,
   partitionRawObjects,
-  reapplyBindingProps
+  reapplyBindingProps,
+  type SerializedObject
 } from './draw/json-io.js'
 import { ZoomController } from './draw/zoom-controller.js'
-import styles from './draw.css' with { type: 'css' }
 // import 'fabric-history';
-
-declare type x = number
-declare type y = number
-declare type left = number
-declare type top = number
 
 declare global {
   interface HTMLElementTagNameMap {
     'draw-field': DrawField
   }
+}
+
+type DrawFabricObject = FabricObject & Record<string, JsonValue>
+
+type PointerInput = {
+  scenePoint?: { x?: number; y?: number }
+  e?: PointerEvent
+  pointer?: { x?: number; y?: number }
 }
 
 @customElement('draw-field')
@@ -66,12 +74,12 @@ export class DrawField extends LiteElement {
   readonly #a4LandscapeHeight = 794
   readonly #a4LandscapeAspect = this.#a4LandscapeWidth / this.#a4LandscapeHeight
   #startPoints: { left: number; top: number } = { left: 0, top: 0 }
-  #drawSnapWall: any = null
+  #drawSnapWall: WallSnap | null = null
   #openingHoverGhost = new OpeningHoverGhost()
-  #lastMoveSnap = new WeakMap<any, { left: number; top: number }>()
+  #lastMoveSnap = new WeakMap<FabricObject, { left: number; top: number }>()
   #overlayPointer: LeftTop | null = null
   #keydownListener = (event: KeyboardEvent) => this._keydown(event)
-  #bindingLookup = new Map<string, any[]>()
+  #bindingLookup = new Map<string, DrawFabricObject[]>()
   #bindingLookupVersion = 0
   #bindingLookupScheduled = false
   #measurementOverlayScheduled = false
@@ -87,7 +95,7 @@ export class DrawField extends LiteElement {
   namingLetterIndex = 0
   _selectionWasTrue = false
   _drawState?: string
-  _currentGroup: any
+  _currentGroup: FabricObject | null = null
 
   @property({ type: Number })
   accessor gridSize: number
@@ -99,7 +107,7 @@ export class DrawField extends LiteElement {
   accessor project: Project | null = null
 
   @property({ attribute: false, consumes: 'loadedPage' })
-  accessor loadedPage
+  accessor loadedPage = ''
 
   @property({ type: Boolean })
   accessor showMeasurements: boolean = false
@@ -108,14 +116,15 @@ export class DrawField extends LiteElement {
   accessor remoteCursors: Array<{ id: string; name: string; color: string; x: number; y: number }> = []
 
   @query('context-menu')
-  accessor contextMenu!: any
+  accessor contextMenu!: (HTMLElement & { open?: boolean }) | null
 
   @query('.canvas-container')
-  accessor canvasContainer!: any
+  accessor canvasContainer!: HTMLElement | null
 
-  _current: any = null
+  _current: FabricObject | null = null
+  _selectedSymbolPrototype: FabricObject | null = null
 
-  #historyEntries: Array<{ id: string; label: string; timestamp: number; json: unknown }> = []
+  #historyEntries: Array<{ id: string; label: string; timestamp: number; json: JsonValue }> = []
   #historyRecordingEnabled = true
   #historySnapshotCounter = 0
 
@@ -261,7 +270,7 @@ export class DrawField extends LiteElement {
     return Math.round(value / this.gridSize) * this.gridSize
   }
 
-  #extractPointer(input: any) {
+  #extractPointer(input: PointerInput) {
     if (input?.scenePoint) {
       return {
         x: Number(input.scenePoint.x ?? 0),
@@ -269,7 +278,7 @@ export class DrawField extends LiteElement {
       }
     }
 
-    const rawEvent = input?.e ?? input
+    const rawEvent = (input?.e ?? input) as PointerEvent | null
     if (!rawEvent) return { x: 0, y: 0 }
 
     try {
@@ -286,20 +295,105 @@ export class DrawField extends LiteElement {
     }
   }
 
-  #normalizeBindingId(value: unknown) {
+  #normalizeBindingId(value) {
     return normalizeBindingId(value)
   }
 
   getBindingGroups() {
-    return getBindingGroups(this, this.#canvas)
+    return getBindingGroups(this as unknown as BindingOverlay, this.#canvas)
   }
 
   getBindingGroupCatalogSymbols() {
-    return getBindingGroupCatalogSymbols(this, this.#canvas)
+    return getBindingGroupCatalogSymbols(this as unknown as BindingOverlay, this.#canvas)
   }
 
   getBindingValidationReport() {
     return getBindingValidationReport(this.getBindingGroups())
+  }
+
+  async #promptBindingForObject(object: FabricObject) {
+    const bindingObject = object as FabricObject & { bindingId?: string; bindingLabel?: string }
+    const defaultBindingId = this.#normalizeBindingId(String(bindingObject.bindingId ?? ''))
+    const defaultLabel = String(bindingObject.bindingLabel ?? bindingObject.bindingId ?? '')
+    const suggestions = this.#buildBindingIdSuggestions(defaultBindingId)
+    const dialog = document.createElement('dialog')
+    dialog.style.padding = '0'
+    dialog.style.border = 'none'
+    dialog.style.borderRadius = '18px'
+    dialog.style.overflow = 'hidden'
+    dialog.style.minWidth = '320px'
+    dialog.innerHTML = `
+      <form id="binding-form" method="dialog" style="display:flex;flex-direction:column;gap:1rem;padding:1.5rem;background:var(--md-sys-surface);color:var(--md-sys-on-surface);font:inherit;">
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          <strong>Assign binding</strong>
+          <span style="color:var(--md-sys-on-surface-disabled);font-size:0.9rem;">Enter a binding ID and optional label for this object.</span>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:0.25rem;">
+          <span>Binding ID</span>
+          <input id="binding-id" list="binding-suggestions" value="${defaultBindingId}" style="padding:0.75rem 0.9rem;border:1px solid var(--md-sys-outline);border-radius:12px;outline:none;font:inherit;" autocomplete="off" />
+          <datalist id="binding-suggestions">
+            ${suggestions.map((suggestion) => `<option value="${suggestion}"></option>`).join('')}
+          </datalist>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:0.25rem;">
+          <span>Label</span>
+          <input id="binding-label" value="${defaultLabel}" style="padding:0.75rem 0.9rem;border:1px solid var(--md-sys-outline);border-radius:12px;outline:none;font:inherit;" />
+        </label>
+        <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+          <button type="submit" value="cancel" style="padding:0.75rem 1rem;border:none;border-radius:12px;background:transparent;color:var(--md-sys-primary);cursor:pointer;">Cancel</button>
+          <button type="submit" value="save" style="padding:0.75rem 1rem;border:none;border-radius:12px;background:var(--md-sys-primary);color:var(--md-sys-on-primary);cursor:pointer;">Save</button>
+        </div>
+      </form>
+    `
+    document.body.appendChild(dialog)
+    return new Promise<void>((resolve) => {
+      const onClose = () => {
+        const form = dialog.querySelector('#binding-form') as HTMLFormElement | null
+        const returnValue = dialog.returnValue
+        if (returnValue === 'save' && form) {
+          const bindingInput = dialog.querySelector('#binding-id') as HTMLInputElement | null
+          const labelInput = dialog.querySelector('#binding-label') as HTMLInputElement | null
+          const bindingId = this.#normalizeBindingId(bindingInput?.value ?? '')
+          const bindingLabel = (labelInput?.value?.trim() || bindingId).trim()
+          object.set({
+            bindingId: bindingId || undefined,
+            bindingLabel: bindingLabel || undefined
+          })
+          this.canvas.requestRenderAll()
+        }
+
+        dialog.removeEventListener('close', onClose)
+        dialog.remove()
+        resolve()
+      }
+
+      dialog.addEventListener('close', onClose)
+
+      dialog.showModal()
+      const input = dialog.querySelector('#binding-id') as HTMLInputElement | null
+      input?.focus()
+      input?.select()
+    })
+  }
+
+  #buildBindingIdSuggestions(currentId: string) {
+    const groups = this.getBindingGroups()
+    const existing = new Set(groups.map((group) => this.#normalizeBindingId(group.bindingId)))
+    const suggestions: string[] = []
+    for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      for (let number = 1; number <= 12; number += 1) {
+        const candidate = `${letter}${number}`
+        if (!existing.has(candidate)) {
+          suggestions.push(candidate)
+          if (suggestions.length >= 8) return suggestions
+        }
+      }
+    }
+
+    if (currentId && !suggestions.includes(currentId)) {
+      suggestions.unshift(currentId)
+    }
+    return suggestions
   }
 
   buildAutoOneWireSchema() {
@@ -313,7 +407,7 @@ export class DrawField extends LiteElement {
   async restoreHistoryEntry(id: string) {
     const entry = this.#historyEntries.find((item) => item.id === id)
     if (!entry) return
-    await this.fromJSON(entry.json as { objects?: any[]; version: string })
+    await this.fromJSON(entry.json as { objects?: JsonValue[]; version: string })
   }
 
   refreshLookup(canvas: Canvas) {
@@ -332,7 +426,7 @@ export class DrawField extends LiteElement {
     requestAnimationFrame(() => {
       try {
         const snapshot = this.toJSON()
-        if (!snapshot || !Array.isArray((snapshot as any).objects)) return
+        if (!snapshot || !Array.isArray((snapshot as { objects?: JsonValue[] }).objects)) return
 
         this.#historySnapshotCounter += 1
         this.#historyEntries.unshift({
@@ -362,8 +456,8 @@ export class DrawField extends LiteElement {
   #refreshBindingLookup() {
     this.#bindingLookup.clear()
 
-    for (const obj of this.#canvas.getObjects()) {
-      const bindingId = this.#normalizeBindingId((obj as any)?.bindingId)
+    for (const obj of this.#canvas.getObjects() as DrawFabricObject[]) {
+      const bindingId = this.#normalizeBindingId(obj.bindingId)
       if (!bindingId) continue
 
       const bucket = this.#bindingLookup.get(bindingId)
@@ -468,7 +562,14 @@ export class DrawField extends LiteElement {
   #drawWallSnapGhost(ctx: CanvasRenderingContext2D, currentPoints: LeftTop | null) {
     if (!this.drawing || this.action !== 'draw-wall' || !currentPoints) return
 
-    const snap = snapWallEndpoint(this.canvas, currentPoints, this._current, this.gridSize, true, this.freeDraw)
+    const snap = snapWallEndpoint(
+      this.canvas,
+      currentPoints,
+      this._current as WallObject | null,
+      this.gridSize,
+      true,
+      this.freeDraw
+    )
     if (!snap) return
 
     const point = sceneToViewport(this.#canvas, { x: snap.left, y: snap.top })
@@ -493,6 +594,7 @@ export class DrawField extends LiteElement {
       ctx.lineTo(point.x, point.y + radius * 0.8)
       ctx.stroke()
     }
+
     ctx.restore()
 
     const label =
@@ -525,7 +627,13 @@ export class DrawField extends LiteElement {
   #drawWallPreviewDimensions(ctx: CanvasRenderingContext2D, currentPoints: LeftTop | null) {
     if (!this.drawing || this.action !== 'draw-wall' || !currentPoints) return
 
-    const wallLayout = getWallDrawLayout(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
+    const wallLayout = getWallDrawLayout(
+      this.canvas,
+      this.#startPoints,
+      currentPoints,
+      this.gridSize,
+      this._current as WallObject | null
+    )
     if (!wallLayout) return
 
     const label = this.#formatDimensionLabel(
@@ -578,7 +686,7 @@ export class DrawField extends LiteElement {
   #drawWallMarkers(ctx: CanvasRenderingContext2D) {
     if (this.action !== 'draw-wall') return
 
-    const walls = this.#canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+    const walls = this.#canvas.getObjects().filter((obj): obj is WallObject => isWallObject(obj))
     const inkColor = canvasInk() || '#000'
     ctx.save()
     ctx.font = '600 11px "IBM Plex Sans", "Segoe UI", sans-serif'
@@ -588,7 +696,6 @@ export class DrawField extends LiteElement {
 
     for (const wall of walls) {
       const endpoints = getWallEndpoints(wall)
-      const frame = getWallAxisFrame(wall)
       const midpoint = {
         x: (endpoints[0].x + endpoints[1].x) / 2,
         y: (endpoints[0].y + endpoints[1].y) / 2
@@ -625,7 +732,7 @@ export class DrawField extends LiteElement {
   }
 
   #drawWallCornerCaps(ctx: CanvasRenderingContext2D) {
-    const walls = this.#canvas.getObjects().filter((obj: any) => obj && isWallObject(obj))
+    const walls = this.#canvas.getObjects().filter((obj): obj is WallObject => isWallObject(obj))
     if (!walls.length) return
 
     const endpoints: Array<{ x: number; y: number; thickness: number }> = []
@@ -659,6 +766,7 @@ export class DrawField extends LiteElement {
       ctx.arc(screenPoint.x, screenPoint.y, cap.radius, 0, Math.PI * 2)
       ctx.fill()
     }
+
     ctx.restore()
   }
 
@@ -699,8 +807,10 @@ export class DrawField extends LiteElement {
     this.#width = defaultWidth
     this.#height = defaultHeight
 
-    // @ts-ignore
-    this.#canvas = new Canvas(this.shadowRoot.querySelector('canvas'), {
+    const canvasElement = this.shadowRoot?.querySelector('canvas') as HTMLCanvasElement | null
+    if (!canvasElement) return
+
+    this.#canvas = new Canvas(canvasElement, {
       selection: true,
       selectionKey: 'shiftKey',
       evented: true,
@@ -708,7 +818,7 @@ export class DrawField extends LiteElement {
       height: defaultHeight,
       preserveObjectStacking: true
     })
-    ;(this.#canvas as any).history = []
+    ;(this.#canvas as unknown as { history: HistoryAction[] }).history = []
 
     this.gridSize = state.gridSize
 
@@ -768,7 +878,7 @@ export class DrawField extends LiteElement {
     })
 
     this.#canvas.on('object:scaling', (options) => {
-      const target = options.target as any
+      const target = options.target as FabricObject | null
       if (!target) return
 
       const baseWidth = Math.abs(Number(target.width ?? 0))
@@ -788,8 +898,8 @@ export class DrawField extends LiteElement {
 
       if (Math.abs(nextScaleX - prevScaleX) < 0.0001 && Math.abs(nextScaleY - prevScaleY) < 0.0001) return
 
-      const originX = (target.originX ?? 'left') as any
-      const originY = (target.originY ?? 'top') as any
+      const originX = String(target.originX ?? 'left') as 'left' | 'center' | 'right'
+      const originY = String(target.originY ?? 'top') as 'top' | 'center' | 'bottom'
       const originPoint = target.getPointByOrigin(originX, originY)
 
       target.set({ scaleX: nextScaleX, scaleY: nextScaleY })
@@ -842,6 +952,18 @@ export class DrawField extends LiteElement {
   }
 
   #contextmenu = (event) => {
+    if (this.action?.startsWith('draw')) {
+      event.preventDefault()
+      this.drawing = false
+      this._current = undefined
+      this._selectedSymbolPrototype = null
+      this.canvas.selection = true
+      this.#canvas.isDrawingMode = false
+      this.action = undefined
+      this.canvas.renderAll()
+      return
+    }
+
     const object = this.canvas.getActiveObject()
     if (object) {
       event.preventDefault()
@@ -855,8 +977,11 @@ export class DrawField extends LiteElement {
     }
   }
 
-  _dblclick() {
-    console.log('dbl')
+  async _dblclick() {
+    const activeObject = this.canvas.getActiveObject() as FabricObject | null
+    if (!activeObject || this.drawing || this._current) return
+
+    await this.#promptBindingForObject(activeObject)
   }
 
   _drop(e) {
@@ -874,15 +999,28 @@ export class DrawField extends LiteElement {
     return { left: snappedLeft, top: snappedTop }
   }
 
-  _mousedown(e) {
+  async _mousedown(e) {
     if (this.action === 'draw-wall' && this.drawing && this._current) {
       const pointer = this.#extractPointer(e)
       const snappedPointer = this.snapToGrid({ left: pointer.x, top: pointer.y })
-      const snap = snapWallEndpoint(this.canvas, snappedPointer, this._current, this.gridSize, false, this.freeDraw)
+      const snap = snapWallEndpoint(
+        this.canvas,
+        snappedPointer,
+        this._current as WallObject | null,
+        this.gridSize,
+        false,
+        this.freeDraw
+      )
       const endPoint = { left: snap.left, top: snap.top }
       const wallLayout = this.freeDraw
-        ? getWallDrawLayoutFree(this.canvas, this.#startPoints, endPoint, this.gridSize, this._current)
-        : getWallDrawLayout(this.canvas, this.#startPoints, endPoint, this.gridSize, this._current)
+        ? getWallDrawLayoutFree(
+            this.canvas,
+            this.#startPoints,
+            endPoint,
+            this.gridSize,
+            this._current as WallObject | null
+          )
+        : getWallDrawLayout(this.canvas, this.#startPoints, endPoint, this.gridSize, this._current as WallObject | null)
       this._current.set(wallLayout)
       this._current.set({ fill: cadleShell._currentColor || canvasInk() || '#000', opacity: 1 })
       this._current = undefined
@@ -892,14 +1030,37 @@ export class DrawField extends LiteElement {
       return
     }
 
+    if (this.action === 'draw-symbol' && !this._current && !this.drawing && !this.moving) {
+      await this.#instantiateSelectedSymbol()
+    }
+
+    if (this.action === 'draw-text' && !this._current && !this.drawing && !this.moving) {
+      const pointer = this.#extractPointer(e)
+      const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
+      this._current = new Textbox(state.text.current, {
+        fontFamily: 'system-ui',
+        fontSize: 12,
+        fontStyle: 'normal',
+        fontWeight: 'normal',
+        controls: false,
+        left: Math.abs(currentPoints.left),
+        top: Math.abs(currentPoints.top)
+      })
+    }
+
     if (this.action === 'draw-symbol' || this.action === 'draw-text') {
       if (this._current && !this.drawing && !this.moving) {
         const pointer = this.#extractPointer(e)
         const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
-        this._current.set({ left: Math.abs(currentPoints.left), top: Math.abs(currentPoints.top) })
-        if (!this.canvas.getObjects().includes(this._current)) {
-          this.canvas.add(this._current)
-        }
+        this._current.set({
+          left: Math.abs(currentPoints.left),
+          top: Math.abs(currentPoints.top),
+          opacity: 1,
+          selectable: true,
+          evented: true
+        })
+        this.#ensureCurrentOnCanvas()
+
         this.drawing = true
       }
     }
@@ -936,6 +1097,7 @@ export class DrawField extends LiteElement {
         case 'move':
         case 'draw-symbol':
         case 'draw-text':
+        case '':
         case null:
         case undefined:
           this.canvas.selection = true
@@ -987,7 +1149,6 @@ export class DrawField extends LiteElement {
             // this._current.color = '#555'
             // this._current.width = 1;
             this.#canvas.isDrawingMode = true
-            // @ts-ignore
             this.#canvas.freeDrawingBrush = new PencilBrush(this.#canvas)
             this.#canvas.freeDrawingBrush.color = state.styling.stroke || '#555'
             this.#canvas.freeDrawingBrush.width = 2
@@ -1058,6 +1219,9 @@ export class DrawField extends LiteElement {
                   snap: (value: number) => this.snap(value)
                 })
               : null
+            const openingBackground = this.#drawSnapWall?.wall?.fill
+              ? invertColor(String(this.#drawSnapWall.wall.fill))
+              : canvasSurface()
             this._current = new CadleWindow({
               ...sharedDrawOptions,
               ...(wallLayout ?? {
@@ -1066,6 +1230,7 @@ export class DrawField extends LiteElement {
                 width: pointer.x - this.#startPoints.left,
                 height: pointer.y - this.#startPoints.top
               }),
+              backgroundColor: openingBackground,
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
@@ -1076,6 +1241,9 @@ export class DrawField extends LiteElement {
                   snap: (value: number) => this.snap(value)
                 })
               : null
+            const openingBackground = this.#drawSnapWall?.wall?.fill
+              ? invertColor(String(this.#drawSnapWall.wall.fill))
+              : canvasSurface()
             this._current = new CadleDoor({
               ...sharedDrawOptions,
               ...(wallLayout ?? {
@@ -1085,6 +1253,7 @@ export class DrawField extends LiteElement {
                 height: pointer.y - this.#startPoints.top,
                 wallThickness: undefined
               }),
+              backgroundColor: openingBackground,
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
@@ -1095,6 +1264,9 @@ export class DrawField extends LiteElement {
                   snap: (value: number) => this.snap(value)
                 })
               : null
+            const openingBackground = this.#drawSnapWall?.wall?.fill
+              ? invertColor(String(this.#drawSnapWall.wall.fill))
+              : canvasSurface()
             this._current = new CadleGate({
               ...sharedDrawOptions,
               ...(wallLayout ?? {
@@ -1103,6 +1275,7 @@ export class DrawField extends LiteElement {
                 width: pointer.x - this.#startPoints.left,
                 height: pointer.y - this.#startPoints.top
               }),
+              backgroundColor: openingBackground,
               strokeWidth: 1,
               strokeDashArray: [5, 5]
             })
@@ -1197,7 +1370,8 @@ export class DrawField extends LiteElement {
       const absDy = Math.abs(dy)
       const orientationThreshold = 1.15
       const previousHorizontal =
-        this._current.doorSwingDirection === 'up' || this._current.doorSwingDirection === 'down'
+        (this._current as { doorSwingDirection?: string }).doorSwingDirection === 'up' ||
+        (this._current as { doorSwingDirection?: string }).doorSwingDirection === 'down'
 
       // Avoid jitter around diagonal drags by keeping previous orientation inside a deadzone.
       let isHorizontal = previousHorizontal
@@ -1246,14 +1420,25 @@ export class DrawField extends LiteElement {
 
       this._current.set({
         radius: Math.abs(this.#startPoints.top - currentPoints.top),
-
         endAngle: Math.abs((this.#startPoints.left - currentPoints.left) / (Math.PI / 5))
       })
       // this._current.set({ radius: Math.abs(this.#startPoints.top - currentPoints.top) });
     } else if (this.action === 'draw-wall') {
       const wallLayout = this.freeDraw
-        ? getWallDrawLayoutFree(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
-        : getWallDrawLayout(this.canvas, this.#startPoints, currentPoints, this.gridSize, this._current)
+        ? getWallDrawLayoutFree(
+            this.canvas,
+            this.#startPoints,
+            currentPoints,
+            this.gridSize,
+            this._current as WallObject | null
+          )
+        : getWallDrawLayout(
+            this.canvas,
+            this.#startPoints,
+            currentPoints,
+            this.gridSize,
+            this._current as WallObject | null
+          )
       this._current.set(wallLayout)
     } else if (this.action === 'draw-symbol') {
       this._current.set({ left: Math.abs(currentPoints.left) })
@@ -1279,18 +1464,69 @@ export class DrawField extends LiteElement {
       return
     }
 
-    if (e.target && !this.drawing) return
-    if (!this.drawing) return
+    if (
+      this.action === 'draw-symbol' &&
+      !this.drawing &&
+      !this.moving &&
+      !this._current &&
+      this._selectedSymbolPrototype
+    ) {
+      void this.#instantiateSelectedSymbol(currentPoints)
+    }
+
+    if (e.target && !this.drawing) {
+      if (this.action === 'draw-symbol' && this._current) {
+        this._current.set({ left: currentPoints.left, top: currentPoints.top })
+        this.#ensureCurrentOnCanvas()
+        this.canvas.requestRenderAll()
+        return
+      }
+      return
+    }
+
+    if (!this.drawing && this.action !== 'draw-symbol') return
     if (!this._current) return
 
     this.updateObjects(currentPoints)
     this.canvas.requestRenderAll()
   }
 
-  _mouseenter(e) {
+  async #instantiateSelectedSymbol(position?: LeftTop) {
+    if (!this._selectedSymbolPrototype) return
+    try {
+      const cloned = await this._selectedSymbolPrototype.clone()
+      if (!cloned) return
+      if (position) {
+        cloned.set({ left: position.left, top: position.top })
+      }
+      cloned.setCoords?.()
+      cloned.set?.({ selectable: false, evented: false, opacity: 0.6 })
+      this._current = cloned
+      this.#ensureCurrentOnCanvas()
+    } catch {
+      this._current = null
+    }
+  }
+
+  #ensureCurrentOnCanvas() {
+    if (!this._current) return
+    if (this._current.canvas && this._current.canvas !== this.canvas) {
+      this._current.canvas.remove(this._current)
+    }
+
+    if (!this.canvas.getObjects().includes(this._current)) {
+      this.canvas.add(this._current)
+    }
+  }
+
+  async _mouseenter(e) {
     const pointer = this.#extractPointer(e)
     state.mouse.position = { x: pointer.x, y: pointer.y }
     if (this.action) this.#canvas.defaultCursor = 'crosshair'
+    if (this.action === 'draw-symbol' && !this._current && this._selectedSymbolPrototype) {
+      await this.#instantiateSelectedSymbol()
+    }
+
     if (!this._current) return
 
     const currentPoints = this.snapToGrid({ left: pointer.x, top: pointer.y })
@@ -1298,7 +1534,7 @@ export class DrawField extends LiteElement {
       this.drawing = true
       this._current.set({ left: Math.abs(currentPoints.left) })
       this._current.set({ top: Math.abs(currentPoints.top) })
-      this.canvas.add(this._current)
+      this.#ensureCurrentOnCanvas()
     }
 
     this.canvas.renderAll()
@@ -1331,13 +1567,12 @@ export class DrawField extends LiteElement {
     this.canvas.renderAll()
   }
 
-  _mouseup(e) {
-    console.log(this.action)
-
+  _mouseup() {
     if (this.drawing && !this.moving) {
       if (this.action !== 'draw-wall') {
         this.drawing = false
         if (this.action !== 'draw' && this._current) {
+          this.#ensureCurrentOnCanvas()
           this.canvas.remove(this._current)
           this.canvas.add(this._current)
           if (this.action === 'draw-symbol' || this.action === 'draw-text') {
@@ -1376,22 +1611,33 @@ export class DrawField extends LiteElement {
 
   _keydown(e: KeyboardEvent) {
     if (e.key !== 'Escape') return
-    if (this.action !== 'draw-wall' || !this.drawing || !this._current) return
+    if (!this.action?.startsWith('draw')) return
 
-    this.drawing = false
-    this.canvas.selection = true
-    this.canvas.remove(this._current)
-    this._current = undefined
-    this.#drawSnapWall = null
-    this.#overlayPointer = null
-    this.#scheduleMeasurementOverlayRender()
-    this.canvas.renderAll()
+    if (this.action === 'draw-wall' && this.drawing && this._current) {
+      this.drawing = false
+      this.canvas.selection = true
+      this.canvas.remove(this._current)
+      this._current = undefined
+      this.#drawSnapWall = null
+      this.#overlayPointer = null
+      this.#scheduleMeasurementOverlayRender()
+      this.canvas.renderAll()
+      return
+    }
+
+    if (this._current) {
+      this.drawing = false
+      this._current = undefined
+      this._selectedSymbolPrototype = null
+      this.canvas.selection = true
+      this.#canvas.isDrawingMode = false
+      this.canvas.renderAll()
+    }
   }
 
   toJSON() {
     if (!this.#canvas) return { version: '6.0.0', objects: [] }
-
-    return this.#canvas.toJSON()
+    return this.#canvas.toObject(BINDING_AND_SYMBOL_PROPS as unknown as string[])
   }
 
   #sanitizeCanvasObjects(canvas: Canvas) {
@@ -1400,28 +1646,29 @@ export class DrawField extends LiteElement {
     }
   }
 
-  #sanitizeObjectForSerialization(object: any) {
+  #sanitizeObjectForSerialization(object) {
     if (!object || typeof object !== 'object') return
+    const objectRecord = object as Record<string, JsonValue>
 
-    if (Array.isArray(object._objects)) {
-      object._objects = object._objects.filter((child: any) => child != null)
-      for (const child of object._objects) {
+    if (Array.isArray(objectRecord._objects)) {
+      objectRecord._objects = objectRecord._objects.filter((child) => child != null)
+      for (const child of objectRecord._objects) {
         this.#sanitizeObjectForSerialization(child)
       }
     }
 
-    if (Array.isArray(object.objects)) {
-      object.objects = object.objects.filter((child: any) => child != null)
-      for (const child of object.objects) {
+    if (Array.isArray(objectRecord.objects)) {
+      objectRecord.objects = objectRecord.objects.filter((child) => child != null)
+      for (const child of objectRecord.objects) {
         this.#sanitizeObjectForSerialization(child)
       }
     }
   }
 
-  async fromJSON(json: { objects?: any[]; version: string }) {
+  async fromJSON(json: { objects?: JsonValue[]; version: string }) {
     if (!json.objects) return
 
-    const { standard, specials } = partitionRawObjects(json.objects)
+    const { standard, specials } = partitionRawObjects(json.objects as unknown as SerializedObject[])
 
     this.#historyRecordingEnabled = false
     await this.#canvas.loadFromJSON({ objects: standard, version: json.version })
@@ -1481,7 +1728,7 @@ export class DrawField extends LiteElement {
   }
 
   #fitContentInCanvas() {
-    const objects = this.#canvas.getObjects().filter((obj: any) => obj.visible !== false)
+    const objects = this.#canvas.getObjects().filter((obj: FabricObject) => obj.visible !== false)
 
     if (objects.length === 0) {
       this.zoomLevel = 1

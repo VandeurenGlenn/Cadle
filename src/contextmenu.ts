@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './contextmenu.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
@@ -23,7 +23,7 @@ export class Contextmenu extends LiteElement {
     this.quick = true
     this.open = true
     await this.rendered
-    const { top, left, bottom, height } = event.target.getBoundingClientRect()
+    const { top, bottom, height } = event.target.getBoundingClientRect()
     console.log(top, bottom)
     const dropRect = drop.getBoundingClientRect()
     this.open = false
@@ -63,7 +63,6 @@ export class Contextmenu extends LiteElement {
   }
 
   static styles = [styles]
-
 
   render() {
     return html`

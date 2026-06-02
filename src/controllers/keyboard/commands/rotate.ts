@@ -1,15 +1,19 @@
-import { clipboard, canvas, positionObject } from '../../../utils.js'
+import { canvas } from '../../../utils.js'
+import type { FabricObject } from 'fabric'
 import { isMac } from '../utils.js'
 
-// only flip on active object
-export const isRotate = ({ metaKey, key, ctrlKey, shiftKey }: KeyboardEvent) =>
-  canvas.getActiveObject() && isMac ? metaKey && (key === '+' || key === '-') : ctrlKey && (key === '+' || key === '-')
+type FabricObjectWithRotation = FabricObject & { currentRotation?: number }
 
-export const rotate = ({ key }) => {
-  const canvas_ = canvas as any
+// only flip on active object
+export const isRotate = ({ metaKey, key, ctrlKey }: KeyboardEvent) =>
+  Boolean(canvas.getActiveObject()) &&
+  (isMac ? metaKey && (key === '+' || key === '-') : ctrlKey && (key === '+' || key === '-'))
+
+export const rotate = ({ key }: KeyboardEvent) => {
+  const canvas_ = canvas
   canvas_.shouldRender = true
-  const object = canvas_.getActiveObject() as any
-  console.log(object)
+  const object = canvas_.getActiveObject() as FabricObjectWithRotation | null
+  if (!object) return
 
   if (key === '-') {
     if (!object.currentRotation) {

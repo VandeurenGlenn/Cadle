@@ -1,9 +1,9 @@
-import { CustomPages } from '@vandeurenglenn/custom-elements/pages.js'
+import { CustomPages } from '@vandeurenglenn/lite-elements/pages.js'
 
 const shell = document.querySelector('app-shell')
-const pages = shell.shadowRoot?.querySelector('custom-pages') as unknown as CustomPages
+const pages = shell?.shadowRoot?.querySelector('custom-pages') as unknown as CustomPages | null
 
-onhashchange = async () => {
+window.onhashchange = async () => {
   let parts = location.hash.split('#!/')
 
   parts = parts[1].includes('?') ? parts[1].split('?') : [parts[1]]
@@ -16,5 +16,9 @@ onhashchange = async () => {
 }
 
 location.hash = '#!/projects'
-// @ts-ignore
-onhashchange()
+window.onhashchange?.(
+  new HashChangeEvent('hashchange', {
+    oldURL: location.href,
+    newURL: location.href
+  })
+)

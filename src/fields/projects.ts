@@ -1,6 +1,6 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './projects.css' with { type: 'css' }
-import { Projects } from './../types.js'
+import { Projects, type UUID } from './../types.js'
 import '@material/web/elevation/elevation.js'
 import '@material/web/button/outlined-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
@@ -9,7 +9,6 @@ import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { del, getProjects, upload } from '../api/project.js'
-import { map } from '@vandeurenglenn/lite/map.js'
 @customElement('projects-field')
 export class ProjectsField extends LiteElement {
   @property({ attribute: false })
@@ -28,58 +27,68 @@ export class ProjectsField extends LiteElement {
     this.shadowRoot?.addEventListener('click', this._click.bind(this))
   }
 
-  _loadProject(key, projectName) {
-    cadleShell.loadProject(key, projectName)
+  _loadProject(key: string, projectName: string) {
+    cadleShell.loadProject(key as unknown as UUID, projectName)
   }
 
   _click(event: Event) {
     const target = event.target as HTMLElement | null
     if (!target) return
-    console.log(target)
-    const action = target.getAttribute('data-action')
-    if (this[`_${action}`]) {
-      const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as any
-      if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
-      const id = target.getAttribute('data-id')
-      const name = target.getAttribute('data-name')
-      console.log({ id })
-      if (action === 'showContextMenu') {
-        if (this._currentSelected !== undefined && id !== this._currentSelected) {
-          // close open menu & reopen on new location
-          this._transitionEnd = () => {
-            this[`_${action}`](id)
-            this._currentSelected = id
-            dropdown?.removeEventListener('transitionend', this._transitionEnd)
-          }
 
-          dropdown.addEventListener('transitionend', this._transitionEnd)
-          this[`_${action}`](this._currentSelected)
-        } else {
-          this[`_${action}`](id)
-          if (!this.contextmenu.open) this._currentSelected = undefined
-          else this._currentSelected = id
+    const action = target.getAttribute('data-action')
+    const id = target.getAttribute('data-id')
+    const name = target.getAttribute('data-name')
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
+
+    if (action === 'showContextMenu') {
+      if (!id) return
+      if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
+      if (this._currentSelected !== undefined && id !== this._currentSelected) {
+        this._transitionEnd = () => {
+          this._showContextMenu(id)
+          this._currentSelected = id
+          dropdown?.removeEventListener('transitionend', this._transitionEnd)
         }
+
+        dropdown?.addEventListener('transitionend', this._transitionEnd)
+        if (this._currentSelected) this._showContextMenu(this._currentSelected)
       } else {
-        this[`_${action}`](this._currentSelected ?? id, name)
+        this._showContextMenu(id)
+        if (!this.contextmenu.open) this._currentSelected = undefined
+        else this._currentSelected = id
       }
+      return
+    }
+
+    if (action === 'loadProject') {
+      if (!id || !name) return
+      this._loadProject(id, name)
+      return
+    }
+
+    if (action === 'delete') {
+      if (!id) return
+      void this._delete(id)
+      return
     }
   }
 
-  async _delete(id) {
+  async _delete(id: string) {
     await del(id)
-    const projects = []
+    const projects: Projects = []
     for (const [key, value] of await getProjects()) {
       projects.push([key, value])
     }
 
-    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as any
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
     cadleShell.projects = projects
-    if (dropdown) dropdown.shown = false
+    if (dropdown) (dropdown as CustomDropdown & { shown?: boolean }).shown = false
   }
 
-  __showContextMenu(projectName) {
-    const target = this.shadowRoot.querySelector(`[data-id="${projectName}"]`)
-    const { top, height, left, width, right } = target.getBoundingClientRect()
+  __showContextMenu(projectName: string) {
+    const target = this.shadowRoot.querySelector(`[data-id="${projectName}"]`) as HTMLElement | null
+    if (!target) return
+    const { top, height, width, right } = target.getBoundingClientRect()
     this.contextmenu.style.top = `${top - height / 2}px`
     this.contextmenu.style.left = `${right - width}px`
   }

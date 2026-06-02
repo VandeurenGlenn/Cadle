@@ -1,4 +1,4 @@
-import type { Catalog } from './../types.js'
+import type { Catalog, JsonValue } from './../types.js'
 /**
  * User-imported SVG symbols are persisted to `localStorage` and merged into
  * the live catalog as catalog sections grouped by category.
@@ -8,7 +8,7 @@ export type CustomCatalogSymbol = {
   category: string
   name: string
   path: string
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, JsonValue>
 }
 
 const STORAGE_KEY = 'cadle.customSymbols'

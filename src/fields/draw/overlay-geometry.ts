@@ -6,6 +6,7 @@
 // Pure functions: they only read from the passed canvas/object and never
 // mutate state.
 import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
 
 export type Point = { x: number; y: number }
 export type ViewportBounds = { left: number; top: number; width: number; height: number }
@@ -15,7 +16,7 @@ export type ViewportBounds = { left: number; top: number; width: number; height:
  * viewport (CSS pixel) coordinates.
  */
 export function sceneToViewport(canvas: Canvas, point: Point): Point {
-  const vpt = (canvas as any).viewportTransform as number[] | undefined
+  const vpt = (canvas as Canvas & { viewportTransform?: number[] }).viewportTransform
   if (!vpt || vpt.length < 6) return point
   return {
     x: point.x * vpt[0] + point.y * vpt[2] + vpt[4],
@@ -28,11 +29,11 @@ export function sceneToViewport(canvas: Canvas, point: Point): Point {
  * `getCoords()` corners projected through the current viewport transform.
  * Returns `null` if the object has no coordinates yet.
  */
-export function getViewportBoundsForObject(canvas: Canvas, obj: any): ViewportBounds | null {
-  const coords = typeof obj?.getCoords === 'function' ? obj.getCoords() : []
+export function getViewportBoundsForObject(canvas: Canvas, obj: FabricObject): ViewportBounds | null {
+  const coords = typeof obj?.getCoords === 'function' ? obj.getCoords() : ([] as Point[])
   if (!coords || coords.length === 0) return null
 
-  const transformed = coords.map((point: any) =>
+  const transformed = coords.map((point: Point) =>
     sceneToViewport(canvas, {
       x: Number(point?.x ?? 0),
       y: Number(point?.y ?? 0)

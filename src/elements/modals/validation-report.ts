@@ -1,12 +1,36 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './validation-report.css' with { type: 'css' }
+
+type ValidationIssue = {
+  bindingId: string
+  severity: 'error' | 'warn' | string
+  message: string
+}
+
+type ValidationGroup = {
+  bindingId: string
+  ready: boolean
+  switches: number
+  loads: number
+  neutral: number
+}
+
+type ValidationReport = {
+  totalGroups: number
+  readyGroups: number
+  errorCount: number
+  warningCount: number
+  issues: ValidationIssue[]
+  groups: ValidationGroup[]
+  valid: boolean
+}
+
 @customElement('validation-report')
 export class ValidationReportModal extends LiteElement {
   @property({ type: Boolean, reflect: true }) accessor open = false
-  @property({ attribute: false }) accessor report: any = null
+  @property({ attribute: false }) accessor report: ValidationReport | null = null
   @property({ type: String }) accessor projectName = ''
   static styles = [styles]
-
 
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
@@ -47,11 +71,11 @@ export class ValidationReportModal extends LiteElement {
               <span>${report.issues.length} item${report.issues.length === 1 ? '' : 's'}</span>
             </div>
             ${report.issues.length === 0
-    ? html`<div class="group">
+              ? html`<div class="group">
                   <div class="row"><strong>No issues found</strong><span class="pill ok">ready</span></div>
                 </div>`
-    : report.issues.map(
-      (issue: any) => html`
+              : report.issues.map(
+                  (issue: ValidationIssue) => html`
                     <div
                       class="issue"
                       data-severity=${issue.severity}
@@ -63,12 +87,12 @@ export class ValidationReportModal extends LiteElement {
                       <div>${issue.message}</div>
                     </div>
                   `
-    )}
+                )}
           </div>
           <div class="groups">
             <div class="row"><strong>Binding groups</strong></div>
             ${report.groups.map(
-    (group: any) => html`
+              (group: ValidationGroup) => html`
                 <div class="group">
                   <div class="row">
                     <strong>${group.bindingId}</strong>
@@ -77,7 +101,7 @@ export class ValidationReportModal extends LiteElement {
                   <div>${group.switches} switches • ${group.loads} loads/sockets • ${group.neutral} other</div>
                 </div>
               `
-  )}
+            )}
           </div>
         </div>
         <div class="footer">

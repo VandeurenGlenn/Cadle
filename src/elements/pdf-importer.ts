@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './pdf-importer.css' with { type: 'css' }
 import '@material/web/button/text-button.js'
 import '@material/web/button/filled-button.js'
@@ -26,6 +26,25 @@ interface PDFPage {
   width: number
   height: number
 }
+
+interface PdfPageProxy {
+  getViewport(options: { scale: number }): {
+    width: number
+    height: number
+  }
+  render(options: {
+    canvasContext: CanvasRenderingContext2D
+    canvas: HTMLCanvasElement | null
+    viewport: { width: number; height: number }
+  }): {
+    promise: Promise<void>
+  }
+}
+
+interface PdfDocumentProxy {
+  numPages: number
+  getPage(pageNumber: number): Promise<PdfPageProxy>
+}
 declare global {
   interface HTMLElementTagNameMap {
     'pdf-importer': PDFImporter
@@ -34,7 +53,7 @@ declare global {
 @customElement('pdf-importer')
 export class PDFImporter extends LiteElement {
   @property({ type: Object })
-  accessor pdfDocument: any = null
+  accessor pdfDocument: PdfDocumentProxy | null = null
 
   @property()
   accessor pages: PDFPage[] = []
@@ -59,10 +78,10 @@ export class PDFImporter extends LiteElement {
       this.error = null
       const pdfjs = await getPdfjsLib()
       const arrayBuffer = await file.arrayBuffer()
-      this.pdfDocument = await pdfjs.getDocument({ data: arrayBuffer }).promise
+      this.pdfDocument = (await pdfjs.getDocument({ data: arrayBuffer }).promise) as unknown as PdfDocumentProxy
       await this.renderPages()
     } catch (err) {
-      this.error = `Failed to load PDF: ${err.message}`
+      this.error = `Failed to load PDF: ${err instanceof Error ? err.message : String(err)}`
       console.error(err)
     } finally {
       this.isLoading = false
@@ -80,7 +99,7 @@ export class PDFImporter extends LiteElement {
       canvas.width = viewport.width
       canvas.height = viewport.height
       // Render page to canvas
-      await page.render({ canvasContext: context!, viewport }).promise
+      await page.render({ canvasContext: context!, viewport, canvas }).promise
       // Convert canvas to image for preview
       const previewImage = canvas.toDataURL('image/png')
       pages.push({
@@ -158,7 +177,7 @@ export class PDFImporter extends LiteElement {
       // Dispatch event to notify parent that import is complete
       this.dispatchEvent(new CustomEvent('import-complete', { detail: { pagesImported: selectedPages.length } }))
     } catch (err) {
-      this.error = `Failed to import pages: ${err.message}`
+      this.error = `Failed to import pages: ${err instanceof Error ? err.message : String(err)}`
       console.error(err)
     } finally {
       this.isLoading = false

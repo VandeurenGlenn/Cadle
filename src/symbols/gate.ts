@@ -1,20 +1,37 @@
 import { Rect, classRegistry } from 'fabric'
+import type { Canvas, RectProps, SerializedRectProps, TClassProperties } from 'fabric'
+import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
+
+type GateOptions = {
+  uuid?: string
+  bindingId?: string
+  situationMetadata?: Record<string, JsonValue>
+  [key: string]: unknown
+}
 
 export default class CadleGate extends Rect {
   static type = 'CadleGate'
 
   uuid: `${string}-${string}-${string}-${string}-${string}`
   bindingId?: string
-  situationElementType: 'gate' = 'gate'
-  situationMetadata?: Record<string, unknown>
+  readonly situationElementType = 'gate' as const
+  situationMetadata?: Record<string, JsonValue>
 
-  constructor(options) {
-    super({ ...defaultOptions, ...options })
-    if (!options?.uuid) {
+  constructor(options: GateOptions = {}) {
+    super({ ...defaultOptions, ...options } as unknown as ConstructorParameters<typeof Rect>[0])
+
+    this.on('added', () => {
+      const self = this as unknown as { bringToFront?: () => void }
+      self.bringToFront?.()
+    })
+
+    if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
-      this.uuid = options.uuid
+      this.uuid = (
+        typeof options.uuid === 'string' ? options.uuid : crypto.randomUUID()
+      ) as `${string}-${string}-${string}-${string}-${string}`
     }
 
     if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
@@ -22,7 +39,7 @@ export default class CadleGate extends Rect {
       this.situationMetadata = options.situationMetadata
     }
 
-    const canvas = cadleShell?.field?.canvas as any | undefined
+    const canvas = cadleShell?.field?.canvas as Canvas | undefined
     canvas?.requestRenderAll()
   }
 
@@ -35,7 +52,7 @@ export default class CadleGate extends Rect {
     const isHorizontal = boxW >= boxH
     const railInset = Math.max(2, (isHorizontal ? boxH : boxW) * 0.2)
     const postSize = Math.max(2, Math.min(8, (isHorizontal ? boxH : boxW) * 0.35))
-    const stroke = (this.stroke as any) || '#555'
+    const stroke = (this.stroke as string | undefined) || '#555'
 
     ctx.save()
     ctx.strokeStyle = stroke
@@ -95,9 +112,9 @@ export default class CadleGate extends Rect {
     ctx.restore()
   }
 
-  toJSON(propertiesToInclude?: any[]): any {
+  toJSON(): ReturnType<Rect['toJSON']> {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -106,9 +123,10 @@ export default class CadleGate extends Rect {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

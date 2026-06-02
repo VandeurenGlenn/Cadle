@@ -1,7 +1,27 @@
 import { Rect, classRegistry } from 'fabric'
+import type { Canvas, RectProps, SerializedRectProps, TClassProperties } from 'fabric'
+import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
-import { canvasInk } from './canvas-tokens.js'
+import { canvasInk, canvasSurface } from './canvas-tokens.js'
+
+type DoorOptions = {
+  uuid?: string
+  doorHingeSide?: 'left' | 'right' | 'top' | 'bottom'
+  doorSwingDirection?: 'up' | 'down' | 'left' | 'right'
+  wallThickness?: number
+  bindingId?: string
+  situationMetadata?: Record<string, JsonValue>
+  backgroundColor?: string
+  [key: string]: unknown
+}
+
+type DoorStyle = {
+  backgroundColor?: string
+  stroke?: string
+  strokeWidth?: number
+  strokeDashArray?: number[]
+}
 
 export default class CadleDoor extends Rect {
   static type = 'CadleDoor'
@@ -10,8 +30,8 @@ export default class CadleDoor extends Rect {
   _widthText: CadleWidth
   uuid: `${string}-${string}-${string}-${string}-${string}`
   bindingId?: string
-  situationElementType: 'door' = 'door'
-  situationMetadata?: Record<string, unknown>
+  readonly situationElementType = 'door' as const
+  situationMetadata?: Record<string, JsonValue>
 
   doorHingeSide: 'left' | 'right' | 'top' | 'bottom' = 'right'
   doorSwingDirection: 'up' | 'down' | 'left' | 'right' = 'down'
@@ -23,9 +43,9 @@ export default class CadleDoor extends Rect {
 
   isHorizontal: boolean
 
-  set widthText(value) {
+  set widthText(value: CadleWidth) {
     this._widthText = value
-    const canvas = cadleShell?.field?.canvas as any | null
+    const canvas = cadleShell?.field?.canvas as Canvas | null
     if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
@@ -33,12 +53,20 @@ export default class CadleDoor extends Rect {
     return this._widthText
   }
 
-  constructor(options) {
-    super({ ...defaultOptions, ...options })
+  constructor(options: DoorOptions = {}) {
+    super({ ...defaultOptions, ...options } as unknown as ConstructorParameters<typeof Rect>[0])
+
+    this.on('added', () => {
+      const self = this as unknown as { bringToFront?: () => void }
+      self.bringToFront?.()
+    })
+
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
-      this.uuid = options.uuid
+      this.uuid = (
+        typeof options.uuid === 'string' ? options.uuid : crypto.randomUUID()
+      ) as `${string}-${string}-${string}-${string}-${string}`
     }
 
     if (options?.doorHingeSide) this.doorHingeSide = options.doorHingeSide
@@ -49,7 +77,7 @@ export default class CadleDoor extends Rect {
       this.situationMetadata = options.situationMetadata
     }
 
-    const canvas = cadleShell?.field?.canvas as any | undefined
+    const canvas = cadleShell?.field?.canvas as Canvas | undefined
     canvas?.requestRenderAll()
   }
 
@@ -80,13 +108,14 @@ export default class CadleDoor extends Rect {
     ctx.save()
 
     // Mask the wall segment under the door so the opening reads clearly.
-    ctx.fillStyle = (this as any).backgroundColor || '#fff'
+    const style = this as DoorStyle
+    ctx.fillStyle = style.backgroundColor ?? canvasSurface()
     ctx.fillRect(x0, y0, boxW, boxH)
 
-    ctx.strokeStyle = (this.stroke as any) || '#555'
-    ctx.lineWidth = (this.strokeWidth as any) || 1
+    ctx.strokeStyle = (this.stroke as string | undefined) || '#555'
+    ctx.lineWidth = this.strokeWidth ?? 1
 
-    const dash = (this.strokeDashArray as any) || [5, 5]
+    const dash = style.strokeDashArray || [5, 5]
 
     if (isHorizontal) {
       const swingDown = this.doorSwingDirection === 'down' || this.doorSwingDirection !== 'up'
@@ -165,7 +194,7 @@ export default class CadleDoor extends Rect {
     })
   }
 
-  updateWidthText(key, value) {
+  updateWidthText(key: string, value: number) {
     if (!this.widthText) this.initWidthText()
     if (key === 'scaleX') this.scaleX = value
     if (!cadleShell.showMeasurements) return
@@ -187,30 +216,30 @@ export default class CadleDoor extends Rect {
     }
   }
 
-  handleSet(key, value) {
+  handleSet(key: string, value: number | string | undefined) {
     // console.log({ key, value }) // todo only set when needed
     this.isHorizontal = this.width > this.height
-    this.updateWidthText(key, value)
+    this.updateWidthText(key, Number(value ?? 0))
   }
 
-  set(key, value?) {
+  set(key: string | Record<string, unknown>, value?: unknown) {
     let result
     if (typeof key === 'object') {
       result = super.set(key, value)
 
       for (const [k, v] of Object.entries(key)) {
-        this.handleSet(k, v)
+        this.handleSet(k, Number(v ?? 0))
       }
     } else {
       result = super.set(key, value)
-      this.handleSet(key, value)
+      this.handleSet(key, Number(value ?? 0))
     }
     return result
   }
 
-  toJSON(propertiesToInclude?: any[]): any {
+  toJSON(): ReturnType<Rect['toJSON']> {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -218,14 +247,16 @@ export default class CadleDoor extends Rect {
       doorHingeSide: this.doorHingeSide,
       doorSwingDirection: this.doorSwingDirection,
       wallThickness: this.wallThickness,
+      backgroundColor: (this as { backgroundColor?: string }).backgroundColor,
       type: 'CadleDoor'
       // children: [this.widthText.uuid]
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -233,6 +264,7 @@ export default class CadleDoor extends Rect {
       doorHingeSide: this.doorHingeSide,
       doorSwingDirection: this.doorSwingDirection,
       wallThickness: this.wallThickness,
+      backgroundColor: (this as { backgroundColor?: string }).backgroundColor,
       type: 'CadleDoor'
       // children: [this.widthText.uuid]
     }

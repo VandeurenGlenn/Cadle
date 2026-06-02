@@ -1,22 +1,25 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
+import type { IText } from 'fabric'
 import styles from './text.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/textfield/filled-text-field.js'
 import './../../items/object.js'
+
+type TextField = HTMLElement & { value: string }
+
 @customElement('object-text')
 export class ObjectText extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('#text-content')
-  private accessor _textInput!: any
+  private accessor _textInput!: TextField
 
   @query('#font-size')
-  private accessor _fontSizeInput!: any
+  private accessor _fontSizeInput!: TextField
 
   static styles = [styles]
 
-
   firstRender(): void {
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
     // Listen to canvas selection changes
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -46,10 +49,10 @@ export class ObjectText extends LiteElement {
       return
     }
 
-    const textObject = activeObject as any
+    const textObject = activeObject as IText
     // Sync current text properties
     if (this._textInput && textObject.text) {
-      this._textInput.value = textObject.text
+      this._textInput.value = String(textObject.text)
     }
 
     if (this._fontSizeInput && textObject.fontSize) {
@@ -58,7 +61,7 @@ export class ObjectText extends LiteElement {
   }
 
   #onTextChange(e: Event) {
-    const input = e.target as any
+    const input = e.target as TextField
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = canvas.getActiveObject()
@@ -68,7 +71,7 @@ export class ObjectText extends LiteElement {
   }
 
   #onFontSizeChange(e: Event) {
-    const input = e.target as any
+    const input = e.target as TextField
     const canvas = cadleShell?.field?.canvas
     if (!canvas) return
     const activeObject = canvas.getActiveObject()

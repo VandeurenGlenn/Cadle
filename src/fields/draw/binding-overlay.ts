@@ -11,16 +11,25 @@
 //
 // Behavior MUST stay identical to the original inlined implementation.
 import type { Canvas } from './../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
 import { getViewportBoundsForObject, type Point } from './overlay-geometry.js'
 
+type BindingObject = FabricObject & {
+  bindingId?: string
+  bindingLabel?: string
+  bindingLabelOffset?: { dx: number; dy: number }
+  symbolPath?: string
+  symbolName?: string
+}
+
 type LabelHit = {
-  obj: any
+  obj: BindingObject
   rect: { x: number; y: number; width: number; height: number }
   anchor: { x: number; y: number }
 }
 
 type LabelDrag = {
-  obj: any
+  obj: BindingObject
   startPointerViewport: Point
   startOffset: { dx: number; dy: number }
   grabOffset: { dx: number; dy: number }
@@ -28,7 +37,7 @@ type LabelDrag = {
 }
 
 export interface BindingOverlayDeps {
-  normalizeId: (raw: unknown) => string
+  normalizeId: (raw) => string
   /**
    * Called after the lookup has been rebuilt. The reentrancy guard remains
    * active for the duration of this callback, so consumers can safely call
@@ -39,7 +48,7 @@ export interface BindingOverlayDeps {
 
 export class BindingOverlay {
   #deps: BindingOverlayDeps
-  #lookup = new Map<string, any[]>()
+  #lookup = new Map<string, BindingObject[]>()
   #version = 0
   #scheduled = false
   #refreshing = false
@@ -51,7 +60,7 @@ export class BindingOverlay {
   }
 
   // ── Lookup ─────────────────────────────────────────────────────────────
-  getLookup(): Map<string, any[]> {
+  getLookup(): Map<string, BindingObject[]> {
     return this.#lookup
   }
 
@@ -67,7 +76,8 @@ export class BindingOverlay {
 
       for (const obj of canvas.getObjects()) {
         if (!obj) continue
-        const bindingId = this.#deps.normalizeId((obj as any)?.bindingId)
+        const binding = obj as BindingObject
+        const bindingId = this.#deps.normalizeId(binding.bindingId)
         if (!bindingId) continue
 
         const bucket = this.#lookup.get(bindingId)
@@ -133,12 +143,17 @@ export class BindingOverlay {
         }
       })
       .filter(
-        (entry): entry is { object: any; rect: { x: number; y: number; width: number; height: number } } => !!entry
+        (
+          entry
+        ): entry is {
+          object: BindingObject
+          rect: { x: number; y: number; width: number; height: number }
+        } => !!entry
       )
 
     const wallBounds = objectBounds
       .filter(({ object }) =>
-        String((object as any)?.type ?? '')
+        String(object.type ?? '')
           .toLowerCase()
           .includes('wall')
       )
@@ -156,7 +171,7 @@ export class BindingOverlay {
     this.#labelHits = []
 
     for (const obj of objects) {
-      const bindingLabel = (obj as any)?.bindingLabel
+      const bindingLabel = (obj as BindingObject).bindingLabel
       if (typeof bindingLabel !== 'string' || bindingLabel.trim().length === 0) continue
 
       const bounds = getViewportBoundsForObject(canvas, obj)
@@ -182,14 +197,14 @@ export class BindingOverlay {
       let bx: number
       let by: number
 
-      const manualOffset = (obj as any)?.bindingLabelOffset
+      const manualOffset = (obj as BindingObject).bindingLabelOffset
       const isManual = manualOffset && Number.isFinite(manualOffset.dx) && Number.isFinite(manualOffset.dy)
 
       if (isManual) {
         bx = anchorX + manualOffset.dx
         by = anchorY + manualOffset.dy
       } else {
-        const rawAngle = Number((obj as any)?.angle ?? 0)
+        const rawAngle = Number(obj.angle ?? 0)
         const norm = ((rawAngle % 360) + 360) % 360
         const cardinal = Math.round(norm / 90) % 4
         const frontSide: 'right' | 'down' | 'left' | 'up' =
@@ -362,7 +377,7 @@ export class BindingOverlay {
   }
 
   beginDrag(hit: LabelHit, viewportPoint: Point) {
-    const existing = (hit.obj as any)?.bindingLabelOffset
+    const existing = hit.obj.bindingLabelOffset
     const startOffset =
       existing && Number.isFinite(existing.dx) && Number.isFinite(existing.dy)
         ? { dx: existing.dx, dy: existing.dy }
@@ -393,7 +408,7 @@ export class BindingOverlay {
     const anchor = hit?.anchor ?? { x: 0, y: 0 }
     const dx = newBadgeX - anchor.x
     const dy = newBadgeY - anchor.y
-    ;(drag.obj as any).bindingLabelOffset = { dx, dy }
+    drag.obj.bindingLabelOffset = { dx, dy }
     drag.moved = true
     return true
   }

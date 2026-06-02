@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './template-library.css' with { type: 'css' }
 @customElement('template-library')
 export class TemplateLibrary extends LiteElement {
@@ -12,7 +12,6 @@ export class TemplateLibrary extends LiteElement {
   }> = []
 
   static styles = [styles]
-
 
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
@@ -36,18 +35,18 @@ export class TemplateLibrary extends LiteElement {
         </div>
         <div class="grid">
           ${this.templates.map(
-    (template) => html`
+            (template) => html`
               <div class="card">
                 ${template.category ? html`<div class="eyebrow">${template.category}</div>` : null}
                 <h4>${template.name}</h4>
                 <p>${template.description}</p>
                 ${template.highlights?.length
-    ? html`
+                  ? html`
                       <div class="highlights">
                         ${template.highlights.map((highlight) => html`<span class="chip">${highlight}</span>`)}
                       </div>
                     `
-    : null}
+                  : null}
                 <button
                   class="primary"
                   @click=${() => this.#selectTemplate(template.id)}>
@@ -55,7 +54,7 @@ export class TemplateLibrary extends LiteElement {
                 </button>
               </div>
             `
-  )}
+          )}
         </div>
       </div>
     `

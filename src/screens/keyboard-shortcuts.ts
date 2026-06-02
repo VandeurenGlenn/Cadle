@@ -1,4 +1,4 @@
-import { LiteElement, html, css, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './keyboard-shortcuts.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/divider.js'
 import '@vandeurenglenn/flex-elements/container.js'
@@ -13,8 +13,16 @@ export class KeyboardShortcuts extends LiteElement {
     this.open = false
   }
 
+  #renderShortcuts(shortcuts: { action: string; keys: string[][] }[]) {
+    return shortcuts.length === 0
+      ? html`<p class="no-shortcuts">No shortcuts in this category</p>`
+      : shortcuts.map(
+          ({ keys, action }) =>
+            html`<flex-row class="row-item">${this.transformKeys(keys)}<flex-it></flex-it>${action}</flex-row>`
+        )
+  }
+
   transformKeys(keys: string[][]) {
-    console.log(keys)
     return html`${map(
       keys,
       (combo, comboIndex) => html`
@@ -27,7 +35,6 @@ export class KeyboardShortcuts extends LiteElement {
   }
 
   static styles = [styles]
-
 
   render() {
     return html`
@@ -48,19 +55,15 @@ export class KeyboardShortcuts extends LiteElement {
         </div>
         <div class="grid">
           ${map(
-    Object.entries(hotkeyList),
-    ([category, shortcuts]) => html`
+            Object.entries(hotkeyList),
+            ([category, shortcuts]) => html`
               <div class="section">
                 <h4>${category}</h4>
                 <custom-divider></custom-divider>
-                ${map(
-    shortcuts,
-    ({ keys, action }) =>
-      html`<flex-row class="row-item">${this.transformKeys(keys)}<flex-it></flex-it>${action}</flex-row>`
-  )}
+                ${this.#renderShortcuts(shortcuts)}
               </div>
             `
-  )}
+          )}
         </div>
       </flex-container>
     `

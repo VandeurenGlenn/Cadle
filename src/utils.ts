@@ -9,8 +9,9 @@ declare type Clipboard = {
   object: currentObjectInClipboard
 }
 
-interface Canvas extends _Canvas {
+interface CadleCanvas extends _Canvas {
   shouldRender: boolean
+  history: HistoryAction[]
 }
 
 export const clipboard: Clipboard = {
@@ -23,10 +24,10 @@ export const clipboard: Clipboard = {
 // (and re-resolving until the chain is satisfied) keeps the long-standing
 // public API (`shell`, `pages`, `field`, `canvas`) without forcing every
 // call site to switch to a function.
-let _shell: any
-let _pages: any
-let _field: any
-let _canvas: any
+let _shell
+let _pages
+let _field
+let _canvas
 
 const resolveShellRefs = () => {
   if (!_shell) _shell = document.querySelector('app-shell')
@@ -35,18 +36,18 @@ const resolveShellRefs = () => {
   if (!_canvas) _canvas = _field?.canvas
 }
 
-const lazyProxy = <T extends object>(getTarget: () => any): T =>
+const lazyProxy = <T extends object>(getTarget: () => T | null): T =>
   new Proxy({} as T, {
     get(_t, prop) {
       resolveShellRefs()
       const target = getTarget()
-      const value = target?.[prop as any]
+      const value = target?.[prop as keyof T]
       return typeof value === 'function' ? value.bind(target) : value
     },
     set(_t, prop, value) {
       resolveShellRefs()
       const target = getTarget()
-      if (target) target[prop as any] = value
+      if (target) (target as T)[prop as keyof T] = value
       return true
     },
     has(_t, prop) {
@@ -55,10 +56,10 @@ const lazyProxy = <T extends object>(getTarget: () => any): T =>
     }
   })
 
-export const shell = lazyProxy<any>(() => _shell)
-export const pages = lazyProxy<any>(() => _pages)
+export const shell = lazyProxy(() => _shell)
+export const pages = lazyProxy(() => _pages)
 export const field = lazyProxy<DrawField>(() => _field)
-export const canvas = lazyProxy<Canvas>(() => _canvas)
+export const canvas = lazyProxy<CadleCanvas>(() => _canvas)
 
 export const getActiveObjects = () => canvas.getActiveObjects()
 
@@ -105,7 +106,7 @@ const moveObjects = (direction: 'left' | 'right' | 'down' | 'up', amount?: numbe
     if (item.type === 'activeSelection') {
       // canvas.remove(item)
 
-      const selectedObjects = (item as any).getObjects?.() ?? []
+      const selectedObjects = (item as { getObjects?: () => FabricObject[] }).getObjects?.() ?? []
       for (const _item of selectedObjects) {
         moveObject(_item, direction, amount)
         // canvas.setActiveObject(_item)
@@ -170,45 +171,45 @@ export const canvasContainer = () => field.canvasContainer as HTMLElement
 
 export const snapToGrid = ({ left, top }: { left?: number; top?: number }): { left?: number; top?: number } => {
   if (!state.freeDraw) {
-    if (left) left = Math.round(left / state.gridSize) * state.gridSize
-    if (top) top = Math.round(top / state.gridSize) * state.gridSize
+    if (left !== undefined) left = Math.round(left / state.gridSize) * state.gridSize
+    if (top !== undefined) top = Math.round(top / state.gridSize) * state.gridSize
   }
   return { left, top }
 }
 
 const applyAction = (action: HistoryAction, method: 'undo' | 'redo') => {
-  const object = (action.object ?? action.objects?.[0]) as any
+  const object = (action.object ?? action.objects?.[0]) as FabricObject | undefined
   if (!object) return
   switch (action.type) {
-  case 'remove':
-    if (method === 'undo') {
-      canvas.add(object)
-    } else {
-      canvas.remove(object)
-    }
+    case 'remove':
+      if (method === 'undo') {
+        canvas.add(object)
+      } else {
+        canvas.remove(object)
+      }
 
-    break
-  case 'add':
-    if (method === 'undo') {
-      canvas.remove(object)
-    } else {
-      canvas.add(object)
-    }
+      break
+    case 'add':
+      if (method === 'undo') {
+        canvas.remove(object)
+      } else {
+        canvas.add(object)
+      }
 
-    break
-  case 'modify':
-    if (method === 'undo' && action.prevState) {
-      object.set(action.prevState)
-    } else if (method === 'redo' && action.newState) {
-      object.set(action.newState)
-    }
+      break
+    case 'modify':
+      if (method === 'undo' && action.prevState && typeof action.prevState === 'object') {
+        object.set(action.prevState as Record<string, unknown>)
+      } else if (method === 'redo' && action.newState && typeof action.newState === 'object') {
+        object.set(action.newState as Record<string, unknown>)
+      }
 
-    break
+      break
   }
 }
 
 export const history = {
-  stack: [] as any[],
+  stack: [] as HistoryAction[],
   position: -1,
   applyAction,
   push(action: HistoryAction) {

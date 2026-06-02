@@ -1,13 +1,20 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/item.css' with { type: 'css' }
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { loadSVGFromString, loadSVGFromURL, util } from 'fabric'
+import type { FabricObject } from 'fabric'
+import type { JsonValue } from '../../types.js'
 import state from '../../state.js'
 declare global {
   interface HTMLElementTagNameMap {
     'catalog-item': CatalogItem
   }
 }
+
+type SvgLoadResult = {
+  objects: FabricObject[]
+}
+
 @customElement('catalog-item')
 export class CatalogItem extends LiteElement {
   @property({ attribute: false })
@@ -15,12 +22,15 @@ export class CatalogItem extends LiteElement {
     | {
         name: string
         path: string
-        metadata?: Record<string, unknown>
+        metadata?: Record<string, JsonValue>
       }
     | undefined
 
   @property({ type: String })
   accessor image = ''
+
+  @property({ type: String, consumes: 'loadedPage' })
+  accessor loadedPage = ''
 
   private _svgPreview = ''
   private static _magnifierElement?: HTMLDivElement
@@ -68,7 +78,8 @@ export class CatalogItem extends LiteElement {
     element.style.zIndex = '2147483647'
     element.style.display = 'none'
     element.style.backdropFilter = 'blur(var(--cadle-glass-blur))'
-    ;(element.style as any).webkitBackdropFilter = 'blur(var(--cadle-glass-blur))'
+    ;(element.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
+      'blur(var(--cadle-glass-blur))'
     document.body.append(element)
     CatalogItem._magnifierElement = element
     return element
@@ -238,7 +249,7 @@ export class CatalogItem extends LiteElement {
     )
   }
 
-  #isDarkSvgColor(value: unknown) {
+  #isDarkSvgColor(value) {
     if (typeof value !== 'string') return false
     const normalized = value.trim().toLowerCase()
     return (
@@ -258,14 +269,14 @@ export class CatalogItem extends LiteElement {
     )
   }
 
-  #themePlacedSvgObject(obj: any, themedColor: string) {
+  #themePlacedSvgObject(obj: FabricObject, themedColor: string) {
     const stroke = obj?.stroke
     const fill = obj?.fill
     if (this.#isDarkSvgColor(stroke)) obj.set('stroke', themedColor)
     if (this.#isDarkSvgColor(fill)) obj.set('fill', themedColor)
   }
 
-  #normalizeBindingId(value: unknown) {
+  #normalizeBindingId(value) {
     if (typeof value !== 'string') return ''
     return value.trim().toUpperCase()
   }
@@ -287,7 +298,7 @@ export class CatalogItem extends LiteElement {
     return 'neutral'
   }
 
-  #applySymbolMetadata(group: any, sourcePath: string) {
+  #applySymbolMetadata(group: FabricObject, sourcePath: string) {
     const metadata = this.symbol?.metadata ?? {}
     const roleFromMeta = typeof metadata.bindingRole === 'string' ? metadata.bindingRole : undefined
     const inferredRole = this.#inferBindingRole(sourcePath, this.symbol?.name ?? this._headline ?? '')
@@ -307,8 +318,8 @@ export class CatalogItem extends LiteElement {
     }
   }
 
-  #click = async (event: Event) => {
-    // Ensure the draw view is active before placing a symbol
+  #click = async () => {
+    // Ensure the draw route is active before placing a symbol.
     if (typeof cadleShell !== 'undefined' && location.hash !== '#!/draw') {
       location.hash = '#!/draw'
     }
@@ -317,11 +328,11 @@ export class CatalogItem extends LiteElement {
     if (!sourcePath) return
     const resolvedSourcePath = new URL(sourcePath, location.href).toString()
     const loadCandidates = [resolvedSourcePath, encodeURI(resolvedSourcePath), sourcePath]
-    let svg: { objects: any[] } | null = null
-    let lastError: unknown = null
+    let svg: SvgLoadResult | null = null
+    let lastError = null
     for (const candidate of loadCandidates) {
       try {
-        const loaded = (await loadSVGFromURL(candidate)) as { objects: any[] }
+        const loaded = (await loadSVGFromURL(candidate)) as SvgLoadResult
         if (loaded?.objects?.length) {
           svg = loaded
           break
@@ -334,7 +345,7 @@ export class CatalogItem extends LiteElement {
     if (!svg) {
       try {
         const markup = await this.#loadSvgMarkup(sourcePath)
-        const loaded = (await loadSVGFromString(markup)) as { objects: any[] }
+        const loaded = (await loadSVGFromString(markup)) as SvgLoadResult
         if (loaded?.objects?.length) svg = loaded
       } catch (error) {
         lastError = error
@@ -376,7 +387,7 @@ export class CatalogItem extends LiteElement {
     group.setCoords()
     if (cadleShell.field) {
       cadleShell.field.action = 'draw-symbol'
-      cadleShell.field._current = group
+      cadleShell.field._selectedSymbolPrototype = group
     }
   }
 

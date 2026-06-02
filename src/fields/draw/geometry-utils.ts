@@ -1,9 +1,29 @@
-export const isWallObject = (obj: any) => obj?.type === 'CadleWall'
+import type { Canvas } from '../../fabric-imports.js'
+import type { FabricObject } from 'fabric'
 
-export const isOpeningObject = (obj: any) =>
+type WallSnap = {
+  bounds: { left: number; top: number; width: number; height: number; horizontal: boolean }
+  wall?: FabricObject
+}
+
+type WallBounds = WallSnap['bounds']
+
+type OpeningTarget = FabricObject & {
+  type?: string
+  width?: number
+  height?: number
+  scaleX?: number
+  scaleY?: number
+  doorSwingDirection?: string
+  doorHingeSide?: string
+}
+
+export const isWallObject = (obj: FabricObject | null | undefined) => obj?.type === 'CadleWall'
+
+export const isOpeningObject = (obj: FabricObject | null | undefined) =>
   obj?.type === 'CadleDoor' || obj?.type === 'CadleWindow' || obj?.type === 'CadleGate'
 
-export const getWallBounds = (wall: any) => {
+export const getWallBounds = (wall: FabricObject) => {
   const left = Number(wall?.left ?? 0)
   const top = Number(wall?.top ?? 0)
   const width = Math.abs(Number(wall?.width ?? 0) * Number(wall?.scaleX ?? 1))
@@ -19,9 +39,9 @@ export const getWallBounds = (wall: any) => {
 
 export const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
-export const findNearestWall = (canvas: any, point: { left: number; top: number }, maxDistance: number) => {
-  const walls = canvas.getObjects().filter((obj: any) => isWallObject(obj))
-  let best: any = null
+export const findNearestWall = (canvas: Canvas, point: { left: number; top: number }, maxDistance: number) => {
+  const walls = canvas.getObjects().filter((obj: FabricObject) => isWallObject(obj))
+  let best: { wall: FabricObject; bounds: WallBounds; distance: number } | null = null
 
   for (const wall of walls) {
     const bounds = getWallBounds(wall)
@@ -48,7 +68,7 @@ export const findNearestWall = (canvas: any, point: { left: number; top: number 
 
 export const projectPointToWall = (
   point: { left: number; top: number },
-  wallSnap: any,
+  wallSnap: WallSnap,
   freeDraw: boolean,
   gridSize: number
 ) => {
@@ -103,7 +123,7 @@ export const getWallDrawLayout = (
 export const getOpeningWallLayout = (
   startPoint: { left: number; top: number },
   currentPoint: { left: number; top: number },
-  wallSnap: any,
+  wallSnap: WallSnap,
   gridSize: number
 ) => {
   const { bounds } = wallSnap
@@ -140,9 +160,9 @@ export const getOpeningWallLayout = (
 }
 
 export const snapOpeningToWall = (
-  target: any,
+  target: OpeningTarget,
   point: { left: number; top: number },
-  wallSnap: any,
+  wallSnap: WallSnap,
   freeDraw: boolean,
   gridSize: number
 ) => {
@@ -153,7 +173,15 @@ export const snapOpeningToWall = (
 
   if (bounds.horizontal) {
     const left = clamp(projected.left - currentWidth / 2, bounds.left, bounds.left + bounds.width - currentWidth)
-    const updates: Record<string, any> = {
+    const updates: Partial<{
+      left: number
+      top: number
+      width: number
+      height: number
+      wallThickness?: number
+      doorSwingDirection?: string
+      doorHingeSide?: string
+    }> = {
       left,
       top: bounds.top,
       width: currentWidth,
@@ -173,7 +201,15 @@ export const snapOpeningToWall = (
   }
 
   const top = clamp(projected.top - currentHeight / 2, bounds.top, bounds.top + bounds.height - currentHeight)
-  const updates: Record<string, any> = {
+  const updates: Partial<{
+    left: number
+    top: number
+    width: number
+    height: number
+    wallThickness?: number
+    doorSwingDirection?: string
+    doorHingeSide?: string
+  }> = {
     left: bounds.left,
     top,
     width: bounds.width,

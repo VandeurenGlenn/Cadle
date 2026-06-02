@@ -1,8 +1,9 @@
-import { LiteElement, html, css, property, customElement, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, property, customElement, query } from '@vandeurenglenn/lite'
 import { shellStyles } from './shell/styles.js'
 import { exportCanvasToA4PNG, type A4Orientation, type A4ExportResult } from './shell/export.js'
 import { parseHash } from './shell/routing.js'
 import { PresenceController } from './shell/presence.js'
+import type { Canvas, FabricObject } from 'fabric'
 import './elements/design-mode-toggle.js'
 import { generateBOMFiles, normalizeBindingId } from './shell/bom.js'
 import { iconSetTemplate } from './shell/icon-set.js'
@@ -37,11 +38,61 @@ import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
 import './elements/actions/project-actions.js'
-import { Project, type Projects, type UUID, type Catalog } from './types.js'
-import { addPage, create, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
+import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
+import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { DrawField } from './fields/draw.js'
 import { isOpeningObject, isWallObject, getWallEndpoints } from './fields/draw/wall-snap.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
+
+type ShellActionsElement = HTMLElement & {
+  hide: () => void
+  show: () => void
+  fill?: string
+}
+
+type ShellProjectPaneElement = HTMLElement & {
+  select?: (view: 'project' | 'symbols') => void
+}
+
+type ShellPagesElement = HTMLElement & {
+  select?: (route: string) => Promise<void> | void
+}
+
+type ShellProjectStore = {
+  set: (key: Uint8Array, value: unknown) => Promise<void>
+  get: (key: string) => Promise<Project>
+}
+
+type ShellFabricObject = FabricObject & {
+  bindingId?: string
+  left?: number
+  top?: number
+  width?: number
+  height?: number
+  scaleX?: number
+  scaleY?: number
+  bindingRole?: string
+  originY?: 'top' | 'center' | 'bottom'
+  type?: string
+  doorSwingDirection?: string
+  doorHingeSide?: string
+}
+
+type CanvasWithUndoRedo = Canvas & {
+  undo?: () => void
+  redo?: () => void
+}
+
+type KeyboardShortcutsElement = HTMLElement & {
+  open?: boolean
+}
+
+type PickerDialogElement = HTMLElement & {
+  open?: boolean
+}
+
+type LooseElement = HTMLElement & Record<string, string | undefined>
+
 // All decorators and base class now from @vandeurenglenn/lite
 declare global {
   interface HTMLElementTagNameMap {
@@ -106,31 +157,34 @@ export class AppShell extends LiteElement {
   }
 
   @query('cadle-actions')
-  accessor actions!: any
+  accessor actions!: ShellActionsElement
 
   @query('project-pane')
-  accessor projectPane!: any
+  accessor projectPane!: ShellProjectPaneElement
 
   @query('draw-field')
   accessor field!: DrawField
 
   @query('custom-pages')
-  accessor pages!: any
+  accessor pages!: ShellPagesElement
 
   @property({ type: Object })
-  accessor manifest: Record<string, any> = {}
+  accessor manifest: Record<string, JsonValue> = {}
 
   @property({ type: Boolean })
   accessor validationReportOpen = false
 
   @property()
-  accessor validationReportData: any = null
+  accessor validationReportData: JsonValue | null = null
 
   @property({ type: Boolean })
   accessor historyPanelOpen = false
 
   @property({ type: Array })
   accessor historyEntries: Array<{ id: string; label: string; timestamp: number }> = []
+
+  @property({ type: Boolean })
+  accessor projectDirty = false
 
   @property({ type: Boolean })
   accessor templateLibraryOpen = false
@@ -188,7 +242,7 @@ export class AppShell extends LiteElement {
   accessor projectKey: UUID = '' as UUID
 
   set action(value) {
-    const canvas = this.field?.canvas as any
+    const canvas = this.field?.canvas as Canvas | undefined
     if (canvas) canvas.defaultCursor = value ? 'crosshair' : 'default'
     this._action = value
     pubsub.publish('shell.action', value ?? '')
@@ -261,6 +315,12 @@ export class AppShell extends LiteElement {
     this.historyEntries = customEvent.detail?.entries ?? []
   }
 
+  #onCanvasHistoryUpdated = () => {
+    if (!this.project || !this.projectKey || !this.loadedPage) return
+    this.projectDirty = true
+    pubsub.publish('project.modified', { projectKey: this.projectKey, pageKey: this.loadedPage })
+  }
+
   #syncRemotePresence() {
     if (this.field) {
       this.field.remoteCursors = this._presence
@@ -279,7 +339,7 @@ export class AppShell extends LiteElement {
     const canvas = this.field.canvas
     const target = canvas
       .getObjects()
-      .find((object: any) => normalizeBindingId(String((object as any)?.bindingId ?? '')) === targetId)
+      .find((object: ShellFabricObject) => normalizeBindingId(String(object.bindingId ?? '')) === targetId)
     if (!target) return
     canvas.discardActiveObject()
     canvas.setActiveObject(target)
@@ -377,7 +437,7 @@ export class AppShell extends LiteElement {
     this.catalog = this.#mergeCatalogWithBoundSymbols(symbols, groupSymbols)
   }
 
-  #beforePrint = async (e: Event) => {
+  #beforePrint = async () => {
     this.actions.hide()
     // No style mutation on DrawField in Lite; skip
     const exported = await this.exportA4PNG('auto')
@@ -413,7 +473,6 @@ export class AppShell extends LiteElement {
     // for (const [key, value] of entries) {
     //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
     // }
-    const decoder = new TextDecoder()
     try {
       const projectsArray = await getProjects()
       this.projects = projectsArray
@@ -440,7 +499,6 @@ export class AppShell extends LiteElement {
       let loadedCatalog: Catalog | null = null
       for (const candidate of manifestCandidates) {
         try {
-          // @ts-ignore
           loadedCatalog = (await import(candidate)).default as Catalog
           if (Array.isArray(loadedCatalog)) break
         } catch {
@@ -479,6 +537,7 @@ export class AppShell extends LiteElement {
     this.addEventListener('dragover', this.#dragover.bind(this))
     this.addEventListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
     this.addEventListener('canvas-history-updated', this.#updateHistoryEntries as EventListener)
+    this.addEventListener('canvas-history-updated', this.#onCanvasHistoryUpdated as EventListener)
     this.addEventListener('presence-pointer', ((event: CustomEvent<{ x: number; y: number }>) => {
       this.#broadcastPresence({ x: event.detail.x, y: event.detail.y })
     }) as EventListener)
@@ -541,10 +600,10 @@ export class AppShell extends LiteElement {
 
     if (params) {
       const customPages = this.shadowRoot?.querySelector('custom-pages')
-      const selected = customPages?.querySelector('.custom-selected') as HTMLElement | null
+      const selected = customPages?.querySelector('.custom-selected') as LooseElement | null
       if (selected) {
         for (const [key, value] of Object.entries(params)) {
-          ;(selected as any)[key] = value
+          selected[key] = value
         }
       }
     }
@@ -564,7 +623,7 @@ export class AppShell extends LiteElement {
     const projectKey = dialog.dataset?.key
     console.log(action)
     if (action === 'confirm-input') {
-      const textField = dialog.querySelector('md-filled-text-field') as any
+      const textField = dialog.querySelector('md-filled-text-field') as unknown as HTMLInputElement | null
       const value = textField?.value ?? ''
       state.text.current = value
       const match = value.match(/\d+/g)
@@ -576,19 +635,22 @@ export class AppShell extends LiteElement {
 
     if (action === 'create-project') {
       await cadleShell.savePage()
-      const textField = cadleShell.dialog?.querySelector('md-filled-text-field') as any
+      const textField = cadleShell.dialog?.querySelector('md-filled-text-field') as unknown as HTMLInputElement | null
       cadleShell.projectName = textField?.value ?? ''
       if (cadleShell.projectStore && 'set' in cadleShell.projectStore) {
-        ;(cadleShell.projectStore as any).set(new TextEncoder().encode(cadleShell.projectName), {
+        const store = cadleShell.projectStore as unknown as ShellProjectStore
+        await store.set(new TextEncoder().encode(cadleShell.projectName), {
           creationTime: new Date().getTime(),
           pages: []
         })
       }
 
-      const projects = cadleShell.projects as any
+      const projects = cadleShell.projects
       cadleShell.projects = [...projects, [cadleShell.projectName, cadleShell.projectName]] as Projects
-      cadleShell.project = await (cadleShell.projectStore as any).get(cadleShell.projectName)
-      cadleShell.loadPage(cadleShell.project.pages[0]?.name)
+      const store = cadleShell.projectStore as unknown as ShellProjectStore
+      cadleShell.project = await store.get(cadleShell.projectName)
+      const firstKey = Object.keys(cadleShell.project.pages)[0]
+      if (firstKey) await cadleShell.loadPage(firstKey)
       location.hash = '#!/draw'
     }
 
@@ -599,7 +661,7 @@ export class AppShell extends LiteElement {
       this.projectKey = projectKey as UUID
       console.log(this.project)
       const keys = Object.keys(this.project.pages)
-      this.loadPage(keys[0])
+      if (keys[0]) await this.loadPage(keys[0])
       location.hash = '#!/draw'
       this.projectPane?.select?.('project')
     }
@@ -625,10 +687,23 @@ export class AppShell extends LiteElement {
       await addPage(this.projectKey, newPageName, clonedSchema)
       this.project = await getProjectData(this.projectKey)
     }
+
+    if (action === 'rename-page') {
+      const pageKey = dialog.dataset?.pageKey
+      if (!pageKey) return
+      const pageNameField = dialog.querySelector('#rename-page-name') as HTMLInputElement | null
+      const newPageName = pageNameField?.value?.trim() || ''
+      if (!newPageName) return
+      const page = this.project.pages?.[pageKey]
+      if (!page) return
+      page.name = newPageName
+      await setProjectData(this.projectKey, this.project)
+      this.project = await getProjectData(this.projectKey)
+    }
   }
 
   #clonePageSchema(
-    schema: any,
+    schema: { version?: string; objects?: unknown[] },
     options: {
       includeWalls: boolean
       outsideWallsOnly: boolean
@@ -645,8 +720,8 @@ export class AppShell extends LiteElement {
       return structuredClone({ version, objects })
     }
 
-    const selectedObjects = new Set<any>()
-    const walls = objects.filter((obj) => isWallObject(obj))
+    const selectedObjects = new Set<ShellFabricObject>()
+    const walls = objects.filter((obj): obj is ShellFabricObject => isWallObject(obj as FabricObject | null))
     const selectedWalls = includeWalls ? (outsideWallsOnly ? this.#selectOutsideWalls(walls) : walls) : []
 
     if (includeWalls) {
@@ -654,7 +729,7 @@ export class AppShell extends LiteElement {
     }
 
     if (includeOpenings) {
-      const openings = objects.filter((obj) => isOpeningObject(obj))
+      const openings = objects.filter((obj): obj is ShellFabricObject => isOpeningObject(obj as FabricObject | null))
       const filteredOpenings = outsideWallsOnly
         ? openings.filter((opening) => this.#openingBelongsToWalls(opening, selectedWalls))
         : openings
@@ -663,14 +738,16 @@ export class AppShell extends LiteElement {
 
     if (includeElectrical) {
       objects
-        .filter((obj) => obj?.bindingRole === 'switch' || obj?.bindingRole === 'load')
+        .filter((obj): obj is ShellFabricObject => {
+          const candidate = obj as FabricObject & { bindingRole?: string }
+          return candidate.bindingRole === 'switch' || candidate.bindingRole === 'load'
+        })
         .forEach((object) => selectedObjects.add(object))
     }
-
     return { version, objects: structuredClone(Array.from(selectedObjects)) }
   }
 
-  #openingBelongsToWalls(opening: any, walls: any[]) {
+  #openingBelongsToWalls(opening: ShellFabricObject, walls: ShellFabricObject[]) {
     const openingCenter = this.#getObjectCenter(opening)
     if (!openingCenter) return false
     return walls.some((wall) => {
@@ -681,7 +758,7 @@ export class AppShell extends LiteElement {
     })
   }
 
-  #getObjectCenter(object: any) {
+  #getObjectCenter(object: ShellFabricObject) {
     const left = Number(object.left ?? 0)
     const top = Number(object.top ?? 0)
     const width = Math.abs(Number(object.width ?? 0) * Number(object.scaleX ?? 1))
@@ -705,16 +782,16 @@ export class AppShell extends LiteElement {
     return Math.hypot(point.x - projX, point.y - projY)
   }
 
-  #wallThicknessForMatch(wall: any) {
-    const width = Math.abs(Number(wall?.width ?? 0) * Number(wall?.scaleX ?? 1))
-    const height = Math.abs(Number(wall?.height ?? 0) * Number(wall?.scaleY ?? 1))
+  #wallThicknessForMatch(wall: ShellFabricObject) {
+    const width = Math.abs(Number(wall.width ?? 0) * Number(wall.scaleX ?? 1))
+    const height = Math.abs(Number(wall.height ?? 0) * Number(wall.scaleY ?? 1))
     return Math.max(8, Math.min(width, height, 12))
   }
 
-  #selectOutsideWalls(walls: any[]) {
+  #selectOutsideWalls(walls: ShellFabricObject[]) {
     const validWalls = walls.filter((wall) => {
-      const width = Math.abs(Number(wall?.width ?? 0) * Number(wall?.scaleX ?? 1))
-      const height = Math.abs(Number(wall?.height ?? 0) * Number(wall?.scaleY ?? 1))
+      const width = Math.abs(Number(wall.width ?? 0) * Number(wall.scaleX ?? 1))
+      const height = Math.abs(Number(wall.height ?? 0) * Number(wall.scaleY ?? 1))
       return width > 0 && height > 0
     })
 
@@ -734,7 +811,6 @@ export class AppShell extends LiteElement {
     const maxX = Math.max(...allXs)
     const maxY = Math.max(...allYs)
     const edgeTolerance = 6
-
     return endpoints
       .filter(({ points }) =>
         points.some(
@@ -789,6 +865,37 @@ export class AppShell extends LiteElement {
         <flex-it></flex-it>
         <md-filled-button form="clone-page" value="clone-page">
           clone
+        </md-filled-button>
+      </flex-row>
+    `
+    dialog.open = true
+  }
+
+  async openRenamePageDialog(pageKey: string) {
+    const page = this.project.pages?.[pageKey]
+    if (!page) return
+    const dialog = this.dialog
+    if (!dialog) return
+    dialog.dataset.action = 'rename-page'
+    dialog.dataset.pageKey = pageKey
+    const defaultName = page.name.replace(/"/g, '')
+    dialog.innerHTML = `
+      <form id="rename-page" slot="content" method="dialog">
+        <flex-column style="gap: 1rem;">
+          <p>Rename page</p>
+          <label style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <span>Page name</span>
+            <md-filled-text-field id="rename-page-name" value="${defaultName}"></md-filled-text-field>
+          </label>
+        </flex-column>
+      </form>
+      <flex-row slot="actions" style="width: 100%;">
+        <md-outlined-button form="rename-page" value="cancel-rename-page">
+          cancel
+        </md-outlined-button>
+        <flex-it></flex-it>
+        <md-filled-button form="rename-page" value="rename-page">
+          rename
         </md-filled-button>
       </flex-row>
     `
@@ -855,28 +962,39 @@ export class AppShell extends LiteElement {
       })
       return
     }
+
     this.project.pages[this.loadedPage].schema = schema
-    console.log(this.project)
-    console.log(this.projectKey)
     await setProjectData(this.projectKey, this.project)
+    this.projectDirty = false
+    pubsub.publish('project.saved', { projectKey: this.projectKey, pageKey: this.loadedPage })
   }
 
   async loadPage(key: string) {
     this.loadedPage = key
     const page = this.project.pages[key]
-    console.log(page, key)
+    console.log({ page, key })
     // Wait for the draw-field element to be available and its canvas initialized
     // No updateComplete in Lite; rely on property updates
     const drawField = this.shadowRoot?.querySelector('draw-field') as typeof this.field
     if (drawField) {
-      if (drawField.fromJSON) await drawField.fromJSON(page.schema || { version: '6.0.0', objects: [] })
-      this.historyEntries = drawField.getHistoryEntries?.().map(({ id, label, timestamp }: any) => ({
-        id,
-        label,
-        timestamp
-      }))
+      if (drawField.fromJSON) {
+        const schema = (page.schema as unknown as { version: string; objects: JsonValue[] }) ?? {
+          version: '6.0.0',
+          objects: [] as JsonValue[]
+        }
+        await drawField.fromJSON(schema)
+      }
+
+      this.historyEntries = drawField
+        .getHistoryEntries?.()
+        .map(({ id, label, timestamp }: { id: string; label: string; timestamp: number }) => ({
+          id,
+          label,
+          timestamp
+        }))
     }
 
+    this.projectDirty = false
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
   }
@@ -898,7 +1016,7 @@ export class AppShell extends LiteElement {
     }
 
     const schema = this.field.buildAutoOneWireSchema()
-    const existingEntry = Object.entries(this.project.pages).find(([, page]: [string, any]) =>
+    const existingEntry = Object.entries(this.project.pages).find(([, page]) =>
       String(page?.name ?? '')
         .toLowerCase()
         .startsWith('auto one-wire')
@@ -928,7 +1046,7 @@ export class AppShell extends LiteElement {
     if (!this.project || !this.projectKey) return
     await this.savePage()
     const report = this.field.getBindingValidationReport()
-    this.validationReportData = report
+    this.validationReportData = report as unknown as JsonValue
     this.validationReportOpen = true
     return report
   }
@@ -946,14 +1064,14 @@ export class AppShell extends LiteElement {
   undo() {
     const field = this.field
     if (field && field.canvas && 'undo' in field.canvas) {
-      ;(field.canvas as any).undo()
+      ;(field.canvas as CanvasWithUndoRedo).undo?.()
     }
   }
 
   redo() {
     const field = this.field
     if (field && field.canvas && 'redo' in field.canvas) {
-      ;(field.canvas as any).redo()
+      ;(field.canvas as CanvasWithUndoRedo).redo?.()
     }
   }
 
@@ -963,7 +1081,7 @@ export class AppShell extends LiteElement {
 
   showShortcuts = async () => {
     if (!customElements.get('keyboard-shortcuts')) await import('./screens/keyboard-shortcuts.js')
-    const shortcuts = this.shadowRoot?.querySelector('keyboard-shortcuts') as any
+    const shortcuts = this.shadowRoot?.querySelector('keyboard-shortcuts') as KeyboardShortcutsElement | null
     if (shortcuts) shortcuts.open = true
   }
 
@@ -971,10 +1089,10 @@ export class AppShell extends LiteElement {
     // No updateComplete or renderRoot in Lite; use shadowRoot
     return new Promise(async (resolve, reject) => {
       const picker = this.shadowRoot?.querySelector('input[type="color"]') as HTMLInputElement
-      const pickerDialog = this.shadowRoot?.querySelector('.color-picker') as any
+      const pickerDialog = this.shadowRoot?.querySelector('.color-picker') as PickerDialogElement | null
       if (!picker || !pickerDialog) return reject('Color picker not found')
       pickerDialog.addEventListener('close', () => {
-        if (pickerDialog.returnValue === 'confirm-color') {
+        if ((pickerDialog as unknown as { returnValue?: string }).returnValue === 'confirm-color') {
           const color = picker.value as Color
           state.styling.fill = color
           this.actions.fill = color
@@ -989,7 +1107,7 @@ export class AppShell extends LiteElement {
 
   static styles = [shellStyles]
   deletePage(pageName: string) {
-    const pages = this.project.pages as Record<string, any>
+    const pages = this.project.pages as Record<string, Project['pages'][string]>
     const pageKeys = Object.keys(pages)
     for (let i = 0; i < pageKeys.length; i++) {
       const key = pageKeys[i]
@@ -1034,11 +1152,13 @@ export class AppShell extends LiteElement {
         @restore-history=${async (event: CustomEvent<{ id: string }>) => {
           await this.field?.restoreHistoryEntry?.(event.detail.id)
           this.historyEntries =
-            this.field?.getHistoryEntries?.().map(({ id, label, timestamp }: any) => ({
-              id,
-              label,
-              timestamp
-            })) ?? []
+            this.field
+              ?.getHistoryEntries?.()
+              .map(({ id, label, timestamp }: { id: string; label: string; timestamp: number }) => ({
+                id,
+                label,
+                timestamp
+              })) ?? []
           location.hash = '#!/draw'
         }}></history-panel>
       ${iconSetTemplate}

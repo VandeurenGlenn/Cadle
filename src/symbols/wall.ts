@@ -1,8 +1,17 @@
-import { Rect, Group, IText, classRegistry } from 'fabric'
+import { Rect, classRegistry } from 'fabric'
+import type { Canvas, RectProps, SerializedRectProps, TClassProperties } from 'fabric'
+import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
 import { CadleDepth } from './depth.js'
 import { CadleWidth } from './width.js'
 import { canvasInk } from './canvas-tokens.js'
+
+type WallOptions = {
+  uuid?: string
+  bindingId?: string
+  situationMetadata?: Record<string, JsonValue>
+  [key: string]: unknown
+}
 
 export default class CadleWall extends Rect {
   static type = 'CadleWall'
@@ -12,23 +21,23 @@ export default class CadleWall extends Rect {
   _depthText: CadleDepth
   uuid: `${string}-${string}-${string}-${string}-${string}`
   bindingId?: string
-  situationElementType: 'wall' = 'wall'
-  situationMetadata?: Record<string, unknown>
+  readonly situationElementType = 'wall' as const
+  situationMetadata?: Record<string, JsonValue>
 
   declare scaleX: number
   declare scaleY: number
 
   isHorizontal: boolean
 
-  set widthText(value) {
+  set widthText(value: CadleWidth) {
     this._widthText = value
-    const canvas = cadleShell?.field?.canvas as any | null
+    const canvas = cadleShell?.field?.canvas as Canvas | null
     if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
-  set depthText(value) {
+  set depthText(value: CadleDepth) {
     this._depthText = value
-    const canvas = cadleShell?.field?.canvas as any | null
+    const canvas = cadleShell?.field?.canvas as Canvas | null
     if (canvas && !canvas.getObjects().includes(value)) canvas.add(value)
   }
 
@@ -60,13 +69,20 @@ export default class CadleWall extends Rect {
     })
   }
 
-  constructor(options: Record<string, any> = {}) {
+  constructor(options: WallOptions = {}) {
     super()
+
+    this.on('added', () => {
+      const canvas = this.canvas as unknown as { sendToBack?: (object: unknown) => void } | null
+      if (canvas?.sendToBack) canvas.sendToBack(this)
+    })
 
     if (!options.uuid) {
       this.uuid = crypto.randomUUID()
     } else {
-      this.uuid = options.uuid
+      this.uuid = (
+        typeof options.uuid === 'string' ? options.uuid : crypto.randomUUID()
+      ) as `${string}-${string}-${string}-${string}-${string}`
     }
 
     if (typeof options?.bindingId === 'string') this.bindingId = options.bindingId
@@ -78,11 +94,11 @@ export default class CadleWall extends Rect {
     // this.initDepthText()
     this.set({ ...defaultOptions, ...options })
 
-    const canvas = cadleShell?.field?.canvas as any | undefined
+    const canvas = cadleShell?.field?.canvas as Canvas | undefined
     canvas?.requestRenderAll()
   }
 
-  updateWidthText(key: string, value: any) {
+  updateWidthText(key: string, value: number) {
     // if (!this.widthText) this.initWidthText()
     if (key === 'scaleX') this.scaleX = value
     if (this.isHorizontal) {
@@ -102,7 +118,7 @@ export default class CadleWall extends Rect {
     }
   }
 
-  updateDepthText(key: string, value: any) {
+  updateDepthText(key: string, value: number) {
     // if (!this.depthText) this.initDepthText()
     if (key === 'scaleY') this.scaleY = value
     if (this.isHorizontal) {
@@ -122,24 +138,24 @@ export default class CadleWall extends Rect {
     }
   }
 
-  handleSet(key: string, value: any) {
+  handleSet(key: string, value: number | string | undefined) {
     // console.log({ key, value }) // todo only set when needed
     this.isHorizontal = this.width > this.height
-    this.updateWidthText(key, value)
-    // this.updateDepthText(key, value)
+    this.updateWidthText(key, Number(value ?? 0))
+    // this.updateDepthText(key, Number(value ?? 0))
   }
 
-  set(key: string | Record<string, any>, value?: any) {
+  set(key: string | Record<string, unknown>, value?: unknown) {
     let result
     if (typeof key === 'object') {
       result = super.set(key, value)
 
       for (const [k, v] of Object.entries(key)) {
-        this.handleSet(k, v)
+        this.handleSet(k, Number(v ?? 0))
       }
     } else {
       result = super.set(key, value)
-      this.handleSet(key, value)
+      this.handleSet(key, Number(value ?? 0))
     }
     return result
   }
@@ -148,9 +164,9 @@ export default class CadleWall extends Rect {
     return type === 'CadleWall'
   }
 
-  toJSON(propertiesToInclude?: any[]): any {
+  toJSON(): ReturnType<Rect['toJSON']> {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,
@@ -159,9 +175,10 @@ export default class CadleWall extends Rect {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toObject(propertiesToInclude?: any[]): any {
     return {
-      ...super.toObject(propertiesToInclude as any),
+      ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
       situationElementType: this.situationElementType,

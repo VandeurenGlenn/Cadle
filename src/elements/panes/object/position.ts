@@ -1,28 +1,36 @@
-import { LiteElement, html, css, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
+import type { FabricObject } from 'fabric'
 import styles from './position.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@material/web/textfield/filled-text-field.js'
 import './../../items/object.js'
+
+type ValueInput = HTMLElement & { value: string }
+
+type SizeAwareObject = FabricObject & {
+  symbolPath?: string
+  symbolName?: string
+}
+
 @customElement('object-position')
 export class ObjectPosition extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor active: boolean = false
   @query('#pos-left')
-  private accessor _leftInput!: any
+  private accessor _leftInput!: ValueInput
 
   @query('#pos-top')
-  private accessor _topInput!: any
+  private accessor _topInput!: ValueInput
 
   @query('#pos-width')
-  private accessor _widthInput!: any
+  private accessor _widthInput!: ValueInput
 
   @query('#pos-height')
-  private accessor _heightInput!: any
+  private accessor _heightInput!: ValueInput
 
   static styles = [styles]
 
-
   firstRender(): void {
-    this.shadowRoot?.addEventListener('click', this.#onClick as any)
+    this.shadowRoot?.addEventListener('click', this.#onClick)
     // Listen to canvas selection changes
     const canvas = cadleShell?.field?.canvas
     if (canvas) {
@@ -77,17 +85,18 @@ export class ObjectPosition extends LiteElement {
         const originalSize = property === 'width' ? (obj.width ?? 0) : (obj.height ?? 0)
         if (originalSize > 0) {
           const newScale = numValue / originalSize
-          const originX = (obj as any).originX ?? 'left'
-          const originY = (obj as any).originY ?? 'top'
-          const anchorPoint = (obj as any).getPointByOrigin(originX, originY)
-          const isSymbolObject = Boolean((obj as any).symbolPath || (obj as any).symbolName)
+          const item = obj as SizeAwareObject
+          const originX = item.originX ?? 'left'
+          const originY = item.originY ?? 'top'
+          const anchorPoint = item.getPointByOrigin(originX, originY)
+          const isSymbolObject = Boolean(item.symbolPath || item.symbolName)
           if (isSymbolObject) {
             obj.set({ scaleX: newScale, scaleY: newScale })
           } else {
             obj.set(property === 'width' ? { scaleX: newScale } : { scaleY: newScale })
           }
 
-          ;(obj as any).setPositionByOrigin(anchorPoint, originX, originY)
+          item.setPositionByOrigin(anchorPoint, originX, originY)
           obj.setCoords()
         }
       } else {
@@ -110,28 +119,28 @@ export class ObjectPosition extends LiteElement {
             label="Left (x)"
             type="number"
             value="0"
-            @change=${(e: Event) => this.#applyPosition('left', (e.target as any).value)}>
+            @change=${(e: Event) => this.#applyPosition('left', (e.target as ValueInput).value ?? '0')}>
           </md-filled-text-field>
           <md-filled-text-field
             id="pos-top"
             label="Top (y)"
             type="number"
             value="0"
-            @change=${(e: Event) => this.#applyPosition('top', (e.target as any).value)}>
+            @change=${(e: Event) => this.#applyPosition('top', (e.target as ValueInput).value ?? '0')}>
           </md-filled-text-field>
           <md-filled-text-field
             id="pos-width"
             label="Width"
             type="number"
             value="0"
-            @change=${(e: Event) => this.#applyPosition('width', (e.target as any).value)}>
+            @change=${(e: Event) => this.#applyPosition('width', (e.target as ValueInput).value ?? '0')}>
           </md-filled-text-field>
           <md-filled-text-field
             id="pos-height"
             label="Height"
             type="number"
             value="0"
-            @change=${(e: Event) => this.#applyPosition('height', (e.target as any).value)}>
+            @change=${(e: Event) => this.#applyPosition('height', (e.target as ValueInput).value ?? '0')}>
           </md-filled-text-field>
         </div>
       </object-item>

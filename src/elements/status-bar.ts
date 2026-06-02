@@ -34,39 +34,63 @@ export class StatusBar extends LiteElement {
   @property({ type: Boolean }) accessor hasCursor = false
   @property({ type: Number }) accessor zoom = 1
   @property({ type: Boolean }) accessor snap = true
-  @property({ type: Object, consumes: 'shell.pointer' }) accessor pointer
+  @property({ type: Boolean }) accessor saved = false
+  @property({ type: Boolean }) accessor dirty = false
+  @property({ type: Object, consumes: 'shell.pointer' }) accessor pointer!: { x: number; y: number }
+
+  #saveIndicatorTimer?: number
 
   firstRender(): void {
-    const shell = (globalThis as unknown as { cadleShell?: CadleShellLite }).cadleShell
+    const shell = (globalThis as { cadleShell?: CadleShellLite }).cadleShell
     this.action = shell?.action ?? ''
     this.snap = !shell?.freeDraw
     pubsub.subscribe('shell.action', this.#onAction)
     pubsub.subscribe('shell.snap', this.#onSnap)
+    pubsub.subscribe('project.saved', this.#onProjectSaved)
+    pubsub.subscribe('project.modified', this.#onProjectModified)
   }
 
-  willChange(propertyKey: string, value): any {
+  willChange(propertyKey: string, value) {
     if (propertyKey === 'pointer') {
-      value = value as { x: number; y: number } | undefined
-      this.cursorX = value?.x ?? 0
-      this.cursorY = value?.y ?? 0
-      this.hasCursor = !!value
+      const pointerValue = value as { x: number; y: number } | undefined
+      this.cursorX = pointerValue?.x ?? 0
+      this.cursorY = pointerValue?.y ?? 0
+      this.hasCursor = !!pointerValue
     }
+    return value
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
     pubsub.unsubscribe('shell.action', this.#onAction)
     pubsub.unsubscribe('shell.snap', this.#onSnap)
+    pubsub.unsubscribe('project.saved', this.#onProjectSaved)
+    pubsub.unsubscribe('project.modified', this.#onProjectModified)
+  }
+
+  #onProjectSaved = () => {
+    this.dirty = false
+    this.saved = true
+    if (this.#saveIndicatorTimer) {
+      window.clearTimeout(this.#saveIndicatorTimer)
+    }
+    this.#saveIndicatorTimer = window.setTimeout(() => {
+      this.saved = false
+      this.#saveIndicatorTimer = undefined
+    }, 2500)
+  }
+
+  #onProjectModified = () => {
+    if (this.#saveIndicatorTimer) {
+      window.clearTimeout(this.#saveIndicatorTimer)
+      this.#saveIndicatorTimer = undefined
+    }
+    this.saved = false
+    this.dirty = true
   }
 
   #onAction = (value: string) => {
     this.action = value ?? ''
-  }
-
-  #onPointerMove = (point?: { x: number; y: number }) => {
-    this.cursorX = point?.x ?? 0
-    this.cursorY = point?.y ?? 0
-    this.hasCursor = true
   }
 
   #onZoom = (value: number) => {
@@ -78,13 +102,13 @@ export class StatusBar extends LiteElement {
   }
 
   #toggleSnap = () => {
-    const shell = (globalThis as unknown as { cadleShell?: CadleShellLite }).cadleShell
+    const shell = (globalThis as { cadleShell?: CadleShellLite }).cadleShell
     if (!shell) return
     shell.freeDraw = !shell.freeDraw
   }
 
   #cycleZoom = () => {
-    const shell = (globalThis as unknown as { cadleShell?: CadleShellLite }).cadleShell
+    const shell = (globalThis as { cadleShell?: CadleShellLite }).cadleShell
     const field = shell?.field
     if (!field) return
     const current = Math.round(this.zoom * 100) / 100
@@ -124,6 +148,9 @@ export class StatusBar extends LiteElement {
         @click=${this.#cycleZoom}>
         <span class="mono">${Math.round(this.zoom * 100)}%</span>
       </button>
+      ${this.dirty
+        ? html`<span class="status-pill unsaved">Unsaved</span>`
+        : html`<span class="status-pill saved ${this.saved ? 'visible' : ''}">Saved</span>`}
     `
   }
 }

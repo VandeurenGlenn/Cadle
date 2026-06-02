@@ -6,10 +6,9 @@ export const isSelectAll = ({ metaKey, ctrlKey, key }: KeyboardEvent): boolean =
   key === 'a' && (isMac ? metaKey : ctrlKey)
 
 export const selectAll = (): void => {
-  const canvas_ = canvas as any
-  canvas_.discardActiveObject()
-  const selection = new ActiveSelection(canvas_.getObjects(), { canvas: canvas_ as any })
-  canvas_.setActiveObject(selection)
+  canvas.discardActiveObject()
+  const selection = new ActiveSelection(canvas.getObjects(), { canvas })
+  canvas.setActiveObject(selection)
 }
 
 export const keyCombination = { key: 'a', metaKey: isMac, ctrlKey: !isMac }

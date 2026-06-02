@@ -1,4 +1,4 @@
-import { LiteElement, html, css, property, customElement } from '@vandeurenglenn/lite'
+import { LiteElement, html, property, customElement } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/it.js'
@@ -8,6 +8,7 @@ import { field, positionObject, shell } from '../../utils.js'
 import pubsub from '../../pubsub.js'
 import styles from './actions.css' with { type: 'css' }
 import { map } from '@vandeurenglenn/lite/map.js'
+
 declare global {
   interface HTMLElementTagNameMap {
     'cadle-actions': CadleActions
@@ -30,7 +31,7 @@ export class CadleActions extends LiteElement {
   static styles = [styles]
 
   firstRender(): void {
-    const sh = (globalThis as any).cadleShell
+    const sh = window.cadleShell
     this.snap = !sh?.freeDraw
     this.measurements = !!sh?.showMeasurements
     this.currentAction = sh?.action ?? ''
@@ -72,20 +73,20 @@ export class CadleActions extends LiteElement {
     })
   }
 
-  #undo = () => (globalThis as any).cadleShell?.undo?.()
-  #redo = () => (globalThis as any).cadleShell?.redo?.()
+  #undo = () => window.cadleShell?.undo?.()
+  #redo = () => window.cadleShell?.redo?.()
   #toggleSnap = () => {
-    const sh = (globalThis as any).cadleShell
+    const sh = window.cadleShell
     if (sh) sh.freeDraw = !sh.freeDraw
   }
 
   #toggleMeasurements = () => {
-    const sh = (globalThis as any).cadleShell
+    const sh = window.cadleShell
     if (sh) sh.showMeasurements = !sh.showMeasurements
   }
 
   #pickTool = (tool: DrawTool) => {
-    const sh = (globalThis as any).cadleShell
+    const sh = window.cadleShell
     if (!sh) return
     sh.action = tool.action
   }
@@ -113,8 +114,8 @@ export class CadleActions extends LiteElement {
       </button>
       <flex-it></flex-it>
       ${map(
-    DRAW_TOOLS,
-    (tool) => html`
+        DRAW_TOOLS,
+        (tool) => html`
           <button
             class="tool"
             title=${tool.title}
@@ -124,7 +125,7 @@ export class CadleActions extends LiteElement {
             <custom-icon icon=${tool.icon}></custom-icon>
           </button>
         `
-  )}
+      )}
       <button
         class="tool"
         title="Insert text"

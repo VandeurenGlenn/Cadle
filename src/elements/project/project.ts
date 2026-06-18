@@ -75,7 +75,6 @@ export class ProjectElement extends LiteElement {
   }
 
   async #keydown(event: KeyboardEvent) {
-    console.log(event)
     if (event.key === 'Escape') {
       this.addingPage = false
       const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
@@ -91,8 +90,6 @@ export class ProjectElement extends LiteElement {
   }
 
   #showMenu = (event: MouseEvent) => {
-    console.log(event.composedPath())
-    console.log(event)
     const paths = event.composedPath()
     const target = paths[0] as HTMLElement | undefined
     if (target?.localName === 'custom-drawer-item' || target?.localName === 'custom-selector') {
@@ -101,11 +98,7 @@ export class ProjectElement extends LiteElement {
         show?: (args: { clientY: number; target: EventTarget }) => void
       } | null
       target.setAttribute('id', 'contextmenu-anchor')
-      console.log(target)
-      console.log(paths)
-      console.log(target.dataset.project)
       this.currentSelected = target.dataset.project ?? ''
-      console.log({ currentSelected: this.currentSelected })
       menu?.show?.({ clientY: event.clientY, target })
     }
   }
@@ -128,7 +121,6 @@ export class ProjectElement extends LiteElement {
     const projectKey = menu?.currentTarget?.dataset?.project
     if (projectKey && (action === 'remove' || action === 'paste')) {
       const page = this.project?.pages?.[projectKey]
-      console.log({ page })
       if (page) {
         if (action === 'paste') {
           this.clipboard = undefined
@@ -151,7 +143,6 @@ export class ProjectElement extends LiteElement {
       cadleShell.openClonePageDialog(projectKey)
     }
 
-    console.log({ clipboard: this.clipboard })
     this.requestRender()
   }
 
@@ -189,7 +180,7 @@ export class ProjectElement extends LiteElement {
   static styles = [styles]
 
   get #orderedPages() {
-    return Object.entries(this.project?.pages ?? {}).sort(([_, a], [__, b]) => {
+    return Object.entries(this.project?.pages ?? {}).sort(([, a], [, b]) => {
       const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
       const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
       return orderA - orderB || a.creationTime - b.creationTime
@@ -214,9 +205,7 @@ export class ProjectElement extends LiteElement {
   }
 
   render() {
-    console.log(this.loadedPage)
     const projectTemplate = this.#projectTemplate
-    console.log({ projectTemplate })
     return html`
       <custom-selector
         .selected=${this.loadedPage}

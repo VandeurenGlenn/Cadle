@@ -90,7 +90,8 @@ export class ObjectBinding extends LiteElement {
     const explicitRole = String(object?.bindingRole ?? '').toLowerCase()
     if (explicitRole === 'socket') return 'load'
     if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
-    const haystack = `${object?.symbolPath ?? ''} ${object?.symbolName ?? ''} ${object?.type ?? ''}`.toLowerCase()
+    const haystack =
+      `${object?.symbolPath ?? ''} ${object?.symbolName ?? ''} ${object?.kind ?? ''} ${object?.type ?? ''}`.toLowerCase()
     if (haystack.includes('/switches/') || haystack.includes(' switch')) return 'switch'
     if (
       haystack.includes('/consumption appliances/') ||
@@ -369,7 +370,7 @@ export class ObjectBinding extends LiteElement {
       <div class="compliance-card">
         <div class="compliance-inputs">
           <md-filled-text-field
-            label="Cable length (m)"
+            label="Cable length (one-way, m)"
             type="number"
             .value=${String(this._cableLength)}
             @input=${(e: Event) => {

@@ -14,20 +14,10 @@ import CadleWall from '../../symbols/wall.js'
 import CadleDoor from '../../symbols/door.js'
 import CadleWindow from '../../symbols/window.js'
 import CadleGate from '../../symbols/gate.js'
+import { getWallEndpoints, type Point, type WallObject } from './wall-geometry.js'
 
-export type WallObject = FabricObject & {
-  left?: number
-  top?: number
-  width?: number
-  height?: number
-  scaleX?: number
-  scaleY?: number
-  angle?: number
-  originY?: 'top' | 'center' | 'bottom'
-  type?: string
-  doorSwingDirection?: string
-  doorHingeSide?: string
-}
+export { getWallEndpoints }
+export type { Point, WallObject }
 
 type OpeningTarget = FabricObject & {
   type?: string
@@ -46,7 +36,6 @@ function snapToGrid(point: LeftTop, gridSize: number): LeftTop {
   }
 }
 
-export type Point = { x: number; y: number }
 export type LeftTop = { left: number; top: number }
 export type WallBounds = {
   left: number
@@ -82,9 +71,10 @@ export function getWallAxisFrame(wall: WallObject): WallAxisFrame {
   const fabricAngle = Number(wall.angle ?? 0)
   const originY = wall.originY ?? 'top'
   const isFreeAngle = originY === 'center' || (fabricAngle !== 0 && fabricAngle !== 180)
+  const explicitThickness = Number(wall.wallThickness ?? 0)
   // For free-angle walls thickness is `height`. For axis-aligned, the
   // perpendicular dim is the thickness.
-  const thickness = isFreeAngle ? h : w >= h ? h : w
+  const thickness = explicitThickness > 0 ? explicitThickness : isFreeAngle ? h : w >= h ? h : w
   return { p0, p1, length, angleDeg, thickness, isFreeAngle }
 }
 
@@ -161,43 +151,10 @@ export function wallThickness(gridSize: number): number {
 /**
  * Return the two endpoints (in canvas coords) of a wall, supporting both
  * axis-aligned legacy walls (origin top-left, no angle) and free-angle walls
- * (origin left/center + angle).
+ * (origin left/center + angle). Implementation lives in `wall-geometry.ts`
+ * (re-exported above) so `symbols/wall.ts` can consume it without an import
+ * cycle.
  */
-export function getWallEndpoints(wall: WallObject): [Point, Point] {
-  const left = Number(wall.left ?? 0)
-  const top = Number(wall.top ?? 0)
-  const width = Math.abs(Number(wall.width ?? 0)) * Number(wall.scaleX ?? 1)
-  const height = Math.abs(Number(wall.height ?? 0)) * Number(wall.scaleY ?? 1)
-  const angle = Number(wall.angle ?? 0)
-  const originY = wall.originY ?? 'top'
-
-  // Free-angle walls: origin is left/center, width is the wall length, the
-  // wall extends from (left, top) along its rotated axis.
-  if (originY === 'center' || (angle !== 0 && angle !== 180)) {
-    const rad = (angle * Math.PI) / 180
-    const dx = Math.cos(rad) * width
-    const dy = Math.sin(rad) * width
-    return [
-      { x: left, y: top },
-      { x: left + dx, y: top + dy }
-    ]
-  }
-
-  // Legacy axis-aligned walls: derive endpoints from box dims.
-  if (width >= height) {
-    const y = top + height / 2
-    return [
-      { x: left, y },
-      { x: left + width, y }
-    ]
-  }
-
-  const x = left + width / 2
-  return [
-    { x, y: top },
-    { x, y: top + height }
-  ]
-}
 
 export function getWallBounds(wall: WallObject): WallBounds {
   const bounds = wall?.getBoundingRect?.()
@@ -220,6 +177,29 @@ export function getWallBounds(wall: WallObject): WallBounds {
  * left/center + angle); axis-aligned walls keep their legacy shape.
  */
 export function applyWallEndpoint(wall: WallObject, endIndex: 0 | 1, point: Point, gridSize: number): void {
+  // Poly wall: move the specific wallPoints vertex, then recompute bounding box.
+  const wallPoints = Array.isArray((wall as { wallPoints?: unknown }).wallPoints)
+    ? (wall as { wallPoints: { x: number; y: number }[] }).wallPoints
+    : null
+  if (wallPoints && wallPoints.length >= 2 && endIndex < wallPoints.length) {
+    const wallLeft = Number(wall.left ?? 0)
+    const wallTop = Number(wall.top ?? 0)
+    // Move this vertex in canvas coords.
+    wallPoints[endIndex] = { x: alignToPixel(point.x - wallLeft), y: alignToPixel(point.y - wallTop) }
+    // Recompute bounding box from all vertices so Fabric hit-testing stays correct.
+    const xs = wallPoints.map((p) => wallLeft + p.x)
+    const ys = wallPoints.map((p) => wallTop + p.y)
+    const newLeft = Math.min(...xs)
+    const newTop = Math.min(...ys)
+    const newWidth = Math.max(1, Math.max(...xs) - newLeft)
+    const newHeight = Math.max(1, Math.max(...ys) - newTop)
+    // Shift wallPoints to new origin.
+    const shiftedPoints = wallPoints.map((p) => ({ x: wallLeft + p.x - newLeft, y: wallTop + p.y - newTop }))
+    wall.set({ left: newLeft, top: newTop, width: newWidth, height: newHeight, wallPoints: shiftedPoints } as object)
+    wall.setCoords?.()
+    return
+  }
+
   const endpoints = getWallEndpoints(wall)
   const fixed = endpoints[1 - endIndex]
   const angle = Number(wall.angle ?? 0)
@@ -266,7 +246,7 @@ export function applyWallEndpoint(wall: WallObject, endIndex: 0 | 1, point: Poin
     const newWidth = Math.max(gridSize, maxX - minX)
     wall.set({
       left: alignToPixel(minX),
-      top: alignToPixel(fixed.y - thickness / 2),
+      top: alignToPixel(fixed.y),
       width: alignToPixel(newWidth),
       height: thickness,
       scaleX: 1,
@@ -277,7 +257,7 @@ export function applyWallEndpoint(wall: WallObject, endIndex: 0 | 1, point: Poin
     const maxY = Math.max(point.y, fixed.y)
     const newHeight = Math.max(gridSize, maxY - minY)
     wall.set({
-      left: alignToPixel(fixed.x - thickness / 2),
+      left: alignToPixel(fixed.x),
       top: alignToPixel(minY),
       width: thickness,
       height: alignToPixel(newHeight),
@@ -357,9 +337,9 @@ export type SnapResult = LeftTop & { type: SnapType }
 // world coordinates via the canvas zoom, so the cursor doesn't have to be
 // pixel-perfect when zoomed out, and doesn't grab unrelated walls when
 // zoomed in.
-// When isPreview=true (for live ghost during draw), use tighter radius (6px)
-// to make preview feel less sticky. When false (actual clicks), use full radius
-// (12px) for snappy, forgiving placement.
+// Endpoint and axis snapping intentionally use different radii:
+// - Endpoints: a bit more forgiving so wall joins are easy to hit.
+// - Axis/midpoint: tighter so preview/cursor doesn't feel overly sticky.
 export function snapWallEndpoint(
   canvas: Canvas,
   point: LeftTop,
@@ -370,9 +350,13 @@ export function snapWallEndpoint(
 ): SnapResult | null {
   const walls = canvas.getObjects().filter((obj): obj is WallObject => !!obj && isWallObject(obj) && obj !== ignore)
   const zoom = typeof canvas.getZoom === 'function' ? canvas.getZoom() : 1
-  const screenRadius = isPreview ? 6 : 12
-  const minRadius = isPreview ? gridSize / 2 : gridSize
-  const radius = Math.max(screenRadius / Math.max(zoom, 0.01), minRadius)
+  const zoomSafe = Math.max(zoom, 0.01)
+  const endpointScreenRadius = isPreview ? 5 : 10
+  const axisScreenRadius = isPreview ? 4 : 8
+  const endpointMinRadius = isPreview ? Math.max(4, gridSize * 0.45) : Math.max(6, gridSize * 0.75)
+  const axisMinRadius = isPreview ? Math.max(3, gridSize * 0.35) : Math.max(4, gridSize * 0.55)
+  const endpointRadius = Math.max(endpointScreenRadius / zoomSafe, endpointMinRadius)
+  const axisRadius = Math.max(axisScreenRadius / zoomSafe, axisMinRadius)
 
   let closestEndpoint: SnapResult | null = null
   let minEndpointDistance = Infinity
@@ -380,7 +364,7 @@ export function snapWallEndpoint(
     const endpoints = getWallEndpoints(wall)
     for (const endpoint of endpoints) {
       const distance = Math.hypot(point.left - endpoint.x, point.top - endpoint.y)
-      if (distance <= radius && distance < minEndpointDistance) {
+      if (distance <= endpointRadius && distance < minEndpointDistance) {
         closestEndpoint = {
           left: endpoint.x,
           top: endpoint.y,
@@ -399,7 +383,7 @@ export function snapWallEndpoint(
     const frame = getWallAxisFrame(wall)
     const proj = projectPointOnAxis(point, frame)
     const distance = Math.hypot(point.left - proj.cx, point.top - proj.cy)
-    if (distance <= radius && distance < minDistance) {
+    if (distance <= axisRadius && distance < minDistance) {
       const midpointTolerance = 0.12
       const snapType: SnapType = Math.abs(proj.t - 0.5) <= midpointTolerance ? 'midpoint' : 'axis'
       closest = {
@@ -456,13 +440,13 @@ export function projectPointToWall(
     const projectedLeft = clamp(point.left, bounds.left, bounds.left + bounds.width)
     return {
       left: snapAxis(projectedLeft),
-      top: bounds.top + bounds.height / 2
+      top: bounds.top
     }
   }
 
   const projectedTop = clamp(point.top, bounds.top, bounds.top + bounds.height)
   return {
-    left: bounds.left + bounds.width / 2,
+    left: bounds.left,
     top: snapAxis(projectedTop)
   }
 }
@@ -550,8 +534,7 @@ export function getWallDrawLayout(
   // endpoints. Doing so was tried before and caused the geometric endpoint
   // to drift away from the snap point by t/2, which broke
   // `collectWallConnections` (3px tolerance) and the bound-wall move/resize
-  // behavior. Corner gaps are filled visually by the corner-cap overlay
-  // (see DrawField.#drawWallCornerCaps), not by mutating geometry.
+  // behavior.
 
   if (absDx >= absDy) {
     // Horizontal wall.
@@ -559,9 +542,11 @@ export function getWallDrawLayout(
     const maxX = Math.max(start.left, snappedEnd.left)
     return {
       left: alignToPixel(minX),
-      top: alignToPixel(start.top - thickness / 2),
+      top: alignToPixel(start.top),
       width: alignToPixel(Math.max(gridSize, maxX - minX)),
       height: thickness,
+      rx: Math.min(4, thickness / 2),
+      ry: Math.min(4, thickness / 2),
       angle: 0,
       originX: 'left' as const,
       originY: 'top' as const
@@ -572,10 +557,12 @@ export function getWallDrawLayout(
   const minY = Math.min(start.top, snappedEnd.top)
   const maxY = Math.max(start.top, snappedEnd.top)
   return {
-    left: alignToPixel(start.left - thickness / 2),
+    left: alignToPixel(start.left),
     top: alignToPixel(minY),
     width: thickness,
     height: alignToPixel(Math.max(gridSize, maxY - minY)),
+    rx: Math.min(4, thickness / 2),
+    ry: Math.min(4, thickness / 2),
     angle: 0,
     originX: 'left' as const,
     originY: 'top' as const
@@ -584,7 +571,10 @@ export function getWallDrawLayout(
 
 /**
  * Free-angle wall layout used when the user holds Shift while drawing.
- * Origin is left/center so the wall rotates around its start endpoint.
+ * Origin stays left/top (non-centered) and width equals the true wall length,
+ * so (left, top) is the exact start endpoint and connection math stays exact.
+ * Diagonal corner gaps are closed at render time in `CadleWall._render`, which
+ * projects the body half a thickness along the axis at joined ends only.
  * Auto-snaps to the nearest 15° within a 7° tolerance, AND hard-snaps to
  * 0/90/180/270 within 4° so straight walls stay easy.
  */
@@ -603,31 +593,39 @@ export function getWallDrawLayoutFree(
   const dx = snappedEnd.left - start.left
   const dy = snappedEnd.top - start.top
   const rawLength = Math.hypot(dx, dy)
-  const baseLength = Math.max(gridSize, rawLength)
   const thickness = wallThickness(gridSize)
 
   // Compute angle in degrees, normalize to [-180, 180].
   let angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI
+  let length = Math.max(gridSize, rawLength)
 
-  // Snap to nearest 15° increment.
-  const stepDeg = 15
-  const nearestStep = Math.round(angleDeg / stepDeg) * stepDeg
-  if (Math.abs(angleDeg - nearestStep) <= 7) angleDeg = nearestStep
+  // When the far end snapped onto an existing wall endpoint the join is real,
+  // so keep the exact angle/length and the wall terminates precisely on that
+  // endpoint. Angle-snapping here would rotate the far end OFF the target,
+  // reopening the corner gap and defeating join detection at render time.
+  if (endSnap?.type === 'endpoint') {
+    length = rawLength
+  } else {
+    // Snap to nearest 15° increment.
+    const stepDeg = 15
+    const nearestStep = Math.round(angleDeg / stepDeg) * stepDeg
+    if (Math.abs(angleDeg - nearestStep) <= 7) angleDeg = nearestStep
 
-  // Hard-snap to cardinal axes within 4° so straight walls are reliable.
-  for (const cardinal of [-180, -90, 0, 90, 180]) {
-    if (Math.abs(angleDeg - cardinal) <= 4) {
-      angleDeg = cardinal
-      break
+    // Hard-snap to cardinal axes within 4° so straight walls are reliable.
+    for (const cardinal of [-180, -90, 0, 90, 180]) {
+      if (Math.abs(angleDeg - cardinal) <= 4) {
+        angleDeg = cardinal
+        break
+      }
     }
   }
-  // NOTE: No t/2 corner extension here either. See comment in
-  // `getWallDrawLayout` above. Corner gaps are filled by the cap overlay.
   return {
     left: alignToPixel(start.left),
     top: alignToPixel(start.top),
-    width: alignToPixel(baseLength),
+    width: alignToPixel(length),
     height: thickness,
+    rx: Math.min(4, thickness / 2),
+    ry: Math.min(4, thickness / 2),
     angle: angleDeg,
     originX: 'left' as const,
     originY: 'center' as const

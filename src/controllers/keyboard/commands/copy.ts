@@ -20,6 +20,8 @@ export const copy = async () => {
     clipboard.object = await cloned[0].clone()
   }
 
+  clipboard.pasteCount = 0
+
   navigator.clipboard.writeText(JSON.stringify(clipboard.object))
   // clipboard.object = cloned.type === 'group' ? cloned : new Group(cloned._objects, {
   //   subTargetCheck: true,

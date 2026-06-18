@@ -3,6 +3,7 @@
 // are held — otherwise we'd hijack browser shortcuts like Cmd+W.
 const TOOL_MAP: Record<string, string | undefined> = {
   v: undefined, // selection / move
+  r: 'resize',
   w: 'draw-wall',
   d: 'draw-door',
   n: 'draw-window',
@@ -43,4 +44,4 @@ export const tool = (event: KeyboardEvent) => {
   }
 }
 
-export const keys = [['V'], ['W'], ['D'], ['N'], ['G']]
+export const keys = [['V'], ['R'], ['W'], ['D'], ['N'], ['G']]

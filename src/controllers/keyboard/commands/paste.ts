@@ -17,13 +17,22 @@ export const paste = async () => {
 
   if (cloned) {
     const pointer = state.mouse.position
-    const currentPoints = snapToGrid({ left: pointer.x - cloned.width / 2, top: pointer.y - cloned.height / 2 })
-    // cloned.set({
-    //   left: left - cloned.width / 2,
-    //   top: top - cloned.height / 2,
-    //   evented: true
-    // })
-    cloned.set(currentPoints)
+    const snappedPointer = snapToGrid({ left: pointer.x, top: pointer.y })
+    const pasteIndex = Math.max(0, Number(clipboard.pasteCount ?? 0))
+    const pasteStep = state.freeDraw ? 10 : Math.max(1, state.gridSize)
+    const pasteOffset = pasteIndex * pasteStep
+    cloned.setCoords()
+    const bounds = cloned.getBoundingRect()
+    const centerX = Number(bounds.left ?? 0) + Number(bounds.width ?? 0) / 2
+    const centerY = Number(bounds.top ?? 0) + Number(bounds.height ?? 0) / 2
+    const targetCenterX = Number(snappedPointer.left ?? pointer.x) + pasteOffset
+    const targetCenterY = Number(snappedPointer.top ?? pointer.y) + pasteOffset
+    const dx = targetCenterX - centerX
+    const dy = targetCenterY - centerY
+    cloned.set({
+      left: Number(cloned.left ?? 0) + dx,
+      top: Number(cloned.top ?? 0) + dy
+    })
     if (cloned.type === 'activeSelection') {
       // active selection needs a reference to the canvas.
       const activeSelection = cloned as FabricObject & {
@@ -44,6 +53,7 @@ export const paste = async () => {
     canvas.requestRenderAll()
     canvas.history.push({ type: 'add', item: cloned })
     await canvas.setActiveObject(cloned)
+    clipboard.pasteCount = pasteIndex + 1
   }
 }
 

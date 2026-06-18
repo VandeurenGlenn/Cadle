@@ -20,6 +20,11 @@ const TOOL_LABELS: Record<string, string> = {
   'draw-door': 'Draw door',
   'draw-gate': 'Draw gate',
   'draw-window': 'Draw window',
+  'draw-line': 'Draw line',
+  'draw-cable': 'Draw cable',
+  'draw-circle': 'Draw circle',
+  'draw-arc': 'Draw arc',
+  'draw-square': 'Draw box',
   draw: 'Freedraw',
   'draw-text': 'Insert text'
 }
@@ -74,6 +79,7 @@ export class StatusBar extends LiteElement {
     if (this.#saveIndicatorTimer) {
       window.clearTimeout(this.#saveIndicatorTimer)
     }
+
     this.#saveIndicatorTimer = window.setTimeout(() => {
       this.saved = false
       this.#saveIndicatorTimer = undefined
@@ -85,6 +91,7 @@ export class StatusBar extends LiteElement {
       window.clearTimeout(this.#saveIndicatorTimer)
       this.#saveIndicatorTimer = undefined
     }
+
     this.saved = false
     this.dirty = true
   }

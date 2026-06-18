@@ -2,29 +2,30 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  gap: 6px;
 }
-.symbol-container,
+.symbol-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px;
+  width: 100%;
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
 .symbol-container catalog-item {
-  height: 0;
-  will-change: height;
+  opacity: 1;
+  pointer-events: auto;
+  transition: all 150ms ease-out;
+}
+:host(:not([open])) .symbol-container {
+  max-height: 0;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  padding-left: 24px;
-  transition:
-    opacity 150ms,
-    height 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-:host([open]) .symbol-container,
-:host([open]) .symbol-container catalog-item,
-.symbol-container[data-visible='true'],
-.symbol-container[data-visible='true'] catalog-item {
-  height: auto;
-  pointer-events: auto;
+:host([open]) .symbol-container {
+  max-height: 2000px;
   opacity: 1;
-}
-:host([open]) .symbol-container catalog-item,
-.symbol-container[data-visible='true'] catalog-item {
-  min-height: 36px;
+  pointer-events: auto;
 }
 .category-line {
   display: inline-flex;
@@ -34,6 +35,15 @@
   justify-content: flex-start;
   text-align: left;
 }
+.folder-chip {
+  padding: 2px 8px;
+  border-radius: var(--cadle-radius-pill);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-small);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .match-pill {
   padding: 2px 6px;
   border-radius: var(--cadle-radius-pill);
@@ -42,43 +52,53 @@
   font: var(--md-sys-typescale-label-small);
 }
 .category-header {
-  min-height: 28px;
-  height: 28px;
+  min-height: 36px;
+  height: 36px;
   width: 100%;
   display: inline-flex;
   align-items: center;
   gap: var(--cadle-space-1);
-  padding: 0 var(--cadle-space-1);
-  background: transparent;
-  border: none;
+  padding: 0 var(--cadle-space-2);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
   border-radius: var(--cadle-radius-sm);
   margin: 0;
-  color: var(--md-sys-color-on-surface-variant);
-  font: var(--md-sys-typescale-label-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-title-small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-size: 13px;
   cursor: pointer;
   text-align: left;
   transition:
-    background-color var(--cadle-motion-fast),
-    color var(--cadle-motion-fast);
+    all var(--cadle-motion-standard);
 }
 .category-header:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
-  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-container));
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent);
 }
 .category-header:focus-visible {
   outline: none;
-  box-shadow: var(--cadle-focus-ring);
-  color: var(--md-sys-color-on-surface);
+  box-shadow:
+    var(--cadle-focus-ring),
+    0 4px 12px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent);
+  border-color: var(--md-sys-color-primary);
 }
-/* Catalog rows — dense, body-small, neutral at rest. No border at rest
-         to avoid the "fenced cage" look; reveal border on hover/focus only. */
-catalog-item {
+.category-header:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-surface-container));
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+:host([drop-target]) .category-header {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-surface-container));
+  border: 2px solid var(--md-sys-color-primary);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+}
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--cadle-radius-sm);
-  margin-bottom: var(--cadle-space-1);
+  margin-bottom: 2px;
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-small);
   cursor: pointer;

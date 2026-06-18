@@ -1,5 +1,5 @@
 import { Rect, classRegistry } from 'fabric'
-import type { Canvas, RectProps, SerializedRectProps, TClassProperties } from 'fabric'
+import type { Canvas } from 'fabric'
 import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
@@ -242,6 +242,8 @@ export default class CadleDoor extends Rect {
       ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
+      bindingLabel: (this as { bindingLabel?: string }).bindingLabel,
+      bindingLabelOffset: (this as { bindingLabelOffset?: { dx: number; dy: number } }).bindingLabelOffset,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
       doorHingeSide: this.doorHingeSide,
@@ -259,6 +261,8 @@ export default class CadleDoor extends Rect {
       ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
+      bindingLabel: (this as { bindingLabel?: string }).bindingLabel,
+      bindingLabelOffset: (this as { bindingLabelOffset?: { dx: number; dy: number } }).bindingLabelOffset,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
       doorHingeSide: this.doorHingeSide,

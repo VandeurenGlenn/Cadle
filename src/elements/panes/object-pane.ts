@@ -3,11 +3,13 @@ import type { FabricObject } from 'fabric'
 import type { JsonValue } from '../../types.js'
 import styles from './object-pane.css' with { type: 'css' }
 import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
+import { ProtectionSymbolClassifier } from './../../helpers/protection-symbol.js'
 import './object/color.js'
 import './object/export.js'
 import './object/position.js'
 import './object/scale.js'
 import './object/binding.js'
+import './object/protection.js'
 import './object/text.js'
 import './object/overlay.js'
 import '../header.js'
@@ -21,6 +23,9 @@ export class ObjectPane extends LiteElement {
 
   @property({ type: Number })
   private accessor _selectionCount = 0
+
+  @property({ type: Boolean, attribute: false })
+  private accessor _isProtectionSelection = false
 
   private _selectionHandlersBound = false
   static styles = [styles]
@@ -76,6 +81,10 @@ export class ObjectPane extends LiteElement {
     if (!canvas) return
     const activeObjects = canvas.getActiveObjects?.() ?? []
     this._selectionCount = activeObjects.length
+    this._isProtectionSelection =
+      activeObjects.length > 0 &&
+      activeObjects.every((object) => ProtectionSymbolClassifier.isProtectionSymbol(object as FabricObject))
+
     if (activeObjects.length === 0) {
       this._activeObjectLabel = 'No selection'
       return
@@ -91,25 +100,32 @@ export class ObjectPane extends LiteElement {
 
   render() {
     const hasSelection = this._selectionCount > 0
+    const headerTitle = this._isProtectionSelection ? 'Protection settings' : this._activeObjectLabel
+    const headerMeta = this._isProtectionSelection ? 'Circuit protection' : `${this._selectionCount} selected`
     return html`
       ${hasSelection
         ? html`
             <cadle-header>
-              <div class="title">${this._activeObjectLabel}</div>
+              <div class="title">${headerTitle}</div>
               <div
                 class="meta"
                 slot="end">
-                ${`${this._selectionCount} selected`}
+                ${headerMeta}
               </div>
             </cadle-header>
             <section>
-              <object-color></object-color>
-              <object-text></object-text>
-              <object-binding></object-binding>
-              <object-scale></object-scale>
-              <object-position></object-position>
-              <object-overlay></object-overlay>
-              <object-export></object-export>
+              ${this._isProtectionSelection
+                ? html` <object-protection .active=${true}></object-protection> `
+                : html`
+                    <object-color></object-color>
+                    <object-text></object-text>
+                    <object-binding></object-binding>
+                    <object-protection></object-protection>
+                    <object-scale></object-scale>
+                    <object-position></object-position>
+                    <object-overlay></object-overlay>
+                    <object-export></object-export>
+                  `}
             </section>
             <div class="toolbar">
               <span class="toolbar-label">Measurements</span>

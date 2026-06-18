@@ -60,17 +60,11 @@ export class ObjectExport extends LiteElement {
   }
 
   #addToCatalog() {
-    const canvas = cadleShell?.field?.canvas
-    if (!canvas) return
-    const activeObject = canvas.getActiveObject()
-    if (!activeObject) {
-      alert('Please select an object to add to catalog')
-      return
-    }
+    void cadleShell?.field?.addActiveObjectToCatalog?.()
+  }
 
-    // TODO: Implement catalog functionality
-    console.log('Add to catalog:', activeObject.toJSON())
-    alert('Catalog feature coming soon!')
+  #exportAsSymbol() {
+    void cadleShell?.field?.exportActiveObjectAsSymbol?.()
   }
 
   render() {
@@ -90,6 +84,12 @@ export class ObjectExport extends LiteElement {
             @click=${this.#exportAsJSON}>
             <custom-icon icon="code"></custom-icon>
             Export as JSON
+          </div>
+          <div
+            class="action-row"
+            @click=${this.#exportAsSymbol}>
+            <custom-icon icon="download"></custom-icon>
+            Export as symbol
           </div>
           <div
             class="action-row"

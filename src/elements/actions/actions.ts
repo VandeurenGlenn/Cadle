@@ -17,10 +17,16 @@ declare global {
 type DrawTool = { action: string; icon: string; title: string }
 const DRAW_TOOLS: DrawTool[] = [
   { action: 'select', icon: 'arrow_selector_tool', title: 'Select' },
+  { action: 'resize', icon: 'open_with', title: 'Resize' },
   { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
   { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
+  { action: 'draw-line', icon: 'horizontal_rule', title: 'Draw line' },
+  { action: 'draw-cable', icon: 'polyline', title: 'Draw cable route' },
+  { action: 'draw-circle', icon: 'circle', title: 'Draw circle' },
+  { action: 'draw-arc', icon: 'arc', title: 'Draw arc' },
+  { action: 'draw-square', icon: 'square', title: 'Draw box' },
   { action: 'draw', icon: 'draw', title: 'Freedraw' }
 ]
 @customElement('cadle-actions')

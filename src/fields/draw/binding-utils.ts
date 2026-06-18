@@ -10,6 +10,7 @@ import type { BindingOverlay } from './binding-overlay.js'
 import type { JsonValue } from '../../types.js'
 
 type BindingObject = FabricObject & {
+  kind?: string
   bindingId?: string
   bindingRole?: string
   bindingGroupWireSectionOverride?: boolean
@@ -19,8 +20,18 @@ type BindingObject = FabricObject & {
   symbolName?: string
   symbolPath?: string
   situationElementType?: string
+  situationMetadata?: JsonValue
   uuid?: string
   index?: number
+}
+
+type PresetGroupMetadata = {
+  presetType: 'one-wire-group'
+  switches: number
+  loads: number
+  neutral?: number
+  wireSection?: string
+  label?: string
 }
 
 export const normalizeBindingId = (value: string | number | null | undefined) => {
@@ -35,7 +46,7 @@ export const inferBindingRole = (obj: BindingObject): 'switch' | 'load' | 'neutr
   if (explicitRole === 'socket') return 'load'
   if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
 
-  const haystack = `${obj?.symbolPath ?? ''} ${obj?.symbolName ?? ''}`.toLowerCase()
+  const haystack = `${obj?.symbolPath ?? ''} ${obj?.symbolName ?? ''} ${obj?.kind ?? ''}`.toLowerCase()
   if (haystack.includes('/switches/') || haystack.includes(' switch')) return 'switch'
   if (
     haystack.includes('/consumption appliances/') ||
@@ -96,6 +107,33 @@ const buildBindingGroupCardPath = (
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
+const buildPresetOneWireGroupPath = (title: string, subtitle: string, sockets: number, breakerLabel: string) => {
+  const width = 240
+  const height = 128
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="10" fill="#fffaf6" stroke="#d9c8bb"/><rect x="1" y="1" width="${width - 2}" height="40" rx="10" fill="#a85427"/><rect x="1" y="20" width="${width - 2}" height="20" fill="#a85427"/><text x="14" y="24" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff">${title}</text><text x="14" y="36" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#ffe0cc">${subtitle}</text><rect x="14" y="54" width="56" height="28" rx="5" fill="#fff3e0" stroke="#a85427" stroke-width="1.5"/><text x="23" y="72" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#7d3f1c">${breakerLabel}</text><circle cx="118" cy="68" r="16" fill="#e8f5e9" stroke="#1f6a38" stroke-width="1.5"/><text x="108" y="73" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#1f6a38">${sockets}</text><text x="141" y="73" font-family="Arial, sans-serif" font-size="11" fill="#5f4c3d">sockets</text><text x="14" y="104" font-family="Arial, sans-serif" font-size="10" fill="#8a7060">Preset group. Assign a binding ID after placement.</text></svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+const readPresetGroupMetadata = (obj: BindingObject): PresetGroupMetadata | null => {
+  const raw = obj?.situationMetadata
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const candidate = raw as Record<string, JsonValue>
+  if (candidate.presetType !== 'one-wire-group') return null
+
+  const switches = Number(candidate.switches ?? 0)
+  const loads = Number(candidate.loads ?? 0)
+  const neutral = Number(candidate.neutral ?? 0)
+  if (!Number.isFinite(switches) || !Number.isFinite(loads) || switches < 0 || loads < 0) return null
+  return {
+    presetType: 'one-wire-group',
+    switches: Math.round(switches),
+    loads: Math.round(loads),
+    neutral: Number.isFinite(neutral) && neutral > 0 ? Math.round(neutral) : 0,
+    wireSection: typeof candidate.wireSection === 'string' ? candidate.wireSection : undefined,
+    label: typeof candidate.label === 'string' ? candidate.label : undefined
+  }
+}
+
 export type BindingGroup = {
   bindingId: string
   letter: string
@@ -133,6 +171,17 @@ export const getBindingGroups = (bindingOverlay: BindingOverlay, canvas: Canvas)
 
     const memberDescriptors: Array<{ role: string; symbolPath?: string; symbolName?: string }> = []
     for (const obj of objects) {
+      const preset = readPresetGroupMetadata(obj)
+      if (preset) {
+        switches += preset.switches
+        loads += preset.loads
+        neutral += preset.neutral ?? 0
+        for (let index = 0; index < preset.switches; index += 1) memberDescriptors.push({ role: 'switch' })
+        for (let index = 0; index < preset.loads; index += 1) memberDescriptors.push({ role: 'load' })
+        for (let index = 0; index < (preset.neutral ?? 0); index += 1) memberDescriptors.push({ role: 'neutral' })
+        continue
+      }
+
       const role = inferBindingRole(obj)
       if (role === 'switch') switches += 1
       else if (role === 'load') loads += 1
@@ -231,15 +280,21 @@ export const getBindingValidationReport = (groups: BindingGroup[]): BindingRepor
   }
 }
 
-export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) => {
+export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas, gridSize = 10) => {
   const now = new Date(report.generatedAt)
   const version = (canvas as unknown as { version?: string })?.version ?? '6.0.0'
   const objects: Array<Record<string, JsonValue>> = []
 
+  const safeGrid = Number.isFinite(gridSize) && gridSize > 0 ? Math.max(6, Math.round(gridSize)) : 10
+  const snap = (value: number) => Math.round(value / safeGrid) * safeGrid
+  const wireThickness = Math.max(2, Math.round(safeGrid / 4))
+  const canvasMetrics = canvas as unknown as { width?: number; getWidth?: () => number }
+  const canvasWidth = Number(canvasMetrics.getWidth?.() ?? canvasMetrics.width ?? 1800)
+
   objects.push({
     type: 'i-text',
-    left: 60,
-    top: 28,
+    left: snap(6 * safeGrid),
+    top: snap(3 * safeGrid),
     text: 'One-Wire Diagram',
     fontSize: 26,
     fontWeight: '700',
@@ -250,8 +305,8 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
 
   objects.push({
     type: 'i-text',
-    left: 60,
-    top: 64,
+    left: snap(6 * safeGrid),
+    top: snap(6 * safeGrid),
     text: `${report.readyGroups}/${report.totalGroups} circuits ready  ·  ${report.errorCount} errors  ·  ${report.warningCount} warnings  ·  ${now.toLocaleString()}`,
     fontSize: 12,
     fontWeight: '500',
@@ -284,18 +339,11 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
     letterMap.get(letter)!.sort((a, b) => a.number - b.number)
   }
 
-  const COL_WIDTH = 300
-  const COL_GAP = 24
-  const ROW_H = 62
-  const HEADER_H = 40
-  const START_X = 60
-  const START_Y = 100
-
   if (sortedLetters.length === 0) {
     objects.push({
       type: 'i-text',
-      left: 60,
-      top: 120,
+      left: snap(6 * safeGrid),
+      top: snap(12 * safeGrid),
       text: 'No binding groups found. Assign IDs like A1 to switches and loads/sockets first.',
       fontSize: 16,
       fontWeight: '500',
@@ -306,65 +354,58 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
     return { version, objects }
   }
 
-  for (let colIdx = 0; colIdx < sortedLetters.length; colIdx++) {
-    const letter = sortedLetters[colIdx]
-    const circuits = letterMap.get(letter)!
-    const colX = START_X + colIdx * (COL_WIDTH + COL_GAP)
-    const colH = HEADER_H + circuits.length * ROW_H
+  const marginX = snap(6 * safeGrid)
+  const baseY = snap(10 * safeGrid)
+  const columnGap = snap(4 * safeGrid)
+  const rowGap = snap(5 * safeGrid)
+  const laneHeight = snap(8 * safeGrid)
+  const headerHeight = snap(6 * safeGrid)
+  const minColumnWidth = snap(38 * safeGrid)
 
-    objects.push({
-      type: 'rect',
-      left: colX,
-      top: START_Y,
-      width: COL_WIDTH,
-      height: colH,
-      rx: 8,
-      ry: 8,
-      fill: '#faf6f3',
-      stroke: '#d5c3b5',
-      strokeWidth: 1,
-      selectable: false,
-      evented: false
-    })
+  const usableWidth = Math.max(minColumnWidth, canvasWidth - marginX * 2)
+  const columnsPerRow = Math.max(1, Math.floor((usableWidth + columnGap) / (minColumnWidth + columnGap)))
+  const columnWidth = snap((usableWidth - (columnsPerRow - 1) * columnGap) / columnsPerRow)
+  const totalRows = Math.ceil(sortedLetters.length / columnsPerRow)
+  const rowHeights: number[] = []
 
-    objects.push({
-      type: 'rect',
-      left: colX,
-      top: START_Y,
-      width: COL_WIDTH,
-      height: HEADER_H,
-      rx: 8,
-      ry: 8,
-      fill: '#a85427',
-      stroke: 'transparent',
-      strokeWidth: 0,
-      selectable: false,
-      evented: false
-    })
-    objects.push({
-      type: 'rect',
-      left: colX,
-      top: START_Y + HEADER_H / 2,
-      width: COL_WIDTH,
-      height: HEADER_H / 2,
-      fill: '#a85427',
-      stroke: 'transparent',
-      strokeWidth: 0,
-      selectable: false,
-      evented: false
-    })
+  for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+    const firstIdx = rowIndex * columnsPerRow
+    const rowLetters = sortedLetters.slice(firstIdx, firstIdx + columnsPerRow)
+    let maxHeight = headerHeight + laneHeight + snap(3 * safeGrid)
+    for (const letter of rowLetters) {
+      const circuits = letterMap.get(letter) ?? []
+      const groupHeight = headerHeight + circuits.length * laneHeight + snap(3 * safeGrid)
+      if (groupHeight > maxHeight) maxHeight = groupHeight
+    }
 
-    objects.push({
-      type: 'i-text',
-      left: colX + 14,
-      top: START_Y + 6,
-      text: `Group ${letter}`,
-      fontSize: 15,
-      fontWeight: '700',
-      fill: '#ffffff',
-      selectable: false,
-      evented: false
-    })
+    rowHeights.push(maxHeight)
+  }
+
+  const rowStartY: number[] = []
+  let currentY = baseY
+
+  for (let rowIndex = 0; rowIndex < rowHeights.length; rowIndex += 1) {
+    rowStartY.push(currentY)
+    currentY = snap(currentY + rowHeights[rowIndex] + rowGap)
+  }
+
+  for (let groupIndex = 0; groupIndex < sortedLetters.length; groupIndex += 1) {
+    const letter = sortedLetters[groupIndex]
+    const circuits = letterMap.get(letter) ?? []
+    const rowIndex = Math.floor(groupIndex / columnsPerRow)
+    const columnIndex = groupIndex % columnsPerRow
+    const groupLeft = snap(marginX + columnIndex * (columnWidth + columnGap))
+    const groupTop = rowStartY[rowIndex]
+    const groupHeight = headerHeight + circuits.length * laneHeight + snap(3 * safeGrid)
+
+    const trunkX = snap(groupLeft + 14 * safeGrid)
+    const breakerLeft = snap(groupLeft + 3 * safeGrid)
+    const breakerWidth = snap(7 * safeGrid)
+    const switchLeft = snap(groupLeft + 17 * safeGrid)
+    const switchSize = snap(4 * safeGrid)
+    const loadLeft = snap(groupLeft + 27 * safeGrid)
+    const loadSize = snap(4 * safeGrid)
+    const statusLeft = snap(groupLeft + columnWidth - 9 * safeGrid)
 
     let columnSection: WireSection = '2.5 mm²'
     let columnAmps = 20
@@ -379,9 +420,62 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
     }
 
     objects.push({
+      type: 'rect',
+      left: groupLeft,
+      top: groupTop,
+      width: columnWidth,
+      height: groupHeight,
+      rx: 8,
+      ry: 8,
+      fill: '#faf6f3',
+      stroke: '#d5c3b5',
+      strokeWidth: 1,
+      selectable: false,
+      evented: false
+    })
+
+    objects.push({
+      type: 'rect',
+      left: groupLeft,
+      top: groupTop,
+      width: columnWidth,
+      height: headerHeight,
+      rx: 8,
+      ry: 8,
+      fill: '#a85427',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      selectable: false,
+      evented: false
+    })
+    objects.push({
+      type: 'rect',
+      left: groupLeft,
+      top: snap(groupTop + headerHeight / 2),
+      width: columnWidth,
+      height: snap(headerHeight / 2),
+      fill: '#a85427',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      selectable: false,
+      evented: false
+    })
+
+    objects.push({
       type: 'i-text',
-      left: colX + 14,
-      top: START_Y + 24,
+      left: snap(groupLeft + 2 * safeGrid),
+      top: snap(groupTop + safeGrid),
+      text: `Group ${letter}`,
+      fontSize: 15,
+      fontWeight: '700',
+      fill: '#ffffff',
+      selectable: false,
+      evented: false
+    })
+    objects.push({
+      type: 'i-text',
+      left: snap(groupLeft + 2 * safeGrid),
+      top: snap(groupTop + 3 * safeGrid),
       text: `${columnSection} · ${columnAmps} A`,
       fontSize: 11,
       fontWeight: '600',
@@ -389,11 +483,10 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
       selectable: false,
       evented: false
     })
-
     objects.push({
       type: 'i-text',
-      left: colX + COL_WIDTH - 68,
-      top: START_Y + 13,
+      left: snap(groupLeft + columnWidth - 12 * safeGrid),
+      top: snap(groupTop + 2 * safeGrid),
       text: `${circuits.length} circuit${circuits.length === 1 ? '' : 's'}`,
       fontSize: 11,
       fontWeight: '500',
@@ -402,22 +495,37 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
       evented: false
     })
 
-    for (let rowIdx = 0; rowIdx < circuits.length; rowIdx++) {
+    const trunkTop = snap(groupTop + headerHeight + safeGrid)
+    const trunkBottom = snap(groupTop + groupHeight - safeGrid)
+    objects.push({
+      type: 'rect',
+      left: snap(trunkX - wireThickness / 2),
+      top: trunkTop,
+      width: wireThickness,
+      height: Math.max(wireThickness, trunkBottom - trunkTop),
+      fill: '#a85427',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      selectable: false,
+      evented: false
+    })
+
+    for (let rowIdx = 0; rowIdx < circuits.length; rowIdx += 1) {
       const { group } = circuits[rowIdx]
-      const rowTop = START_Y + HEADER_H + rowIdx * ROW_H
+      const rowTop = snap(groupTop + headerHeight + rowIdx * laneHeight)
+      const laneY = snap(rowTop + laneHeight / 2)
       const isReady = group.ready
+      const wireColor = isReady ? '#a85427' : '#c8bcb3'
       const statusColor = isReady ? '#1f6a38' : '#8a5b00'
       const statusBg = isReady ? '#d8f5e6' : '#fff0c2'
 
       if (rowIdx > 0) {
         objects.push({
           type: 'rect',
-          left: colX + 8,
+          left: snap(groupLeft + safeGrid),
           top: rowTop,
-          width: COL_WIDTH - 16,
+          width: snap(columnWidth - 2 * safeGrid),
           height: 1,
-          rx: 0,
-          ry: 0,
           fill: '#e8d9cc',
           stroke: 'transparent',
           strokeWidth: 0,
@@ -428,36 +536,68 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
 
       objects.push({
         type: 'i-text',
-        left: colX + 14,
-        top: rowTop + 12,
+        left: breakerLeft,
+        top: snap(rowTop + safeGrid),
         text: group.bindingId,
-        fontSize: 17,
+        fontSize: 14,
         fontWeight: '700',
         fill: '#2f241d',
         selectable: false,
         evented: false
       })
 
-      const swX = colX + 60
-      const swY = rowTop + 14
+      const breakerTop = snap(laneY - (5 * safeGrid) / 2)
       objects.push({
         type: 'rect',
-        left: swX,
-        top: swY,
-        width: 34,
-        height: 22,
-        rx: 3,
-        ry: 3,
-        fill: group.switches > 0 ? '#fff3e0' : '#f0f0f0',
-        stroke: group.switches > 0 ? '#a85427' : '#bbbbbb',
+        left: breakerLeft,
+        top: breakerTop,
+        width: breakerWidth,
+        height: snap(5 * safeGrid),
+        rx: 4,
+        ry: 4,
+        fill: '#fff3e0',
+        stroke: '#a85427',
         strokeWidth: 1.5,
+        oneWireNodeRole: 'breaker',
+        oneWireSnap: true,
+        oneWireSnapPorts: 'left,right',
         selectable: false,
         evented: false
       })
       objects.push({
         type: 'i-text',
-        left: swX + 5,
-        top: swY + 5,
+        left: snap(breakerLeft + safeGrid),
+        top: snap(breakerTop + safeGrid),
+        text: `${group.breakerAmperage}A`,
+        fontSize: 10,
+        fontWeight: '700',
+        fill: '#7d3f1c',
+        selectable: false,
+        evented: false
+      })
+
+      const switchTop = snap(laneY - switchSize / 2)
+      objects.push({
+        type: 'rect',
+        left: switchLeft,
+        top: switchTop,
+        width: switchSize,
+        height: switchSize,
+        rx: 3,
+        ry: 3,
+        fill: group.switches > 0 ? '#fff3e0' : '#f0f0f0',
+        stroke: group.switches > 0 ? '#a85427' : '#bbbbbb',
+        strokeWidth: 1.5,
+        oneWireNodeRole: 'switch',
+        oneWireSnap: true,
+        oneWireSnapPorts: 'left,right',
+        selectable: false,
+        evented: false
+      })
+      objects.push({
+        type: 'i-text',
+        left: snap(switchLeft + safeGrid),
+        top: snap(switchTop + safeGrid),
         text: 'SW',
         fontSize: 9,
         fontWeight: '700',
@@ -466,48 +606,92 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
         evented: false
       })
 
+      const loadTop = snap(laneY - loadSize / 2)
       objects.push({
         type: 'rect',
-        left: swX + 34,
-        top: swY + 10,
-        width: 36,
-        height: 2,
-        rx: 0,
-        ry: 0,
-        fill: isReady ? '#a85427' : '#cccccc',
+        left: loadLeft,
+        top: loadTop,
+        width: loadSize,
+        height: loadSize,
+        rx: snap(loadSize / 2),
+        ry: snap(loadSize / 2),
+        fill: group.loads > 0 ? '#e8f5e9' : '#f0f0f0',
+        stroke: group.loads > 0 ? '#1f6a38' : '#bbbbbb',
+        strokeWidth: 1.5,
+        oneWireNodeRole: 'load',
+        oneWireSnap: true,
+        oneWireSnapPorts: 'left,right',
+        selectable: false,
+        evented: false
+      })
+
+      const breakerOutX = snap(breakerLeft + breakerWidth)
+      const switchCenterX = snap(switchLeft + switchSize / 2)
+      const loadCenterX = snap(loadLeft + loadSize / 2)
+
+      objects.push({
+        type: 'rect',
+        left: breakerOutX,
+        top: snap(laneY - wireThickness / 2),
+        width: Math.max(wireThickness, trunkX - breakerOutX),
+        height: wireThickness,
+        fill: wireColor,
+        stroke: 'transparent',
+        strokeWidth: 0,
+        selectable: false,
+        evented: false
+      })
+      objects.push({
+        type: 'rect',
+        left: trunkX,
+        top: snap(laneY - wireThickness / 2),
+        width: Math.max(wireThickness, switchCenterX - trunkX),
+        height: wireThickness,
+        fill: wireColor,
+        stroke: 'transparent',
+        strokeWidth: 0,
+        selectable: false,
+        evented: false
+      })
+      objects.push({
+        type: 'rect',
+        left: switchCenterX,
+        top: snap(laneY - wireThickness / 2),
+        width: Math.max(wireThickness, loadCenterX - switchCenterX),
+        height: wireThickness,
+        fill: wireColor,
         stroke: 'transparent',
         strokeWidth: 0,
         selectable: false,
         evented: false
       })
 
-      const ldX = swX + 74
-      const ldY = rowTop + 13
       objects.push({
         type: 'rect',
-        left: ldX,
-        top: ldY,
-        width: 24,
-        height: 24,
-        rx: 12,
-        ry: 12,
-        fill: group.loads > 0 ? '#e8f5e9' : '#f0f0f0',
-        stroke: group.loads > 0 ? '#1f6a38' : '#bbbbbb',
-        strokeWidth: 1.5,
+        left: snap(trunkX - safeGrid / 2),
+        top: snap(laneY - safeGrid / 2),
+        width: safeGrid,
+        height: safeGrid,
+        rx: snap(safeGrid / 2),
+        ry: snap(safeGrid / 2),
+        fill: '#a85427',
+        stroke: 'transparent',
+        strokeWidth: 0,
+        oneWireNodeRole: 'junction',
+        oneWireSnap: true,
+        oneWireSnapPorts: 'center',
         selectable: false,
         evented: false
       })
 
-      const badgeX = colX + COL_WIDTH - 60
-      const badgeY = rowTop + 14
       objects.push({
         type: 'rect',
-        left: badgeX,
-        top: badgeY,
-        width: 48,
-        height: 20,
-        rx: 10,
-        ry: 10,
+        left: statusLeft,
+        top: snap(laneY - safeGrid),
+        width: snap(7 * safeGrid),
+        height: snap(2 * safeGrid),
+        rx: snap(safeGrid),
+        ry: snap(safeGrid),
         fill: statusBg,
         stroke: 'transparent',
         strokeWidth: 0,
@@ -516,8 +700,8 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
       })
       objects.push({
         type: 'i-text',
-        left: badgeX + 6,
-        top: badgeY + 4,
+        left: snap(statusLeft + safeGrid),
+        top: snap(laneY - safeGrid + 4),
         text: isReady ? 'READY' : 'OPEN',
         fontSize: 9,
         fontWeight: '700',
@@ -528,9 +712,9 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
 
       objects.push({
         type: 'i-text',
-        left: colX + 14,
-        top: rowTop + 36,
-        text: `${group.switches} sw · ${group.loads} load · ${group.wireSection} · ${group.breakerAmperage} A${group.wireSectionOverride ? ' (override)' : ''}`,
+        left: snap(loadLeft + loadSize + safeGrid),
+        top: snap(rowTop + safeGrid),
+        text: `${group.switches} sw · ${group.loads} load · ${group.wireSection}${group.wireSectionOverride ? ' (override)' : ''}`,
         fontSize: 10,
         fontWeight: '400',
         fill: '#8a7060',
@@ -543,13 +727,14 @@ export const buildAutoOneWireSchema = (report: BindingReport, canvas: Canvas) =>
 }
 
 export const getBoundOneLineCatalogSymbols = (bindingLookup: Map<string, BindingObject[]>) => {
-  const symbols: Array<{ name: string; path: string; metadata: Record<string, JsonValue> }> = []
+  const symbols: Array<{ kind: string; name: string; path: string; metadata: Record<string, JsonValue> }> = []
   for (const [bindingId, objects] of bindingLookup.entries()) {
     for (const obj of objects) {
       const role = inferBindingRole(obj)
       const type = displayTypeForObject(obj)
       const uniqueId = obj?.uuid ?? `${obj?.type ?? 'symbol'}-${obj?.index ?? Math.random().toString(36).slice(2)}`
       symbols.push({
+        kind: 'bound-situation-element',
         name: `${bindingId} - ${type}`,
         path: buildBoundSymbolPath(bindingId, role, type),
         metadata: {
@@ -595,7 +780,28 @@ export const getBindingGroupCatalogSymbols = (bindingOverlay: BindingOverlay, ca
     }
   }
 
-  const symbols: Array<{ name: string; path: string; metadata: Record<string, JsonValue> }> = []
+  const symbols: Array<{ kind: string; name: string; path: string; metadata: Record<string, JsonValue> }> = []
+
+  symbols.push({
+    kind: 'binding-preset',
+    name: 'Preset · 8 sockets + C20A',
+    path: buildPresetOneWireGroupPath('Preset Group', '8 sockets + C20A', 8, 'C20A'),
+    metadata: {
+      bindingRole: 'neutral',
+      oneLineEligible: true,
+      situationElementType: 'preset-group',
+      situationMetadata: {
+        presetType: 'one-wire-group',
+        switches: 1,
+        loads: 8,
+        neutral: 0,
+        wireSection: '2.5 mm²',
+        label: '8 sockets + C20A'
+      },
+      sourceType: 'binding-preset'
+    }
+  })
+
   for (const bucket of byLetter.values()) {
     let aggregateSection: WireSection = bucket.wireSection
     let aggregateAmps = bucket.breakerAmperage
@@ -608,6 +814,7 @@ export const getBindingGroupCatalogSymbols = (bindingOverlay: BindingOverlay, ca
 
     bucket.circuits.sort((a, b) => a.number - b.number)
     symbols.push({
+      kind: 'binding-group',
       name: `Group ${bucket.letter} · ${bucket.wireSection} · ${bucket.breakerAmperage} A`,
       path: buildBindingGroupCardPath(bucket.letter, bucket.circuits, aggregateSection, aggregateAmps),
       metadata: {

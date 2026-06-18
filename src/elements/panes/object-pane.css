@@ -1,96 +1,128 @@
-      :host {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        min-height: 0;
-        width: 100%;
-        pointer-events: auto;
-        overflow: hidden;
-        background: var(--md-sys-color-surface-container);
-        border-left: 1px solid var(--md-sys-color-outline-variant);
-      }
-      section {
-        min-height: 0;
-        flex: 1 1 auto;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        padding: var(--cadle-space-2);
-        gap: var(--cadle-space-2);
-      }
-      .title {
-        font: var(--md-sys-typescale-title-small);
-        color: var(--md-sys-color-on-surface);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .meta {
-        font: var(--md-sys-typescale-label-small);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--md-sys-color-on-surface-variant);
-      }
-      .empty-state {
-        flex: 1 1 auto;
-        display: flex;
-        align-items: flex-start;
-        justify-content: flex-start;
-        padding: var(--cadle-space-2);
-      }
-      .empty-card {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
-        gap: var(--cadle-space-2);
-        padding: var(--cadle-space-3);
-        width: 100%;
-        max-width: none;
-        background: var(--cadle-glass-bg);
-        border: 1px solid var(--cadle-glass-border);
-        border-radius: var(--cadle-radius-md);
-        box-shadow: var(--cadle-elevation-1);
-      }
-      .empty-card custom-icon {
-        --custom-icon-color: var(--md-sys-color-on-surface-variant);
-        --custom-icon-size: 28px;
-        font-size: 28px;
-        opacity: 0.6;
-      }
-      .empty-title {
-        font: var(--md-sys-typescale-title-small);
-        color: var(--md-sys-color-on-surface);
-      }
-      .empty-hint {
-        font: var(--md-sys-typescale-label-medium);
-        color: var(--md-sys-color-on-surface-variant);
-      }
-      .toolbar {
-        padding: var(--cadle-space-2);
-        border-top: 1px solid var(--md-sys-color-outline-variant);
-        background: var(--md-sys-color-surface-container);
-        display: flex;
-        align-items: center;
-        gap: var(--cadle-space-2);
-      }
-      .toolbar-label {
-        flex: 1 1 auto;
-        font: var(--md-sys-typescale-label-medium);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--md-sys-color-on-surface-variant);
-      }
-      custom-icon-button,
-      custom-button {
-        pointer-events: auto;
-        border-radius: var(--cadle-radius-sm);
-        transition:
-          background-color var(--cadle-motion-fast),
-          color var(--cadle-motion-fast);
-      }
-      custom-icon-button:hover,
-      custom-button:hover {
-        background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
-      }
-    
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  pointer-events: auto;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container)) 0%,
+    var(--md-sys-color-surface-container) 48%
+  );
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+}
+
+section {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--cadle-space-2) var(--cadle-space-3);
+  gap: 6px;
+}
+
+.title {
+  font: var(--md-sys-typescale-title-medium);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.meta {
+  font: var(--md-sys-typescale-label-small);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 500;
+}
+
+.empty-state {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--cadle-space-4);
+}
+
+.empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--cadle-space-3);
+  padding: var(--cadle-space-5);
+  width: 100%;
+  max-width: 260px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container-high));
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-outline-variant));
+  border-radius: var(--cadle-radius-lg);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-shadow) 5%, transparent);
+}
+
+.empty-card custom-icon {
+  --custom-icon-color: var(--md-sys-color-primary);
+  --custom-icon-size: 40px;
+  font-size: 40px;
+  opacity: 0.68;
+}
+
+.empty-title {
+  font: var(--md-sys-typescale-label-large);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.empty-hint {
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-on-surface-variant);
+  line-height: 1.4;
+}
+
+.toolbar {
+  padding: var(--cadle-space-2) var(--cadle-space-3);
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 50%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container-high));
+  display: flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+}
+
+.toolbar-label {
+  flex: 1 1 auto;
+  font: var(--md-sys-typescale-label-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+custom-icon-button,
+custom-button {
+  pointer-events: auto;
+  border-radius: var(--cadle-radius-sm);
+  transition: all var(--cadle-motion-fast);
+}
+
+custom-icon-button:hover,
+custom-button:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+}
+
+custom-icon-button:focus-visible,
+custom-button:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+
+custom-icon-button:active,
+custom-button:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent);
+  color: var(--md-sys-color-primary);
+}

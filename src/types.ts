@@ -59,9 +59,12 @@ export type HistoryAction = {
 
 export declare type Catalog = {
   category: string
+  folder?: string
   symbols: {
+    kind: string
     name: string
     path: string
+    folder?: string
     metadata?: Record<string, JsonValue>
   }[]
 }[]

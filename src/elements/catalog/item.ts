@@ -5,6 +5,10 @@ import { loadSVGFromString, loadSVGFromURL, util } from 'fabric'
 import type { FabricObject } from 'fabric'
 import type { JsonValue } from '../../types.js'
 import state from '../../state.js'
+import '@vandeurenglenn/lite-elements/menu.js'
+import '@vandeurenglenn/lite-elements/dropdown.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
+import '@vandeurenglenn/lite-elements/icon.js'
 declare global {
   interface HTMLElementTagNameMap {
     'catalog-item': CatalogItem
@@ -15,11 +19,28 @@ type SvgLoadResult = {
   objects: FabricObject[]
 }
 
+type SymbolMetadata = Record<string, JsonValue> & {
+  kind?: string
+  bindingRole?: string
+  bindingId?: string
+  situationElementType?: string
+  sourceObjectUuid?: string
+  oneLineEligible?: boolean
+  situationMetadata?: JsonValue
+}
+
 @customElement('catalog-item')
 export class CatalogItem extends LiteElement {
+  @property({ type: String })
+  accessor category = ''
+
+  @property({ type: String })
+  accessor folder = ''
+
   @property({ attribute: false })
   accessor symbol:
     | {
+        kind?: string
         name: string
         path: string
         metadata?: Record<string, JsonValue>
@@ -33,6 +54,9 @@ export class CatalogItem extends LiteElement {
   accessor loadedPage = ''
 
   private _svgPreview = ''
+  private _menuOpen = false
+  private _menuX = 0
+  private _menuY = 0
   private static _magnifierElement?: HTMLDivElement
   set headline(value: string) {
     // this.title = value
@@ -146,8 +170,22 @@ export class CatalogItem extends LiteElement {
     if (CatalogItem._magnifierElement) CatalogItem._magnifierElement.style.display = 'none'
   }
 
+  #closeContextMenu = () => {
+    this._menuOpen = false
+    document.removeEventListener('pointerdown', this.#onDocumentPointerDown, true)
+    this.requestRender()
+  }
+
+  #onDocumentPointerDown = (event: Event) => {
+    if (!this._menuOpen) return
+    const path = event.composedPath()
+    if (path.includes(this)) return
+    this.#closeContextMenu()
+  }
+
   override disconnectedCallback(): void {
     this.#closeMagnifier()
+    document.removeEventListener('pointerdown', this.#onDocumentPointerDown, true)
     super.disconnectedCallback()
   }
 
@@ -299,7 +337,7 @@ export class CatalogItem extends LiteElement {
   }
 
   #applySymbolMetadata(group: FabricObject, sourcePath: string) {
-    const metadata = this.symbol?.metadata ?? {}
+    const metadata = (this.symbol?.metadata ?? {}) as SymbolMetadata
     const roleFromMeta = typeof metadata.bindingRole === 'string' ? metadata.bindingRole : undefined
     const inferredRole = this.#inferBindingRole(sourcePath, this.symbol?.name ?? this._headline ?? '')
     const bindingRole = roleFromMeta ?? inferredRole
@@ -308,9 +346,23 @@ export class CatalogItem extends LiteElement {
       symbolName: this.symbol?.name ?? this._headline,
       symbolPath: sourcePath,
       bindingRole,
-      oneLineEligible: bindingRole === 'switch' || bindingRole === 'load' || !!metadata.situationElementType,
+      oneLineEligible:
+        metadata.oneLineEligible === true ||
+        bindingRole === 'switch' ||
+        bindingRole === 'load' ||
+        !!metadata.situationElementType,
       situationElementType:
         typeof metadata.situationElementType === 'string' ? metadata.situationElementType : undefined,
+      situationMetadata:
+        metadata.situationMetadata && typeof metadata.situationMetadata === 'object'
+          ? metadata.situationMetadata
+          : undefined,
+      kind:
+        typeof this.symbol?.kind === 'string'
+          ? this.symbol.kind
+          : typeof metadata.kind === 'string'
+            ? metadata.kind
+            : this.category,
       sourceObjectUuid: typeof metadata.sourceObjectUuid === 'string' ? metadata.sourceObjectUuid : undefined
     })
     if (seededBindingId) {
@@ -388,11 +440,79 @@ export class CatalogItem extends LiteElement {
     if (cadleShell.field) {
       cadleShell.field.action = 'draw-symbol'
       cadleShell.field._selectedSymbolPrototype = group
+      this.dispatchEvent(
+        new CustomEvent('catalog-symbol-picked', {
+          detail: {
+            symbol: this.symbol,
+            category: this.category,
+            folder: this.folder
+          },
+          bubbles: true,
+          composed: true
+        })
+      )
+    }
+  }
+
+  #onDragStart = (event: DragEvent) => {
+    if (!event.dataTransfer) return
+    const sourcePath = this.symbol?.path ?? this.image
+    const sourceName = this.symbol?.name ?? this._headline
+    if (!sourcePath || !sourceName || !this.category) return
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(
+      'application/x-cadle-catalog-dnd',
+      JSON.stringify({
+        kind: 'symbol',
+        name: sourceName,
+        path: sourcePath,
+        fromCategory: this.category,
+        fromFolder: this.folder || undefined
+      })
+    )
+  }
+
+  #openContextMenu = (event: MouseEvent) => {
+    event.preventDefault()
+    this._menuX = event.clientX
+    this._menuY = event.clientY
+    this._menuOpen = true
+    document.addEventListener('pointerdown', this.#onDocumentPointerDown, true)
+    this.requestRender()
+  }
+
+  #onMenuSelected = async ({ detail }: CustomEvent) => {
+    const action = (detail as Element | null)?.getAttribute?.('action')
+    if (action !== 'export-symbol') {
+      this.#closeContextMenu()
+      return
+    }
+
+    const sourcePath = this.symbol?.path ?? this.image
+    const fileName = (this.symbol?.name ?? this._headline ?? 'symbol').trim().replace(/\s+/g, '-')
+    if (!sourcePath) {
+      this.#closeContextMenu()
+      return
+    }
+
+    try {
+      const markup = await this.#loadSvgMarkup(sourcePath)
+      const blob = new Blob([markup], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${fileName || 'symbol'}.svg`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      this.#closeContextMenu()
     }
   }
 
   firstRender(): void {
     this.addListener('click', this.#click)
+    this.addListener('dragstart', this.#onDragStart)
+    this.addListener('contextmenu', this.#openContextMenu)
   }
 
   render() {
@@ -400,6 +520,7 @@ export class CatalogItem extends LiteElement {
     return html`
       <div
         class="row"
+        draggable="true"
         @mouseenter=${this.#openMagnifier}
         @mousemove=${this.#moveMagnifier}
         @mouseleave=${this.#closeMagnifier}>
@@ -420,6 +541,21 @@ export class CatalogItem extends LiteElement {
           >
         </slot>
       </div>
+      <custom-dropdown
+        class="symbol-contextmenu"
+        style="position: fixed; left: ${this._menuX}px; top: ${this._menuY}px;"
+        .open=${this._menuOpen}>
+        <custom-menu @selected=${this.#onMenuSelected}>
+          <custom-list-item
+            type="menu"
+            action="export-symbol">
+            <custom-icon
+              slot="start"
+              icon="download"></custom-icon>
+            export symbol
+          </custom-list-item>
+        </custom-menu>
+      </custom-dropdown>
     `
   }
 }

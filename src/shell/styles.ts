@@ -111,6 +111,7 @@ export const shellStyles = css`
      keeps the rail self-identifying. */
   .rail-tabs {
     display: flex;
+    flex-direction: row;
     align-items: stretch;
     height: 36px;
     padding: 0 var(--cadle-space-2);

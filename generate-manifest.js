@@ -7,7 +7,7 @@ const manifest = []
 for (const category of categories) {
   if (category !== '.DS_Store' && category !== 'manifest.js') {
     let symbols = (await readdir(join('./www/symbols', category))).map((symbol) => ({
-      type: category,
+      kind: category,
       name: symbol.replace('.svg', '').toLowerCase(),
       path: join('./symbols', category, symbol)
     }))

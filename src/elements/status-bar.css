@@ -1,15 +1,20 @@
 :host {
   line-height: var(--md-sys-typescale-label-medium-line-height);
-  font-weight: var(--md-sys-typescale-label-medium-font-weight);
-  letter-spacing: 0.04em;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
-  font-size: var(--md-sys-typescale-label-medium-font-size);
+  font-size: var(--md-sys-typescale-label-small-font-size);
   color: var(--md-sys-color-on-surface-variant);
-  background: var(--md-sys-color-surface);
+  display: flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+  height: 100%;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface-container-high));
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 50%, transparent);
   box-sizing: border-box;
-  padding: 0 var(--cadle-space-4);
+  padding: 0 var(--cadle-space-3);
 }
 .item {
   display: inline-flex;
@@ -18,13 +23,18 @@
   flex: 0 0 auto;
 }
 .item .label {
-  color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 70%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 10px;
+  opacity: 0.72;
+  letter-spacing: 0.06em;
 }
 .item .value {
   color: var(--md-sys-color-on-surface);
+  font-weight: 500;
 }
 .item.tool .value {
   color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 .mono {
   font-family: var(--cadle-font-mono);
@@ -33,6 +43,7 @@
   font-variant-numeric: tabular-nums;
   min-width: 5ch;
   text-align: right;
+  color: var(--md-sys-color-on-surface);
 }
 .spacer {
   flex: 1 1 auto;
@@ -40,7 +51,7 @@
 .separator {
   width: 1px;
   height: 16px;
-  background: var(--md-sys-color-outline-variant);
+  background: color-mix(in srgb, var(--md-sys-color-outline-variant) 40%, transparent);
   flex: 0 0 auto;
 }
 button {
@@ -51,34 +62,45 @@ button {
   border: 0;
   padding: 0 var(--cadle-space-2);
   margin: 0;
-  height: 22px;
+  height: 24px;
   border-radius: var(--cadle-radius-xs);
   cursor: pointer;
-  color: inherit;
+  color: var(--md-sys-color-on-surface-variant);
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
-  transition:
-    background-color var(--cadle-motion-fast),
-    color var(--cadle-motion-fast);
+  transition: all var(--cadle-motion-fast);
 }
 button:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
   color: var(--md-sys-color-on-surface);
 }
 button:focus-visible {
   outline: none;
   box-shadow: var(--cadle-focus-ring);
 }
+button:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-primary);
+}
 button[aria-pressed='true'] {
   color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+}
+button:active {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  color: var(--md-sys-color-primary);
+}
+button[aria-pressed='true'] {
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
 }
 .status-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 3rem;
-  height: 22px;
+  height: 24px;
   padding: 0 0.5rem;
   border-radius: 999px;
   font-size: 0.75rem;

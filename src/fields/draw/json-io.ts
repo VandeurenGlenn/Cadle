@@ -37,12 +37,22 @@ export const BINDING_AND_SYMBOL_PROPS = [
   'bindingGroupWireSectionOverride',
   'bindingGroupCableLengthMeters',
   'bindingGroupUpstreamProtectionA',
+  'breakerAmperageA',
+  'breakerShortCircuitKA',
+  'breakerCurve',
+  'breakerPoles',
+  'breakerLabel',
+  'rcdResidualCurrentMa',
+  'rcdType',
   'symbolName',
   'symbolPath',
   'oneLineEligible',
   'situationElementType',
   'situationMetadata',
   'sourceObjectUuid',
+  'oneWireNodeRole',
+  'oneWireSnap',
+  'oneWireSnapPorts',
   'themeSourceFill',
   'themeSourceStroke'
 ] as const
@@ -62,12 +72,22 @@ const RE_APPLY_PROPS = [
   'bindingGroupWireSectionOverride',
   'bindingGroupCableLengthMeters',
   'bindingGroupUpstreamProtectionA',
+  'breakerAmperageA',
+  'breakerShortCircuitKA',
+  'breakerCurve',
+  'breakerPoles',
+  'breakerLabel',
+  'rcdResidualCurrentMa',
+  'rcdType',
   'symbolName',
   'symbolPath',
   'oneLineEligible',
   'situationElementType',
   'situationMetadata',
   'sourceObjectUuid',
+  'oneWireNodeRole',
+  'oneWireSnap',
+  'oneWireSnapPorts',
   'themeSourceFill',
   'themeSourceStroke'
 ] as const
@@ -107,6 +127,7 @@ function normalizeLegacyTypes(obj: SerializedObject) {
       if (child && typeof child === 'object') normalizeLegacyTypes(child)
     })
   }
+
   if (Array.isArray(nested.objects)) {
     nested.objects.forEach((child) => {
       if (child && typeof child === 'object') normalizeLegacyTypes(child)

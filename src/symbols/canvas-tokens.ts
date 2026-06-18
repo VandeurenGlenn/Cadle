@@ -24,6 +24,10 @@ export const canvasSurface = (): string =>
   readVar('--md-sys-color-background') ||
   '#fff'
 
+/** Opaque wall body fill to prevent darker overlaps at connected corners. */
+export const canvasWallFill = (): string =>
+  readVar('--cadle-wall-fill') || readVar('--md-sys-color-on-surface') || '#2f2f2f'
+
 const clamp = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))
 
 export const invertColor = (color: string): string => {

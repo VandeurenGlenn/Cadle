@@ -1,5 +1,4 @@
 import { IText, classRegistry } from 'fabric'
-import type { ITextProps, SerializedITextProps, TClassProperties } from 'fabric'
 
 type DepthOptions = {
   uuid?: string

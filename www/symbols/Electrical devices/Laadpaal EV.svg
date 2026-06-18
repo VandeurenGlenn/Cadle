@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+  <title>Laadpaal EV</title>
+  <rect x="10" y="5" width="20" height="22" rx="2" stroke="#000000" stroke-width="1.5"/>
+  <path d="M18 12H22L19.5 17H23L17.5 25L19.5 19H16L18 12Z" fill="#000000"/>
+  <path d="M20 27V35" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M30 12H33C34.1 12 35 12.9 35 14V19C35 20.1 34.1 21 33 21H30" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

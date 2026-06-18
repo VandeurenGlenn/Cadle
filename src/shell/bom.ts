@@ -14,6 +14,7 @@ export function normalizeBindingId(value: string | number | null | undefined): s
 }
 
 type BOMObject = FabricObject & {
+  kind?: string
   bindingRole?: string
   bindingId?: string
   symbolPath?: string
@@ -27,7 +28,8 @@ export function inferBindingRole(object: BOMObject): 'switch' | 'load' | 'neutra
   if (explicitRole === 'socket') return 'load'
   if (explicitRole === 'switch' || explicitRole === 'load') return explicitRole
 
-  const haystack = `${object?.symbolPath ?? ''} ${object?.symbolName ?? ''} ${object?.type ?? ''}`.toLowerCase()
+  const haystack =
+    `${object?.symbolPath ?? ''} ${object?.symbolName ?? ''} ${object?.kind ?? ''} ${object?.type ?? ''}`.toLowerCase()
   if (haystack.includes('/switches/') || haystack.includes(' switch')) return 'switch'
   if (
     haystack.includes('/consumption appliances/') ||

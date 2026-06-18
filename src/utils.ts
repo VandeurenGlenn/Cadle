@@ -7,6 +7,7 @@ declare type currentObjectInClipboard = Group | FabricObject | undefined
 
 declare type Clipboard = {
   object: currentObjectInClipboard
+  pasteCount: number
 }
 
 interface CadleCanvas extends _Canvas {
@@ -15,7 +16,8 @@ interface CadleCanvas extends _Canvas {
 }
 
 export const clipboard: Clipboard = {
-  object: undefined
+  object: undefined,
+  pasteCount: 0
 }
 
 // Lazy shell/canvas refs: import order across the app is non-deterministic

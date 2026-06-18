@@ -1,41 +1,43 @@
 :host {
   display: block;
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-outline-variant));
   border-radius: var(--cadle-radius-sm);
   background: var(--md-sys-color-surface-container);
   overflow: hidden;
-  transition:
-    border-color var(--cadle-motion-fast),
-    background-color var(--cadle-motion-fast);
+  transition: all var(--cadle-motion-fast);
 }
 
 :host(:hover) {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, var(--md-sys-color-surface-container));
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 2%, var(--md-sys-color-surface-container));
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-outline-variant));
 }
 
 :host([active]) {
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline-variant));
+  border-color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-high);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
 }
 
 .item {
   cursor: pointer;
-  padding: var(--cadle-space-2);
+  padding: var(--cadle-space-2) var(--cadle-space-2);
   box-sizing: border-box;
   gap: var(--cadle-space-2);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-small);
-  transition:
-    background-color var(--cadle-motion-fast),
-    color var(--cadle-motion-fast);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  transition: all var(--cadle-motion-fast);
 }
 
 .item:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
 }
 
 :host([active]) .item {
   color: var(--md-sys-color-on-surface);
+  background: transparent;
 }
 
 .dropdown {
@@ -50,18 +52,47 @@
   opacity: 1;
   pointer-events: auto;
   padding: var(--cadle-space-2);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface);
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 50%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 2%, var(--md-sys-color-surface));
   color: var(--md-sys-color-on-surface);
 }
 
 custom-icon {
   --custom-icon-color: var(--md-sys-color-on-surface-variant);
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   transition: color var(--cadle-motion-fast);
+  flex: 0 0 auto;
 }
 
 :host([active]) custom-icon {
   --custom-icon-color: var(--md-sys-color-primary);
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 70%, transparent);
+  border-radius: var(--cadle-radius-xs);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  padding: var(--cadle-space-1) var(--cadle-space-2);
+  font: var(--md-sys-typescale-body-small);
+  transition: all var(--cadle-motion-fast);
+  box-sizing: border-box;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: color-mix(in srgb, var(--md-sys-color-outline-variant) 80%, transparent);
 }

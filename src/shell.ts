@@ -7,7 +7,12 @@ import type { Canvas, FabricObject } from 'fabric'
 import './elements/design-mode-toggle.js'
 import { generateBOMFiles, normalizeBindingId } from './shell/bom.js'
 import { iconSetTemplate } from './shell/icon-set.js'
-import { getStoredCustomSymbols, setStoredCustomSymbols, getCustomCatalogSections } from './shell/custom-symbols.js'
+import {
+  ensureCustomCatalogLoaded,
+  getStoredCustomSymbols,
+  setStoredCustomSymbols,
+  getCustomCatalogSections
+} from './shell/custom-symbols.js'
 import '@material/web/dialog/dialog.js'
 import '@material/web/button/filled-tonal-button.js'
 import '@material/web/button/text-button.js'
@@ -194,11 +199,20 @@ export class AppShell extends LiteElement {
     const next = !!value
     if (this._freeDraw === next) return
     this._freeDraw = next
+    state.freeDraw = next
     pubsub.publish('shell.snap', !next)
   }
 
   get freeDraw(): boolean {
     return this._freeDraw
+  }
+
+  onChange(property: string) {
+    if (property === 'project') {
+      if (this.project) {
+        this.railView = 'project'
+      }
+    }
   }
 
   _showMeasurements = false
@@ -377,6 +391,7 @@ export class AppShell extends LiteElement {
     const fallbackName = file.name.replace(/\.svg$/i, '')
     const name = globalThis.prompt('Symbol name', fallbackName)?.trim()
     if (!name) return
+    const folder = globalThis.prompt('Catalog folder (optional)', '')?.trim() || undefined
     const category = globalThis.prompt('Catalog category', 'My Symbols')?.trim() || 'My Symbols'
     const bindingRole = (globalThis.prompt('Binding role (switch, load, neutral)', 'neutral')?.trim().toLowerCase() ||
       'neutral') as 'switch' | 'load' | 'neutral'
@@ -384,6 +399,7 @@ export class AppShell extends LiteElement {
     const path = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
     const symbols = getStoredCustomSymbols()
     symbols.push({
+      folder,
       category,
       name,
       path,
@@ -394,7 +410,7 @@ export class AppShell extends LiteElement {
         importedAt: Date.now()
       }
     })
-    setStoredCustomSymbols(symbols)
+    await setStoredCustomSymbols(symbols)
     this.#refreshBoundOneLineCatalog()
   }
 
@@ -435,6 +451,10 @@ export class AppShell extends LiteElement {
     const symbols = customEvent.detail?.symbols ?? []
     const groupSymbols = customEvent.detail?.groupSymbols ?? []
     this.catalog = this.#mergeCatalogWithBoundSymbols(symbols, groupSymbols)
+  }
+
+  #onCatalogStructureUpdated = () => {
+    this.#refreshBoundOneLineCatalog()
   }
 
   #beforePrint = async () => {
@@ -490,6 +510,7 @@ export class AppShell extends LiteElement {
       import('./controllers/mouse.js'),
       import('./controllers/keyboard.js')
     ])
+    await ensureCustomCatalogLoaded()
     try {
       const manifestCandidates = [
         new URL('./symbols/manifest.js', location.href).toString(),
@@ -536,6 +557,7 @@ export class AppShell extends LiteElement {
     this.addEventListener('drop', this.#drop.bind(this))
     this.addEventListener('dragover', this.#dragover.bind(this))
     this.addEventListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
+    this.addEventListener('catalog-structure-updated', this.#onCatalogStructureUpdated as EventListener)
     this.addEventListener('canvas-history-updated', this.#updateHistoryEntries as EventListener)
     this.addEventListener('canvas-history-updated', this.#onCanvasHistoryUpdated as EventListener)
     this.addEventListener('presence-pointer', ((event: CustomEvent<{ x: number; y: number }>) => {
@@ -1105,6 +1127,29 @@ export class AppShell extends LiteElement {
     })
   }
 
+  #normalizeColorInput(value: unknown): string {
+    const raw = String(value ?? '')
+      .trim()
+      .toLowerCase()
+    if (/^#[0-9a-f]{6}$/i.test(raw)) return raw
+
+    const shortHexMatch = raw.match(/^#([0-9a-f]{3})$/i)
+    if (shortHexMatch) {
+      const [r, g, b] = shortHexMatch[1].split('')
+      return `#${r}${r}${g}${g}${b}${b}`
+    }
+
+    const rgbMatch = raw.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i)
+    if (rgbMatch) {
+      const toHex = (channel: string) => {
+        const numeric = Math.max(0, Math.min(255, Number(channel) || 0))
+        return numeric.toString(16).padStart(2, '0')
+      }
+      return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`
+    }
+    return '#000000'
+  }
+
   static styles = [shellStyles]
   deletePage(pageName: string) {
     const pages = this.project.pages as Record<string, Project['pages'][string]>
@@ -1168,7 +1213,9 @@ export class AppShell extends LiteElement {
             <cadle-header>
               <project-actions></project-actions>
             </cadle-header>
-            <div
+            <custom-selector
+              attr-for-selected="data-selected"
+              .selected=${this.railView}
               class="rail-tabs"
               role="tablist">
               <button
@@ -1177,6 +1224,7 @@ export class AppShell extends LiteElement {
                 type="button"
                 title="Project pages"
                 aria-label="Project pages"
+                data-selected="project"
                 aria-selected=${this.railView === 'project'}
                 @click=${() => this.#selectRailView('project')}>
                 <custom-icon icon="folder"></custom-icon>
@@ -1187,11 +1235,12 @@ export class AppShell extends LiteElement {
                 type="button"
                 title="Symbols catalog"
                 aria-label="Symbols catalog"
+                data-selected="symbols"
                 aria-selected=${this.railView === 'symbols'}
                 @click=${() => this.#selectRailView('symbols')}>
                 <custom-icon icon="format_shapes"></custom-icon>
               </button>
-            </div>
+            </custom-selector>
             <project-pane
               .manifest=${this.manifest}
               .project=${this.project}
@@ -1234,7 +1283,7 @@ export class AppShell extends LiteElement {
             <input
               type="color"
               label="color"
-              value="${state.styling.fill}"
+              value="${this.#normalizeColorInput(state.styling.fill)}"
               dialogFocus />
             <flex-it></flex-it>
           </flex-row>

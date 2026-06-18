@@ -1,11 +1,4 @@
-import {
-  Rect,
-  classRegistry,
-  type Canvas,
-  type RectProps,
-  type SerializedRectProps,
-  type TClassProperties
-} from 'fabric'
+import { Rect, classRegistry, type Canvas } from 'fabric'
 import type { JsonValue } from '../types.js'
 import defaultOptions from './default-options.js'
 import { CadleWidth } from './width.js'
@@ -177,6 +170,8 @@ export default class CadleWindow extends Rect {
       ...super.toObject(),
       uuid: this.uuid,
       bindingId: this.bindingId,
+      bindingLabel: (this as { bindingLabel?: string }).bindingLabel,
+      bindingLabelOffset: (this as { bindingLabelOffset?: { dx: number; dy: number } }).bindingLabelOffset,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
       backgroundColor: (this as { backgroundColor?: string }).backgroundColor,
@@ -191,6 +186,8 @@ export default class CadleWindow extends Rect {
       ...super.toObject(propertiesToInclude),
       uuid: this.uuid,
       bindingId: this.bindingId,
+      bindingLabel: (this as { bindingLabel?: string }).bindingLabel,
+      bindingLabelOffset: (this as { bindingLabelOffset?: { dx: number; dy: number } }).bindingLabelOffset,
       situationElementType: this.situationElementType,
       situationMetadata: this.situationMetadata,
       backgroundColor: (this as { backgroundColor?: string }).backgroundColor,

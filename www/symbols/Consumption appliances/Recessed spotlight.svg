@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"
+		width="0.183in" height="0.183in" viewBox="0 0 13.2 13.2" xml:space="preserve"
+		color-interpolation-filters="sRGB" class="st2">
+	<title>Recessed spotlight</title>
+
+	<style type="text/css">
+	<![CDATA[
+		.st1 {fill:none;stroke:#000000;stroke-linecap:round;stroke-linejoin:round;stroke-width:0.25}
+		.st2 {fill:none;fill-rule:evenodd;font-size:12px;overflow:visible;stroke-linecap:square;stroke-miterlimit:3}
+	]]>
+	</style>
+
+	<g>
+		<title>Recessed spotlight</title>
+		<g id="1" transform="translate(0.125,-0.125)">
+			<title>Recessed spotlight</title>
+			<ellipse cx="6.475" cy="6.475" rx="6.1" ry="6.1" class="st1"/>
+			<ellipse cx="6.475" cy="6.475" rx="2.2" ry="2.2" class="st1"/>
+			<path d="M6.48 0.38 L6.48 2.95" class="st1"/>
+			<path d="M6.48 9.95 L6.48 12.52" class="st1"/>
+			<path d="M0.38 6.48 L2.95 6.48" class="st1"/>
+			<path d="M9.95 6.48 L12.52 6.48" class="st1"/>
+		</g>
+	</g>
+</svg>

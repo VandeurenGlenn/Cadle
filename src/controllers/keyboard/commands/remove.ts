@@ -44,6 +44,11 @@ const isPolyWallObject = (object: FabricObject): object is PolyWallObject => {
   return Array.isArray(wall.wallPoints) && wall.wallPoints.length >= 2
 }
 
+const isMultiSegmentPolyWall = (object: PolyWallObject): boolean => {
+  const wallPoints = Array.isArray(object.wallPoints) ? object.wallPoints : null
+  return Boolean(wallPoints && wallPoints.length > 2)
+}
+
 const removeSelectedWallSegment = (object: PolyWallObject): boolean => {
   const selectedStart = Number(object.wallSelectedSegmentStartIndex)
   if (!Number.isInteger(selectedStart)) return false
@@ -134,8 +139,9 @@ export const remove = () => {
       continue
     }
 
-    if (isPolyWallObject(object) && removeSelectedWallSegment(object)) {
-      continue
+    if (isPolyWallObject(object)) {
+      if (removeSelectedWallSegment(object)) continue
+      if (isMultiSegmentPolyWall(object)) continue
     }
 
     history.push({ type: 'remove', object, objects: [object] })

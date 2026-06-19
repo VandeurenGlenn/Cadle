@@ -2238,7 +2238,12 @@ export class DrawField extends LiteElement {
       }
     }
 
-    polyWall.wallSelectedSegmentStartIndex = bestIndex >= 0 ? bestIndex : undefined
+    const baseThickness =
+      Number((polyWall as { wallThickness?: number }).wallThickness ?? 0) ||
+      Math.max(1, Math.min(Number(wall.width ?? 0), Number(wall.height ?? 0)))
+    const maxDistance = Math.max(this.gridSize * 0.8, baseThickness * 0.75)
+    polyWall.wallSelectedSegmentStartIndex =
+      bestIndex >= 0 && bestDistanceSquared <= maxDistance * maxDistance ? bestIndex : undefined
   }
 
   async _mousedown(e) {

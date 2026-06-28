@@ -123,7 +123,7 @@ export const iconSetTemplate = html`
       <span name="category">@symbol-category</span>
       <span name="radio_button_unchecked">@symbol-radio_button_unchecked</span>
       <span name="gesture">@symbol-gesture</span>
-      <span name="arc">@symbol-arc</span>
+      <span name="line_curve">@symbol-line_curve</span>
     </template>
   </custom-icon-set>
 `

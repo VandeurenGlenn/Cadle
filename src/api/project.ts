@@ -56,7 +56,7 @@ export const create = async (project: ProjectInput, pageName: string) => {
   cadleShell.project = (await getProjectData(uuid as UUID)) as Project
   cadleShell.projectKey = uuid as UUID
   await cadleShell.loadPage(pageUuid)
-  location.hash = '#!/draw'
+  location.hash = `#!/native-draw?project=${uuid}&page=${pageUuid}`
   return
 }
 
@@ -88,7 +88,7 @@ export const save = async () => {
 export const share = () => {
   const project = JSON.stringify({
     name: cadleShell.projectName,
-    schema: cadleShell.shadowRoot?.querySelector('draw-field')?.toJSON()
+    project: cadleShell.project
   })
   const data = {
     title: cadleShell.projectName,
@@ -137,7 +137,6 @@ export const upload = async () => {
 export const download = async () => {
   console.log('down')
 
-  // const fields: DrawField[] = Array.from(this.renderRoot.querySelectorAll('draw-field'))
   let pdf: jsPDF | undefined
 
   console.log(cadleShell.project)
@@ -146,7 +145,6 @@ export const download = async () => {
   for (const [key] of Object.entries(cadleShell.project.pages)) {
     await cadleShell.loadPage(key)
     const exported = await cadleShell.exportA4PNG('auto')
-    // const svg = await cadleShell.field.canvas.toSVG()
 
     if (!pdf) {
       pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
@@ -184,10 +182,7 @@ export const download = async () => {
   // for (const field of fields) {
   //   const json = field.toJSON()
   //   console.log(json)
-  //   // await this.renderRoot.querySelector('draw-field').loadFromJSON(json)
-
-  //   const url = this.renderRoot.querySelector('draw-field').toDataURL()
-  //   console.log(url)
+  //   const json = field.toJSON()
   //   const a = document.createElement('a')
   //   a.href = url
   //   a.download = `${this.loadedPage}.png`

@@ -1,14 +1,7 @@
-import { canvas } from '../../../utils.js'
-import { isMac } from '../utils.js'
-import drawText from '../../../draw/text.js'
+import { isPrimaryShortcut, isMac, type NativeHotkeyAction } from '../hotkeys.js'
 
-export const isInsertText = ({ metaKey, key, ctrlKey, altKey }: KeyboardEvent) =>
-  key === 't' && (isMac ? metaKey && ctrlKey : ctrlKey && altKey)
-
-export const insertText = () => {
-  drawText()
-  canvas.shouldRender = true
-}
-
-export const keyCombination = { key: 't', metaKey: isMac, ctrlKey: !isMac, altKey: true }
-export const keys = [isMac ? ['meta', 'ctrl', 't'] : ['ctrl', 'alt', 't']]
+export const isInsertText = (event: KeyboardEvent): boolean =>
+  event.key.toLowerCase() === 't' && isPrimaryShortcut(event)
+export const insertText = (): NativeHotkeyAction => 'tool-text'
+export const keyCombination = { key: 't', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 't'] : ['ctrl', 't']]

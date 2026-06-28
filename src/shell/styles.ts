@@ -172,8 +172,6 @@ export const shellStyles = css`
     min-height: 0;
   }
 
-  draw-field,
-  save-field,
   projects-field,
   home-field,
   add-page-field,

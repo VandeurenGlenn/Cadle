@@ -196,7 +196,6 @@ export class ProjectElement extends LiteElement {
           @click=${async () => {
             await cadleShell.savePage()
             cadleShell.loadPage(key)
-            location.hash = '#!/draw'
           }}
           >${project.name}</custom-drawer-item
         >

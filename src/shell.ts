@@ -1,11 +1,8 @@
 import { LiteElement, html, property, customElement, query } from '@vandeurenglenn/lite'
 import { shellStyles } from './shell/styles.js'
-import { exportCanvasToA4PNG, type A4Orientation, type A4ExportResult } from './shell/export.js'
 import { parseHash } from './shell/routing.js'
 import { PresenceController } from './shell/presence.js'
-import type { Canvas, FabricObject } from 'fabric'
 import './elements/design-mode-toggle.js'
-import { generateBOMFiles, normalizeBindingId } from './shell/bom.js'
 import { iconSetTemplate } from './shell/icon-set.js'
 import {
   ensureCustomCatalogLoaded,
@@ -23,8 +20,7 @@ import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 import '@vandeurenglenn/lite-elements/pages.js'
-import './fields/draw.js'
-import './elements/save-field.js'
+import './app.js'
 import './elements/panes/project-pane.js'
 import './elements/panes/object-pane.js'
 import './elements/pdf-importer.js'
@@ -33,6 +29,7 @@ import './elements/status-bar.js'
 import './elements/actions/actions.js'
 import pubsub from './pubsub.js'
 import './elements/modals/validation-report.js'
+import type { ValidationReport } from './elements/modals/validation-report.js'
 import './elements/modals/template-library.js'
 import './elements/panels/history-panel.js'
 import '@material/web/textfield/filled-text-field.js'
@@ -45,9 +42,15 @@ import { Color } from './symbols/default-options.js'
 import './elements/actions/project-actions.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
-import { DrawField } from './fields/draw.js'
-import { isOpeningObject, isWallObject, getWallEndpoints } from './fields/draw/wall-snap.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
+
+type A4Orientation = 'portrait' | 'landscape'
+type A4ExportResult = {
+  dataUrl: string
+  orientation: A4Orientation
+  widthPx: number
+  heightPx: number
+}
 
 type ShellActionsElement = HTMLElement & {
   hide: () => void
@@ -63,29 +66,15 @@ type ShellPagesElement = HTMLElement & {
   select?: (route: string) => Promise<void> | void
 }
 
+type NativeAppElement = HTMLElement & {
+  undo?: () => void
+  redo?: () => void
+  exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
+}
+
 type ShellProjectStore = {
   set: (key: Uint8Array, value: unknown) => Promise<void>
   get: (key: string) => Promise<Project>
-}
-
-type ShellFabricObject = FabricObject & {
-  bindingId?: string
-  left?: number
-  top?: number
-  width?: number
-  height?: number
-  scaleX?: number
-  scaleY?: number
-  bindingRole?: string
-  originY?: 'top' | 'center' | 'bottom'
-  type?: string
-  doorSwingDirection?: string
-  doorHingeSide?: string
-}
-
-type CanvasWithUndoRedo = Canvas & {
-  undo?: () => void
-  redo?: () => void
 }
 
 type KeyboardShortcutsElement = HTMLElement & {
@@ -167,9 +156,6 @@ export class AppShell extends LiteElement {
   @query('project-pane')
   accessor projectPane!: ShellProjectPaneElement
 
-  @query('draw-field')
-  accessor field!: DrawField
-
   @query('custom-pages')
   accessor pages!: ShellPagesElement
 
@@ -179,8 +165,8 @@ export class AppShell extends LiteElement {
   @property({ type: Boolean })
   accessor validationReportOpen = false
 
-  @property()
-  accessor validationReportData: JsonValue | null = null
+  @property({ attribute: false })
+  accessor validationReportData: ValidationReport | null = null
 
   @property({ type: Boolean })
   accessor historyPanelOpen = false
@@ -227,24 +213,6 @@ export class AppShell extends LiteElement {
   set showMeasurements(value) {
     this._showMeasurements = value
     pubsub.publish('shell.measurements', !!value)
-    if (this.field) {
-      this.field.showMeasurements = value
-    }
-
-    if (!this.field?.canvas) return
-    const objects = this.field.canvas.getObjects()
-    for (const object of objects) {
-      if (object.type === 'CadleWall' || object.type === 'CadleWindow') {
-        object.set('showMeasurements', value)
-      }
-
-      // Legacy labels stay hidden; architectural side overlay is the measurement source.
-      if (object.type === 'CadleWidth' || object.type === 'CadleDepth') {
-        object.set('visible', false)
-      }
-    }
-
-    this.field.canvas.requestRenderAll()
   }
 
   get showMeasurements() {
@@ -256,8 +224,6 @@ export class AppShell extends LiteElement {
   accessor projectKey: UUID = '' as UUID
 
   set action(value) {
-    const canvas = this.field?.canvas as Canvas | undefined
-    if (canvas) canvas.defaultCursor = value ? 'crosshair' : 'default'
     this._action = value
     pubsub.publish('shell.action', value ?? '')
   }
@@ -319,9 +285,7 @@ export class AppShell extends LiteElement {
   }
 
   #refreshBoundOneLineCatalog = () => {
-    const symbols = this.field?.getBoundOneLineCatalogSymbols?.() ?? []
-    const groupSymbols = this.field?.getBindingGroupCatalogSymbols?.() ?? []
-    this.catalog = this.#mergeCatalogWithBoundSymbols(symbols, groupSymbols)
+    this.catalog = this.#mergeCatalogWithBoundSymbols([])
   }
 
   #updateHistoryEntries = (event: Event) => {
@@ -336,11 +300,7 @@ export class AppShell extends LiteElement {
   }
 
   #syncRemotePresence() {
-    if (this.field) {
-      this.field.remoteCursors = this._presence
-        .activeCursors(this.projectKey, this.loadedPage)
-        .map(({ id, name, color, x, y }) => ({ id, name, color, x, y }))
-    }
+    this._presence.activeCursors(this.projectKey, this.loadedPage)
   }
 
   #broadcastPresence(position?: { x: number; y: number }, hidden = false) {
@@ -348,17 +308,10 @@ export class AppShell extends LiteElement {
   }
 
   #focusBindingGroup(bindingId: string) {
-    const targetId = normalizeBindingId(bindingId)
-    if (!targetId || !this.field?.canvas) return
-    const canvas = this.field.canvas
-    const target = canvas
-      .getObjects()
-      .find((object: ShellFabricObject) => normalizeBindingId(String(object.bindingId ?? '')) === targetId)
-    if (!target) return
-    canvas.discardActiveObject()
-    canvas.setActiveObject(target)
-    canvas.requestRenderAll()
-    location.hash = '#!/draw'
+    const targetId = bindingId.trim().toUpperCase()
+    if (!targetId) return
+    pubsub.publish('native.binding.focus', { bindingId: targetId })
+    location.hash = this.#nativeDrawHash()
   }
 
   toggleHistoryPanel = () => {
@@ -440,7 +393,7 @@ export class AppShell extends LiteElement {
     await setProjectData(this.projectKey, this.project)
     await this.loadPage(pageKey)
     this.templateLibraryOpen = false
-    location.hash = '#!/draw'
+    location.hash = this.#nativeDrawHash()
   }
 
   #onBindingLookupUpdated = (event: Event) => {
@@ -484,7 +437,6 @@ export class AppShell extends LiteElement {
   #afterPrint = () => {
     // No style mutation on DrawField in Lite; skip
     this.actions.show()
-    this.field.canvas.renderAll()
   }
 
   async connectedCallback(): Promise<void> {
@@ -504,12 +456,7 @@ export class AppShell extends LiteElement {
     // for (const key of keys) {
     //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
     // }
-    await Promise.all([
-      import('./elements/actions/actions.js'),
-      import('./controllers/routing.js'),
-      import('./controllers/mouse.js'),
-      import('./controllers/keyboard.js')
-    ])
+    await import('./elements/actions/actions.js')
     await ensureCustomCatalogLoaded()
     try {
       const manifestCandidates = [
@@ -602,11 +549,11 @@ export class AppShell extends LiteElement {
 
   #onhashchange = async () => {
     const { route, params } = parseHash(location.hash)
-    const validRoutes = new Set(['home', 'draw', 'save', 'projects', 'add-page', 'create-project', 'settings'])
-    const fallbackRoute = this.project?.pages ? 'draw' : 'projects'
-    // If draw is requested but no project is loaded, redirect to projects
-    const nextRoute = validRoutes.has(route) && !(route === 'draw' && !this.project?.pages) ? route : fallbackRoute
-    if (!customElements.get(`${nextRoute}-field`)) {
+    const validRoutes = new Set(['home', 'native-draw', 'projects', 'add-page', 'create-project', 'settings'])
+    const fallbackRoute = this.project?.pages ? 'native-draw' : 'projects'
+    const nextRoute =
+      route === 'draw' || route === 'save' ? 'native-draw' : validRoutes.has(route) ? route : fallbackRoute
+    if (nextRoute !== 'native-draw' && !customElements.get(`${nextRoute}-field`)) {
       try {
         await import(`./${nextRoute}.js`)
       } catch (error) {
@@ -633,6 +580,13 @@ export class AppShell extends LiteElement {
 
   get dialog() {
     return this.shadowRoot?.querySelector('md-dialog') ?? this.querySelector('md-dialog')
+  }
+
+  #nativeDrawHash() {
+    if (this.projectKey && this.loadedPage) {
+      return `#!/native-draw?project=${this.projectKey}&page=${this.loadedPage}`
+    }
+    return '#!/native-draw'
   }
 
   #dialogAction = async (event: Event) => {
@@ -673,7 +627,7 @@ export class AppShell extends LiteElement {
       cadleShell.project = await store.get(cadleShell.projectName)
       const firstKey = Object.keys(cadleShell.project.pages)[0]
       if (firstKey) await cadleShell.loadPage(firstKey)
-      location.hash = '#!/draw'
+      location.hash = this.#nativeDrawHash()
     }
 
     if (action === 'open-project' && projectKey) {
@@ -684,7 +638,7 @@ export class AppShell extends LiteElement {
       console.log(this.project)
       const keys = Object.keys(this.project.pages)
       if (keys[0]) await this.loadPage(keys[0])
-      location.hash = '#!/draw'
+      location.hash = this.#nativeDrawHash()
       this.projectPane?.select?.('project')
     }
 
@@ -742,108 +696,7 @@ export class AppShell extends LiteElement {
       return structuredClone({ version, objects })
     }
 
-    const selectedObjects = new Set<ShellFabricObject>()
-    const walls = objects.filter((obj): obj is ShellFabricObject => isWallObject(obj as FabricObject | null))
-    const selectedWalls = includeWalls ? (outsideWallsOnly ? this.#selectOutsideWalls(walls) : walls) : []
-
-    if (includeWalls) {
-      selectedWalls.forEach((wall) => selectedObjects.add(wall))
-    }
-
-    if (includeOpenings) {
-      const openings = objects.filter((obj): obj is ShellFabricObject => isOpeningObject(obj as FabricObject | null))
-      const filteredOpenings = outsideWallsOnly
-        ? openings.filter((opening) => this.#openingBelongsToWalls(opening, selectedWalls))
-        : openings
-      filteredOpenings.forEach((object) => selectedObjects.add(object))
-    }
-
-    if (includeElectrical) {
-      objects
-        .filter((obj): obj is ShellFabricObject => {
-          const candidate = obj as FabricObject & { bindingRole?: string }
-          return candidate.bindingRole === 'switch' || candidate.bindingRole === 'load'
-        })
-        .forEach((object) => selectedObjects.add(object))
-    }
-    return { version, objects: structuredClone(Array.from(selectedObjects)) }
-  }
-
-  #openingBelongsToWalls(opening: ShellFabricObject, walls: ShellFabricObject[]) {
-    const openingCenter = this.#getObjectCenter(opening)
-    if (!openingCenter) return false
-    return walls.some((wall) => {
-      const wallEndpoints = getWallEndpoints(wall)
-      if (!wallEndpoints || wallEndpoints.length !== 2) return false
-      const distance = this.#distanceToSegment(openingCenter, wallEndpoints[0], wallEndpoints[1])
-      return distance <= this.#wallThicknessForMatch(wall)
-    })
-  }
-
-  #getObjectCenter(object: ShellFabricObject) {
-    const left = Number(object.left ?? 0)
-    const top = Number(object.top ?? 0)
-    const width = Math.abs(Number(object.width ?? 0) * Number(object.scaleX ?? 1))
-    const height = Math.abs(Number(object.height ?? 0) * Number(object.scaleY ?? 1))
-    if (!isFinite(width) || !isFinite(height)) return null
-    return { x: left + width / 2, y: top + height / 2 }
-  }
-
-  #distanceToSegment(point: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) {
-    const vx = b.x - a.x
-    const vy = b.y - a.y
-    const wx = point.x - a.x
-    const wy = point.y - a.y
-    const c1 = vx * wx + vy * wy
-    if (c1 <= 0) return Math.hypot(point.x - a.x, point.y - a.y)
-    const c2 = vx * vx + vy * vy
-    if (c2 <= c1) return Math.hypot(point.x - b.x, point.y - b.y)
-    const t = c1 / c2
-    const projX = a.x + t * vx
-    const projY = a.y + t * vy
-    return Math.hypot(point.x - projX, point.y - projY)
-  }
-
-  #wallThicknessForMatch(wall: ShellFabricObject) {
-    const width = Math.abs(Number(wall.width ?? 0) * Number(wall.scaleX ?? 1))
-    const height = Math.abs(Number(wall.height ?? 0) * Number(wall.scaleY ?? 1))
-    return Math.max(8, Math.min(width, height, 12))
-  }
-
-  #selectOutsideWalls(walls: ShellFabricObject[]) {
-    const validWalls = walls.filter((wall) => {
-      const width = Math.abs(Number(wall.width ?? 0) * Number(wall.scaleX ?? 1))
-      const height = Math.abs(Number(wall.height ?? 0) * Number(wall.scaleY ?? 1))
-      return width > 0 && height > 0
-    })
-
-    if (validWalls.length === 0) {
-      return []
-    }
-
-    const endpoints = validWalls.map((wall) => ({
-      wall,
-      points: getWallEndpoints(wall)
-    }))
-
-    const allXs = endpoints.flatMap(({ points }) => points.map((point) => point.x))
-    const allYs = endpoints.flatMap(({ points }) => points.map((point) => point.y))
-    const minX = Math.min(...allXs)
-    const minY = Math.min(...allYs)
-    const maxX = Math.max(...allXs)
-    const maxY = Math.max(...allYs)
-    const edgeTolerance = 6
-    return endpoints
-      .filter(({ points }) =>
-        points.some(
-          (point) =>
-            point.x <= minX + edgeTolerance ||
-            point.y <= minY + edgeTolerance ||
-            point.x >= maxX - edgeTolerance ||
-            point.y >= maxY - edgeTolerance
-        )
-      )
-      .map(({ wall }) => wall)
+    return { version, objects: structuredClone(objects) }
   }
 
   async openClonePageDialog(pageKey: string) {
@@ -952,7 +805,9 @@ export class AppShell extends LiteElement {
   }
 
   async exportA4PNG(orientation: A4Orientation | 'auto' = 'auto'): Promise<A4ExportResult> {
-    return exportCanvasToA4PNG(this.field.canvas, orientation)
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    if (!nativeApp?.exportA4PNG) throw new Error('Native draw export is unavailable')
+    return nativeApp.exportA4PNG(orientation)
   }
 
   async toPNG() {
@@ -974,127 +829,41 @@ export class AppShell extends LiteElement {
   }
 
   async savePage() {
-    if (!this.loadedPage || !this.field) return
-    const schema = this.field.toJSON?.()
-    if (!schema) return
-    if (!this.project?.pages || !this.project.pages[this.loadedPage]) {
-      console.warn('savePage skipped because no loaded page exists', {
-        loadedPage: this.loadedPage,
-        projectPages: this.project?.pages
-      })
-      return
-    }
-
-    this.project.pages[this.loadedPage].schema = schema
-    await setProjectData(this.projectKey, this.project)
     this.projectDirty = false
-    pubsub.publish('project.saved', { projectKey: this.projectKey, pageKey: this.loadedPage })
   }
 
   async loadPage(key: string) {
     this.loadedPage = key
     const page = this.project.pages[key]
     console.log({ page, key })
-    // Wait for the draw-field element to be available and its canvas initialized
-    // No updateComplete in Lite; rely on property updates
-    const drawField = this.shadowRoot?.querySelector('draw-field') as typeof this.field
-    if (drawField) {
-      if (drawField.fromJSON) {
-        const schema = (page.schema as unknown as { version: string; objects: JsonValue[] }) ?? {
-          version: '6.0.0',
-          objects: [] as JsonValue[]
-        }
-        await drawField.fromJSON(schema)
-      }
 
-      this.historyEntries = drawField
-        .getHistoryEntries?.()
-        .map(({ id, label, timestamp }: { id: string; label: string; timestamp: number }) => ({
-          id,
-          label,
-          timestamp
-        }))
-    }
-
+    location.hash = `#!/native-draw?project=${this.projectKey}&page=${key}`
     this.projectDirty = false
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
   }
 
   async generateAutoOneWireSchema() {
-    if (!this.project || !this.projectKey) return
-    await this.savePage()
-    const report = this.field.getBindingValidationReport()
-    if (report.totalGroups === 0) {
-      globalThis.alert('No binding groups found. Add IDs like A1 to switches and loads/sockets first.')
-      return
-    }
-
-    if (report.errorCount > 0) {
-      const proceed = globalThis.confirm(
-        `Found ${report.errorCount} binding errors and ${report.warningCount} warnings.\n\nContinue generating one-wire anyway?`
-      )
-      if (!proceed) return
-    }
-
-    const schema = this.field.buildAutoOneWireSchema()
-    const existingEntry = Object.entries(this.project.pages).find(([, page]) =>
-      String(page?.name ?? '')
-        .toLowerCase()
-        .startsWith('auto one-wire')
-    )
-    const pageName = 'Auto One-Wire'
-    let pageKey = existingEntry?.[0]
-    if (pageKey) {
-      this.project.pages[pageKey].name = pageName
-      this.project.pages[pageKey].schema = schema
-      this.project.pages[pageKey].creationTime = this.project.pages[pageKey].creationTime ?? Date.now()
-    } else {
-      pageKey = crypto.randomUUID()
-      this.project.pages[pageKey] = {
-        creationTime: Date.now(),
-        name: pageName,
-        schema
-      }
-    }
-
-    await setProjectData(this.projectKey, this.project)
-    await this.loadPage(pageKey)
-    location.hash = '#!/draw'
-    this.projectPane?.select?.('project')
+    globalThis.alert('Auto one-wire generation still needs a native binding model.')
   }
 
   async validateBindingsForOneWire() {
-    if (!this.project || !this.projectKey) return
-    await this.savePage()
-    const report = this.field.getBindingValidationReport()
-    this.validationReportData = report as unknown as JsonValue
-    this.validationReportOpen = true
-    return report
+    globalThis.alert('Binding validation still needs a native binding model.')
+    return null
   }
 
   async generateBOM() {
-    if (!this.project || !this.projectKey || !this.field?.canvas) return
-    await this.savePage()
-    const projectName = this.projectName ?? this.project?.name ?? 'Cadle Project'
-    const ok = generateBOMFiles(this.field.canvas, projectName)
-    if (!ok) {
-      globalThis.alert('No bindable electrical items found for BOM export.')
-    }
+    globalThis.alert('BOM export still needs a native binding model.')
   }
 
   undo() {
-    const field = this.field
-    if (field && field.canvas && 'undo' in field.canvas) {
-      ;(field.canvas as CanvasWithUndoRedo).undo?.()
-    }
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    nativeApp?.undo?.()
   }
 
   redo() {
-    const field = this.field
-    if (field && field.canvas && 'redo' in field.canvas) {
-      ;(field.canvas as CanvasWithUndoRedo).redo?.()
-    }
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    nativeApp?.redo?.()
   }
 
   importShare = () => {
@@ -1195,16 +964,8 @@ export class AppShell extends LiteElement {
         .entries=${this.historyEntries}
         @close=${() => (this.historyPanelOpen = false)}
         @restore-history=${async (event: CustomEvent<{ id: string }>) => {
-          await this.field?.restoreHistoryEntry?.(event.detail.id)
-          this.historyEntries =
-            this.field
-              ?.getHistoryEntries?.()
-              .map(({ id, label, timestamp }: { id: string; label: string; timestamp: number }) => ({
-                id,
-                label,
-                timestamp
-              })) ?? []
-          location.hash = '#!/draw'
+          void event.detail.id
+          location.hash = this.#nativeDrawHash()
         }}></history-panel>
       ${iconSetTemplate}
       <div class="shell-frame">
@@ -1258,8 +1019,7 @@ export class AppShell extends LiteElement {
             </div>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
-              <draw-field data-route="draw"></draw-field>
-              <save-field data-route="save"></save-field>
+              <cadle-app data-route="native-draw"></cadle-app>
               <projects-field data-route="projects"></projects-field>
               <add-page-field data-route="add-page"></add-page-field>
               <create-project-field data-route="create-project"></create-project-field>

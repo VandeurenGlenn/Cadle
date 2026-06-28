@@ -242,15 +242,13 @@ export async function ensureCustomCatalogLoaded(): Promise<void> {
     const persisted = await readPersistedSymbols()
     if (persisted.length > 0) {
       symbolsCache = persisted
-      initialized = true
-      return
-    }
-
-    const legacy = readLegacySymbols()
-    symbolsCache = legacy
-    if (legacy.length > 0) {
-      await persistSymbols(legacy)
-      writeLegacySymbols(legacy)
+    } else {
+      const legacy = readLegacySymbols()
+      symbolsCache = legacy
+      if (legacy.length > 0) {
+        await persistSymbols(legacy)
+        writeLegacySymbols(legacy)
+      }
     }
 
     const persistedFolders = await readPersistedFolders()

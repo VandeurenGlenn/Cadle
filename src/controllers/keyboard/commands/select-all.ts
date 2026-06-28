@@ -1,15 +1,6 @@
-import { ActiveSelection } from 'fabric'
-import { canvas } from '../../../utils.js'
-import { isMac } from '../utils.js'
+import { isPrimaryShortcut, isMac, type NativeHotkeyAction } from '../hotkeys.js'
 
-export const isSelectAll = ({ metaKey, ctrlKey, key }: KeyboardEvent): boolean =>
-  key === 'a' && (isMac ? metaKey : ctrlKey)
-
-export const selectAll = (): void => {
-  canvas.discardActiveObject()
-  const selection = new ActiveSelection(canvas.getObjects(), { canvas })
-  canvas.setActiveObject(selection)
-}
-
+export const isSelectAll = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'a' && isPrimaryShortcut(event)
+export const selectAll = (): NativeHotkeyAction => 'select-all'
 export const keyCombination = { key: 'a', metaKey: isMac, ctrlKey: !isMac }
 export const keys = [isMac ? ['meta', 'a'] : ['ctrl', 'a']]

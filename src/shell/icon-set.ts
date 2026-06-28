@@ -119,6 +119,11 @@ export const iconSetTemplate = html`
       <span name="flip_vertical">@symbol-swap_vert</span>
       <span name="scale">@symbol-scale</span>
       <span name="escape">@symbol-keyboard</span>
+      <span name="electrical_services">@symbol-electrical_services</span>
+      <span name="category">@symbol-category</span>
+      <span name="radio_button_unchecked">@symbol-radio_button_unchecked</span>
+      <span name="gesture">@symbol-gesture</span>
+      <span name="arc">@symbol-arc</span>
     </template>
   </custom-icon-set>
 `

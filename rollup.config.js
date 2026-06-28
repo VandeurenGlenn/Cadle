@@ -15,8 +15,8 @@ export default [
   {
     input: [
       './src/shell.ts',
+      './src/app.ts',
       './src/fields/projects.ts',
-      './src/fields/draw.ts',
       './src/fields/settings.ts',
       './src/fields/create-project.ts',
       './node_modules/@leofcoin/storage/exports/browser-store.js'

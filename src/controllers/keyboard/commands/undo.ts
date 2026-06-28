@@ -1,33 +1,6 @@
-import { canvas } from '../../../utils.js'
-import { isMac } from '../utils.js'
+import { isPrimaryShortcut, isMac, type NativeHotkeyAction } from '../hotkeys.js'
 
-export const isUndo = ({ metaKey, ctrlKey, key }: KeyboardEvent) => key === 'z' && (isMac ? metaKey : ctrlKey)
-
-export const undo = () => {
-  const canvas_ = canvas
-  canvas_.shouldRender = true
-  canvas_.discardActiveObject()
-  const lastAction = canvas_.history.pop()
-  if (lastAction?.type)
-    switch (lastAction.type) {
-      case 'remove':
-        canvas_.add(lastAction.item)
-        break
-
-      case 'add':
-        canvas_.remove(lastAction.item)
-        break
-      case 'move-left':
-        canvas_.setActiveObject(lastAction.item)
-        break
-
-      case 'move-right':
-        canvas_.setActiveObject(lastAction.item)
-        break
-      default:
-        break
-    }
-}
-
+export const isUndo = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'z' && isPrimaryShortcut(event)
+export const undo = (event: KeyboardEvent): NativeHotkeyAction => (event.shiftKey ? 'redo' : 'undo')
 export const keyCombination = { key: 'z', metaKey: isMac, ctrlKey: !isMac }
 export const keys = [isMac ? ['meta', 'z'] : ['ctrl', 'z']]

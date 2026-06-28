@@ -1,10 +1,9 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/item.css' with { type: 'css' }
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
-import { loadSVGFromString, loadSVGFromURL, util } from 'fabric'
-import type { FabricObject } from 'fabric'
 import type { JsonValue } from '../../types.js'
 import state from '../../state.js'
+import pubsub from '../../pubsub.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
@@ -13,10 +12,6 @@ declare global {
   interface HTMLElementTagNameMap {
     'catalog-item': CatalogItem
   }
-}
-
-type SvgLoadResult = {
-  objects: FabricObject[]
 }
 
 type SymbolMetadata = Record<string, JsonValue> & {
@@ -307,13 +302,6 @@ export class CatalogItem extends LiteElement {
     )
   }
 
-  #themePlacedSvgObject(obj: FabricObject, themedColor: string) {
-    const stroke = obj?.stroke
-    const fill = obj?.fill
-    if (this.#isDarkSvgColor(stroke)) obj.set('stroke', themedColor)
-    if (this.#isDarkSvgColor(fill)) obj.set('fill', themedColor)
-  }
-
   #normalizeBindingId(value) {
     if (typeof value !== 'string') return ''
     return value.trim().toUpperCase()
@@ -336,15 +324,16 @@ export class CatalogItem extends LiteElement {
     return 'neutral'
   }
 
-  #applySymbolMetadata(group: FabricObject, sourcePath: string) {
+  #nativeSymbolMetadata(sourcePath: string): SymbolMetadata {
     const metadata = (this.symbol?.metadata ?? {}) as SymbolMetadata
     const roleFromMeta = typeof metadata.bindingRole === 'string' ? metadata.bindingRole : undefined
     const inferredRole = this.#inferBindingRole(sourcePath, this.symbol?.name ?? this._headline ?? '')
     const bindingRole = roleFromMeta ?? inferredRole
     const seededBindingId = this.#normalizeBindingId(String(metadata.bindingId ?? state.text.current ?? ''))
-    group.set({
+    const next: SymbolMetadata = {
+      ...metadata,
       symbolName: this.symbol?.name ?? this._headline,
-      symbolPath: sourcePath,
+      symbolPath: sourcePath as JsonValue,
       bindingRole,
       oneLineEligible:
         metadata.oneLineEligible === true ||
@@ -364,94 +353,32 @@ export class CatalogItem extends LiteElement {
             ? metadata.kind
             : this.category,
       sourceObjectUuid: typeof metadata.sourceObjectUuid === 'string' ? metadata.sourceObjectUuid : undefined
-    })
-    if (seededBindingId) {
-      group.set({ bindingId: seededBindingId })
     }
+    if (seededBindingId) next.bindingId = seededBindingId
+    return next
   }
 
   #click = async () => {
-    // Ensure the draw route is active before placing a symbol.
-    if (typeof cadleShell !== 'undefined' && location.hash !== '#!/draw') {
-      location.hash = '#!/draw'
-    }
-
     const sourcePath = this.symbol?.path ?? this.image
-    if (!sourcePath) return
-    const resolvedSourcePath = new URL(sourcePath, location.href).toString()
-    const loadCandidates = [resolvedSourcePath, encodeURI(resolvedSourcePath), sourcePath]
-    let svg: SvgLoadResult | null = null
-    let lastError = null
-    for (const candidate of loadCandidates) {
-      try {
-        const loaded = (await loadSVGFromURL(candidate)) as SvgLoadResult
-        if (loaded?.objects?.length) {
-          svg = loaded
-          break
-        }
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    if (!svg) {
-      try {
-        const markup = await this.#loadSvgMarkup(sourcePath)
-        const loaded = (await loadSVGFromString(markup)) as SvgLoadResult
-        if (loaded?.objects?.length) svg = loaded
-      } catch (error) {
-        lastError = error
-      }
-    }
-
-    if (!svg) {
-      console.error('Failed to load catalog symbol SVG', { sourcePath, resolvedSourcePath, lastError })
-      return
-    }
-
-    const themedColor =
-      getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-on-surface').trim() || '#e6e1e5'
-    svg.objects.forEach((obj) => {
-      if (!obj) return
-      obj.set({
-        objectCaching: false,
-        noScaleCache: true,
-        strokeUniform: true
+    const sourceName = this.symbol?.name ?? this._headline
+    if (!sourcePath || !sourceName) return
+    pubsub.publish('shell.action', 'draw-symbol')
+    pubsub.publish('native.catalog.pick', {
+      name: sourceName,
+      path: sourcePath,
+      metadata: this.#nativeSymbolMetadata(sourcePath)
+    })
+    this.dispatchEvent(
+      new CustomEvent('catalog-symbol-picked', {
+        detail: {
+          symbol: this.symbol,
+          category: this.category,
+          folder: this.folder
+        },
+        bubbles: true,
+        composed: true
       })
-      this.#themePlacedSvgObject(obj, themedColor)
-      if (resolvedSourcePath.toLowerCase().endsWith('door.svg')) {
-        obj.strokeWidth = 7
-      } else {
-        obj.strokeWidth = 1
-      }
-    })
-    const validObjects = svg.objects.filter((obj) => obj !== null)
-    if (validObjects.length === 0) return
-    const group = util.groupSVGElements(validObjects)
-    this.#applySymbolMetadata(group, sourcePath)
-    group.set({
-      centeredScaling: true,
-      objectCaching: false,
-      noScaleCache: true,
-      strokeUniform: true
-    })
-    group.scale(1.2)
-    group.setCoords()
-    if (cadleShell.field) {
-      cadleShell.field.action = 'draw-symbol'
-      cadleShell.field._selectedSymbolPrototype = group
-      this.dispatchEvent(
-        new CustomEvent('catalog-symbol-picked', {
-          detail: {
-            symbol: this.symbol,
-            category: this.category,
-            folder: this.folder
-          },
-          bubbles: true,
-          composed: true
-        })
-      )
-    }
+    )
   }
 
   #onDragStart = (event: DragEvent) => {

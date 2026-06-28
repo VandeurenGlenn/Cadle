@@ -4,8 +4,9 @@ import '@vandeurenglenn/lite-elements/divider.js'
 import '@vandeurenglenn/flex-elements/container.js'
 import '@vandeurenglenn/flex-elements/row.js'
 import '@vandeurenglenn/flex-elements/it.js'
-import { hotkeyList } from '../controllers/keyboard/hotkeys.js'
 import { map } from '@vandeurenglenn/lite/map.js'
+import { hotkeyList, type NativeHotkey } from '../controllers/keyboard/hotkeys.js'
+
 @customElement('keyboard-shortcuts')
 export class KeyboardShortcuts extends LiteElement {
   @property({ reflect: true, type: Boolean }) accessor open = false
@@ -13,7 +14,7 @@ export class KeyboardShortcuts extends LiteElement {
     this.open = false
   }
 
-  #renderShortcuts(shortcuts: { action: string; keys: string[][] }[]) {
+  #renderShortcuts(shortcuts: NativeHotkey[]) {
     return shortcuts.length === 0
       ? html`<p class="no-shortcuts">No shortcuts in this category</p>`
       : shortcuts.map(

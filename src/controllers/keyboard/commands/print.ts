@@ -1,8 +1,6 @@
-export const isPrint = (event: KeyboardEvent) => event.key === 'p' && event.ctrlKey
+import { isPrimaryShortcut, isMac } from '../hotkeys.js'
 
-export const print = (event: KeyboardEvent) => {
-  event.preventDefault()
-}
-
-export const keyCombination = { key: 'p', ctrlKey: true }
-export const keys = [['ctrl', 'p']]
+export const isPrint = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'p' && isPrimaryShortcut(event)
+export const print = () => window.print()
+export const keyCombination = { key: 'p', metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'p'] : ['ctrl', 'p']]

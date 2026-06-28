@@ -26,7 +26,7 @@ export class CatalogCategory extends LiteElement {
   @property({ type: Boolean })
   accessor openedOnce = false
 
-  @property({ type: Boolean })
+  @property({ type: Boolean, reflect: true, attribute: 'search-active' })
   accessor searchActive = false
 
   @property({ type: Number })

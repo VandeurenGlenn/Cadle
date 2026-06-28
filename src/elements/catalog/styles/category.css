@@ -2,31 +2,46 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: 6px;
+  gap: var(--cadle-space-1);
 }
-.symbol-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 6px;
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cadle-space-1);
+  box-sizing: border-box;
+  padding: 0 0 var(--cadle-space-1);
   width: 100%;
-  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.symbol-container catalog-item {
+
+.items catalog-item {
   opacity: 1;
   pointer-events: auto;
-  transition: all 150ms ease-out;
+  transition:
+    opacity var(--cadle-motion-fast),
+    transform var(--cadle-motion-fast);
 }
-:host(:not([open])) .symbol-container {
+
+:host(:not([open]):not([search-active])) .items {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
 }
-:host([open]) .symbol-container {
+
+:host([open]) .items,
+:host .items {
   max-height: 2000px;
   opacity: 1;
   pointer-events: auto;
 }
+
+.divider {
+  height: 1px;
+  margin: 0 var(--cadle-space-2);
+  background: color-mix(in srgb, var(--md-sys-color-outline-variant) 42%, transparent);
+}
+
 .category-line {
   display: inline-flex;
   align-items: center;
@@ -52,8 +67,8 @@
   font: var(--md-sys-typescale-label-small);
 }
 .category-header {
-  min-height: 36px;
-  height: 36px;
+  min-height: 34px;
+  height: 34px;
   width: 100%;
   display: inline-flex;
   align-items: center;
@@ -70,8 +85,7 @@
   font-size: 13px;
   cursor: pointer;
   text-align: left;
-  transition:
-    all var(--cadle-motion-standard);
+  transition: all var(--cadle-motion-standard);
 }
 .category-header:hover {
   background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-container));
@@ -94,19 +108,6 @@
   background: color-mix(in srgb, var(--md-sys-color-primary) 20%, var(--md-sys-color-surface-container));
   border: 2px solid var(--md-sys-color-primary);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
-}
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--cadle-radius-sm);
-  margin-bottom: 2px;
-  color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-body-small);
-  cursor: pointer;
-  transition:
-    background-color var(--cadle-motion-fast),
-    color var(--cadle-motion-fast),
-    border-color var(--cadle-motion-fast),
-    box-shadow var(--cadle-motion-fast);
 }
 catalog-item:hover {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);

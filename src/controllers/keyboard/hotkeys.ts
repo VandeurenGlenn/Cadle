@@ -1,111 +1,159 @@
-import { moveDown, moveLeft, moveRight, moveUp } from '../../utils.js'
-import { isMac } from './utils.js'
-import state from '../../state.js'
-import { selectAll, isSelectAll, keys as selectAllKeys } from './commands/select-all.js'
-import { cut, isCut, keys as cutKeys } from './commands/cut.js'
-import { isGroup, group, keys as groupKeys } from './commands/group.js'
-import { isUngroup, ungroup, keys as ungroupKeys } from './commands/ungroup.js'
-import { isPaste, paste, keys as pasteKeys } from './commands/paste.js'
-import { isRemove, remove, keys as removeKeys } from './commands/remove.js'
-import { insertText, isInsertText, keys as insertTextKeys } from './commands/insert-text.js'
-import { isSave, save, keys as saveKeys } from './commands/save.js'
-import { copy, isCopy, keys as copyKeys } from './commands/copy.js'
-import { isFlip, flip, keys as flipKeys } from './commands/flip.js'
-import { isRotate, rotate, keys as rotateKeys } from './commands/rotate.js'
-import { isScale, scale, keys as scaleKeys } from './commands/scale.js'
-import { isEscape, escape, keys as escapeKeys } from './commands/escape.js'
-import { bringForward, isBringForward, keys as bringForwardKeys } from './commands/bring-forward.js'
-import { bringToFront, isBringToFront, keys as bringToFrontKeys } from './commands/bring-to-front.js'
-import { isSendBackwards, sendBackwards, keys as sendBackwardsKeys } from './commands/send-backwards.js'
-import { isSendToBack, sendToBack, keys as sendToBackKeys } from './commands/send-to-back.js'
-import { isToolHotkey, tool, keys as toolKeys } from './commands/tool.js'
-import {
-  isWallChainBackspace,
-  wallChainBackspace,
-  keys as wallChainBackspaceKeys
-} from './commands/wall-chain-backspace.js'
+export type NativeHotkeyAction =
+  | 'undo'
+  | 'redo'
+  | 'copy'
+  | 'cut'
+  | 'paste'
+  | 'group'
+  | 'ungroup'
+  | 'scale-up'
+  | 'scale-down'
+  | 'select-all'
+  | 'delete'
+  | 'escape'
+  | 'tool-select'
+  | 'tool-wall'
+  | 'tool-door'
+  | 'tool-window'
+  | 'tool-gate'
+  | 'tool-line'
+  | 'tool-text'
+  | 'tool-onewire'
 
-// note whenever shiftKey is pressed it will return upperkey
-export const getHotkey = (event: KeyboardEvent): undefined | ((event: KeyboardEvent) => void | Promise<void>) => {
-  // if (isPrint(event)) return print
-  if (isSelectAll(event)) return selectAll
-  if (isCopy(event)) return copy
-  if (isPaste(event)) return paste
-  if (isRemove(event)) return remove
-  if (isCut(event)) return cut
-  if (isGroup(event)) return group
-  if (isUngroup(event)) return ungroup
-  if (isInsertText(event)) return insertText
-  if (isSave(event)) return save
-  if (isFlip(event)) return flip
-  if (isRotate(event)) return rotate
-  if (isScale(event)) return scale
-  if (isEscape(event)) return escape
-  // Wall-chain Backspace must run before any generic Backspace handlers.
-  if (isWallChainBackspace(event)) return wallChainBackspace
-  // Single-letter tool hotkeys (V/W/D/N/G).
-  if (isToolHotkey(event)) return tool
-  if (isBringForward(event)) return bringForward
-  if (isBringToFront(event)) return bringToFront
-  if (isSendBackwards(event)) return sendBackwards
-  if (isSendToBack(event)) return sendToBack
-
-  if (
-    (event.metaKey && isMac && event.key === 'ArrowRight' && event.ctrlKey) ||
-    (event.ctrlKey && event.key === 'ArrowRight' && !isMac)
-  ) {
-    return () => moveRight(state.move.amount)
-  }
-
-  if (
-    (event.metaKey && isMac && event.key === 'ArrowLeft' && event.ctrlKey) ||
-    (event.ctrlKey && event.key === 'ArrowLeft' && !isMac)
-  ) {
-    return () => moveLeft(state.move.amount)
-  }
-
-  if (
-    (event.metaKey && isMac && event.key === 'ArrowUp' && event.ctrlKey) ||
-    (event.ctrlKey && event.key === 'ArrowUp' && !isMac)
-  ) {
-    return () => moveUp(state.move.amount)
-  }
-
-  if (
-    (event.metaKey && isMac && event.key === 'ArrowDown' && event.ctrlKey) ||
-    (event.ctrlKey && event.key === 'ArrowDown' && !isMac)
-  ) {
-    return () => moveDown(state.move.amount)
-  }
-  return undefined
+export type NativeHotkey = {
+  action: string
+  keys: string[][]
 }
 
-export const hotkeyList = {
+export const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
+const modifier = isMac ? 'meta' : 'ctrl'
+
+export const isPrimaryShortcut = (event: KeyboardEvent): boolean => (isMac ? event.metaKey : event.ctrlKey)
+
+export const hotkeyList: Record<string, NativeHotkey[]> = {
   general: [
-    { action: 'remove', keys: removeKeys },
-    { action: 'copy', keys: copyKeys },
-    { action: 'paste', keys: pasteKeys },
-    { action: 'cut', keys: cutKeys },
-    { action: 'select all', keys: selectAllKeys },
-    { action: 'save', keys: saveKeys }
+    { action: 'undo', keys: [[modifier, 'z']] },
+    {
+      action: 'redo',
+      keys: [
+        [modifier, 'shift', 'z'],
+        [modifier, 'y']
+      ]
+    },
+    { action: 'copy', keys: [[modifier, 'c']] },
+    { action: 'cut', keys: [[modifier, 'x']] },
+    { action: 'paste', keys: [[modifier, 'v']] },
+    { action: 'group selection', keys: [[modifier, 'g']] },
+    { action: 'ungroup selection', keys: [[modifier, 'shift', 'g']] },
+    {
+      action: 'scale selection up',
+      keys: [
+        [modifier, '+'],
+        [modifier, '='],
+        [modifier, 'numpadadd']
+      ]
+    },
+    {
+      action: 'scale selection down',
+      keys: [
+        [modifier, '-'],
+        [modifier, 'numpadsubtract']
+      ]
+    },
+    { action: 'select all', keys: [[modifier, 'a']] },
+    { action: 'delete selection', keys: [['delete'], ['backspace']] },
+    { action: 'cancel current action', keys: [['esc']] }
   ],
   drawing: [
-    { action: 'select tool (V) / wall (W) / door (D) / window (N) / gate (G)', keys: toolKeys },
-    { action: 'undo last wall segment (during chain)', keys: wallChainBackspaceKeys },
-    { action: 'group', keys: groupKeys },
-    { action: 'ungroup', keys: ungroupKeys },
-    { action: 'insert text', keys: insertTextKeys }
+    { action: 'select tool', keys: [['v']] },
+    { action: 'wall tool', keys: [['w']] },
+    { action: 'door tool', keys: [['d']] },
+    { action: 'window tool', keys: [['n']] },
+    { action: 'gate tool', keys: [['g']] },
+    { action: 'line tool', keys: [['l']] },
+    { action: 'text tool', keys: [['t']] },
+    { action: 'one-wire tool', keys: [['o']] },
+    { action: 'pan canvas', keys: [['space', 'drag']] },
+    { action: 'end wall chain', keys: [['double-click'], ['esc']] }
   ],
-  transform: [
-    { action: 'flip', keys: flipKeys },
-    { action: 'rotate', keys: rotateKeys },
-    { action: 'scale', keys: scaleKeys },
-    { action: 'escape', keys: escapeKeys }
-  ],
-  layer: [
-    { action: 'bring forward', keys: bringForwardKeys },
-    { action: 'bring to front', keys: bringToFrontKeys },
-    { action: 'send backwards', keys: sendBackwardsKeys },
-    { action: 'send to back', keys: sendToBackKeys }
+  navigation: [
+    { action: 'zoom', keys: [[modifier, 'wheel']] },
+    { action: 'pan viewport', keys: [['wheel'], ['trackpad']] }
   ]
+}
+
+const isEditableElement = (element: HTMLElement): boolean => {
+  const tagName = element.tagName
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true
+  if (element.isContentEditable) return true
+  if (element.getAttribute('role') === 'textbox') return true
+  if (element.localName.endsWith('-text-field')) return true
+  return Boolean(element.closest('md-outlined-text-field, md-filled-text-field, md-outlined-select, md-filled-select'))
+}
+
+const activeElementChain = (): Element[] => {
+  const elements: Element[] = []
+  let root: Document | ShadowRoot = document
+  let activeElement = root.activeElement
+
+  while (activeElement) {
+    elements.push(activeElement)
+    if (!(activeElement instanceof HTMLElement) || !activeElement.shadowRoot) break
+    root = activeElement.shadowRoot
+    activeElement = root.activeElement
+  }
+
+  return elements
+}
+
+export const isEditableTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement && isEditableElement(target)
+
+export const isEditableKeyboardEvent = (event: KeyboardEvent): boolean => {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  if (path.some((target) => target instanceof HTMLElement && isEditableElement(target))) return true
+  return activeElementChain().some((element) => element instanceof HTMLElement && isEditableElement(element))
+}
+
+export const getNativeHotkeyAction = (event: KeyboardEvent): NativeHotkeyAction | null => {
+  if (isEditableKeyboardEvent(event)) return null
+
+  const key = event.key.toLowerCase()
+  const primary = isPrimaryShortcut(event)
+
+  if (primary && key === 'z') return event.shiftKey ? 'redo' : 'undo'
+  if (primary && key === 'y') return 'redo'
+  if (primary && key === 'c') return 'copy'
+  if (primary && key === 'x') return 'cut'
+  if (primary && key === 'v') return 'paste'
+  if (primary && event.shiftKey && key === 'g') return 'ungroup'
+  if (primary && key === 'g') return 'group'
+  if (primary && (key === '+' || key === '=' || event.code === 'NumpadAdd')) return 'scale-up'
+  if (primary && (key === '-' || event.code === 'NumpadSubtract')) return 'scale-down'
+  if (primary && key === 'a') return 'select-all'
+  if (key === 'delete' || key === 'backspace') return 'delete'
+  if (key === 'escape') return 'escape'
+
+  if (event.metaKey || event.ctrlKey || event.altKey) return null
+  switch (key) {
+    case 'v':
+      return 'tool-select'
+    case 'w':
+      return 'tool-wall'
+    case 'd':
+      return 'tool-door'
+    case 'n':
+      return 'tool-window'
+    case 'g':
+      return 'tool-gate'
+    case 'l':
+      return 'tool-line'
+    case 't':
+      return 'tool-text'
+    case 'o':
+      return 'tool-onewire'
+    default:
+      return null
+  }
 }

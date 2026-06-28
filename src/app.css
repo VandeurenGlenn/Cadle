@@ -1,0 +1,460 @@
+:host {
+  --cadle-accent: #a85427;
+  --cadle-surface: color-mix(in srgb, var(--md-sys-color-surface, #f6f1eb) 88%, white);
+  --cadle-surface-strong: color-mix(in srgb, var(--md-sys-color-surface-container-high, #efe7de) 92%, white);
+  --cadle-outline: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 45%, transparent);
+  --cadle-grid-minor: color-mix(in srgb, var(--md-sys-color-outline-variant, #c8b9ad) 45%, transparent);
+  --cadle-grid-major: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 58%, transparent);
+  --cadle-ink: var(--md-sys-color-on-surface, #2b2622);
+  --cadle-stage: linear-gradient(160deg, rgba(255, 248, 241, 0.96), rgba(244, 236, 228, 0.92));
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  color: var(--cadle-ink);
+}
+
+.canvas-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background:
+    radial-gradient(circle at top left, rgba(168, 84, 39, 0.12), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(80, 61, 46, 0.1), transparent 24%),
+    linear-gradient(180deg, #f7f2ec 0%, #efe7df 100%);
+}
+
+.stage-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px;
+}
+
+.panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid var(--cadle-outline);
+  background: var(--cadle-stage);
+  box-shadow: 0 18px 60px rgba(72, 53, 38, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--cadle-grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cadle-grid-minor) 1px, transparent 1px),
+    linear-gradient(to right, var(--cadle-grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cadle-grid-major) 1px, transparent 1px);
+  background-size:
+    20px 20px,
+    20px 20px,
+    100px 100px,
+    100px 100px;
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.stage-context-menu {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--cadle-outline);
+  background: color-mix(in srgb, var(--cadle-surface-strong) 92%, white);
+  box-shadow: 0 14px 36px rgba(72, 53, 38, 0.18);
+}
+
+.stage-context-menu-item {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.stage-context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: color-mix(in srgb, var(--cadle-accent) 40%, var(--cadle-outline));
+}
+
+.stage-context-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stage-context-subitem {
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--cadle-outline) 70%, transparent);
+}
+
+/* ── Native controls bar ──────────────────────────────────────────────────── */
+.native-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--cadle-outline);
+  background: color-mix(in srgb, var(--cadle-surface) 80%, white);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  flex-shrink: 0;
+}
+
+.nc-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.nc-spacer {
+  flex: 1 1 auto;
+}
+
+.nc-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cadle-ink) 55%, transparent);
+  padding: 0 4px 0 2px;
+}
+
+.nc-value {
+  font-size: 11px;
+  padding: 0 6px;
+  min-width: 40px;
+  text-align: center;
+  color: var(--cadle-ink);
+}
+
+.nc-btn {
+  appearance: none;
+  border: 1px solid var(--cadle-outline);
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  border-radius: 10px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
+}
+
+.nc-btn:hover {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: color-mix(in srgb, var(--cadle-accent) 50%, var(--cadle-outline));
+}
+
+.nc-btn[data-active='true'] {
+  border-color: color-mix(in srgb, var(--cadle-accent) 68%, white);
+  background: linear-gradient(180deg, rgba(168, 84, 39, 0.14), rgba(168, 84, 39, 0.04));
+}
+
+.nc-btn.nc-danger {
+  border-color: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 40%, var(--cadle-outline));
+  color: var(--md-sys-color-error, #b3261e);
+}
+
+.nc-btn.nc-danger:hover {
+  background: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 8%, rgba(255, 255, 255, 0.88));
+}
+
+.nc-download {
+  position: relative;
+}
+
+.nc-download > summary {
+  list-style: none;
+}
+
+.nc-download > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nc-download-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  display: grid;
+  gap: 4px;
+  min-width: 112px;
+  padding: 6px;
+  border: 1px solid var(--cadle-outline);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--cadle-surface-strong) 92%, white);
+  box-shadow: 0 14px 36px rgba(72, 53, 38, 0.18);
+}
+
+.nc-download:not([open]) .nc-download-menu {
+  display: none;
+}
+
+.nc-download-menu .nc-btn {
+  width: 100%;
+  text-align: left;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  padding: 5px 18px 8px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cadle-ink) 60%, transparent);
+  flex-shrink: 0;
+}
+
+.print-safe-area {
+  fill: rgba(255, 255, 255, 0.18);
+  stroke: rgba(61, 47, 37, 0.38);
+  stroke-width: 2;
+  stroke-dasharray: 12 8;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.shape {
+  vector-effect: non-scaling-stroke;
+  transition: opacity 100ms ease;
+}
+
+.shape-line,
+.shape-wall {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.shape-wall {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 12;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-line {
+  fill: none;
+  stroke: var(--cadle-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── Door: hinge circle + leaf line + quarter-circle arc ── */
+.shape-door-opening {
+  fill: none;
+  stroke: rgba(59, 44, 32, 0.25);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-door-leaf {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-door-arc {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-door-hinge {
+  fill: #3b2c20;
+  stroke: none;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── Window: glass pane + jamb markers ── */
+.shape-window-glass {
+  fill: none;
+  stroke: rgba(100, 190, 240, 0.92);
+  stroke-width: 12;
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-window-jamb {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 3;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── Gate: opening line + two leaf lines + two arcs + hinge dots ── */
+.shape-gate-opening {
+  fill: none;
+  stroke: rgba(59, 44, 32, 0.25);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-gate-leaf {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-gate-arc {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-gate-hinge {
+  fill: #3b2c20;
+  stroke: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.shape-rect {
+  fill: rgba(168, 84, 39, 0.08);
+  stroke: var(--cadle-accent);
+  stroke-width: 2;
+}
+
+.shape-text {
+  fill: var(--cadle-ink);
+  font:
+    600 18px 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+}
+
+.shape-symbol {
+  opacity: 0.96;
+}
+
+.shape-symbol.symbol-preview {
+  opacity: 0.55;
+  filter: saturate(0.88);
+  pointer-events: none;
+}
+
+.binding-label {
+  pointer-events: none;
+}
+
+.binding-label-bg {
+  fill: rgba(30, 24, 18, 0.78);
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.binding-label-text {
+  fill: #fff;
+  font:
+    600 10px 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+  letter-spacing: 0.03em;
+  dominant-baseline: middle;
+}
+
+/* Rubber-band selection rectangle */
+.rubber-band {
+  fill: rgba(168, 84, 39, 0.08);
+  stroke: rgba(168, 84, 39, 0.7);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.shape[data-selected='true'] {
+  filter: drop-shadow(0 0 12px rgba(168, 84, 39, 0.2));
+}
+
+/* Snap indicator — green ring shown when pointer snaps to a wall endpoint */
+.snap-indicator {
+  fill: rgba(34, 197, 94, 0.25);
+  stroke: #22c55e;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.measurement-label-bg {
+  fill: rgba(30, 24, 18, 0.72);
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.measurement-label {
+  fill: #fff;
+  font:
+    600 12px 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+  letter-spacing: 0.01em;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.draft {
+  opacity: 0.72;
+  stroke-dasharray: 10 8;
+}
+
+.selected-outline {
+  fill: none;
+  stroke: rgba(168, 84, 39, 0.86);
+  stroke-width: 2;
+  stroke-dasharray: 10 6;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  padding: 5px 18px 8px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cadle-ink) 60%, transparent);
+  flex-shrink: 0;
+}

@@ -1,5 +1,3 @@
-import { FabricObject } from 'fabric'
-
 export type UUID = `${string}-${string}-${string}-${string}-${string}`
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject
@@ -50,9 +48,9 @@ export type HistoryAction = {
     | 'scale-up'
     | 'move-left'
     | 'move-right'
-  objects?: FabricObject[]
-  object?: FabricObject
-  item?: FabricObject
+  objects?: unknown[]
+  object?: unknown
+  item?: unknown
   prevState?: JsonValue
   newState?: JsonValue
 }

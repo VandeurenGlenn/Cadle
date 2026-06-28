@@ -15,7 +15,7 @@ type ValidationGroup = {
   neutral: number
 }
 
-type ValidationReport = {
+export type ValidationReport = {
   totalGroups: number
   readyGroups: number
   errorCount: number

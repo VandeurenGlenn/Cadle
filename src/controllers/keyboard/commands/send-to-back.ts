@@ -1,14 +1,7 @@
-import { canvas } from '../../../utils.js'
-import { isMac } from '../utils.js'
-export { save } from '../../../api/project.js'
+import { isPrimaryShortcut, isMac } from '../hotkeys.js'
 
-export const isSendToBack = ({ metaKey, key, ctrlKey }: KeyboardEvent): boolean =>
-  key === 'b' && (isMac ? metaKey : ctrlKey)
-
-export const sendToBack = () => {
-  canvas.shouldRender = true
-  canvas.sendObjectToBack(canvas.getActiveObject())
-}
-
-export const keyCombination = { key: 'b', metaKey: isMac, ctrlKey: !isMac }
-export const keys = [isMac ? ['meta', 'b'] : ['ctrl', 'b']]
+export const isSendToBack = (event: KeyboardEvent): boolean =>
+  event.key === '[' && event.shiftKey && isPrimaryShortcut(event)
+export const sendToBack = () => undefined
+export const keyCombination = { key: '[', shiftKey: true, metaKey: isMac, ctrlKey: !isMac }
+export const keys = [isMac ? ['meta', 'shift', '['] : ['ctrl', 'shift', '[']]

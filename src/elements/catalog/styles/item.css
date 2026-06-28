@@ -1,9 +1,10 @@
 :host {
   user-select: none;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   position: relative;
   width: 100%;
+  min-height: 64px;
   box-sizing: border-box;
   cursor: pointer;
   border-radius: var(--cadle-radius-sm);
@@ -15,21 +16,22 @@
 }
 .row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  gap: 2px;
-  padding: 4px;
+  gap: var(--cadle-space-2);
+  padding: var(--cadle-space-1) var(--cadle-space-2) var(--cadle-space-1) var(--cadle-space-1);
 }
 .preview {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  aspect-ratio: 1.1;
+  width: 56px;
+  height: 56px;
   color: inherit;
-  flex: 0 0 auto;
+  flex: 0 0 56px;
   opacity: 0.88;
   background: color-mix(in srgb, var(--md-sys-color-surface) 50%, transparent);
   border-radius: var(--cadle-radius-xs);
@@ -53,8 +55,11 @@
   color: var(--md-sys-color-on-surface);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.1;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.2;
   font-size: 11px;
 }
 :host(:hover) {

@@ -7,6 +7,8 @@ import '@material/web/progress/circular-progress.js'
 import './header.js'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { Project, UUID } from '../types.js'
+import type { NativeDocumentState, NativeImageShape } from '../native-project-data.js'
+import pubsub from '../pubsub.js'
 async function getPdfjsLib() {
   console.log('pdfjsLib', pdfjsLib)
   // Set up worker with a data URL approach that doesn't require external fetch
@@ -141,33 +143,37 @@ export class PDFImporter extends LiteElement {
     try {
       this.isLoading = true
       const { setProjectData } = await import('../api/project.js')
-      const { FabricImage } = await import('fabric')
       if (!this.project) throw new Error('No project is currently loaded')
       for (const pageData of selectedPages) {
         const pageName = `Page ${pageData.pageNumber}`
-        const pageUuid = crypto.randomUUID()
-        // Use the canvas as our source
-        const dataUrl = pageData.canvas!.toDataURL('image/png')
-        // Create a FabricImage from the data URL
-        const fabricImage = await FabricImage.fromURL(
-          dataUrl,
-          {},
-          {
-            left: 0,
-            top: 0,
-            selectable: true,
-            evented: true
-          }
-        )
-        // Convert to JSON for storage
-        const imageObject = fabricImage.toJSON()
+        const pageUuid = crypto.randomUUID() as UUID
+        const dataUrl = pageData.canvas?.toDataURL('image/png')
+        if (!dataUrl) continue
+        const image: NativeImageShape = {
+          id: crypto.randomUUID(),
+          kind: 'image',
+          position: { x: pageData.width / 2, y: pageData.height / 2 },
+          name: pageName,
+          path: dataUrl,
+          width: pageData.width,
+          height: pageData.height
+        }
+        const nativeState: NativeDocumentState = {
+          version: 1,
+          shapes: [image],
+          paperPreset: pageData.width > pageData.height ? 'a4-landscape' : 'a4-portrait',
+          printMargin: 10,
+          worldWidth: pageData.width,
+          worldHeight: pageData.height
+        }
         this.project.pages[pageUuid] = {
           creationTime: Date.now(),
           name: pageName,
           schema: {
-            version: '6.0.0',
-            objects: [imageObject]
-          }
+            version: 'native-svg-1',
+            objects: [{ kind: 'cadle-native-svg-document', payload: nativeState }]
+          },
+          order: Object.keys(this.project.pages ?? {}).length
         }
       }
 

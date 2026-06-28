@@ -1,33 +1,8 @@
-import { FabricObject, Group } from 'fabric'
-import { canvas, clipboard, getActiveObjects } from '../../../utils.js'
-import { isMac } from '../utils.js'
+import { isPrimaryShortcut, isMac, type NativeHotkeyAction } from '../hotkeys.js'
 
-export const isCopy = ({ metaKey, key, ctrlKey }: KeyboardEvent) => key === 'c' && (isMac ? metaKey : ctrlKey)
+export const isCopy = (event: KeyboardEvent) => event.key.toLowerCase() === 'c' && isPrimaryShortcut(event)
 
-export const copy = async () => {
-  const cloned = getActiveObjects()
-  canvas.discardActiveObject()
-
-  if (cloned.length > 1) {
-    const items: FabricObject[] = []
-    for (const item of cloned) {
-      const clone = await item.clone()
-      items.push(clone)
-    }
-
-    clipboard.object = new Group(await Promise.all(items))
-  } else {
-    clipboard.object = await cloned[0].clone()
-  }
-
-  clipboard.pasteCount = 0
-
-  navigator.clipboard.writeText(JSON.stringify(clipboard.object))
-  // clipboard.object = cloned.type === 'group' ? cloned : new Group(cloned._objects, {
-  //   subTargetCheck: true,
-  //   interactive: true
-  // })
-}
+export const copy = (): NativeHotkeyAction => 'copy'
 
 export const keyCombination = { key: 'c', metaKey: isMac, ctrlKey: !isMac }
 export const keys = [isMac ? ['meta', 'c'] : ['ctrl', 'c']]

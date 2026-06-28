@@ -15,8 +15,6 @@
     "serve-2": "jsproject --serve www --port 4332",
     "generate:manifest": "node generate-manifest.js",
     "build": "npm run generate:manifest && rollup -c",
-    "lint": "eslint --ext .ts,.js src",
-    "lint:fix": "eslint --fix --ext .ts,.js src",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -30,7 +28,6 @@
     "@vandeurenglenn/flex-elements": "^1.4.0",
     "@vandeurenglenn/lite-elements": "^0.4.3",
     "@vandeurenglenn/little-pubsub": "^1.5.2",
-    "fabric": "^7.4.0",
     "jspdf": "^4.2.1",
     "pdfjs-dist": "^6.0.227"
   },

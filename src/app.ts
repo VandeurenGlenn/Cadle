@@ -309,6 +309,7 @@ export class CadleApp extends LiteElement {
   #pageKey: UUID | null = null
   #project: Project | null = null
   #persistPromise: Promise<void> = Promise.resolve()
+  #persistError: unknown = null
   #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
   // Wall click-chain state
@@ -1112,18 +1113,25 @@ export class CadleApp extends LiteElement {
 
   async flushPendingSave(): Promise<void> {
     await this.#persistPromise
+    if (this.#persistError) throw this.#persistError
   }
 
   #persist() {
     const payload = this.#nativeDocumentState()
 
     if (!this.#projectKey || !this.#pageKey) return
+    const projectKey = this.#projectKey
+    const pageKey = this.#pageKey
 
     this.#persistPromise = this.#persistPromise
       .then(async () => {
-        await saveNativeState(this.#projectKey!, this.#pageKey!, payload)
+        try {
+          await saveNativeState(projectKey, pageKey, payload)
+          this.#persistError = null
+        } catch (error) {
+          this.#persistError = error
+        }
       })
-      .catch(() => {})
   }
 
   async #persistProjectMetadata() {

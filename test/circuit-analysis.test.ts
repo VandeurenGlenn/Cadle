@@ -178,3 +178,31 @@ test('does not use a device rated current as its breaker current', () => {
   assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
   assert.equal(analysis.groups[0].specification.source, 'suggested')
 })
+
+test('rejects conflicting explicit circuit specifications', () => {
+  const first = {
+    ...symbol('first', 'A1', 'Socket 1', 'symbols/Socket outlets/socket.svg'),
+    electrical: {
+      role: 'load' as const,
+      oneWireEligible: true,
+      circuitType: 'sockets' as const,
+      breakerCurrentA: 16,
+      cableSectionMm2: 2.5
+    }
+  }
+  const second = {
+    ...symbol('second', 'A1', 'Socket 2', 'symbols/Socket outlets/socket.svg'),
+    electrical: {
+      role: 'load' as const,
+      oneWireEligible: true,
+      circuitType: 'sockets' as const,
+      breakerCurrentA: 20,
+      cableSectionMm2: 4
+    }
+  }
+  const analysis = analyzeCircuits([first, second])
+
+  assert.equal(analysis.valid, false)
+  assert.equal(analysis.errorCount, 1)
+  assert.match(analysis.issues[0].message, /breaker current, cable section/)
+})

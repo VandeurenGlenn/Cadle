@@ -950,7 +950,12 @@ export class AppShell extends LiteElement {
     }
 
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
-    await nativeApp?.flushPendingSave?.()
+    try {
+      await nativeApp?.flushPendingSave?.()
+    } catch {
+      globalThis.alert('The floor plan could not be saved. One-wire generation was cancelled to protect your work.')
+      return
+    }
     this.project = await getProjectData(this.projectKey)
 
     let oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')

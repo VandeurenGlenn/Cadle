@@ -72,6 +72,7 @@ test('prefers explicit electrical metadata and derives circuit specifications', 
       oneWireEligible: true,
       circuitType: 'motor' as const,
       ratedCurrentA: 25,
+      breakerCurrentA: 32,
       cableSectionMm2: 4,
       poles: 4,
       phaseConfiguration: 'three-phase' as const
@@ -82,7 +83,7 @@ test('prefers explicit electrical metadata and derives circuit specifications', 
   assert.equal(analysis.groups[0].loads, 1)
   assert.deepEqual(analysis.groups[0].specification, {
     circuitType: 'motor',
-    breakerCurrentA: 25,
+    breakerCurrentA: 32,
     cableSectionMm2: 4,
     poles: 4,
     phaseConfiguration: 'three-phase',
@@ -99,6 +100,7 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
           circuitType: 'sockets',
           oneWireEligible: true,
           ratedCurrentA: 20,
+          breakerCurrentA: 25,
           cableSectionMm2: 2.5
         }
       },
@@ -110,6 +112,7 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       circuitType: 'sockets',
       oneWireEligible: true,
       ratedCurrentA: 20,
+      breakerCurrentA: 25,
       poles: undefined,
       phaseConfiguration: undefined,
       cableSectionMm2: 2.5
@@ -137,4 +140,41 @@ test('excludes symbols explicitly opted out of one-wire generation', () => {
 
   assert.deepEqual(analysis.groups.map((group) => group.bindingId), ['B1'])
   assert.equal(analysis.valid, true)
+})
+
+test('preserves legacy door, gate, and image bindings', () => {
+  const analysis = analyzeCircuits([
+    { id: 'door', kind: 'door', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, bindingId: 'A1' },
+    { id: 'gate', kind: 'gate', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, bindingId: 'A1' },
+    {
+      id: 'image',
+      kind: 'image',
+      position: { x: 0, y: 0 },
+      name: 'Legacy appliance',
+      path: 'data:image/png;base64,AA==',
+      width: 10,
+      height: 10,
+      bindingId: 'A1'
+    }
+  ])
+
+  assert.equal(analysis.groups[0].switches, 2)
+  assert.equal(analysis.groups[0].loads, 1)
+  assert.equal(analysis.valid, true)
+})
+
+test('does not use a device rated current as its breaker current', () => {
+  const ratedLoad = {
+    ...symbol('motor', 'M1', 'Motor', 'symbols/Motors/motor.svg'),
+    electrical: {
+      role: 'load' as const,
+      oneWireEligible: true,
+      circuitType: 'motor' as const,
+      ratedCurrentA: 25
+    }
+  }
+  const analysis = analyzeCircuits([ratedLoad])
+
+  assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[0].specification.source, 'suggested')
 })

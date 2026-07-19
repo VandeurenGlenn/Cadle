@@ -7,6 +7,7 @@ export type ElectricalDeviceMetadata = {
   oneWireEligible: boolean
   circuitType?: ElectricalCircuitType
   ratedCurrentA?: number
+  breakerCurrentA?: number
   poles?: number
   phaseConfiguration?: ElectricalPhaseConfiguration
   cableSectionMm2?: number
@@ -69,6 +70,7 @@ export const electricalMetadataFromCatalog = (
     circuitType,
     oneWireEligible: explicit.oneWireEligible !== false && (role !== 'neutral' || explicit.oneWireEligible === true),
     ratedCurrentA: finitePositive(explicit.ratedCurrentA),
+    breakerCurrentA: finitePositive(explicit.breakerCurrentA),
     poles: finitePositive(explicit.poles),
     phaseConfiguration,
     cableSectionMm2: finitePositive(explicit.cableSectionMm2)
@@ -95,6 +97,7 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
         ? circuitType
         : undefined,
     ratedCurrentA: finitePositive(raw.ratedCurrentA),
+    breakerCurrentA: finitePositive(raw.breakerCurrentA),
     poles: finitePositive(raw.poles),
     phaseConfiguration:
       raw.phaseConfiguration === 'single-phase' || raw.phaseConfiguration === 'three-phase'

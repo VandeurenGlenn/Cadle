@@ -95,6 +95,23 @@ const componentName = (shape: Shape): string => {
   return shape.kind
 }
 
+const conflictingSpecificationFields = (symbols: readonly SymbolShape[]): string[] => {
+  const fields: Array<[keyof NonNullable<SymbolShape['electrical']>, string]> = [
+    ['breakerCurrentA', 'breaker current'],
+    ['cableSectionMm2', 'cable section'],
+    ['poles', 'pole count'],
+    ['phaseConfiguration', 'phase configuration']
+  ]
+  return fields
+    .filter(([field]) => {
+      const values = symbols
+        .map((shape) => shape.electrical?.[field])
+        .filter((value) => value !== undefined)
+      return new Set(values).size > 1
+    })
+    .map(([, label]) => label)
+}
+
 export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
   const grouped = new Map<string, CircuitComponent[]>()
   const issues: CircuitIssue[] = []
@@ -141,6 +158,14 @@ export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
         (shape): shape is SymbolShape =>
           shape.kind === 'symbol' && components.some((component) => component.shapeId === shape.id)
       )
+      const conflicts = conflictingSpecificationFields(symbols)
+      if (conflicts.length) {
+        issues.push({
+          bindingId,
+          severity: 'error',
+          message: `Circuit has conflicting explicit ${conflicts.join(', ')} metadata.`
+        })
+      }
       return {
         bindingId,
         family: first.family,

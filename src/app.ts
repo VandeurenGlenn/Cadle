@@ -113,7 +113,13 @@ import {
   getCatalogSymbolStyleDefaults,
   setStoredCatalogSymbolStyleDefaults
 } from './shell/catalog-symbol-overrides.js'
-import { analyzeCircuits, circuitBomRows, type CircuitAnalysis, type BomRow } from './native-app/circuit-analysis.js'
+import {
+  analyzeCircuits,
+  circuitBomRows,
+  type CircuitAnalysis,
+  type CircuitComponent,
+  type BomRow
+} from './native-app/circuit-analysis.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
 type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
@@ -1104,6 +1110,10 @@ export class CadleApp extends LiteElement {
     return this.#pageKey === pageKey
   }
 
+  async flushPendingSave(): Promise<void> {
+    await this.#persistPromise
+  }
+
   #persist() {
     const payload = this.#nativeDocumentState()
 
@@ -1126,7 +1136,8 @@ export class CadleApp extends LiteElement {
     this.#projectKey = loaded.projectKey
     this.#pageKey = loaded.pageKey
     const shell = globalThis as unknown as { cadleShell?: { project?: Project | null } }
-    this.#project = shell.cadleShell?.project ?? null
+    this.#project = loaded.project
+    if (shell.cadleShell) shell.cadleShell.project = loaded.project
 
     if (loaded.state) {
       this.#applyPersistedState(loaded.state)
@@ -2766,10 +2777,13 @@ export class CadleApp extends LiteElement {
       .filter((group) => group.family === family)
       .flatMap((group) =>
         group.components
-          .filter((component) => component.role !== 'neutral')
+          .filter(
+            (component): component is CircuitComponent & { role: 'switch' | 'load' } =>
+              component.role === 'switch' || component.role === 'load'
+          )
           .map((component) => ({
             bindingId: group.bindingId,
-            kind: component.role as 'switch' | 'load',
+            kind: component.role,
             sourcePath: component.path,
             sourceName: component.name
           }))

@@ -77,6 +77,7 @@ type NativeAppElement = HTMLElement & {
   getBOMRows?: () => BomRow[]
   generateAutoOneWire?: () => { generated: boolean; circuitCount: number; message?: string }
   waitForPageReady?: (pageKey: string) => Promise<boolean>
+  flushPendingSave?: () => Promise<void>
 }
 
 type ShellProjectStore = {
@@ -948,6 +949,10 @@ export class AppShell extends LiteElement {
       return
     }
 
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    await nativeApp?.flushPendingSave?.()
+    this.project = await getProjectData(this.projectKey)
+
     let oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')
     if (!oneWirePage) {
       await addPage(this.projectKey, 'One-wire diagram', { version: 'native-svg-1', objects: [] }, 'onewire')
@@ -957,7 +962,6 @@ export class AppShell extends LiteElement {
     if (!oneWirePage) return
 
     await this.loadPage(oneWirePage[0])
-    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     const pageReady = await nativeApp?.waitForPageReady?.(oneWirePage[0])
     if (!pageReady) {
       globalThis.alert('The one-wire page did not finish loading. Please try again.')

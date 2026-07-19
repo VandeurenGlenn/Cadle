@@ -62,12 +62,14 @@ const bindingParts = (value: string): { bindingId: string; family: string; numbe
 }
 
 export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
+  if (shape.kind === 'door' || shape.kind === 'gate') return 'switch'
+  if (shape.kind === 'image') return 'load'
   if (shape.kind !== 'symbol') return 'neutral'
   return shape.electrical?.role ?? inferElectricalRole(shape.name, shape.path)
 }
 
 const suggestedSpecification = (components: CircuitComponent[], symbols: SymbolShape[]): CircuitSpecification => {
-  const explicitCurrent = symbols.map((shape) => shape.electrical?.ratedCurrentA).find((value) => value !== undefined)
+  const explicitCurrent = symbols.map((shape) => shape.electrical?.breakerCurrentA).find((value) => value !== undefined)
   const explicitSection = symbols.map((shape) => shape.electrical?.cableSectionMm2).find((value) => value !== undefined)
   const explicitPoles = symbols.map((shape) => shape.electrical?.poles).find((value) => value !== undefined)
   const explicitPhase = symbols.map((shape) => shape.electrical?.phaseConfiguration).find((value) => value !== undefined)
@@ -100,7 +102,7 @@ export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
   for (const shape of shapes) {
     if (shape.groupId?.startsWith('onewire-')) continue
     if (!shape.bindingId) continue
-    if (shape.kind !== 'symbol' && shape.kind !== 'image') continue
+    if (shape.kind !== 'symbol' && shape.kind !== 'image' && shape.kind !== 'door' && shape.kind !== 'gate') continue
     if (shape.kind === 'symbol' && shape.electrical?.oneWireEligible === false) continue
     const binding = bindingParts(shape.bindingId)
     if (!binding) {

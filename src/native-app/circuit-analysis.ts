@@ -101,6 +101,7 @@ export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
     if (shape.groupId?.startsWith('onewire-')) continue
     if (!shape.bindingId) continue
     if (shape.kind !== 'symbol' && shape.kind !== 'image') continue
+    if (shape.kind === 'symbol' && shape.electrical?.oneWireEligible === false) continue
     const binding = bindingParts(shape.bindingId)
     if (!binding) {
       issues.push({

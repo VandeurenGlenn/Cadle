@@ -6,65 +6,14 @@ import {
   type LegacyNativeDocumentState
 } from './native-draw/legacy-project.js'
 import { parseHash } from './shell/routing.js'
-
-export type NativePoint = { x: number; y: number }
-
-export type NativeLineShape = {
-  id: string
-  kind: 'wall' | 'line' | 'door' | 'window' | 'gate'
-  start: NativePoint
-  end: NativePoint
-  wallId?: string
-  flipSide?: boolean
-  bindingId?: string
-}
-
-export type NativeRectShape = {
-  id: string
-  kind: 'rect'
-  start: NativePoint
-  end: NativePoint
-  bindingId?: string
-}
-
-export type NativeTextShape = {
-  id: string
-  kind: 'text'
-  position: NativePoint
-  text: string
-  bindingId?: string
-}
-
-export type NativeSymbolShape = {
-  id: string
-  kind: 'symbol'
-  position: NativePoint
-  name: string
-  path: string
-  scale: number
-  bindingId?: string
-}
-
-export type NativeImageShape = {
-  id: string
-  kind: 'image'
-  position: NativePoint
-  name: string
-  path: string
-  width: number
-  height: number
-  bindingId?: string
-}
-
-export type NativeShape = NativeLineShape | NativeRectShape | NativeTextShape | NativeSymbolShape | NativeImageShape
-
-export type NativePaperPreset = 'a4-portrait' | 'a4-landscape' | 'a3-portrait' | 'a3-landscape'
+import type { PaperPreset, Shape } from './native-draw/types.js'
+import { sanitizeShapes } from './native-draw/model.js'
 
 export type NativeDocumentState = {
   version: 1
-  shapes: NativeShape[]
+  shapes: Shape[]
   selectedId: UUID | null
-  paperPreset: NativePaperPreset
+  paperPreset: PaperPreset
   printMargin: number
   worldWidth: number
   worldHeight: number
@@ -128,7 +77,7 @@ const asNativeState = (value: unknown): NativeDocumentState | null => {
 
   return {
     version: 1,
-    shapes: candidate.shapes as NativeShape[],
+    shapes: sanitizeShapes(candidate.shapes),
     selectedId: typeof candidate.selectedId === 'string' ? (candidate.selectedId as UUID) : null,
     paperPreset: candidate.paperPreset,
     printMargin: candidate.printMargin,

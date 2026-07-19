@@ -2,10 +2,9 @@
  * Multi-user presence sync.
  *
  * Transport-agnostic: wraps a {@link MultiUserTransport} so the same
- * controller works for cross-tab sync (BroadcastChannel) or
- * cross-machine sync (Peernet). Default = BroadcastChannel; pass a
- * different transport to {@link PresenceController.connect} (e.g.
- * `new PeernetTransport()`) to go cross-machine.
+ * controller works for cross-tab sync (BroadcastChannel) or a future
+ * authenticated cross-machine transport. Default = BroadcastChannel;
+ * pass a maintained transport to {@link PresenceController.connect}.
  *
  * Owns the remote-cursor map and the periodic stale-cursor sweep.
  * The shell wires this controller to its own `field.remoteCursors`

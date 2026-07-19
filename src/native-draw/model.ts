@@ -1,4 +1,5 @@
 import type { DraftShape, ImageShape, LineShape, Point, RectShape, Shape, SymbolShape, TextShape } from './types.js'
+import { sanitizeElectricalMetadata } from './electrical.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -46,6 +47,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       name?: unknown
       path?: unknown
       symbolTextOverrides?: unknown
+      electrical?: unknown
       scale?: unknown
       width?: unknown
       height?: unknown
@@ -182,6 +184,8 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
           .map(([key, text]) => [key.trim(), text] as const)
         if (entries.length) symbol.symbolTextOverrides = Object.fromEntries(entries)
       }
+      const electrical = sanitizeElectricalMetadata(raw.electrical)
+      if (electrical) symbol.electrical = electrical
       if (isPoint(raw.bindingLabelOffset)) symbol.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(symbol)
       continue
@@ -299,6 +303,7 @@ export const cloneShape = (shape: Shape): Shape => {
         scale: shape.scale
       }
       if (shape.symbolTextOverrides) symbol.symbolTextOverrides = { ...shape.symbolTextOverrides }
+      if (shape.electrical) symbol.electrical = { ...shape.electrical }
       if (shape.rotation) symbol.rotation = shape.rotation
       if (shape.fill) symbol.fill = shape.fill
       if (shape.stroke) symbol.stroke = shape.stroke

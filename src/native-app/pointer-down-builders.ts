@@ -1,5 +1,6 @@
 import { inferSymbolScale } from '../native-draw/model.js'
 import type { DraftShape, NativeCatalogPick, Point, SymbolShape, TextShape, Tool } from '../native-draw/types.js'
+import { electricalMetadataFromCatalog } from '../native-draw/electrical.js'
 
 type SymbolStyleDefaults = {
   scale?: unknown
@@ -38,7 +39,8 @@ export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalo
     position: point,
     name: symbol.name,
     path: symbol.path,
-    scale: defaultScale ?? inferSymbolScale(symbol.path)
+    scale: defaultScale ?? inferSymbolScale(symbol.path),
+    electrical: electricalMetadataFromCatalog(symbol.metadata, symbol.name, symbol.path)
   }
   if (typeof defaults.rotation === 'number' && Number.isFinite(defaults.rotation)) {
     shape.rotation = ((defaults.rotation % 360) + 360) % 360

@@ -75,6 +75,7 @@ export type SymbolShape = {
   path: string
   scale: number
   symbolTextOverrides?: Record<string, string>
+  electrical?: ElectricalDeviceMetadata
   rotation?: number
   fill?: string
   stroke?: string
@@ -128,3 +129,4 @@ export type DragState = {
 }
 
 export type PaperPreset = 'a4-portrait' | 'a4-landscape' | 'a3-portrait' | 'a3-landscape'
+import type { ElectricalDeviceMetadata } from './electrical.js'

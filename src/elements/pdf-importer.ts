@@ -7,7 +7,8 @@ import '@material/web/progress/circular-progress.js'
 import './header.js'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { Project, UUID } from '../types.js'
-import type { NativeDocumentState, NativeImageShape } from '../native-project-data.js'
+import type { NativeDocumentState } from '../native-project-data.js'
+import type { ImageShape } from '../native-draw/types.js'
 import pubsub from '../pubsub.js'
 async function getPdfjsLib() {
   console.log('pdfjsLib', pdfjsLib)
@@ -149,7 +150,7 @@ export class PDFImporter extends LiteElement {
         const pageUuid = crypto.randomUUID() as UUID
         const dataUrl = pageData.canvas?.toDataURL('image/png')
         if (!dataUrl) continue
-        const image: NativeImageShape = {
+        const image: ImageShape = {
           id: crypto.randomUUID(),
           kind: 'image',
           position: { x: pageData.width / 2, y: pageData.height / 2 },

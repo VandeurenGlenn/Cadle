@@ -44,6 +44,8 @@ import './elements/actions/project-actions.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
+import { bomRowsToCsv, type BomRow, type CircuitAnalysis } from './native-app/circuit-analysis.js'
+import { downloadTextFile } from './native-app/downloads.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -71,6 +73,9 @@ type NativeAppElement = HTMLElement & {
   undo?: () => void
   redo?: () => void
   exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
+  analyzeBindings?: () => CircuitAnalysis
+  getBOMRows?: () => BomRow[]
+  generateAutoOneWire?: () => { generated: boolean; circuitCount: number; message?: string }
 }
 
 type ShellProjectStore = {
@@ -571,12 +576,9 @@ export class AppShell extends LiteElement {
     // addEventListener('beforeprint', this.#beforePrint)
     // addEventListener('afterprint', this.#afterPrint)
     // No updateComplete in Lite; rely on property updates
-    // Default = BroadcastChannel (same-browser tabs). Opt-in to
-    // cross-machine sync by setting localStorage['cadle-multi-user'] = 'peernet'.
-    if (localStorage.getItem('cadle-multi-user') === 'peernet') {
-      const { PeernetTransport } = await import('./shell/multi-user-transport.js')
-      this._presence.connect(new PeernetTransport('cadle-presence'))
-    } else if ('BroadcastChannel' in globalThis) {
+    // Presence is same-browser until an authenticated, maintained remote
+    // transport is configured explicitly.
+    if ('BroadcastChannel' in globalThis) {
       this._presence.connect()
     }
 
@@ -940,16 +942,42 @@ export class AppShell extends LiteElement {
   }
 
   async generateAutoOneWireSchema() {
-    globalThis.alert('Auto one-wire generation still needs a native binding model.')
+    if (!this.projectKey) {
+      globalThis.alert('Create or open a project before generating a one-wire plan.')
+      return
+    }
+
+    let oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')
+    if (!oneWirePage) {
+      await addPage(this.projectKey, 'One-wire diagram', { version: 'native-svg-1', objects: [] }, 'onewire')
+      this.project = await getProjectData(this.projectKey)
+      oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')
+    }
+    if (!oneWirePage) return
+
+    await this.loadPage(oneWirePage[0])
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    const result = nativeApp?.generateAutoOneWire?.()
+    if (!result?.generated) globalThis.alert(result?.message ?? 'Unable to generate the one-wire diagram.')
   }
 
   async validateBindingsForOneWire() {
-    globalThis.alert('Binding validation still needs a native binding model.')
-    return null
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    const report = nativeApp?.analyzeBindings?.() ?? null
+    this.validationReportData = report
+    this.validationReportOpen = Boolean(report)
+    return report
   }
 
   async generateBOM() {
-    globalThis.alert('BOM export still needs a native binding model.')
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    const rows = nativeApp?.getBOMRows?.() ?? []
+    if (!rows.length) {
+      globalThis.alert('No bound floor-plan symbols were found for the BOM.')
+      return
+    }
+    const safeName = (this.projectName || this.project?.name || 'cadle-project').replace(/[^a-z0-9_-]+/gi, '-')
+    downloadTextFile(`${safeName}-bom.csv`, bomRowsToCsv(rows), 'text/csv;charset=utf-8')
   }
 
   undo() {

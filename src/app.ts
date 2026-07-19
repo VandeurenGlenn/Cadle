@@ -113,6 +113,7 @@ import {
   getCatalogSymbolStyleDefaults,
   setStoredCatalogSymbolStyleDefaults
 } from './shell/catalog-symbol-overrides.js'
+import { analyzeCircuits, circuitBomRows, type CircuitAnalysis, type BomRow } from './native-app/circuit-analysis.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
 type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
@@ -2695,59 +2696,69 @@ export class CadleApp extends LiteElement {
     return pool
   }
 
+  analyzeBindings(): CircuitAnalysis {
+    return analyzeCircuits(this.#groundplanShapePool())
+  }
+
+  getBOMRows(): BomRow[] {
+    return circuitBomRows(this.analyzeBindings())
+  }
+
+  generateAutoOneWire(): { generated: boolean; circuitCount: number; message?: string } {
+    const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    if (currentPageType !== 'onewire') {
+      return { generated: false, circuitCount: 0, message: 'Open a one-wire page before generating.' }
+    }
+
+    const analysis = this.analyzeBindings()
+    if (!analysis.totalGroups) {
+      return { generated: false, circuitCount: 0, message: 'No bound floor-plan symbols were found.' }
+    }
+
+    this.#shapes = this.#shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))
+    const railY = Math.max(220, this.#worldHeight - 180)
+    const rail: LineShape = {
+      id: nextShapeId(),
+      kind: 'line',
+      start: { x: 80, y: railY },
+      end: { x: Math.max(500, this.#worldWidth - 80), y: railY },
+      stroke: '#111111',
+      strokeWidth: KAMRAIL_STROKE_WIDTH,
+      groupId: `onewire-kamrail-${nextShapeId()}`
+    }
+    this.#shapes.push(rail)
+
+    const usableWidth = Math.max(1, rail.end.x - rail.start.x)
+    analysis.families.forEach((family, index) => {
+      const x = rail.start.x + (usableWidth * (index + 1)) / (analysis.families.length + 1)
+      const familyCurrent = Math.max(
+        ...analysis.groups
+          .filter((group) => group.family === family)
+          .map((group) => group.specification.breakerCurrentA)
+      )
+      this.#addKamrailCircuitBundle(rail, x, { amps: familyCurrent, family, autoIncludeFamily: true })
+    })
+
+    this.#pushHistory()
+    this.#render()
+    return { generated: true, circuitCount: analysis.totalGroups }
+  }
+
   #groundplanComponentsForFamily(
     family: string
   ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourcePath?: string; sourceName?: string }> {
-    const entries: Array<{
-      bindingId: string
-      kind: 'switch' | 'load'
-      number: number
-      sourcePath?: string
-      sourceName?: string
-    }> = []
-    const pool = this.#groundplanShapePool()
-
-    let highestNumber = 0
-    for (const shape of pool) {
-      if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')) continue
-      const rawBinding = 'bindingId' in shape && typeof shape.bindingId === 'string' ? shape.bindingId.trim() : ''
-      if (!rawBinding) continue
-
-      const normalized = rawBinding.toUpperCase()
-      const match = /^([A-Z]+)(\d+)?$/.exec(normalized)
-      if (!match || match[1] !== family) continue
-
-      const number = Number(match[2] ?? '0')
-      highestNumber = Math.max(highestNumber, number)
-      entries.push({
-        bindingId: match[2] ? `${family}${number}` : '',
-        kind: this.#composeKindForShape(shape),
-        number,
-        sourcePath: shape.kind === 'symbol' ? shape.path : undefined,
-        sourceName: shape.kind === 'symbol' ? shape.name : undefined
-      })
-    }
-
-    let fallbackNumber = Math.max(1, highestNumber + 1)
-    const normalizedEntries = entries.map((entry) => {
-      if (entry.bindingId) return entry
-      const bindingId = `${family}${fallbackNumber}`
-      fallbackNumber += 1
-      return { ...entry, bindingId, number: Number(bindingId.slice(family.length)) || fallbackNumber }
-    })
-
-    normalizedEntries.sort((a, b) => {
-      if (a.number !== b.number) return a.number - b.number
-      if (a.kind === b.kind) return 0
-      return a.kind === 'switch' ? -1 : 1
-    })
-
-    return normalizedEntries.map(({ bindingId, kind, sourcePath, sourceName }) => ({
-      bindingId,
-      kind,
-      sourcePath,
-      sourceName
-    }))
+    return this.analyzeBindings().groups
+      .filter((group) => group.family === family)
+      .flatMap((group) =>
+        group.components
+          .filter((component) => component.role !== 'neutral')
+          .map((component) => ({
+            bindingId: group.bindingId,
+            kind: component.role as 'switch' | 'load',
+            sourcePath: component.path,
+            sourceName: component.name
+          }))
+      )
   }
 
   #addKamrailCircuitBundle(

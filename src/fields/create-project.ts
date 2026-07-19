@@ -13,16 +13,22 @@ import { ProjectInput } from '../types.js'
 export class CreateProjectField extends LiteElement {
   @query('[label="Project name"]') accessor nameInput!: MdOutlinedTextField
   @query('[label="Page name"]') accessor pageNameInput!: MdOutlinedTextField
+  @query('[label="Customer name"]') accessor customerNameInput!: MdOutlinedTextField
+  @query('[label="Customer last name"]') accessor customerLastNameInput!: MdOutlinedTextField
   @query('[label="Name"]') accessor installerNameInput!: MdOutlinedTextField
+  @query('[label="Last name"]') accessor installerLastNameInput!: MdOutlinedTextField
   @query('[label="Company"]') accessor installerCompanyInput!: MdOutlinedTextField
   @query('[label="Street"]') accessor streetInput!: MdOutlinedTextField
-  @query('[label="HouseNumber"]') accessor houseNumberInput!: MdOutlinedTextField
-  @query('[label="Postalcode"]') accessor postalCodeInput!: MdOutlinedTextField
+  @query('[label="House number"]') accessor houseNumberInput!: MdOutlinedTextField
+  @query('[label="Postal code"]') accessor postalCodeInput!: MdOutlinedTextField
   @query('[label="City"]') accessor cityInput!: MdOutlinedTextField
 
   @property({ type: String }) accessor _projectName: string = ''
   @property({ type: String }) accessor _pageName: string = ''
+  @property({ type: String }) accessor _customerName: string = ''
+  @property({ type: String }) accessor _customerLastName: string = ''
   @property({ type: String }) accessor _installerName: string = ''
+  @property({ type: String }) accessor _installerLastName: string = ''
   @property({ type: String }) accessor _installerCompany: string = ''
   @property({ type: String }) accessor _street: string = ''
   @property({ type: String }) accessor _houseNumber: string = ''
@@ -32,13 +38,28 @@ export class CreateProjectField extends LiteElement {
   static styles = [styles]
 
   get hasRequiredFields() {
-    return Boolean(this._projectName.trim() && this._pageName.trim())
+    return Boolean(
+      this._projectName.trim() &&
+      this._pageName.trim() &&
+      this._customerName.trim() &&
+      this._customerLastName.trim() &&
+      this._installerName.trim() &&
+      this._installerLastName.trim() &&
+      this._installerCompany.trim() &&
+      this._street.trim() &&
+      this._houseNumber.trim() &&
+      this._postalCode.trim() &&
+      this._city.trim()
+    )
   }
 
   #readInputs() {
     this._projectName = this.nameInput?.value?.trim() ?? ''
     this._pageName = this.pageNameInput?.value?.trim() ?? ''
+    this._customerName = this.customerNameInput?.value?.trim() ?? ''
+    this._customerLastName = this.customerLastNameInput?.value?.trim() ?? ''
     this._installerName = this.installerNameInput?.value?.trim() ?? ''
+    this._installerLastName = this.installerLastNameInput?.value?.trim() ?? ''
     this._installerCompany = this.installerCompanyInput?.value?.trim() ?? ''
     this._street = this.streetInput?.value?.trim() ?? ''
     this._houseNumber = this.houseNumberInput?.value?.trim() ?? ''
@@ -55,15 +76,20 @@ export class CreateProjectField extends LiteElement {
     if (!this.hasRequiredFields) return
     const project: ProjectInput = {
       name: this._projectName,
+      customer: {
+        name: this._customerName,
+        lastname: this._customerLastName
+      },
       installer: {
         name: this._installerName,
-        lastname: ''
+        lastname: this._installerLastName
       },
       company: this._installerCompany,
       address: {
         street: this._street,
         number: this._houseNumber,
-        postalCode: this._postalCode
+        postalCode: this._postalCode,
+        city: this._city
       }
     }
     await create(project, this._pageName)
@@ -88,10 +114,25 @@ export class CreateProjectField extends LiteElement {
                 @input=${this.#onFieldInput}></md-outlined-text-field>
             </section>
             <section class="block">
+              <h4>Customer</h4>
+              <md-outlined-text-field
+                label="Customer name"
+                .value=${this._customerName}
+                @input=${this.#onFieldInput}></md-outlined-text-field>
+              <md-outlined-text-field
+                label="Customer last name"
+                .value=${this._customerLastName}
+                @input=${this.#onFieldInput}></md-outlined-text-field>
+            </section>
+            <section class="block">
               <h4>Installer</h4>
               <md-outlined-text-field
                 label="Name"
                 .value=${this._installerName}
+                @input=${this.#onFieldInput}></md-outlined-text-field>
+              <md-outlined-text-field
+                label="Last name"
+                .value=${this._installerLastName}
                 @input=${this.#onFieldInput}></md-outlined-text-field>
               <md-outlined-text-field
                 label="Company"
@@ -105,11 +146,11 @@ export class CreateProjectField extends LiteElement {
                 .value=${this._street}
                 @input=${this.#onFieldInput}></md-outlined-text-field>
               <md-outlined-text-field
-                label="HouseNumber"
+                label="House number"
                 .value=${this._houseNumber}
                 @input=${this.#onFieldInput}></md-outlined-text-field>
               <md-outlined-text-field
-                label="Postalcode"
+                label="Postal code"
                 .value=${this._postalCode}
                 @input=${this.#onFieldInput}></md-outlined-text-field>
               <md-outlined-text-field

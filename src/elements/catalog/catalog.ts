@@ -18,6 +18,12 @@ const RECENT_SYMBOLS_KEY = 'cadle.catalog.recentSymbols'
 const MAX_RECENT_SYMBOLS = 10
 
 type CatalogSymbol = Catalog[number]['symbols'][number]
+type CatalogSection = Catalog[number]
+
+type FolderGroup = {
+  folder: string
+  sections: CatalogSection[]
+}
 
 type RecentSymbolEntry = {
   category: string
@@ -128,16 +134,69 @@ export class CatalogElement extends LiteElement {
   }
 
   get #catalogTemplate() {
-    return this.#filteredCatalog.map(
-      (item) => html`
-        <catalog-category
-          .folder=${item.folder}
-          .category=${item.category}
-          .symbols=${item.symbols}
-          .searchActive=${Boolean(this._searchQuery)}
-          .matchCount=${item.symbols.length}></catalog-category>
-      `
-    )
+    const { rootSections, folderGroups } = this.#groupedCatalog
+    const searchActive = Boolean(this._searchQuery)
+    return [
+      ...rootSections.map((item) => this.#renderCatalogSection(item)),
+      ...folderGroups.map(
+        (group) => html`
+          <catalog-category
+            .category=${group.folder}
+            .symbols=${[]}
+            .searchActive=${searchActive}
+            .matchCount=${group.sections.reduce((count, section) => count + section.symbols.length, 0)}
+            .open=${searchActive}
+            .openedOnce=${searchActive}
+            .hideFolderChip=${true}
+            .draggableCategory=${false}
+            .acceptDrops=${false}
+            .childrenOnly=${true}>
+            ${group.sections.map((section) => this.#renderCatalogSection(section, true))}
+          </catalog-category>
+        `
+      )
+    ]
+  }
+
+  #renderCatalogSection(item: CatalogSection, hideFolderChip = false) {
+    return html`
+      <catalog-category
+        .folder=${item.folder}
+        .category=${item.category}
+        .symbols=${item.symbols}
+        .searchActive=${Boolean(this._searchQuery)}
+        .matchCount=${item.symbols.length}
+        .hideFolderChip=${hideFolderChip}></catalog-category>
+    `
+  }
+
+  get #groupedCatalog(): { rootSections: CatalogSection[]; folderGroups: FolderGroup[] } {
+    const rootSections: CatalogSection[] = []
+    const folderMap = new Map<string, CatalogSection[]>()
+
+    for (const section of this.#filteredCatalog) {
+      const folder = section.folder?.trim()
+      if (!folder) {
+        rootSections.push(section)
+        continue
+      }
+
+      const bucket = folderMap.get(folder) ?? []
+      bucket.push(section)
+      folderMap.set(folder, bucket)
+    }
+
+    const folderGroups: FolderGroup[] = [...folderMap.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([folder, sections]) => ({
+        folder,
+        sections: sections.sort((left, right) => left.category.localeCompare(right.category))
+      }))
+
+    return {
+      rootSections,
+      folderGroups
+    }
   }
 
   get #visibleCatalog() {

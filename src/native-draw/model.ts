@@ -45,6 +45,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       text?: unknown
       name?: unknown
       path?: unknown
+      symbolTextOverrides?: unknown
       scale?: unknown
       width?: unknown
       height?: unknown
@@ -52,10 +53,13 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       variant?: unknown
       fill?: unknown
       stroke?: unknown
+      strokeWidth?: unknown
       flipX?: unknown
       flipY?: unknown
+      wallId?: unknown
       bindingId?: unknown
       groupId?: unknown
+      bindingLabelOffset?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue
@@ -75,9 +79,19 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
+      if (typeof raw.scale === 'number' && Number.isFinite(raw.scale)) line.scale = Math.max(0.1, raw.scale)
+      if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) line.rotation = raw.rotation
+      if (raw.flipX === true) line.flipX = true
+      if (raw.flipY === true) line.flipY = true
+      if (typeof raw.wallId === 'string' && raw.wallId.trim()) line.wallId = raw.wallId.trim()
       if ((raw as { flipSide?: unknown }).flipSide === true) line.flipSide = true
+      if (typeof raw.stroke === 'string' && raw.stroke) line.stroke = raw.stroke
+      if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
+        line.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) line.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) line.groupId = raw.groupId.trim()
+      if (isPoint(raw.bindingLabelOffset)) line.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(line)
       continue
     }
@@ -90,13 +104,20 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         end: clonePoint(raw.end)
       }
       if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect') rect.variant = raw.variant
+      if (typeof raw.scale === 'number' && Number.isFinite(raw.scale)) rect.scale = Math.max(0.1, raw.scale)
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) rect.rotation = raw.rotation
+      if (raw.flipX === true) rect.flipX = true
+      if (raw.flipY === true) rect.flipY = true
       const fill = raw.fill
       if (typeof fill === 'string' && fill) rect.fill = fill
       const stroke = raw.stroke
       if (typeof stroke === 'string' && stroke) rect.stroke = stroke
+      if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
+        rect.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) rect.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) rect.groupId = raw.groupId.trim()
+      if (isPoint(raw.bindingLabelOffset)) rect.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(rect)
       continue
     }
@@ -106,13 +127,22 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         id: raw.id,
         kind: 'text',
         position: clonePoint(raw.position),
-        text: raw.text
+        text: raw.text,
+        scale: typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0 ? raw.scale : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) text.rotation = raw.rotation
+      const fill = raw.fill
+      if (typeof fill === 'string' && fill) text.fill = fill
+      const stroke = raw.stroke
+      if (typeof stroke === 'string' && stroke) text.stroke = stroke
+      if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
+        text.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
       if (raw.flipX === true) text.flipX = true
       if (raw.flipY === true) text.flipY = true
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) text.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) text.groupId = raw.groupId.trim()
+      if (isPoint(raw.bindingLabelOffset)) text.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(text)
       continue
     }
@@ -134,9 +164,25 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
       if (raw.flipX === true) symbol.flipX = true
       if (raw.flipY === true) symbol.flipY = true
+      if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
+        symbol.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim())
         symbol.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) symbol.groupId = raw.groupId.trim()
+      if (raw.symbolTextOverrides && typeof raw.symbolTextOverrides === 'object') {
+        const entries = Object.entries(raw.symbolTextOverrides)
+          .filter(
+            (entry): entry is [string, string] =>
+              typeof entry[0] === 'string' &&
+              Boolean(entry[0].trim()) &&
+              typeof entry[1] === 'string' &&
+              Boolean(entry[1].trim())
+          )
+          .map(([key, text]) => [key.trim(), text] as const)
+        if (entries.length) symbol.symbolTextOverrides = Object.fromEntries(entries)
+      }
+      if (isPoint(raw.bindingLabelOffset)) symbol.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(symbol)
       continue
     }
@@ -165,9 +211,13 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) image.rotation = raw.rotation
       if (raw.flipX === true) image.flipX = true
       if (raw.flipY === true) image.flipY = true
+      if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
+        image.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim())
         image.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) image.groupId = raw.groupId.trim()
+      if (isPoint(raw.bindingLabelOffset)) image.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       shapes.push(image)
     }
   }
@@ -187,10 +237,17 @@ export const cloneShape = (shape: Shape): Shape => {
         start: clonePoint(shape.start),
         end: clonePoint(shape.end)
       }
+      if (typeof shape.scale === 'number') cloned.scale = shape.scale
+      if (typeof shape.rotation === 'number') cloned.rotation = shape.rotation
+      if (shape.flipX) cloned.flipX = true
+      if (shape.flipY) cloned.flipY = true
+      if (shape.wallId) cloned.wallId = shape.wallId
       if (shape.flipSide) cloned.flipSide = true
       if (shape.stroke) cloned.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') cloned.strokeWidth = shape.strokeWidth
       if (shape.bindingId) cloned.bindingId = shape.bindingId
       if (shape.groupId) cloned.groupId = shape.groupId
+      if (shape.bindingLabelOffset) cloned.bindingLabelOffset = { ...shape.bindingLabelOffset }
       return cloned
     }
     case 'rect': {
@@ -201,11 +258,16 @@ export const cloneShape = (shape: Shape): Shape => {
         end: clonePoint(shape.end)
       }
       if (shape.variant) rect.variant = shape.variant
+      if (typeof shape.scale === 'number') rect.scale = shape.scale
       if (shape.rotation) rect.rotation = shape.rotation
+      if (shape.flipX) rect.flipX = true
+      if (shape.flipY) rect.flipY = true
       if (shape.fill) rect.fill = shape.fill
       if (shape.stroke) rect.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') rect.strokeWidth = shape.strokeWidth
       if (shape.bindingId) rect.bindingId = shape.bindingId
       if (shape.groupId) rect.groupId = shape.groupId
+      if (shape.bindingLabelOffset) rect.bindingLabelOffset = { ...shape.bindingLabelOffset }
       return rect
     }
     case 'text': {
@@ -213,15 +275,18 @@ export const cloneShape = (shape: Shape): Shape => {
         id: shape.id,
         kind: 'text',
         position: clonePoint(shape.position),
-        text: shape.text
+        text: shape.text,
+        scale: shape.scale ?? 1
       }
       if (shape.rotation) text.rotation = shape.rotation
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') text.strokeWidth = shape.strokeWidth
       if (shape.flipX) text.flipX = true
       if (shape.flipY) text.flipY = true
       if (shape.bindingId) text.bindingId = shape.bindingId
       if (shape.groupId) text.groupId = shape.groupId
+      if (shape.bindingLabelOffset) text.bindingLabelOffset = { ...shape.bindingLabelOffset }
       return text
     }
     case 'symbol': {
@@ -233,13 +298,16 @@ export const cloneShape = (shape: Shape): Shape => {
         path: shape.path,
         scale: shape.scale
       }
+      if (shape.symbolTextOverrides) symbol.symbolTextOverrides = { ...shape.symbolTextOverrides }
       if (shape.rotation) symbol.rotation = shape.rotation
       if (shape.fill) symbol.fill = shape.fill
       if (shape.stroke) symbol.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') symbol.strokeWidth = shape.strokeWidth
       if (shape.flipX) symbol.flipX = true
       if (shape.flipY) symbol.flipY = true
       if (shape.bindingId) symbol.bindingId = shape.bindingId
       if (shape.groupId) symbol.groupId = shape.groupId
+      if (shape.bindingLabelOffset) symbol.bindingLabelOffset = { ...shape.bindingLabelOffset }
       return symbol
     }
     case 'image': {
@@ -255,10 +323,12 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.rotation) image.rotation = shape.rotation
       if (shape.fill) image.fill = shape.fill
       if (shape.stroke) image.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') image.strokeWidth = shape.strokeWidth
       if (shape.flipX) image.flipX = true
       if (shape.flipY) image.flipY = true
       if (shape.bindingId) image.bindingId = shape.bindingId
       if (shape.groupId) image.groupId = shape.groupId
+      if (shape.bindingLabelOffset) image.bindingLabelOffset = { ...shape.bindingLabelOffset }
       return image
     }
   }
@@ -279,8 +349,14 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         start: scalePoint(shape.start, scaleX, scaleY),
         end: scalePoint(shape.end, scaleX, scaleY)
       }
+      if (typeof shape.scale === 'number') scaled.scale = shape.scale * (scaleX + scaleY) * 0.5
+      if (typeof shape.rotation === 'number') scaled.rotation = shape.rotation
+      if (shape.flipX) scaled.flipX = true
+      if (shape.flipY) scaled.flipY = true
+      if (shape.wallId) scaled.wallId = shape.wallId
       if (shape.flipSide) scaled.flipSide = true
       if (shape.stroke) scaled.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
       if (shape.bindingId) scaled.bindingId = shape.bindingId
       if (shape.groupId) scaled.groupId = shape.groupId
       return scaled
@@ -293,9 +369,13 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         end: scalePoint(shape.end, scaleX, scaleY)
       }
       if (shape.variant) rect.variant = shape.variant
+      if (typeof shape.scale === 'number') rect.scale = shape.scale * (scaleX + scaleY) * 0.5
       if (shape.rotation) rect.rotation = shape.rotation
+      if (shape.flipX) rect.flipX = true
+      if (shape.flipY) rect.flipY = true
       if (shape.fill) rect.fill = shape.fill
       if (shape.stroke) rect.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') rect.strokeWidth = shape.strokeWidth
       if (shape.bindingId) rect.bindingId = shape.bindingId
       if (shape.groupId) rect.groupId = shape.groupId
       return rect
@@ -305,11 +385,13 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         id: shape.id,
         kind: 'text',
         position: scalePoint(shape.position, scaleX, scaleY),
-        text: shape.text
+        text: shape.text,
+        scale: (shape.scale ?? 1) * (scaleX + scaleY) * 0.5
       }
       if (shape.rotation) text.rotation = shape.rotation
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') text.strokeWidth = shape.strokeWidth
       if (shape.flipX) text.flipX = true
       if (shape.flipY) text.flipY = true
       if (shape.bindingId) text.bindingId = shape.bindingId
@@ -325,9 +407,11 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         path: shape.path,
         scale: shape.scale * (scaleX + scaleY) * 0.5
       }
+      if (shape.symbolTextOverrides) symbol.symbolTextOverrides = { ...shape.symbolTextOverrides }
       if (shape.rotation) symbol.rotation = shape.rotation
       if (shape.fill) symbol.fill = shape.fill
       if (shape.stroke) symbol.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') symbol.strokeWidth = shape.strokeWidth
       if (shape.flipX) symbol.flipX = true
       if (shape.flipY) symbol.flipY = true
       if (shape.bindingId) symbol.bindingId = shape.bindingId
@@ -347,6 +431,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.rotation) image.rotation = shape.rotation
       if (shape.fill) image.fill = shape.fill
       if (shape.stroke) image.stroke = shape.stroke
+      if (typeof shape.strokeWidth === 'number') image.strokeWidth = shape.strokeWidth
       if (shape.flipX) image.flipX = true
       if (shape.flipY) image.flipY = true
       if (shape.bindingId) image.bindingId = shape.bindingId
@@ -423,10 +508,14 @@ export const shapeBounds = (shape: Shape) => {
       const height = Math.abs(shape.end.y - shape.start.y)
       return { x, y, width, height }
     }
-    case 'text':
-      return { x: shape.position.x, y: shape.position.y - 20, width: 180, height: 28 }
+    case 'text': {
+      const scale = shape.scale ?? 1
+      const textWidth = Math.max(36, shape.text.length * 9 * scale)
+      const textHeight = 28 * scale
+      return { x: shape.position.x, y: shape.position.y - textHeight, width: textWidth, height: textHeight }
+    }
     case 'symbol': {
-      const size = 40 * Math.max(0.4, shape.scale)
+      const size = 24 * Math.max(0.4, shape.scale)
       return { x: shape.position.x - size / 2, y: shape.position.y - size / 2, width: size, height: size }
     }
     case 'image':

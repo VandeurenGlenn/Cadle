@@ -9,10 +9,17 @@ import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { del, getProjects, upload } from '../api/project.js'
+import pubsub from '../pubsub.js'
 @customElement('projects-field')
 export class ProjectsField extends LiteElement {
   @property({ attribute: false })
   accessor projects: Projects = []
+
+  @property({ type: Boolean })
+  accessor showReopenPreviousProjectPrompt = false
+
+  @property({ type: String })
+  accessor previousProjectName = ''
 
   @query('.contextmenu')
   accessor contextmenu!: CustomDropdown
@@ -25,6 +32,33 @@ export class ProjectsField extends LiteElement {
     super.connectedCallback()
     this.projects = await getProjects()
     this.shadowRoot?.addEventListener('click', this._click.bind(this))
+    const shell = cadleShell as unknown as {
+      showReopenPreviousProjectPrompt?: boolean
+      previousProjectName?: string
+    }
+    this.showReopenPreviousProjectPrompt = Boolean(shell.showReopenPreviousProjectPrompt)
+    this.previousProjectName = String(shell.previousProjectName ?? '')
+    pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    pubsub.unsubscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
+  }
+
+  #onReopenPreviousProjectPrompt = (payload: { open?: boolean; projectName?: string }) => {
+    this.showReopenPreviousProjectPrompt = Boolean(payload?.open)
+    this.previousProjectName = String(payload?.projectName ?? '')
+  }
+
+  #openPreviousProjectFromPrompt = async () => {
+    const shell = cadleShell as unknown as { openPreviousProjectFromPrompt?: () => Promise<void> | void }
+    await shell.openPreviousProjectFromPrompt?.()
+  }
+
+  #dismissPreviousProjectPrompt = () => {
+    const shell = cadleShell as unknown as { dismissReopenPreviousProjectPrompt?: () => void }
+    shell.dismissReopenPreviousProjectPrompt?.()
   }
 
   _loadProject(key: string, projectName: string) {
@@ -61,6 +95,12 @@ export class ProjectsField extends LiteElement {
     }
 
     if (action === 'loadProject') {
+      if (!id || !name) return
+      this._loadProject(id, name)
+      return
+    }
+
+    if (action === 'editProjectDetails') {
       if (!id || !name) return
       this._loadProject(id, name)
       return
@@ -122,6 +162,12 @@ export class ProjectsField extends LiteElement {
   render() {
     return html`
       <custom-dropdown class="contextmenu">
+        <custom-list-item data-action="editProjectDetails">
+          <span>projectgegevens</span>
+          <custom-icon
+            icon="edit_note"
+            slot="end"></custom-icon>
+        </custom-list-item>
         <custom-list-item data-action="rename">
           <span>rename</span>
           <custom-icon
@@ -145,6 +191,18 @@ export class ProjectsField extends LiteElement {
           <flex-it></flex-it>
           <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
         </div>
+        ${this.showReopenPreviousProjectPrompt
+          ? html`
+              <section class="projects-reopen-bubble">
+                <div class="projects-reopen-title">Open previous project?</div>
+                <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
+                <div class="projects-reopen-actions">
+                  <md-filled-button @click=${this.#openPreviousProjectFromPrompt}>Open</md-filled-button>
+                  <md-outlined-button @click=${this.#dismissPreviousProjectPrompt}>Dismiss</md-outlined-button>
+                </div>
+              </section>
+            `
+          : ''}
         ${this.projects?.length > 0
           ? this.#projectsTemplate
           : html` <section class="empty-state">

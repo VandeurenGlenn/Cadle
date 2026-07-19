@@ -6,6 +6,7 @@
   gap: var(--cadle-space-2);
   padding: var(--cadle-space-2);
   background: var(--md-sys-color-surface-container);
+  box-sizing: border-box;
 }
 
 .catalog-tools {

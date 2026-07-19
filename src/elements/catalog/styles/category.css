@@ -6,12 +6,19 @@
 }
 
 .items {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cadle-space-1);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--cadle-space-2);
   box-sizing: border-box;
   padding: 0 0 var(--cadle-space-1);
   width: 100%;
+}
+
+.items.children-only {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cadle-space-1);
+  padding: 0 0 0 var(--cadle-space-2);
 }
 
 .items catalog-item {
@@ -31,7 +38,7 @@
 
 :host([open]) .items,
 :host .items {
-  max-height: 2000px;
+  max-height: 4000px;
   opacity: 1;
   pointer-events: auto;
 }

@@ -17,8 +17,28 @@ export type NativeHotkeyAction =
   | 'tool-window'
   | 'tool-gate'
   | 'tool-line'
+  | 'tool-rect'
+  | 'tool-circle'
+  | 'tool-arc'
   | 'tool-text'
+  | 'tool-symbol'
   | 'tool-onewire'
+  | 'nudge-up'
+  | 'nudge-down'
+  | 'nudge-left'
+  | 'nudge-right'
+  | 'nudge-up-precision'
+  | 'nudge-down-precision'
+  | 'nudge-left-precision'
+  | 'nudge-right-precision'
+  | 'nudge-up-grid'
+  | 'nudge-down-grid'
+  | 'nudge-left-grid'
+  | 'nudge-right-grid'
+  | 'rotate-left'
+  | 'rotate-right'
+  | 'flip-horizontal'
+  | 'flip-vertical'
 
 export type NativeHotkey = {
   action: string
@@ -61,9 +81,18 @@ export const hotkeyList: Record<string, NativeHotkey[]> = {
         [modifier, 'numpadsubtract']
       ]
     },
+    { action: 'move selection · 5 px', keys: [['↑'], ['↓'], ['←'], ['→']] },
+    { action: 'move selection · 1 px', keys: [['alt', '↑↓←→']] },
+    { action: 'move selection · grid step', keys: [['shift', '↑↓←→']] },
     { action: 'select all', keys: [[modifier, 'a']] },
     { action: 'delete selection', keys: [['delete'], ['backspace']] },
     { action: 'cancel current action', keys: [['esc']] }
+  ],
+  transform: [
+    { action: 'rotate left', keys: [['[']] },
+    { action: 'rotate right', keys: [[']']] },
+    { action: 'flip horizontal', keys: [['shift', 'h']] },
+    { action: 'flip vertical', keys: [['shift', 'v']] }
   ],
   drawing: [
     { action: 'select tool', keys: [['v']] },
@@ -72,7 +101,11 @@ export const hotkeyList: Record<string, NativeHotkey[]> = {
     { action: 'window tool', keys: [['n']] },
     { action: 'gate tool', keys: [['g']] },
     { action: 'line tool', keys: [['l']] },
+    { action: 'box tool', keys: [['r']] },
+    { action: 'circle tool', keys: [['c']] },
+    { action: 'arc tool', keys: [['a']] },
     { action: 'text tool', keys: [['t']] },
+    { action: 'symbol tool', keys: [['s']] },
     { action: 'one-wire tool', keys: [['o']] },
     { action: 'pan canvas', keys: [['space', 'drag']] },
     { action: 'end wall chain', keys: [['double-click'], ['esc']] }
@@ -122,6 +155,26 @@ export const getNativeHotkeyAction = (event: KeyboardEvent): NativeHotkeyAction 
   const key = event.key.toLowerCase()
   const primary = isPrimaryShortcut(event)
 
+  // Arrow keys nudge the selection: default=5px, Alt=1px precision, Shift=full grid step.
+  if (!primary) {
+    if (key === 'arrowup') {
+      if (event.altKey) return 'nudge-up-precision'
+      return event.shiftKey ? 'nudge-up-grid' : 'nudge-up'
+    }
+    if (key === 'arrowdown') {
+      if (event.altKey) return 'nudge-down-precision'
+      return event.shiftKey ? 'nudge-down-grid' : 'nudge-down'
+    }
+    if (key === 'arrowleft') {
+      if (event.altKey) return 'nudge-left-precision'
+      return event.shiftKey ? 'nudge-left-grid' : 'nudge-left'
+    }
+    if (key === 'arrowright') {
+      if (event.altKey) return 'nudge-right-precision'
+      return event.shiftKey ? 'nudge-right-grid' : 'nudge-right'
+    }
+  }
+
   if (primary && key === 'z') return event.shiftKey ? 'redo' : 'undo'
   if (primary && key === 'y') return 'redo'
   if (primary && key === 'c') return 'copy'
@@ -136,6 +189,16 @@ export const getNativeHotkeyAction = (event: KeyboardEvent): NativeHotkeyAction 
   if (key === 'escape') return 'escape'
 
   if (event.metaKey || event.ctrlKey || event.altKey) return null
+
+  // Selection transforms (no primary modifier).
+  if (event.shiftKey) {
+    if (key === 'h') return 'flip-horizontal'
+    if (key === 'v') return 'flip-vertical'
+    return null
+  }
+  if (key === '[') return 'rotate-left'
+  if (key === ']') return 'rotate-right'
+
   switch (key) {
     case 'v':
       return 'tool-select'
@@ -149,8 +212,16 @@ export const getNativeHotkeyAction = (event: KeyboardEvent): NativeHotkeyAction 
       return 'tool-gate'
     case 'l':
       return 'tool-line'
+    case 'r':
+      return 'tool-rect'
+    case 'c':
+      return 'tool-circle'
+    case 'a':
+      return 'tool-arc'
     case 't':
       return 'tool-text'
+    case 's':
+      return 'tool-symbol'
     case 'o':
       return 'tool-onewire'
     default:

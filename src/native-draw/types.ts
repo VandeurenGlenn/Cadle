@@ -19,10 +19,17 @@ export type LineShape = {
   kind: 'wall' | 'line' | 'door' | 'window' | 'gate'
   start: Point
   end: Point
+  scale?: number
+  rotation?: number
+  flipX?: boolean
+  flipY?: boolean
+  wallId?: string
   flipSide?: boolean
   stroke?: string
+  strokeWidth?: number
   bindingId?: string
   groupId?: string
+  bindingLabelOffset?: { x: number; y: number }
 }
 
 export type RectShape = {
@@ -31,11 +38,16 @@ export type RectShape = {
   start: Point
   end: Point
   variant?: 'rect' | 'circle' | 'arc'
+  scale?: number
   rotation?: number
+  flipX?: boolean
+  flipY?: boolean
   fill?: string
   stroke?: string
+  strokeWidth?: number
   bindingId?: string
   groupId?: string
+  bindingLabelOffset?: { x: number; y: number }
 }
 
 export type TextShape = {
@@ -43,13 +55,16 @@ export type TextShape = {
   kind: 'text'
   position: Point
   text: string
+  scale?: number
   rotation?: number
   fill?: string
   stroke?: string
+  strokeWidth?: number
   flipX?: boolean
   flipY?: boolean
   bindingId?: string
   groupId?: string
+  bindingLabelOffset?: { x: number; y: number }
 }
 
 export type SymbolShape = {
@@ -59,13 +74,16 @@ export type SymbolShape = {
   name: string
   path: string
   scale: number
+  symbolTextOverrides?: Record<string, string>
   rotation?: number
   fill?: string
   stroke?: string
+  strokeWidth?: number
   flipX?: boolean
   flipY?: boolean
   bindingId?: string
   groupId?: string
+  bindingLabelOffset?: { x: number; y: number }
 }
 
 export type ImageShape = {
@@ -79,10 +97,12 @@ export type ImageShape = {
   rotation?: number
   fill?: string
   stroke?: string
+  strokeWidth?: number
   flipX?: boolean
   flipY?: boolean
   bindingId?: string
   groupId?: string
+  bindingLabelOffset?: { x: number; y: number }
 }
 
 export type Shape = LineShape | RectShape | TextShape | SymbolShape | ImageShape

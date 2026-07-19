@@ -261,6 +261,11 @@ const worldSizeForShapes = (shapes: Shape[]): { worldWidth: number; worldHeight:
       maxY = Math.max(maxY, shape.position.y + 200)
       continue
     }
+    if (shape.kind === 'image') {
+      maxX = Math.max(maxX, shape.position.x + shape.width / 2)
+      maxY = Math.max(maxY, shape.position.y + shape.height / 2)
+      continue
+    }
     maxX = Math.max(maxX, shape.start.x, shape.end.x)
     maxY = Math.max(maxY, shape.start.y, shape.end.y)
   }

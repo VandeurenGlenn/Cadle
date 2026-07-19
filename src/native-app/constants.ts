@@ -8,6 +8,9 @@ export const DEFAULT_PRINT_MARGIN_MM = 10
 export const ONE_WIRE_BREAKER_WIDTH = 240
 export const ONE_WIRE_NODE_SIZE = 170
 export const ONE_WIRE_CIRCUIT_SPACING = 300
+export const PROJECT_TITLE_BLOCK_MARGIN = 28
+export const PROJECT_TITLE_BLOCK_WIDTH = 470
+export const PROJECT_TITLE_BLOCK_HEIGHT = 132
 
 export type OneWirePreset = 'lighting' | 'sockets' | 'motor'
 

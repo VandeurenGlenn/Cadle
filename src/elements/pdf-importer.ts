@@ -161,6 +161,7 @@ export class PDFImporter extends LiteElement {
         const nativeState: NativeDocumentState = {
           version: 1,
           shapes: [image],
+          selectedId: null,
           paperPreset: pageData.width > pageData.height ? 'a4-landscape' : 'a4-portrait',
           printMargin: 10,
           worldWidth: pageData.width,

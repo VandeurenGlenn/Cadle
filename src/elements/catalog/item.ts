@@ -451,8 +451,6 @@ export class CatalogItem extends LiteElement {
         @mouseenter=${this.#openMagnifier}
         @mousemove=${this.#moveMagnifier}
         @mouseleave=${this.#closeMagnifier}>
-        <span class="headline">${this.headline}</span>
-        <flex-it></flex-it>
         <slot name="end">
           <span
             class="preview"
@@ -467,6 +465,7 @@ export class CatalogItem extends LiteElement {
                 : ''}</span
           >
         </slot>
+        <span class="headline">${this.headline}</span>
       </div>
       <custom-dropdown
         class="symbol-contextmenu"

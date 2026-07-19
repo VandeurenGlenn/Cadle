@@ -1,3 +1,11 @@
+* {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  box-sizing: border-box;
+}
+
 :host {
   --cadle-accent: #a85427;
   --cadle-surface: color-mix(in srgb, var(--md-sys-color-surface, #f6f1eb) 88%, white);
@@ -6,7 +14,7 @@
   --cadle-grid-minor: color-mix(in srgb, var(--md-sys-color-outline-variant, #c8b9ad) 45%, transparent);
   --cadle-grid-major: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 58%, transparent);
   --cadle-ink: var(--md-sys-color-on-surface, #2b2622);
-  --cadle-stage: linear-gradient(160deg, rgba(255, 248, 241, 0.96), rgba(244, 236, 228, 0.92));
+  --cadle-stage: #ffffff;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -17,19 +25,17 @@
 .canvas-host {
   display: flex;
   flex-direction: column;
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
-  background:
-    radial-gradient(circle at top left, rgba(168, 84, 39, 0.12), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(80, 61, 46, 0.1), transparent 24%),
-    linear-gradient(180deg, #f7f2ec 0%, #efe7df 100%);
+  background: white;
+  overflow: hidden;
 }
 
 .stage-shell {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 16px;
 }
 
 .panel {
@@ -39,10 +45,14 @@
   overflow: hidden;
   border-radius: 28px;
   border: 1px solid var(--cadle-outline);
-  background: var(--cadle-stage);
+  background: #ffffff;
   box-shadow: 0 18px 60px rgba(72, 53, 38, 0.12);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
 }
 
 .grid {
@@ -67,6 +77,15 @@
   width: 100%;
   height: 100%;
   touch-action: none;
+  image-rendering: crisp-edges;
+  shape-rendering: crispEdges;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .stage-context-menu {
@@ -111,41 +130,123 @@
   border-left: 1px solid color-mix(in srgb, var(--cadle-outline) 70%, transparent);
 }
 
+.catalog-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, black 18%, transparent);
+}
+
+.catalog-dialog {
+  width: min(420px, calc(100% - 24px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--cadle-outline);
+  background: color-mix(in srgb, var(--cadle-surface-strong) 95%, white);
+  box-shadow: 0 18px 40px rgba(72, 53, 38, 0.26);
+}
+
+.catalog-dialog h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.catalog-dialog label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.catalog-dialog input,
+.catalog-dialog select {
+  min-height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--cadle-outline);
+  background: rgba(255, 255, 255, 0.9);
+  color: inherit;
+  font: inherit;
+  padding: 0 8px;
+}
+
+.catalog-dialog input:focus,
+.catalog-dialog select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--cadle-accent) 60%, var(--cadle-outline));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cadle-accent) 20%, transparent);
+}
+
+.catalog-dialog-meta {
+  margin: 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cadle-ink) 65%, transparent);
+}
+
+.catalog-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* ── Native controls bar ──────────────────────────────────────────────────── */
 .native-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  transform: none;
+  width: min(320px, 28vw);
+  max-width: calc(100% - 24px);
+  z-index: 18;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 16px;
-  border-top: 1px solid var(--cadle-outline);
-  background: color-mix(in srgb, var(--cadle-surface) 80%, white);
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--cadle-outline) 68%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cadle-surface-strong) 86%, white),
+    color-mix(in srgb, var(--cadle-surface) 92%, white)
+  );
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .nc-group {
   display: flex;
   align-items: center;
-  gap: 3px;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .nc-spacer {
-  flex: 1 1 auto;
+  display: none;
 }
 
 .nc-label {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--cadle-ink) 55%, transparent);
+  color: color-mix(in srgb, var(--cadle-ink) 74%, transparent);
   padding: 0 4px 0 2px;
 }
 
 .nc-value {
-  font-size: 11px;
-  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 8px;
   min-width: 40px;
   text-align: center;
   color: var(--cadle-ink);
@@ -154,20 +255,22 @@
 .nc-btn {
   appearance: none;
   border: 1px solid var(--cadle-outline);
-  background: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, white 80%, var(--cadle-surface));
   color: inherit;
   border-radius: 10px;
-  padding: 4px 9px;
+  padding: 5px 10px;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.1;
   cursor: pointer;
   transition:
     background 100ms ease,
-    border-color 100ms ease;
+    border-color 100ms ease,
+    color 100ms ease;
 }
 
 .nc-btn:hover {
-  background: rgba(255, 255, 255, 0.88);
+  background: color-mix(in srgb, white 92%, var(--cadle-surface));
   border-color: color-mix(in srgb, var(--cadle-accent) 50%, var(--cadle-outline));
 }
 
@@ -222,12 +325,35 @@
 }
 
 .status {
+  position: absolute;
+  left: auto;
+  right: 12px;
+  top: 12px;
+  bottom: auto;
+  z-index: 17;
   display: flex;
   align-items: center;
-  padding: 5px 18px 8px;
+  min-height: 20px;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 3px 10px;
   font-size: 11px;
-  color: color-mix(in srgb, var(--cadle-ink) 60%, transparent);
+  font-weight: 500;
+  color: color-mix(in srgb, var(--cadle-ink) 78%, transparent);
+  background: color-mix(in srgb, var(--cadle-surface) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--cadle-outline) 60%, transparent);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   flex-shrink: 0;
+  transform: translateY(calc(100% + 8px));
+}
+
+.status > span {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .print-safe-area {
@@ -260,8 +386,7 @@
 
 .shape-line {
   fill: none;
-  stroke: var(--cadle-accent);
-  stroke-width: 4;
+  stroke-width: 2;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }
@@ -350,13 +475,10 @@
 }
 
 .shape-rect {
-  fill: rgba(168, 84, 39, 0.08);
-  stroke: var(--cadle-accent);
   stroke-width: 2;
 }
 
 .shape-text {
-  fill: var(--cadle-ink);
   font:
     600 18px 'IBM Plex Sans',
     'Segoe UI',
@@ -374,7 +496,8 @@
 }
 
 .binding-label {
-  pointer-events: none;
+  pointer-events: all;
+  cursor: grab;
 }
 
 .binding-label-bg {
@@ -385,13 +508,16 @@
 }
 
 .binding-label-text {
-  fill: #fff;
+  fill: #2f241a;
   font:
-    600 10px 'IBM Plex Sans',
+    700 11px 'IBM Plex Sans',
     'Segoe UI',
     sans-serif;
   letter-spacing: 0.03em;
   dominant-baseline: middle;
+  stroke: rgba(255, 255, 255, 0.88);
+  stroke-width: 1.6;
+  paint-order: stroke;
 }
 
 /* Rubber-band selection rectangle */
@@ -410,11 +536,26 @@
 
 /* Snap indicator — green ring shown when pointer snaps to a wall endpoint */
 .snap-indicator {
-  fill: rgba(34, 197, 94, 0.25);
+  fill: rgba(34, 197, 94, 0.2);
   stroke: #22c55e;
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+
+.snap-indicator-wall {
+  fill: rgba(34, 197, 94, 0.2);
+  stroke: #22c55e;
+}
+
+.snap-indicator-electrical {
+  fill: rgba(59, 130, 246, 0.22);
+  stroke: #2563eb;
+}
+
+.snap-indicator-onewire {
+  fill: rgba(245, 158, 11, 0.22);
+  stroke: #d97706;
 }
 
 .measurement-label-bg {
@@ -448,13 +589,4 @@
   stroke-dasharray: 10 6;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  padding: 5px 18px 8px;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--cadle-ink) 60%, transparent);
-  flex-shrink: 0;
 }

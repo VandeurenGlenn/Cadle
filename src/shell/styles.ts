@@ -50,6 +50,55 @@ export const shellStyles = css`
     border-right: 1px solid var(--md-sys-color-outline-variant);
   }
 
+  .reopen-previous-project-bubble {
+    margin: var(--cadle-space-2);
+    padding: var(--cadle-space-2);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--cadle-radius-sm);
+    background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface));
+    display: grid;
+    gap: var(--cadle-space-1);
+  }
+
+  .reopen-previous-project-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--md-sys-color-on-surface);
+  }
+
+  .reopen-previous-project-text {
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reopen-previous-project-actions {
+    display: flex;
+    gap: var(--cadle-space-1);
+  }
+
+  .reopen-previous-project-btn {
+    appearance: none;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface);
+    cursor: pointer;
+  }
+
+  .reopen-previous-project-btn:hover {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+  }
+
+  .reopen-previous-project-btn-subtle {
+    opacity: 0.85;
+  }
+
   cadle-header project-actions {
     width: 100%;
   }
@@ -68,6 +117,7 @@ export const shellStyles = css`
   }
 
   .center-stage-toolbar {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--cadle-space-3);
@@ -80,7 +130,8 @@ export const shellStyles = css`
     border-bottom: 1px solid var(--md-sys-color-outline-variant);
     box-shadow: var(--cadle-glass-shadow);
     flex: 0 0 auto;
-    z-index: 2;
+    z-index: 10030;
+    overflow: visible;
   }
 
   .center-stage-toolbar cadle-actions {

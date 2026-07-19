@@ -31,6 +31,7 @@ import pubsub from './pubsub.js'
 import './elements/modals/validation-report.js'
 import type { ValidationReport } from './elements/modals/validation-report.js'
 import './elements/modals/template-library.js'
+import './elements/modals/project-details-dialog.js'
 import './elements/panels/history-panel.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/outlined-button.js'
@@ -104,6 +105,9 @@ declare type dialogAction =
   | 'clone-page'
 @customElement('app-shell')
 export class AppShell extends LiteElement {
+  static readonly LAST_OPEN_PROJECT_KEY_STORAGE = 'cadle.lastOpenProjectKey'
+  static readonly LAST_OPEN_PAGE_KEY_STORAGE = 'cadle.lastOpenPageKey'
+
   projectStore = projectStore
   symbol: string = ''
   @property({ attribute: false, provides: 'projectName' })
@@ -180,6 +184,9 @@ export class AppShell extends LiteElement {
   @property({ type: Boolean })
   accessor templateLibraryOpen = false
 
+  @property({ type: Boolean })
+  accessor projectDetailsDialogOpen = false
+
   _freeDraw: boolean = false
   set freeDraw(value: boolean) {
     const next = !!value
@@ -241,6 +248,18 @@ export class AppShell extends LiteElement {
   @property({ attribute: false, provides: 'catalog' })
   accessor catalog: Catalog = []
 
+  @property({ type: Boolean })
+  accessor showReopenPreviousProjectPrompt = false
+
+  @property({ type: String })
+  accessor previousProjectName = ''
+
+  @property({ type: String })
+  accessor previousProjectKey = ''
+
+  @property({ type: String })
+  accessor previousPageKey = ''
+
   _baseCatalog: Catalog = []
   private readonly _presenceName =
     localStorage.getItem('cadle.presenceName') ?? `User ${Math.random().toString(36).slice(2, 6)}`
@@ -255,6 +274,68 @@ export class AppShell extends LiteElement {
     globalThis.cadleShell = this
     localStorage.setItem('cadle.presenceName', this._presenceName)
     localStorage.setItem('cadle.presenceColor', this._presenceColor)
+  }
+
+  #captureReloadResumeFromHash() {
+    const { route, params } = parseHash(location.hash)
+    const isNativeRoute = route === 'native-draw' || route === 'draw' || route === 'save'
+    const resumeProject = params?.project || localStorage.getItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE) || ''
+    const resumePage = params?.page || localStorage.getItem(AppShell.LAST_OPEN_PAGE_KEY_STORAGE) || ''
+    if (!isNativeRoute || !resumeProject) return
+
+    this.previousProjectKey = resumeProject
+    this.previousPageKey = resumePage
+    const projectEntry = this.projects.find(([key]) => key === resumeProject)
+    this.previousProjectName = projectEntry?.[1] ?? 'Previous project'
+    this.showReopenPreviousProjectPrompt = true
+    pubsub.publish('shell.reopen-previous-project-prompt', {
+      open: true,
+      projectName: this.previousProjectName
+    })
+    this.railView = 'project'
+    location.hash = '#!/projects'
+  }
+
+  #dismissReopenPreviousProjectPrompt = () => {
+    this.showReopenPreviousProjectPrompt = false
+    pubsub.publish('shell.reopen-previous-project-prompt', { open: false, projectName: '' })
+  }
+
+  #openPreviousProjectFromPrompt = async () => {
+    const key = this.previousProjectKey as UUID
+    if (!key) return
+
+    await this.savePage()
+    this.project = await getProjectData(key)
+    this.projectKey = key
+
+    const targetPage =
+      (this.previousPageKey && this.project.pages?.[this.previousPageKey] ? this.previousPageKey : '') ||
+      Object.keys(this.project.pages ?? {})[0] ||
+      ''
+
+    if (targetPage) {
+      await this.loadPage(targetPage)
+      location.hash = this.#nativeDrawHash()
+    }
+
+    this.railView = 'project'
+    this.projectPane?.select?.('project')
+    this.showReopenPreviousProjectPrompt = false
+    pubsub.publish('shell.reopen-previous-project-prompt', { open: false, projectName: '' })
+  }
+
+  dismissReopenPreviousProjectPrompt() {
+    this.#dismissReopenPreviousProjectPrompt()
+  }
+
+  async openPreviousProjectFromPrompt() {
+    await this.#openPreviousProjectFromPrompt()
+  }
+
+  openProjectDetailsDialog() {
+    if (!this.projectKey || !this.project) return
+    this.projectDetailsDialogOpen = true
   }
 
   #mergeCatalogWithBoundSymbols(
@@ -500,6 +581,13 @@ export class AppShell extends LiteElement {
     }
 
     onhashchange = this.#onhashchange.bind(this)
+    this.#captureReloadResumeFromHash()
+    if (this.showReopenPreviousProjectPrompt) {
+      pubsub.publish('shell.reopen-previous-project-prompt', {
+        open: true,
+        projectName: this.previousProjectName
+      })
+    }
     this.#onhashchange()
     this.addEventListener('drop', this.#drop.bind(this))
     this.addEventListener('dragover', this.#dragover.bind(this))
@@ -660,7 +748,7 @@ export class AppShell extends LiteElement {
         includeOpenings,
         includeElectrical
       })
-      await addPage(this.projectKey, newPageName, clonedSchema)
+      await addPage(this.projectKey, newPageName, clonedSchema, page.pageType ?? 'groundplan')
       this.project = await getProjectData(this.projectKey)
     }
 
@@ -837,10 +925,18 @@ export class AppShell extends LiteElement {
     const page = this.project.pages[key]
     console.log({ page, key })
 
+    if (this.projectKey) {
+      localStorage.setItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE, this.projectKey)
+      localStorage.setItem(AppShell.LAST_OPEN_PAGE_KEY_STORAGE, key)
+    }
+
     location.hash = `#!/native-draw?project=${this.projectKey}&page=${key}`
     this.projectDirty = false
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
   }
 
   async generateAutoOneWireSchema() {
@@ -959,6 +1055,17 @@ export class AppShell extends LiteElement {
         @select-template=${async (event: CustomEvent<{ id: string }>) => {
           await this.loadTemplate(event.detail.id)
         }}></template-library>
+      <project-details-dialog
+        .open=${this.projectDetailsDialogOpen}
+        .project=${this.project}
+        .projectKey=${this.projectKey}
+        @close=${() => (this.projectDetailsDialogOpen = false)}
+        @saved=${(event: CustomEvent<{ project: Project; projects: Projects }>) => {
+          this.project = event.detail.project
+          this.projectName = event.detail.project.name
+          this.projects = event.detail.projects
+          this.projectDetailsDialogOpen = false
+        }}></project-details-dialog>
       <history-panel
         .open=${this.historyPanelOpen}
         .entries=${this.historyEntries}
@@ -1002,6 +1109,28 @@ export class AppShell extends LiteElement {
                 <custom-icon icon="format_shapes"></custom-icon>
               </button>
             </custom-selector>
+            ${this.showReopenPreviousProjectPrompt
+              ? html`
+                  <div class="reopen-previous-project-bubble">
+                    <div class="reopen-previous-project-title">Open previous project?</div>
+                    <div class="reopen-previous-project-text">${this.previousProjectName}</div>
+                    <div class="reopen-previous-project-actions">
+                      <button
+                        class="reopen-previous-project-btn"
+                        type="button"
+                        @click=${this.#openPreviousProjectFromPrompt}>
+                        Open
+                      </button>
+                      <button
+                        class="reopen-previous-project-btn reopen-previous-project-btn-subtle"
+                        type="button"
+                        @click=${this.#dismissReopenPreviousProjectPrompt}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                `
+              : ''}
             <project-pane
               .manifest=${this.manifest}
               .project=${this.project}

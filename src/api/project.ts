@@ -1,7 +1,7 @@
 import Storage from '@leofcoin/storage'
 import jsPDF from 'jspdf'
 import type { PDFImporter } from '../elements/pdf-importer.js'
-import { Project, ProjectInput, UUID } from '../types.js'
+import { Project, ProjectInput, type PageType, UUID } from '../types.js'
 
 export const decoder = new TextDecoder()
 
@@ -45,6 +45,7 @@ export const create = async (project: ProjectInput, pageName: string) => {
   pages[pageUuid] = {
     creationTime,
     name: pageName,
+    pageType: 'groundplan',
     schema: { version: '6.0.0', objects: [] },
     order: 0
   }
@@ -60,7 +61,7 @@ export const create = async (project: ProjectInput, pageName: string) => {
   return
 }
 
-export const addPage = async (uuid: UUID, pageName: string, schema) => {
+export const addPage = async (uuid: UUID, pageName: string, schema, pageType: PageType = 'groundplan') => {
   const project = await getProjectData(uuid)
   const pageUuid = crypto.randomUUID() as UUID
   const maxOrder = Math.max(
@@ -70,6 +71,7 @@ export const addPage = async (uuid: UUID, pageName: string, schema) => {
   project.pages[pageUuid] = {
     creationTime: Date.now(),
     name: pageName,
+    pageType,
     schema,
     order: maxOrder + 1
   }
@@ -136,48 +138,58 @@ export const upload = async () => {
 
 export const download = async () => {
   console.log('down')
+  const initialPageKey = cadleShell.loadedPage
 
   let pdf: jsPDF | undefined
 
   console.log(cadleShell.project)
 
-  let i = 0
-  for (const [key] of Object.entries(cadleShell.project.pages)) {
-    await cadleShell.loadPage(key)
-    const exported = await cadleShell.exportA4PNG('auto')
+  try {
+    let i = 0
+    for (const [key] of Object.entries(cadleShell.project.pages)) {
+      await cadleShell.loadPage(key)
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+      const exported = await cadleShell.exportA4PNG('auto')
 
-    if (!pdf) {
-      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
-    } else {
-      pdf.addPage('a4', exported.orientation)
+      if (!pdf) {
+        pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
+      } else {
+        pdf.addPage('a4', exported.orientation)
+      }
+
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+      pdf.addImage(exported.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, `page-${i}`, 'FAST')
+      // pdf.addSvgAsImage(svg, 0, 0, undefined, undefined, { autoPaging: true })
+      // URL.revokeObjectURL(dataUrl)
+      i += 1
     }
 
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    pdf.setFillColor(255, 255, 255)
-    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
-    pdf.addImage(exported.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, `page-${i}`, 'FAST')
-    // pdf.addSvgAsImage(svg, 0, 0, undefined, undefined, { autoPaging: true })
-    // URL.revokeObjectURL(dataUrl)
-    i += 1
+    if (!pdf) {
+      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', compress: true })
+    }
+
+    pdf.save(`${cadleShell.project.name}.pdf`)
+
+    const projectData = { ...cadleShell.project, projectKey: cadleShell.projectKey }
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], {
+      type: 'application/json'
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${cadleShell.project.name}-${cadleShell.projectKey}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  } finally {
+    if (initialPageKey && cadleShell.project.pages?.[initialPageKey]) {
+      await cadleShell.loadPage(initialPageKey)
+    }
   }
-
-  if (!pdf) {
-    pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', compress: true })
-  }
-
-  pdf.save(`${cadleShell.project.name}.pdf`)
-
-  const projectData = { ...cadleShell.project, projectKey: cadleShell.projectKey }
-  const blob = new Blob([JSON.stringify(projectData, null, 2)], {
-    type: 'application/json'
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${cadleShell.project.name}-${cadleShell.projectKey}.json`
-  a.click()
-  URL.revokeObjectURL(url)
   // };
   // for (const field of fields) {
   //   const json = field.toJSON()

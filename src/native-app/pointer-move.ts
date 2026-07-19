@@ -63,8 +63,9 @@ export const applyDragMove = (
   allShapes: Shape[]
 ): Shape[] => {
   const point = snapPoint(rawPoint)
-  const dx = point.x - drag.pointerStart.x
-  const dy = point.y - drag.pointerStart.y
+  const pointerStart = snapPoint(drag.pointerStart)
+  const dx = point.x - pointerStart.x
+  const dy = point.y - pointerStart.y
   const movedShapes = drag.initial.map((initialShape) => translateShape(initialShape, dx, dy))
   const snapDelta = dragEndpointSnapDelta(movedShapes, new Set(drag.ids), allShapes)
   if (!snapDelta) return movedShapes

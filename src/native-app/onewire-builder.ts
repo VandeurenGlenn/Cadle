@@ -2,6 +2,8 @@ import type { OneWirePresetConfig } from './constants.js'
 import type { LineShape, Point, Shape, TextShape, SymbolShape } from '../native-draw/types.js'
 import { inferSymbolScale } from '../native-draw/model.js'
 
+const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
+
 export type BuildOneWireCircuitResult = {
   shapes: Shape[]
   primarySelection: string[]
@@ -30,16 +32,18 @@ const createSymbol = (
   position: Point,
   name: string,
   path: string,
-  bindingId: string,
-  groupId: string
+  groupId: string,
+  kind: 'breaker' | 'switch' | 'load'
 ): SymbolShape => ({
   id,
   kind: 'symbol',
   position,
   name,
   path,
-  scale: inferSymbolScale(path),
-  bindingId,
+  scale:
+    kind === 'breaker'
+      ? Math.max(0.4, inferSymbolScale(path))
+      : Math.max(0.55, inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER),
   groupId
 })
 
@@ -58,18 +62,13 @@ const createBreakerSymbol = (
   center: Point,
   _boxW: number,
   _boxH: number,
-  bindingId: string,
   groupId: string
-): SymbolShape[] => [createSymbol(nextId(), center, 'Automaat', RESIDENTIAL_BREAKER_SYMBOL_PATH, bindingId, groupId)]
+): SymbolShape[] => [createSymbol(nextId(), center, 'Automaat', RESIDENTIAL_BREAKER_SYMBOL_PATH, groupId, 'breaker')]
 
 // Use existing residential symbol for switch
-const createSwitchSymbol = (
-  nextId: () => string,
-  center: Point,
-  _size: number,
-  bindingId: string,
-  groupId: string
-): SymbolShape[] => [createSymbol(nextId(), center, 'Switch', RESIDENTIAL_SWITCH_SYMBOL_PATH, bindingId, groupId)]
+const createSwitchSymbol = (nextId: () => string, center: Point, _size: number, groupId: string): SymbolShape[] => [
+  createSymbol(nextId(), center, 'Switch', RESIDENTIAL_SWITCH_SYMBOL_PATH, groupId, 'switch')
+]
 
 // Use preset-specific residential symbol for load
 const createLoadSymbol = (
@@ -77,9 +76,8 @@ const createLoadSymbol = (
   center: Point,
   _size: number,
   preset: OneWirePresetConfig,
-  bindingId: string,
   groupId: string
-): SymbolShape[] => [createSymbol(nextId(), center, 'Load', loadSymbolPathForPreset(preset), bindingId, groupId)]
+): SymbolShape[] => [createSymbol(nextId(), center, 'Load', loadSymbolPathForPreset(preset), groupId, 'load')]
 
 // Vertical gap between components inside a circuit column.
 const COMPONENT_GAP = 44
@@ -123,9 +121,9 @@ export const buildOneWireCircuit = (
   // Labels sit to the right of each component
   const labelX = x + nodeSize / 2 + 8
 
-  const breakerShapes = createBreakerSymbol(nextId, breakerCenter, nodeSize, breakerWidth, bindingId, groupId)
-  const switchShapes = createSwitchSymbol(nextId, switchCenter, nodeSize, bindingId, groupId)
-  const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, bindingId, groupId)
+  const breakerShapes = createBreakerSymbol(nextId, breakerCenter, nodeSize, breakerWidth, groupId)
+  const switchShapes = createSwitchSymbol(nextId, switchCenter, nodeSize, groupId)
+  const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, groupId)
 
   const shapes: Shape[] = [
     // Binding-ID label above the load (topmost element)

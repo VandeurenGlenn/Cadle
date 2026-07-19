@@ -1,6 +1,24 @@
 import { inferSymbolScale } from '../native-draw/model.js'
 import type { DraftShape, NativeCatalogPick, Point, SymbolShape, TextShape, Tool } from '../native-draw/types.js'
 
+type SymbolStyleDefaults = {
+  scale?: unknown
+  rotation?: unknown
+  fill?: unknown
+  stroke?: unknown
+  strokeWidth?: unknown
+  flipX?: unknown
+  flipY?: unknown
+}
+
+const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefaults => {
+  const metadata = symbol.metadata
+  if (!metadata || typeof metadata !== 'object') return {}
+  const defaults = (metadata as Record<string, unknown>).symbolDefaults
+  if (!defaults || typeof defaults !== 'object') return {}
+  return defaults as SymbolStyleDefaults
+}
+
 export const createTextShape = (id: string, position: Point, text: string): TextShape => ({
   id,
   kind: 'text',
@@ -9,16 +27,27 @@ export const createTextShape = (id: string, position: Point, text: string): Text
 })
 
 export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalogPick): SymbolShape => {
+  const defaults = resolveSymbolStyleDefaults(symbol)
+  const defaultScale =
+    typeof defaults.scale === 'number' && Number.isFinite(defaults.scale)
+      ? Math.max(0.1, Math.min(20, defaults.scale))
+      : undefined
   const shape: SymbolShape = {
     id,
     kind: 'symbol',
     position: point,
     name: symbol.name,
     path: symbol.path,
-    scale: inferSymbolScale(symbol.path)
+    scale: defaultScale ?? inferSymbolScale(symbol.path)
   }
-  const metaBinding = symbol.metadata?.bindingId
-  if (typeof metaBinding === 'string' && metaBinding.trim()) shape.bindingId = metaBinding.trim().toUpperCase()
+  if (typeof defaults.rotation === 'number' && Number.isFinite(defaults.rotation)) {
+    shape.rotation = ((defaults.rotation % 360) + 360) % 360
+  }
+  if (typeof defaults.fill === 'string' && defaults.fill.trim()) shape.fill = defaults.fill
+  if (typeof defaults.stroke === 'string' && defaults.stroke.trim()) shape.stroke = defaults.stroke
+  if (typeof defaults.strokeWidth === 'number' && Number.isFinite(defaults.strokeWidth)) {
+    shape.strokeWidth = Math.max(0.5, Math.min(40, defaults.strokeWidth))
+  }
   return shape
 }
 

@@ -35,6 +35,18 @@ export class CatalogCategory extends LiteElement {
   @property({ type: Boolean, reflect: true, attribute: 'drop-target' })
   accessor dropTarget = false
 
+  @property({ type: Boolean, attribute: 'hide-folder-chip' })
+  accessor hideFolderChip = false
+
+  @property({ type: Boolean, attribute: 'draggable-category' })
+  accessor draggableCategory = true
+
+  @property({ type: Boolean, attribute: 'accept-drops' })
+  accessor acceptDrops = true
+
+  @property({ type: Boolean, attribute: 'children-only' })
+  accessor childrenOnly = false
+
   static styles = [styles]
 
   beforeRender(): void {
@@ -42,6 +54,10 @@ export class CatalogCategory extends LiteElement {
   }
 
   #onCategoryDragStart = (event: DragEvent) => {
+    if (!this.draggableCategory) {
+      event.preventDefault()
+      return
+    }
     if (!event.dataTransfer) return
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(
@@ -55,6 +71,7 @@ export class CatalogCategory extends LiteElement {
   }
 
   #onDragOver = (event: DragEvent) => {
+    if (!this.acceptDrops) return
     event.preventDefault()
     this.dropTarget = true
   }
@@ -64,6 +81,7 @@ export class CatalogCategory extends LiteElement {
   }
 
   #onDrop = (event: DragEvent) => {
+    if (!this.acceptDrops) return
     event.preventDefault()
     this.dropTarget = false
     const payload = event.dataTransfer?.getData('application/x-cadle-catalog-dnd')
@@ -93,7 +111,7 @@ export class CatalogCategory extends LiteElement {
       <button
         type="button"
         class="category-header"
-        draggable="true"
+        ?draggable=${this.draggableCategory}
         @click=${() => (this.open = !this.open)}
         @dragstart=${this.#onCategoryDragStart}
         @dragover=${this.#onDragOver}
@@ -108,14 +126,14 @@ export class CatalogCategory extends LiteElement {
           active=${this.open ? 1 : 0}>
         </custom-toggle>
         <span class="category-line">
-          ${this.folder ? html`<span class="folder-chip">${this.folder}</span>` : ''}
+          ${this.folder && !this.hideFolderChip ? html`<span class="folder-chip">${this.folder}</span>` : ''}
           <span>${this.category}</span>
           ${this.searchActive ? html`<span class="match-pill">${this.matchCount}</span>` : ''}
         </span>
       </button>
       ${this.open || this.searchActive
         ? html`<div class="divider"></div>
-            <flex-column class="items">
+            <flex-column class=${`items ${this.childrenOnly ? 'children-only' : ''}`}>
               ${map(
                 this.symbols,
                 (symbol, i) => html`

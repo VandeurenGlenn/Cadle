@@ -1,6 +1,10 @@
 import type { Project, UUID } from './types.js'
 import { getProjectData, projectDataStore, projectStore, setProjectData } from './api/project.js'
-import { migrateLegacyProjectToNativeState, migrateLegacySchemaToNativeState } from './native-draw/legacy-project.js'
+import {
+  migrateLegacyProjectToNativeState,
+  migrateLegacySchemaToNativeState,
+  type LegacyNativeDocumentState
+} from './native-draw/legacy-project.js'
 import { parseHash } from './shell/routing.js'
 
 export type NativePoint = { x: number; y: number }
@@ -10,6 +14,7 @@ export type NativeLineShape = {
   kind: 'wall' | 'line' | 'door' | 'window' | 'gate'
   start: NativePoint
   end: NativePoint
+  wallId?: string
   flipSide?: boolean
   bindingId?: string
 }
@@ -58,6 +63,7 @@ export type NativePaperPreset = 'a4-portrait' | 'a4-landscape' | 'a3-portrait' |
 export type NativeDocumentState = {
   version: 1
   shapes: NativeShape[]
+  selectedId: UUID | null
   paperPreset: NativePaperPreset
   printMargin: number
   worldWidth: number
@@ -72,17 +78,37 @@ type NativeSchemaObject = {
 type NativeLoadResult = {
   projectKey: UUID
   pageKey: UUID
+  project: Project
   state: NativeDocumentState | null
 }
 
 const DEFAULT_PROJECT_KEY = '00000000-0000-4000-8000-000000000001' as UUID
 const DEFAULT_PAGE_KEY = '00000000-0000-4000-8000-000000000002' as UUID
 
+const createDefaultPage = (name = 'Page 1', order = 0) => ({
+  creationTime: Date.now(),
+  name,
+  pageType: 'groundplan' as const,
+  schema: {
+    version: 'native-svg-1',
+    objects: []
+  },
+  order
+})
+
 const isFinitePositive = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
 
 const isFiniteNonNegative = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+const upgradeLegacyState = (state: LegacyNativeDocumentState | null): NativeDocumentState | null =>
+  state
+    ? {
+        ...state,
+        selectedId: null
+      }
+    : null
 
 const asNativeState = (value: unknown): NativeDocumentState | null => {
   if (!value || typeof value !== 'object') return null
@@ -103,6 +129,7 @@ const asNativeState = (value: unknown): NativeDocumentState | null => {
   return {
     version: 1,
     shapes: candidate.shapes as NativeShape[],
+    selectedId: typeof candidate.selectedId === 'string' ? (candidate.selectedId as UUID) : null,
     paperPreset: candidate.paperPreset,
     printMargin: candidate.printMargin,
     worldWidth: candidate.worldWidth,
@@ -146,6 +173,10 @@ const createDefaultProject = (): Project => ({
   creationTime: Date.now(),
   uuid: DEFAULT_PROJECT_KEY,
   name: 'Cadle Native',
+  customer: {
+    name: '',
+    lastname: ''
+  },
   installer: {
     name: 'Native',
     lastname: 'Runtime'
@@ -154,12 +185,14 @@ const createDefaultProject = (): Project => ({
   address: {
     street: '',
     number: '',
-    postalCode: ''
+    postalCode: '',
+    city: ''
   },
   pages: {
     [DEFAULT_PAGE_KEY]: {
       creationTime: Date.now(),
       name: 'Page 1',
+      pageType: 'groundplan',
       schema: {
         version: 'native-svg-1',
         objects: []
@@ -187,15 +220,7 @@ const ensureProjectExists = async (projectKey: UUID): Promise<void> => {
     if (Object.keys(project.pages ?? {}).length > 0) return
 
     project.pages = {
-      [DEFAULT_PAGE_KEY]: {
-        creationTime: Date.now(),
-        name: 'Page 1',
-        schema: {
-          version: 'native-svg-1',
-          objects: []
-        },
-        order: 0
-      }
+      [DEFAULT_PAGE_KEY]: createDefaultPage()
     }
     await setProjectData(projectKey, project)
   } catch {
@@ -225,33 +250,33 @@ export const loadNativeState = async (): Promise<NativeLoadResult> => {
 
   await ensureProjectExists(projectKey)
   const project = await getProjectData(projectKey)
+  if (Object.keys(project.pages ?? {}).length === 0) {
+    project.pages = {
+      [requestedPageKey]: createDefaultPage()
+    }
+    await setProjectData(projectKey, project)
+  }
   const pageKey = project.pages?.[requestedPageKey] ? requestedPageKey : (firstPageKey(project) ?? DEFAULT_PAGE_KEY)
 
   return {
     projectKey,
     pageKey,
+    project,
     state:
       parseNativeFromProject(project, pageKey) ??
-      migrateLegacySchemaToNativeState(project.pages?.[pageKey]?.schema) ??
-      migrateLegacyProjectToNativeState(project, pageKey)
+      upgradeLegacyState(migrateLegacySchemaToNativeState(project.pages?.[pageKey]?.schema)) ??
+      upgradeLegacyState(migrateLegacyProjectToNativeState(project, pageKey))
   }
 }
 
 export const saveNativeState = async (projectKey: UUID, pageKey: UUID, state: NativeDocumentState): Promise<void> => {
   const project = await getProjectData(projectKey)
-  if (!project.pages?.[pageKey]) {
-    project.pages[pageKey] = {
-      creationTime: Date.now(),
-      name: 'Page 1',
-      schema: {
-        version: 'native-svg-1',
-        objects: []
-      },
-      order: Object.keys(project.pages ?? {}).length
-    }
+  const pages = project.pages ?? (project.pages = {})
+  if (!pages[pageKey]) {
+    pages[pageKey] = createDefaultPage('Page 1', Object.keys(pages).length)
   }
 
-  project.pages[pageKey].schema = {
+  pages[pageKey].schema = {
     version: 'native-svg-1',
     objects: [
       {

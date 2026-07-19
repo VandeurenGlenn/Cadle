@@ -132,8 +132,26 @@ custom-button:active {
   align-items: center;
   justify-content: space-between;
   gap: var(--cadle-space-2);
+  min-width: 0;
   font: var(--md-sys-typescale-body-small);
   color: var(--md-sys-color-on-surface-variant);
+}
+
+.native-kv > :first-child {
+  flex: 0 0 auto;
+}
+
+.native-kv-value {
+  min-width: 0;
+  max-width: 68%;
+  display: block;
+  text-align: right;
+}
+
+.native-kv-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .native-kv strong {
@@ -170,6 +188,39 @@ custom-button:active {
   box-shadow: var(--cadle-focus-ring);
 }
 
+.native-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.native-chip {
+  flex: 1 1 84px;
+  min-width: 84px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 92%, transparent);
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 7px 12px;
+  font: var(--md-sys-typescale-label-medium);
+  cursor: pointer;
+}
+
+.native-chip[data-active='true'] {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 56%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-container-highest));
+  color: var(--md-sys-color-primary);
+}
+
+.native-chip:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container-highest));
+}
+
+.native-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+
 .native-actions {
   display: flex;
   gap: var(--cadle-space-2);
@@ -185,6 +236,12 @@ custom-button:active {
   padding: 8px 10px;
   font: var(--md-sys-typescale-label-medium);
   cursor: pointer;
+}
+
+.native-button[data-active='true'] {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 52%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-surface-container-high));
+  color: var(--md-sys-color-primary);
 }
 
 .native-button:hover {
@@ -241,6 +298,11 @@ custom-button:active {
 
 .native-btn-icon:hover {
   background: color-mix(in srgb, var(--md-sys-color-primary) 14%, var(--md-sys-color-surface-container-high));
+}
+
+.native-btn-icon[data-active='true'] {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, var(--md-sys-color-outline-variant));
+  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-container-high));
 }
 
 .native-color {

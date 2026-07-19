@@ -31,13 +31,13 @@ const transformPoint = (point: Point, center: Point, action: SelectionTransformA
   }
   if (action === 'rotate-left') {
     return {
-      x: center.x - (point.y - center.y),
-      y: center.y + (point.x - center.x)
+      x: center.x + (point.y - center.y),
+      y: center.y - (point.x - center.x)
     }
   }
   return {
-    x: center.x + (point.y - center.y),
-    y: center.y - (point.x - center.x)
+    x: center.x - (point.y - center.y),
+    y: center.y + (point.x - center.x)
   }
 }
 
@@ -74,7 +74,11 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
       return {
         ...shape,
         start: transformPoint(shape.start, center, action),
-        end: transformPoint(shape.end, center, action)
+        end: transformPoint(shape.end, center, action),
+        scale: action === 'scale-up' || action === 'scale-down' ? (shape.scale ?? 1) * scaleFactor : shape.scale,
+        rotation: nextRotation(shape.rotation, action),
+        flipX: nextFlipX(shape.flipX, action),
+        flipY: nextFlipY(shape.flipY, action)
       }
     case 'rect': {
       if (action === 'rotate-left' || action === 'rotate-right') {
@@ -93,19 +97,41 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
         }
       }
 
+      if (action === 'flip-horizontal' || action === 'flip-vertical') {
+        const width = Math.abs(shape.end.x - shape.start.x)
+        const height = Math.abs(shape.end.y - shape.start.y)
+        const currentCenter = {
+          x: (shape.start.x + shape.end.x) / 2,
+          y: (shape.start.y + shape.end.y) / 2
+        }
+        const nextCenter = transformPoint(currentCenter, center, action)
+        return {
+          ...shape,
+          start: { x: nextCenter.x - width / 2, y: nextCenter.y - height / 2 },
+          end: { x: nextCenter.x + width / 2, y: nextCenter.y + height / 2 },
+          flipX: nextFlipX(shape.flipX, action),
+          flipY: nextFlipY(shape.flipY, action)
+        }
+      }
+
       const a = transformPoint(shape.start, center, action)
       const b = transformPoint(shape.end, center, action)
       const normalized = normalizeRectPoints(a, b)
       return {
         ...shape,
         start: normalized.start,
-        end: normalized.end
+        end: normalized.end,
+        scale: action === 'scale-up' || action === 'scale-down' ? (shape.scale ?? 1) * scaleFactor : shape.scale,
+        rotation: shape.rotation,
+        flipX: shape.flipX,
+        flipY: shape.flipY
       }
     }
     case 'text':
       return {
         ...shape,
         position: transformPoint(shape.position, center, action),
+        scale: (shape.scale ?? 1) * scaleFactor,
         rotation: nextRotation(shape.rotation, action),
         flipX: nextFlipX(shape.flipX, action),
         flipY: nextFlipY(shape.flipY, action)

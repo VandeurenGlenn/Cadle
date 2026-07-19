@@ -8,12 +8,14 @@ import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/row.js'
 
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
-import { download, save, share, upload, importPlan } from '../../api/project.js'
+import { download, share, upload, importPlan } from '../../api/project.js'
 import { map } from '@vandeurenglenn/lite/map.js'
 import { render } from 'lit-html'
+import pubsub from '../../pubsub.js'
 @customElement('project-actions')
 export class ProjectActions extends LiteElement {
   lastAction: string = ''
+  #menuZIndex = 12040
   actions = {
     file: [
       {
@@ -35,11 +37,6 @@ export class ProjectActions extends LiteElement {
         title: 'download project',
         action: 'download',
         icon: 'download'
-      },
-      {
-        title: 'save project',
-        action: 'save',
-        icon: 'save'
       },
       {
         title: 'new from template',
@@ -77,10 +74,38 @@ export class ProjectActions extends LiteElement {
         icon: 'share'
       },
       {
+        title: 'edit project details',
+        action: 'edit-project-details',
+        icon: 'edit'
+      },
+      {
         title: 'history panel',
         action: 'toggle-history-panel',
         icon: 'menu'
       }
+    ],
+    draw: [
+      { title: 'A4 portrait', action: 'draw-paper-a4-portrait', icon: 'height' },
+      { title: 'A4 landscape', action: 'draw-paper-a4-landscape', icon: 'width' },
+      { title: 'A3 portrait', action: 'draw-paper-a3-portrait', icon: 'height' },
+      { title: 'A3 landscape', action: 'draw-paper-a3-landscape', icon: 'width' },
+      { title: 'Margin +1 mm', action: 'draw-margin-inc', icon: 'swap-horiz' },
+      { title: 'Margin -1 mm', action: 'draw-margin-dec', icon: 'swap-horiz' },
+      { title: 'Lighting preset', action: 'draw-onewire-lighting', icon: 'electrical_services' },
+      { title: 'Sockets preset', action: 'draw-onewire-sockets', icon: 'electrical_services' },
+      { title: 'Motor preset', action: 'draw-onewire-motor', icon: 'electrical_services' },
+      { title: 'Add breaker', action: 'draw-onewire-compose-breaker', icon: 'add' },
+      { title: 'Add switch', action: 'draw-onewire-compose-switch', icon: 'add' },
+      { title: 'Add kamrail', action: 'draw-onewire-compose-kamrail', icon: 'add' },
+      { title: 'Add load', action: 'draw-onewire-compose-load', icon: 'add' },
+      { title: 'Next circuit', action: 'draw-onewire-next', icon: 'polyline' },
+      { title: 'New panel', action: 'draw-onewire-reset-panel', icon: 'layers' },
+      { title: 'Realign one-wire', action: 'draw-onewire-realign', icon: 'align_horizontal_left' },
+      { title: 'Export JSON', action: 'draw-export-json', icon: 'download' },
+      { title: 'Export PDF', action: 'draw-export-pdf', icon: 'save' },
+      { title: 'Print', action: 'draw-print-svg', icon: 'save' },
+      { title: 'Import JSON', action: 'draw-import-json', icon: 'upload_file' },
+      { title: 'Clear drawing', action: 'draw-clear', icon: 'delete' }
     ],
     help: [
       {
@@ -95,19 +120,19 @@ export class ProjectActions extends LiteElement {
 
   @query('custom-dropdown') accessor dropdown!: CustomDropdown
 
-  #openMenu(kind: 'file' | 'help', target: HTMLElement) {
+  #openMenu(kind: 'file' | 'draw' | 'help', target: HTMLElement) {
     const { left, bottom } = target.getBoundingClientRect()
     this.dropdown.style.position = 'fixed'
     this.dropdown.style.left = `${left}px`
     this.dropdown.style.top = `${bottom}px`
-    this.dropdown.style.zIndex = '10020'
+    this.dropdown.style.zIndex = String(this.#menuZIndex)
     if (kind === 'file') {
       render(this._fileDropDownTemplate(), this.dropdown)
+    } else if (kind === 'draw') {
+      render(this._drawDropDownTemplate(), this.dropdown)
     } else {
       render(this._helpDropDownTemplate(), this.dropdown)
     }
-
-    console.log('open menu', { kind, left, bottom })
 
     this.dropdown.open = true
     this.lastAction = kind
@@ -117,9 +142,6 @@ export class ProjectActions extends LiteElement {
     switch (action) {
       case 'import-pdf':
         importPlan()
-        break
-      case 'save':
-        save()
         break
       case 'new-from-template':
         cadleShell.openTemplateLibrary()
@@ -145,8 +167,74 @@ export class ProjectActions extends LiteElement {
       case 'share':
         share()
         break
+      case 'edit-project-details':
+        cadleShell.openProjectDetailsDialog()
+        break
       case 'toggle-history-panel':
         cadleShell.toggleHistoryPanel()
+        break
+      case 'draw-paper-a4-portrait':
+        pubsub.publish('native.controls.command', { paper: 'a4-portrait' })
+        break
+      case 'draw-paper-a4-landscape':
+        pubsub.publish('native.controls.command', { paper: 'a4-landscape' })
+        break
+      case 'draw-paper-a3-portrait':
+        pubsub.publish('native.controls.command', { paper: 'a3-portrait' })
+        break
+      case 'draw-paper-a3-landscape':
+        pubsub.publish('native.controls.command', { paper: 'a3-landscape' })
+        break
+      case 'draw-margin-inc':
+        pubsub.publish('native.controls.command', { action: 'margin-inc' })
+        break
+      case 'draw-margin-dec':
+        pubsub.publish('native.controls.command', { action: 'margin-dec' })
+        break
+      case 'draw-onewire-lighting':
+        pubsub.publish('native.controls.command', { onewirePreset: 'lighting' })
+        break
+      case 'draw-onewire-sockets':
+        pubsub.publish('native.controls.command', { onewirePreset: 'sockets' })
+        break
+      case 'draw-onewire-motor':
+        pubsub.publish('native.controls.command', { onewirePreset: 'motor' })
+        break
+      case 'draw-onewire-compose-breaker':
+        pubsub.publish('native.controls.command', { onewireCompose: 'breaker' })
+        break
+      case 'draw-onewire-compose-switch':
+        pubsub.publish('native.controls.command', { onewireCompose: 'switch' })
+        break
+      case 'draw-onewire-compose-kamrail':
+        pubsub.publish('native.controls.command', { onewireCompose: 'kamrail' })
+        break
+      case 'draw-onewire-compose-load':
+        pubsub.publish('native.controls.command', { onewireCompose: 'load' })
+        break
+      case 'draw-onewire-next':
+        pubsub.publish('native.controls.command', { action: 'onewire-next' })
+        break
+      case 'draw-onewire-reset-panel':
+        pubsub.publish('native.controls.command', { action: 'onewire-reset-panel' })
+        break
+      case 'draw-onewire-realign':
+        pubsub.publish('native.controls.command', { action: 'onewire-realign' })
+        break
+      case 'draw-export-json':
+        pubsub.publish('native.controls.command', { action: 'export-json' })
+        break
+      case 'draw-export-pdf':
+        pubsub.publish('native.controls.command', { action: 'export-pdf' })
+        break
+      case 'draw-print-svg':
+        pubsub.publish('native.controls.command', { action: 'print-svg' })
+        break
+      case 'draw-import-json':
+        pubsub.publish('native.controls.command', { action: 'import-json' })
+        break
+      case 'draw-clear':
+        pubsub.publish('native.controls.command', { action: 'clear' })
         break
       case 'create':
         location.hash = '#!/create-project'
@@ -164,8 +252,7 @@ export class ProjectActions extends LiteElement {
 
   #toggleMenu = (event: Event) => {
     const target = event.currentTarget as HTMLElement | null
-    const action = target?.getAttribute('data-action') as 'file' | 'help' | null
-    console.log('toggle menu', { action, target })
+    const action = target?.getAttribute('data-action') as 'file' | 'draw' | 'help' | null
     if (!target || !action) return
     if (this.dropdown.open && this.lastAction === action) {
       this.dropdown.open = false
@@ -200,7 +287,7 @@ export class ProjectActions extends LiteElement {
               <custom-icon
                 slot="start"
                 .icon=${action.icon}></custom-icon>
-              <span slot="end">${action.title}</span>
+              <span>${action.title}</span>
             </custom-list-item>
           `
         )}
@@ -222,8 +309,56 @@ export class ProjectActions extends LiteElement {
               <custom-icon
                 slot="start"
                 .icon=${action.icon}></custom-icon>
-              <span slot="end">${action.title}</span>
+              <span>${action.title}</span>
             </custom-list-item>
+          `
+        )}
+      </custom-menu>
+    `
+  }
+
+  _drawDropDownTemplate() {
+    const groups = [
+      {
+        label: 'Paper',
+        items: this.actions.draw.filter(
+          (entry) => entry.action.startsWith('draw-paper') || entry.action.startsWith('draw-margin')
+        )
+      },
+      {
+        label: 'One-wire',
+        items: this.actions.draw.filter((entry) => entry.action.startsWith('draw-onewire'))
+      },
+      {
+        label: 'Export',
+        items: this.actions.draw.filter((entry) =>
+          ['draw-export-json', 'draw-export-pdf', 'draw-print-svg', 'draw-import-json', 'draw-clear'].includes(
+            entry.action
+          )
+        )
+      }
+    ]
+    let tabindex = 1
+    return html`
+      <custom-menu class="draw-menu">
+        ${groups.map(
+          (group) => html`
+            <div class="menu-group-label">${group.label}</div>
+            ${map(
+              group.items,
+              (action) => html`
+                <custom-list-item
+                  title=${action.title}
+                  data-action=${action.action}
+                  @click=${this.#onMenuItemClick}
+                  tabindex=${tabindex++}>
+                  <custom-icon
+                    slot="start"
+                    .icon=${action.icon}></custom-icon>
+                  <span>${action.title}</span>
+                </custom-list-item>
+              `
+            )}
           `
         )}
       </custom-menu>
@@ -237,6 +372,11 @@ export class ProjectActions extends LiteElement {
           data-action="file"
           @click=${this.#toggleMenu}
           >File</md-text-button
+        >
+        <md-text-button
+          data-action="draw"
+          @click=${this.#toggleMenu}
+          >Draw</md-text-button
         >
         <md-text-button
           data-action="help"

@@ -76,6 +76,7 @@ type NativeAppElement = HTMLElement & {
   analyzeBindings?: () => CircuitAnalysis
   getBOMRows?: () => BomRow[]
   generateAutoOneWire?: () => { generated: boolean; circuitCount: number; message?: string }
+  waitForPageReady?: (pageKey: string) => Promise<boolean>
 }
 
 type ShellProjectStore = {
@@ -957,6 +958,11 @@ export class AppShell extends LiteElement {
 
     await this.loadPage(oneWirePage[0])
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    const pageReady = await nativeApp?.waitForPageReady?.(oneWirePage[0])
+    if (!pageReady) {
+      globalThis.alert('The one-wire page did not finish loading. Please try again.')
+      return
+    }
     const result = nativeApp?.generateAutoOneWire?.()
     if (!result?.generated) globalThis.alert(result?.message ?? 'Unable to generate the one-wire diagram.')
   }

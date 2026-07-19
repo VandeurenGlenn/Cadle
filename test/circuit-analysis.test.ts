@@ -120,3 +120,21 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
     'switch'
   )
 })
+
+test('excludes symbols explicitly opted out of one-wire generation', () => {
+  const excluded = {
+    ...symbol('annotation', 'A1', 'Floor-plan annotation', 'symbols/custom/annotation.svg'),
+    electrical: {
+      role: 'load' as const,
+      oneWireEligible: false,
+      circuitType: 'other' as const
+    }
+  }
+  const analysis = analyzeCircuits([
+    excluded,
+    symbol('lamp', 'B1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')
+  ])
+
+  assert.deepEqual(analysis.groups.map((group) => group.bindingId), ['B1'])
+  assert.equal(analysis.valid, true)
+})

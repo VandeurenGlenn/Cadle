@@ -303,6 +303,7 @@ export class CadleApp extends LiteElement {
   #pageKey: UUID | null = null
   #project: Project | null = null
   #persistPromise: Promise<void> = Promise.resolve()
+  #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
   // Wall click-chain state
   #wallChain: { startPoint: Point } | null = null
@@ -437,7 +438,7 @@ export class CadleApp extends LiteElement {
     pubsub.subscribe('native.object.delete', this.#onNativeObjectDelete)
     pubsub.subscribe('native.object.flip-side', this.#onNativeObjectFlipSide)
     pubsub.subscribe('native.controls.command', this.#onNativeControlsCommand)
-    void this.#initialize()
+    this.#startInitialize()
   }
 
   disconnectedCallback() {
@@ -1094,6 +1095,15 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
+  #startInitialize() {
+    this.#initializePromise = this.#initialize()
+  }
+
+  async waitForPageReady(pageKey: string): Promise<boolean> {
+    await this.#initializePromise
+    return this.#pageKey === pageKey
+  }
+
   #persist() {
     const payload = this.#nativeDocumentState()
 
@@ -1141,7 +1151,7 @@ export class CadleApp extends LiteElement {
 
   #onHashChange = () => {
     if (!this.#connected) return
-    void this.#initialize()
+    this.#startInitialize()
   }
 
   #applyPersistedState(parsed: Partial<NativeDocumentState>) {
@@ -2711,8 +2721,13 @@ export class CadleApp extends LiteElement {
     }
 
     const analysis = this.analyzeBindings()
-    if (!analysis.totalGroups) {
-      return { generated: false, circuitCount: 0, message: 'No bound floor-plan symbols were found.' }
+    if (!analysis.valid) {
+      const detail = analysis.issues.find((issue) => issue.severity === 'error')?.message
+      return {
+        generated: false,
+        circuitCount: analysis.totalGroups,
+        message: detail ?? 'No valid bound floor-plan circuits were found.'
+      }
     }
 
     this.#shapes = this.#shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))

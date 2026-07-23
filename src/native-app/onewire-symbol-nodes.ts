@@ -42,6 +42,16 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: { viewBox: { width: 11.6776, height: 20.8268 }, node: { x: 5.835, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
+    match: /Custom breaker\.svg$/i,
+    spec: {
+      viewBox: { width: 24, height: 32 },
+      node: { x: 12, y: 31.2 },
+      cutRadius: 0,
+      oneWireScale: 2.25,
+      rotation: 0
+    }
+  },
+  {
     match: /switches\/single pole illuminated switch\.svg$/i,
     spec: { viewBox: { width: 6.82076, height: 13.368 }, node: { x: 2.955, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
@@ -67,7 +77,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /consumption appliances\/lighting\.svg$/i,
     spec: {
       viewBox: { width: 11.6358, height: 11.6358 },
-      node: { x: 5.8179, y: 5.8179 },
+      node: { x: 2, y: 5.8179 },
       cutRadius: null,
       oneWireScale: 1.15
     }
@@ -77,7 +87,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /consumption appliances\/recessed spotlight\.svg$/i,
     spec: {
       viewBox: { width: 13.2, height: 13.2 },
-      node: { x: 6.6, y: 6.6 },
+      node: { x: 2, y: 6.6 },
       cutRadius: null,
       oneWireScale: 0.82
     }
@@ -89,7 +99,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 22.9172, height: 14.4132 },
       // Keep wall light centered on the branch axis and let the branch pass
       // through to avoid asymmetric edge-cut artifacts after rotation.
-      node: { x: 11.4586, y: 7.2066 },
+      node: { x: 6, y: 7.2066 },
       cutRadius: null,
       oneWireScale: 1.7,
       rotation: 90
@@ -101,9 +111,9 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /consumption appliances\/projector with (little )?divergent beam\.svg$/i,
     spec: {
       viewBox: { width: 26.5538, height: 24.5211 },
-      node: { x: 13.2769, y: 12.26056 },
+      node: { x: 4, y: 12.26056 },
       cutRadius: null,
-      oneWireScale: 0.92
+      oneWireScale: 1.3
     }
   },
   {
@@ -116,6 +126,16 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       cutRadius: 2.955,
       oneWireScale: 1.5,
       rotation: 90
+    }
+  },
+  {
+    // Breaker anchors to its bottom terminal so it sits above the rail.
+    match: /protection devices\/automaat\.svg$/i,
+    spec: {
+      viewBox: { width: 28.783, height: 28.8265 },
+      node: { x: 15.0236, y: 28.47 },
+      cutRadius: 2.83465,
+      oneWireScale: 1
     }
   },
   {

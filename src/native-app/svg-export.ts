@@ -287,10 +287,13 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
     case 'text':
       const textFillAttr = `fill="${escapeHtml(shape.fill ?? '#2b2622')}"`
       const textStrokeAttr = shape.stroke ? ` stroke="${escapeHtml(shape.stroke)}"` : ''
+      const fontFamilyStyle = shape.fontFamily ? `font-family: ${shape.fontFamily}; ` : ''
+      const letterSpacingStyle =
+        typeof shape.letterSpacing === 'number' ? `letter-spacing: ${shape.letterSpacing}px; ` : ''
       const textStyle =
         typeof shape.strokeWidth === 'number'
-          ? `font-size: ${18 * (shape.scale ?? 1)}px; stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;`
-          : `font-size: ${18 * (shape.scale ?? 1)}px;`
+          ? `${fontFamilyStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px; stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;`
+          : `${fontFamilyStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px;`
       return `
           <text
             class="shape shape-text ${extraClass}"

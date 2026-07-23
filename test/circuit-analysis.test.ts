@@ -3,6 +3,7 @@ import test from 'node:test'
 import { analyzeCircuits, bomRowsToCsv, circuitBomRows } from '../src/native-app/circuit-analysis.ts'
 import type { Shape } from '../src/native-draw/types.ts'
 import { electricalMetadataFromCatalog } from '../src/native-draw/electrical.ts'
+import { asNativeState } from '../src/native-project-data.ts'
 
 const symbol = (id: string, bindingId: string, name: string, path: string): Shape => ({
   id,
@@ -14,8 +15,25 @@ const symbol = (id: string, bindingId: string, name: string, path: string): Shap
   path
 })
 
+test('ignores persisted selection ids so restored documents start unselected', () => {
+  const state = asNativeState({
+    version: 1,
+    shapes: [],
+    selectedId: 'shape-1',
+    paperPreset: 'a4-landscape',
+    printMargin: 0,
+    worldWidth: 1000,
+    worldHeight: 1000
+  })
+
+  assert.equal(state?.selectedId, null)
+})
+
 test('groups floor-plan devices and ignores generated one-wire geometry', () => {
-  const generated = { ...symbol('generated', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'), groupId: 'onewire-1' }
+  const generated = {
+    ...symbol('generated', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'),
+    groupId: 'onewire-1'
+  }
   const analysis = analyzeCircuits([
     symbol('switch', 'a1', 'Switch', 'symbols/Switches/Switch general symbol.svg'),
     symbol('lamp-1', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'),
@@ -58,7 +76,9 @@ test('reports malformed binding IDs instead of silently dropping devices', () =>
 })
 
 test('exports escaped BOM rows as CSV', () => {
-  const analysis = analyzeCircuits([symbol('load', 'A1', 'Lamp, pendant', 'symbols/Consumption appliances/Lighting.svg')])
+  const analysis = analyzeCircuits([
+    symbol('load', 'A1', 'Lamp, pendant', 'symbols/Consumption appliances/Lighting.svg')
+  ])
   const csv = bomRowsToCsv(circuitBomRows(analysis))
   assert.match(csv, /^Binding ID,Family,Switches,Loads,Other,Total,Components/m)
   assert.match(csv, /"Lamp, pendant"/)
@@ -118,10 +138,7 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       cableSectionMm2: 2.5
     }
   )
-  assert.equal(
-    electricalMetadataFromCatalog(undefined, 'Wall switch', 'symbols/Switches/general.svg').role,
-    'switch'
-  )
+  assert.equal(electricalMetadataFromCatalog(undefined, 'Wall switch', 'symbols/Switches/general.svg').role, 'switch')
 })
 
 test('excludes symbols explicitly opted out of one-wire generation', () => {
@@ -138,7 +155,10 @@ test('excludes symbols explicitly opted out of one-wire generation', () => {
     symbol('lamp', 'B1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')
   ])
 
-  assert.deepEqual(analysis.groups.map((group) => group.bindingId), ['B1'])
+  assert.deepEqual(
+    analysis.groups.map((group) => group.bindingId),
+    ['B1']
+  )
   assert.equal(analysis.valid, true)
 })
 

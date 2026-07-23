@@ -41,6 +41,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
 import './elements/actions/project-actions.js'
+import './elements/actions/onewire-actions.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
@@ -527,6 +528,16 @@ export class AppShell extends LiteElement {
     this.actions.show()
   }
 
+  #registerServiceWorker = async () => {
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) return
+
+    try {
+      await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), { scope: './' })
+    } catch (error) {
+      console.warn('Failed to register service worker', error)
+    }
+  }
+
   async connectedCallback(): Promise<void> {
     if (super.connectedCallback) await super.connectedCallback()
     // const entries = await this.projectStore.entries()
@@ -545,6 +556,7 @@ export class AppShell extends LiteElement {
     //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
     // }
     await import('./elements/actions/actions.js')
+    void this.#registerServiceWorker()
     await ensureCustomCatalogLoaded()
     try {
       const manifestCandidates = [
@@ -1182,6 +1194,7 @@ export class AppShell extends LiteElement {
           <main class="center-stage">
             <div class="center-stage-toolbar">
               <cadle-actions></cadle-actions>
+              <onewire-actions></onewire-actions>
               ${this.loadedPage && this.project?.pages?.[this.loadedPage]
                 ? html`<span style="font-size: 14px; color: var(--md-sys-color-on-surface-variant);"
                     >${this.project.pages[this.loadedPage].name}</span

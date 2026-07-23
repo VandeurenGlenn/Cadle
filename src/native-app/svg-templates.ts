@@ -173,7 +173,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
           class=${shapeClass}
           data-shape-id=${shape.id}
           data-selected=${selectedAttr}
-          stroke=${shape.stroke ?? 'var(--cadle-accent)'}
+          stroke=${shape.stroke ?? (shape.kind === 'wall' ? '#000000' : 'var(--cadle-accent)')}
           style=${strokeWidthStyle}
           x1=${shape.start.x}
           y1=${shape.start.y}

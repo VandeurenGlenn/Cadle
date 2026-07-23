@@ -19,6 +19,7 @@ export type ProjectInput = {
   installer: {
     name: string
     lastname: string
+    btw?: string
   }
   company: string
   address: {
@@ -27,6 +28,8 @@ export type ProjectInput = {
     postalCode: string
     city: string
   }
+  eanCode?: string
+  mainFuseA?: number
 }
 
 export interface Project extends ProjectInput {

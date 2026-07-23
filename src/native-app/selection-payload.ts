@@ -27,6 +27,8 @@ export type NativeSelectionShapePayload = {
   stroke?: string
   canSetStrokeWidth?: boolean
   strokeWidth?: number
+  fontFamily?: string
+  letterSpacing?: number
   x?: number
   y?: number
 }
@@ -152,6 +154,14 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.canSetStrokeWidth = true
     shapePayload.strokeWidth =
       typeof selectedShape.strokeWidth === 'number' ? selectedShape.strokeWidth : defaultStrokeWidth
+  }
+  if (selectedShape.kind === 'text') {
+    if ('fontFamily' in selectedShape && typeof selectedShape.fontFamily === 'string') {
+      shapePayload.fontFamily = selectedShape.fontFamily
+    }
+    if ('letterSpacing' in selectedShape && typeof selectedShape.letterSpacing === 'number') {
+      shapePayload.letterSpacing = selectedShape.letterSpacing
+    }
   }
   const bounds = shapeBounds(selectedShape)
   shapePayload.x = bounds.x + bounds.width / 2

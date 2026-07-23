@@ -50,6 +50,9 @@ export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalo
   if (typeof defaults.strokeWidth === 'number' && Number.isFinite(defaults.strokeWidth)) {
     shape.strokeWidth = Math.max(0.5, Math.min(40, defaults.strokeWidth))
   }
+  if (Array.isArray(symbol.shapes) && symbol.shapes.length > 0) {
+    shape.catalogShapes = symbol.shapes
+  }
   return shape
 }
 

@@ -187,6 +187,9 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       const electrical = sanitizeElectricalMetadata(raw.electrical)
       if (electrical) symbol.electrical = electrical
       if (isPoint(raw.bindingLabelOffset)) symbol.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
+      if (Array.isArray(raw.catalogShapes)) {
+        symbol.catalogShapes = sanitizeShapes(raw.catalogShapes)
+      }
       shapes.push(symbol)
       continue
     }

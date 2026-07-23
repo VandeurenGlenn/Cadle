@@ -188,6 +188,28 @@ custom-button:active {
   box-shadow: var(--cadle-focus-ring);
 }
 
+.native-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-md);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-medium);
+  padding: 8px 10px;
+  outline: none;
+  cursor: pointer;
+}
+
+.native-select:focus {
+  box-shadow: var(--cadle-focus-ring);
+}
+
+.native-select option {
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+}
+
 .native-chip-row {
   display: flex;
   flex-wrap: wrap;

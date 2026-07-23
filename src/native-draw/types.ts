@@ -62,6 +62,8 @@ export type TextShape = {
   strokeWidth?: number
   flipX?: boolean
   flipY?: boolean
+  fontFamily?: string
+  letterSpacing?: number
   bindingId?: string
   groupId?: string
   bindingLabelOffset?: { x: number; y: number }
@@ -85,6 +87,7 @@ export type SymbolShape = {
   bindingId?: string
   groupId?: string
   bindingLabelOffset?: { x: number; y: number }
+  catalogShapes?: Shape[]
 }
 
 export type ImageShape = {
@@ -113,6 +116,7 @@ export type NativeCatalogPick = {
   name: string
   path: string
   metadata?: Record<string, unknown>
+  shapes?: Shape[]
 }
 
 export type Snapshot = {

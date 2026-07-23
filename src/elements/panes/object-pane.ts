@@ -16,6 +16,29 @@ type SymbolTextField = {
   value: string
 }
 
+const SYSTEM_FONTS = [
+  'Arial',
+  'Helvetica',
+  'Times New Roman',
+  'Courier New',
+  'Georgia',
+  'Verdana',
+  'Trebuchet MS',
+  'Comic Sans MS',
+  'Impact',
+  'Palatino Linotype',
+  'Lucida Console',
+  'Tahoma',
+  'Lucida Grande',
+  'Segoe UI',
+  'Calibri',
+  'Menlo',
+  'Monaco',
+  'Consolas'
+]
+
+const GOOGLE_FONTS_URL = 'https://fonts.google.com'
+
 const inferBindingLabelSide = (offset: { x: number; y: number } | null): BindingLabelSide => {
   if (!offset) return 'auto'
   if (Math.abs(offset.x) >= Math.abs(offset.y)) return offset.x < 0 ? 'left' : 'right'
@@ -85,6 +108,12 @@ export class ObjectPane extends LiteElement {
   private accessor _nativeY: number | null = null
 
   @property({ type: String, attribute: false })
+  private accessor _nativeFontFamily = ''
+
+  @property({ type: Number, attribute: false })
+  private accessor _nativeLetterSpacing: number | null = null
+
+  @property({ type: String, attribute: false })
   private accessor _nativeBindingLabelSide: BindingLabelSide = 'right'
 
   @query('.native-binding-input')
@@ -135,6 +164,8 @@ export class ObjectPane extends LiteElement {
       stroke?: string
       canSetStrokeWidth?: boolean
       strokeWidth?: number
+      fontFamily?: string
+      letterSpacing?: number
       x?: number
       y?: number
       bindingLabelOffset?: { x: number; y: number }
@@ -162,6 +193,8 @@ export class ObjectPane extends LiteElement {
       this._nativeStrokeWidth = null
       this._nativeX = null
       this._nativeY = null
+      this._nativeFontFamily = ''
+      this._nativeLetterSpacing = null
       this._nativeBindingLabelSide = 'auto'
       return
     }
@@ -200,6 +233,11 @@ export class ObjectPane extends LiteElement {
         : null
     this._nativeX = typeof payload.shape.x === 'number' && Number.isFinite(payload.shape.x) ? payload.shape.x : null
     this._nativeY = typeof payload.shape.y === 'number' && Number.isFinite(payload.shape.y) ? payload.shape.y : null
+    this._nativeFontFamily = typeof payload.shape.fontFamily === 'string' ? payload.shape.fontFamily : ''
+    this._nativeLetterSpacing =
+      typeof payload.shape.letterSpacing === 'number' && Number.isFinite(payload.shape.letterSpacing)
+        ? payload.shape.letterSpacing
+        : null
     this._nativeBindingLabelSide = inferBindingLabelSide(payload.shape.bindingLabelOffset ?? null)
     this._activeObjectLabel = kind.charAt(0).toUpperCase() + kind.slice(1)
   }
@@ -342,6 +380,20 @@ export class ObjectPane extends LiteElement {
     if (!Number.isFinite(raw)) return
     this._nativeY = raw
     pubsub.publish('native.object.update', { y: raw })
+  }
+
+  #onFontFamilyInput = (event: Event) => {
+    const input = event.target as HTMLInputElement | null
+    this._nativeFontFamily = input?.value ?? ''
+    pubsub.publish('native.object.update', { fontFamily: this._nativeFontFamily })
+  }
+
+  #onLetterSpacingInput = (event: Event) => {
+    const input = event.target as HTMLInputElement | null
+    const raw = Number(input?.value ?? 0)
+    if (!Number.isFinite(raw)) return
+    this._nativeLetterSpacing = raw
+    pubsub.publish('native.object.update', { letterSpacing: raw })
   }
 
   #flipNativeShape = () => {
@@ -527,6 +579,54 @@ export class ObjectPane extends LiteElement {
                 .value=${this._nativeText}
                 @input=${this.#onTextInput}
                 placeholder="Label" />
+              <label class="native-label">Font family</label>
+              <div class="native-row">
+                <select
+                  class="native-input native-select"
+                  .value=${this._nativeFontFamily}
+                  @change=${(event: Event) => {
+                    const select = event.target as HTMLSelectElement | null
+                    if (!select) return
+                    const value = select.value
+                    if (value === '__import__') {
+                      window.open(GOOGLE_FONTS_URL, '_blank')
+                      select.value = this._nativeFontFamily
+                    } else {
+                      this._nativeFontFamily = value
+                      pubsub.publish('native.object.update', { fontFamily: value })
+                    }
+                  }}>
+                  <option value="">—</option>
+                  ${SYSTEM_FONTS.map((font) => html`<option value=${font}>${font}</option>`)}
+                  <option
+                    value="__import__"
+                    style="font-style: italic;">
+                    + Import from Google Fonts
+                  </option>
+                </select>
+              </div>
+              <input
+                type="text"
+                class="native-input"
+                .value=${this._nativeFontFamily}
+                @input=${this.#onFontFamilyInput}
+                placeholder="Custom font (e.g. 'Open Sans')" />
+              ${this._nativeLetterSpacing !== null
+                ? html`
+                    <label class="native-label">Letter spacing</label>
+                    <div class="native-row">
+                      <input
+                        type="number"
+                        class="native-input native-input-sm"
+                        min="-10"
+                        max="10"
+                        step="0.1"
+                        .value=${String(this._nativeLetterSpacing)}
+                        @change=${this.#onLetterSpacingInput} />
+                      <span class="native-unit">px</span>
+                    </div>
+                  `
+                : ''}
             `
           : ''}
         ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.length > 0

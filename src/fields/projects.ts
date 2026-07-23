@@ -26,6 +26,7 @@ export class ProjectsField extends LiteElement {
 
   _currentSelected
   _transitionEnd?: () => void
+  _reopenPromptFocusedButton: 'open' | 'dismiss' = 'open'
   static styles = [styles]
 
   async connectedCallback(): Promise<void> {
@@ -49,6 +50,44 @@ export class ProjectsField extends LiteElement {
   #onReopenPreviousProjectPrompt = (payload: { open?: boolean; projectName?: string }) => {
     this.showReopenPreviousProjectPrompt = Boolean(payload?.open)
     this.previousProjectName = String(payload?.projectName ?? '')
+    if (payload?.open) {
+      // Reset focus when prompt opens
+      this._reopenPromptFocusedButton = 'open'
+      // Set up keyboard listener for the prompt
+      setTimeout(() => {
+        const openBtn = this.shadowRoot?.querySelector(
+          '.projects-reopen-actions md-filled-button'
+        ) as HTMLElement | null
+        openBtn?.focus()
+      }, 0)
+    }
+  }
+
+  #handleReopenPromptKeydown = (event: KeyboardEvent) => {
+    if (!this.showReopenPreviousProjectPrompt) return
+
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      // Toggle between open and dismiss buttons
+      this._reopenPromptFocusedButton = this._reopenPromptFocusedButton === 'open' ? 'dismiss' : 'open'
+      // Move focus to the newly selected button
+      setTimeout(() => {
+        const selector =
+          this._reopenPromptFocusedButton === 'open'
+            ? '.projects-reopen-actions md-filled-button'
+            : '.projects-reopen-actions md-outlined-button'
+        const btn = this.shadowRoot?.querySelector(selector) as HTMLElement | null
+        btn?.focus()
+      }, 0)
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      // Activate the focused button
+      if (this._reopenPromptFocusedButton === 'open') {
+        void this.#openPreviousProjectFromPrompt()
+      } else {
+        this.#dismissPreviousProjectPrompt()
+      }
+    }
   }
 
   #openPreviousProjectFromPrompt = async () => {
@@ -193,12 +232,22 @@ export class ProjectsField extends LiteElement {
         </div>
         ${this.showReopenPreviousProjectPrompt
           ? html`
-              <section class="projects-reopen-bubble">
+              <section
+                class="projects-reopen-bubble"
+                @keydown=${this.#handleReopenPromptKeydown}>
                 <div class="projects-reopen-title">Open previous project?</div>
                 <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
                 <div class="projects-reopen-actions">
-                  <md-filled-button @click=${this.#openPreviousProjectFromPrompt}>Open</md-filled-button>
-                  <md-outlined-button @click=${this.#dismissPreviousProjectPrompt}>Dismiss</md-outlined-button>
+                  <md-filled-button
+                    @click=${this.#openPreviousProjectFromPrompt}
+                    ?data-focused=${this._reopenPromptFocusedButton === 'open'}
+                    >Open</md-filled-button
+                  >
+                  <md-outlined-button
+                    @click=${this.#dismissPreviousProjectPrompt}
+                    ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
+                    >Dismiss</md-outlined-button
+                  >
                 </div>
               </section>
             `

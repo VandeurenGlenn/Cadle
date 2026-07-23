@@ -9,6 +9,7 @@ export const isProjectLogoVisible = (_project: Project | null): boolean => false
 export type ProjectTitleBlockRow = {
   label: string
   value: string
+  subValue?: string
 }
 
 export type ProjectTitleBlockData = {
@@ -39,11 +40,14 @@ const combinedValue = (...parts: Array<string | null | undefined>): string =>
       .join(' ')
   )
 
-const addressValue = (project: Project | null): string => {
+const addressStreet = (project: Project | null): string => {
   if (!project) return '—'
-  const streetLine = combinedValue(project.address?.street, project.address?.number)
-  const cityLine = combinedValue(project.address?.postalCode, project.address?.city)
-  return [streetLine, cityLine].filter((part) => part !== '—').join(' • ') || '—'
+  return combinedValue(project.address?.street, project.address?.number)
+}
+
+const addressCity = (project: Project | null): string => {
+  if (!project) return ''
+  return combinedValue(project.address?.postalCode, project.address?.city)
 }
 
 const formatDate = (): string =>
@@ -68,9 +72,10 @@ const pageNumberLabel = (project: Project | null, currentPageKey: string, pageNa
 }
 
 export const getProjectTitleBlockData = (project: Project | null, pageName: string): ProjectTitleBlockData => {
+  const city = addressCity(project)
   const rows: ProjectTitleBlockRow[] = [
     { label: 'Klant', value: combinedValue(project?.customer?.name, project?.customer?.lastname) },
-    { label: 'Adres', value: addressValue(project) },
+    { label: 'Adres', value: addressStreet(project), subValue: city || undefined },
     { label: 'Datum', value: formatDate() }
   ]
 
@@ -162,33 +167,41 @@ export const buildProjectTitleBlockMarkup = (
   const pageIndicator = pageNumberLabel(project, currentPageKey, pageName)
   const pageTitle = displayValue(pageName)
   const bounds = getProjectTitleBlockBounds(worldWidth, worldHeight, layoutScale, originX, originY)
-  const innerX = bounds.x + 14
-  const warningY = bounds.y + 16
-  const top = bounds.y + 36
+  const innerX = bounds.x + 16 * layoutScale
+  const warningY = bounds.y + 18 * layoutScale
+  const top = bounds.y + 40 * layoutScale
   const labelX = innerX
-  const valueX = innerX + 92
-  const bottomY = bounds.y + bounds.height - 12
+  const valueX = innerX + 112 * layoutScale
+  const bottomY = bounds.y + bounds.height - 14 * layoutScale
   const availableRowsHeight = Math.max(0, bottomY - top)
   const rowSpacing = rows.length > 1 ? availableRowsHeight / (rows.length - 1) : 0
 
   const rowsMarkup = rows
     .map((row, index) => {
-      const y = top + index * rowSpacing
+      const subDy = 28 * layoutScale
+      // Shift rows with a sub-line up by half the sub-line dy so the two-line
+      // block is vertically centred in its slot rather than top-aligned.
+      const yOffset = row.subValue ? subDy / 2 : 0
+      const y = top + index * rowSpacing - yOffset
+      const subLine = row.subValue
+        ? `<tspan x="${valueX}" dy="${subDy}">${escapeText(toPrintUpper(row.subValue))}</tspan>`
+        : ''
       return `
-        <text x="${labelX}" y="${y}" font-family="Segoe UI, Arial, sans-serif" font-size="${13 * layoutScale}" font-weight="700" fill="#2d231c">${escapeText(toPrintUpper(row.label))}</text>
-        <text x="${valueX}" y="${y}" font-family="Segoe UI, Arial, sans-serif" font-size="${13 * layoutScale}" font-weight="600" fill="#151110">${escapeText(toPrintUpper(row.value))}</text>
+        <text x="${labelX}" y="${y}" font-family="Segoe UI, Arial, sans-serif" font-size="${24 * layoutScale}" font-weight="700" fill="#2d231c">${escapeText(toPrintUpper(row.label))}</text>
+        <text x="${valueX}" y="${y}" font-family="Segoe UI, Arial, sans-serif" font-size="${24 * layoutScale}" font-weight="500" fill="#151110">${escapeText(toPrintUpper(row.value))}${subLine}</text>
       `
     })
     .join('')
 
   const warningMarkup = missingRequiredFields.length
-    ? `<text x="${bounds.x + bounds.width - 14 * layoutScale}" y="${warningY}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${10 * layoutScale}" font-weight="700" fill="#b42318">ONTBREKENDE AREI-GEGEVENS</text>`
+    ? `<text x="${bounds.x + bounds.width - 14 * layoutScale}" y="${warningY}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${14 * layoutScale}" font-weight="700" fill="#b42318">ONTBREKENDE AREI-GEGEVENS</text>`
     : ''
 
   const pageMarkup = `
     <g class="project-page-section" data-project-page-section="true">
-      <text x="${pageBounds.x + pageBounds.width}" y="${pageBounds.y + 24 * layoutScale}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${8.5 * layoutScale}" font-weight="600" fill="#4a3c32">${escapeText(toPrintUpper(pageTitle))}</text>
-      <text x="${pageBounds.x + pageBounds.width}" y="${pageBounds.y + 48 * layoutScale}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${16 * layoutScale}" font-weight="700" fill="#151110">${escapeText(toPrintUpper(pageIndicator))}</text>
+      <rect x="${pageBounds.x}" y="${pageBounds.y}" width="${pageBounds.width}" height="${pageBounds.height}" rx="${7 * layoutScale}" ry="${7 * layoutScale}" fill="none" stroke="#3f352d" stroke-width="${1.4 * layoutScale}"/>
+      <text x="${pageBounds.x + pageBounds.width - 10 * layoutScale}" y="${pageBounds.y + 26 * layoutScale}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${22 * layoutScale}" font-weight="700" fill="#151110">${escapeText(toPrintUpper(pageTitle))}</text>
+      <text x="${pageBounds.x + pageBounds.width - 10 * layoutScale}" y="${pageBounds.y + 52 * layoutScale}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="${17 * layoutScale}" font-weight="600" fill="#4a3c32">${escapeText(toPrintUpper(pageIndicator))}</text>
     </g>
   `.trim()
 

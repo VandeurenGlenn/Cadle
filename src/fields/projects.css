@@ -172,3 +172,9 @@ custom-icon-button {
 .empty-state flex-row {
   margin-top: var(--cadle-space-4);
 }
+
+/* Keyboard navigation focus styling for reopen prompt buttons */
+.projects-reopen-actions md-filled-button[data-focused],
+.projects-reopen-actions md-outlined-button[data-focused] {
+  box-shadow: var(--cadle-focus-ring);
+}

@@ -126,8 +126,8 @@ export const buildOneWireCircuit = (
   const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, groupId)
 
   const shapes: Shape[] = [
-    // Binding-ID label above the load (topmost element)
-    createText(nextId(), { x: x - 10, y: loadTop - 20 }, bindingId, bindingId, groupId),
+    // Binding-ID label to the left of the busbar connection point
+    createText(nextId(), { x: x - 28, y: point.y + 3 }, bindingId, bindingId, groupId),
     // Feed line: bus bar → breaker bottom
     { id: nextId(), kind: 'line', start: point, end: { x, y: breakerBottom }, bindingId, groupId } as LineShape,
     ...breakerShapes,

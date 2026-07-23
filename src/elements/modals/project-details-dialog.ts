@@ -22,6 +22,9 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor houseNumber = ''
   @property({ type: String }) accessor postalCode = ''
   @property({ type: String }) accessor city = ''
+  @property({ type: String }) accessor installerBtw = ''
+  @property({ type: String }) accessor eanCode = ''
+  @property({ type: Number }) accessor mainFuseA = 0
   @property({ type: String }) accessor logoUrl = ''
   @property({ type: String }) accessor logoColor = ''
   @property({ type: Number }) accessor logoScale = 1
@@ -56,6 +59,9 @@ export class ProjectDetailsDialog extends LiteElement {
     this.houseNumber = this.project?.address?.number ?? ''
     this.postalCode = this.project?.address?.postalCode ?? ''
     this.city = this.project?.address?.city ?? ''
+    this.installerBtw = this.project?.installer?.btw ?? ''
+    this.eanCode = this.project?.eanCode ?? ''
+    this.mainFuseA = this.project?.mainFuseA ?? 0
   }
 
   #close = () => {
@@ -90,6 +96,15 @@ export class ProjectDetailsDialog extends LiteElement {
         break
       case 'city':
         this.city = value
+        break
+      case 'installerBtw':
+        this.installerBtw = value
+        break
+      case 'eanCode':
+        this.eanCode = value
+        break
+      case 'mainFuseA':
+        this.mainFuseA = Math.max(0, Number(value) || 0)
         break
       case 'logoUrl':
         this.logoUrl = value
@@ -183,6 +198,10 @@ export class ProjectDetailsDialog extends LiteElement {
     nextProject.address.number = this.houseNumber.trim()
     nextProject.address.postalCode = this.postalCode.trim()
     nextProject.address.city = this.city.trim()
+    if (!nextProject.installer) nextProject.installer = { name: '', lastname: '' }
+    nextProject.installer.btw = this.installerBtw.trim() || undefined
+    nextProject.eanCode = this.eanCode.trim() || undefined
+    nextProject.mainFuseA = this.mainFuseA > 0 ? this.mainFuseA : undefined
 
     await setProjectData(this.projectKey, nextProject)
     await set(this.projectKey, nextProject.name)
@@ -316,6 +335,33 @@ export class ProjectDetailsDialog extends LiteElement {
               .value=${this.city}
               data-field="city"
               @input=${this.#onMetaInput} />
+          </label>
+          <label>
+            <span>BTW / KBO installateur</span>
+            <input
+              .value=${this.installerBtw}
+              data-field="installerBtw"
+              @input=${this.#onMetaInput}
+              placeholder="BE 0xxx.xxx.xxx" />
+          </label>
+          <label>
+            <span>EAN-code (18 cijfers)</span>
+            <input
+              .value=${this.eanCode}
+              data-field="eanCode"
+              @input=${this.#onMetaInput}
+              placeholder="541448860000000000" />
+          </label>
+          <label>
+            <span>Hoofdzekering (A)</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              .value=${this.mainFuseA > 0 ? String(this.mainFuseA) : ''}
+              data-field="mainFuseA"
+              @input=${this.#onMetaInput}
+              placeholder="40" />
           </label>
         </div>
         <div class="footer">

@@ -59,7 +59,7 @@ const upgradeLegacyState = (state: LegacyNativeDocumentState | null): NativeDocu
       }
     : null
 
-const asNativeState = (value: unknown): NativeDocumentState | null => {
+export const asNativeState = (value: unknown): NativeDocumentState | null => {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<NativeDocumentState>
   if (!Array.isArray(candidate.shapes)) return null
@@ -78,7 +78,7 @@ const asNativeState = (value: unknown): NativeDocumentState | null => {
   return {
     version: 1,
     shapes: sanitizeShapes(candidate.shapes),
-    selectedId: typeof candidate.selectedId === 'string' ? (candidate.selectedId as UUID) : null,
+    selectedId: null,
     paperPreset: candidate.paperPreset,
     printMargin: candidate.printMargin,
     worldWidth: candidate.worldWidth,

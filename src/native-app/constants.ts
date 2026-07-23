@@ -3,14 +3,14 @@ import type { PaperPreset } from '../native-draw/types.js'
 export const LEGACY_STORAGE_KEY = 'cadle-native-drawing-v1'
 export const DEFAULT_WORLD_WIDTH = 2400
 export const DEFAULT_WORLD_HEIGHT = 1400
-export const GRID_SIZE = 20
+export const GRID_SIZE = 10
 export const DEFAULT_PRINT_MARGIN_MM = 10
 export const ONE_WIRE_BREAKER_WIDTH = 240
 export const ONE_WIRE_NODE_SIZE = 170
 export const ONE_WIRE_CIRCUIT_SPACING = 300
 export const PROJECT_TITLE_BLOCK_MARGIN = 28
-export const PROJECT_TITLE_BLOCK_WIDTH = 470
-export const PROJECT_TITLE_BLOCK_HEIGHT = 132
+export const PROJECT_TITLE_BLOCK_WIDTH = 560
+export const PROJECT_TITLE_BLOCK_HEIGHT = 174
 
 export type OneWirePreset = 'lighting' | 'sockets' | 'motor'
 

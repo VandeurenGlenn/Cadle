@@ -16,6 +16,7 @@ export default [
     input: [
       './src/shell.ts',
       './src/app.ts',
+      './src/sw.ts',
       './src/fields/projects.ts',
       './src/fields/settings.ts',
       './src/fields/create-project.ts',

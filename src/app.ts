@@ -71,6 +71,7 @@ import {
   isProjectLogoVisible,
   PROJECT_LOGO_SHAPE_ID
 } from './native-app/project-title-block.js'
+import { buildIntroPageSvg } from './native-app/intro-page.js'
 import {
   bindingLabelsTemplate,
   measurementTemplate,
@@ -150,10 +151,12 @@ const WHEEL_GESTURE_IDLE_MS = 180
 const SYMBOL_PLACEMENT_ROTATE_THRESHOLD = 6
 const KAMRAIL_HALF_LENGTH = 420
 const KAMRAIL_STROKE_WIDTH = 10
-const KAMRAIL_ATTACH_OFFSET = 72
+const KAMRAIL_ATTACH_OFFSET = 20
 const KAMRAIL_AUTO_COMPONENT_SPACING = 120
 const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
 const ONEWIRE_BRANCH_STROKE = '#000000'
+
+const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
 
 const getBindingLabelNearMargin = (shape: Shape): number => (shape.kind === 'symbol' ? 2 : 5)
 
@@ -348,6 +351,7 @@ export class CadleApp extends LiteElement {
   #oneWireAnchor: Point | null = null
   #oneWireLastPoint: Point | null = null
   #oneWireBusBarId: string | null = null
+  #symbolStrokeWidth = 0.65
   #wheelTransformSession: {
     mode: 'rotate' | 'scale'
     lastAt: number
@@ -358,6 +362,7 @@ export class CadleApp extends LiteElement {
   #catalogDialogMode: CatalogDialogMode = 'add'
   #catalogDialogDraftMarkup = ''
   #catalogDialogDraftDefaultScale = 1
+  #catalogDialogDraftShapes: Shape[] = []
   #catalogDialogName = ''
   #catalogDialogFolder = ''
   #catalogDialogCategory = 'My Symbols'
@@ -433,6 +438,7 @@ export class CadleApp extends LiteElement {
   connectedCallback() {
     super.connectedCallback()
     this.#connected = true
+    this.#loadSymbolStrokeWidth()
     this.#bindResizeObserver()
     this.shadowRoot?.addEventListener('wheel', this.#onWheel, { passive: false })
     window.addEventListener('hashchange', this.#onHashChange)
@@ -445,6 +451,7 @@ export class CadleApp extends LiteElement {
     pubsub.subscribe('native.object.delete', this.#onNativeObjectDelete)
     pubsub.subscribe('native.object.flip-side', this.#onNativeObjectFlipSide)
     pubsub.subscribe('native.controls.command', this.#onNativeControlsCommand)
+    pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
     this.#startInitialize()
   }
 
@@ -453,6 +460,7 @@ export class CadleApp extends LiteElement {
     this.#connected = false
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
+    pubsub.unsubscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
     this.shadowRoot?.removeEventListener('wheel', this.#onWheel)
     window.removeEventListener('hashchange', this.#onHashChange)
     window.removeEventListener('keydown', this.#onKeyDown)
@@ -535,6 +543,38 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
+  #loadSymbolStrokeWidth = () => {
+    try {
+      const stored = localStorage.getItem('cadle-symbol-stroke-width')
+      if (stored) {
+        const value = Number(stored)
+        if (Number.isFinite(value) && value > 0) {
+          this.#symbolStrokeWidth = value
+        }
+      }
+    } catch {
+      // localStorage not available
+    }
+  }
+
+  #setSymbolStrokeWidth = (value: number) => {
+    const clamped = Math.max(0.1, Math.min(3.0, value))
+    if (clamped === this.#symbolStrokeWidth) return
+    this.#symbolStrokeWidth = clamped
+    try {
+      localStorage.setItem('cadle-symbol-stroke-width', String(clamped))
+    } catch {
+      // localStorage not available
+    }
+    this.#render()
+  }
+
+  #onSymbolStrokeWidthUpdate = (value: unknown) => {
+    if (typeof value === 'number') {
+      this.#setSymbolStrokeWidth(value)
+    }
+  }
+
   #onNativeCatalogPick = (payload: NativeCatalogPick) => {
     if (!payload || typeof payload.path !== 'string' || typeof payload.name !== 'string') return
     const defaults = getCatalogSymbolStyleDefaults(payload.path)
@@ -589,7 +629,12 @@ export class CadleApp extends LiteElement {
     return true
   }
 
-  #buildCatalogSelectionDraft(): { svgMarkup: string; defaultScale: number; fallbackName: string } | null {
+  #buildCatalogSelectionDraft(): {
+    svgMarkup: string
+    defaultScale: number
+    fallbackName: string
+    shapes: Shape[]
+  } | null {
     const selectedIds = new Set(this.#selectedShapeIds())
     if (!selectedIds.size) return null
     const selectedShapes = this.#shapes.filter((shape) => selectedIds.has(shape.id)).map((shape) => cloneShape(shape))
@@ -623,7 +668,7 @@ export class CadleApp extends LiteElement {
       selectedShapes.length === 1
         ? `${selectedShapes[0].kind.charAt(0).toUpperCase() + selectedShapes[0].kind.slice(1)} symbol`
         : 'Custom symbol'
-    return { svgMarkup, defaultScale, fallbackName }
+    return { svgMarkup, defaultScale, fallbackName, shapes: translatedShapes }
   }
 
   #catalogDialogCategoryOptionsForFolder(): CatalogDialogCategoryOption[] {
@@ -664,6 +709,7 @@ export class CadleApp extends LiteElement {
     this.#catalogDialogMode = mode
     this.#catalogDialogDraftMarkup = draft.svgMarkup
     this.#catalogDialogDraftDefaultScale = draft.defaultScale
+    this.#catalogDialogDraftShapes = draft.shapes
     this.#catalogDialogFolderOptions = folders
     this.#catalogDialogCategoryOptions = [...uniqueCategories.values()].sort((left, right) => {
       const leftFolder = left.folder ?? ''
@@ -714,6 +760,7 @@ export class CadleApp extends LiteElement {
       symbols[index] = {
         ...target,
         path,
+        shapes: this.#catalogDialogDraftShapes,
         metadata: {
           ...(target.metadata ?? {}),
           customSymbol: true,
@@ -744,6 +791,7 @@ export class CadleApp extends LiteElement {
       category,
       name,
       path,
+      shapes: this.#catalogDialogDraftShapes,
       metadata: {
         customSymbol: true,
         importedAt: Date.now(),
@@ -780,6 +828,8 @@ export class CadleApp extends LiteElement {
     fill?: string
     stroke?: string
     strokeWidth?: number
+    fontFamily?: string
+    letterSpacing?: number
     x?: number
     y?: number
   }) => {
@@ -1028,6 +1078,16 @@ export class CadleApp extends LiteElement {
         const nextWidth = Math.max(0.5, Math.min(40, payload.strokeWidth))
         updated.strokeWidth = nextWidth
       }
+      if (typeof payload.fontFamily === 'string' && updated.kind === 'text') {
+        if (payload.fontFamily) {
+          ;(updated as TextShape).fontFamily = payload.fontFamily
+        } else {
+          delete (updated as TextShape).fontFamily
+        }
+      }
+      if (typeof payload.letterSpacing === 'number' && updated.kind === 'text') {
+        ;(updated as TextShape).letterSpacing = payload.letterSpacing
+      }
       let nextShape = updated as Shape
       if (typeof payload.x === 'number' || typeof payload.y === 'number') {
         const bounds = shapeBounds(nextShape)
@@ -1123,15 +1183,14 @@ export class CadleApp extends LiteElement {
     const projectKey = this.#projectKey
     const pageKey = this.#pageKey
 
-    this.#persistPromise = this.#persistPromise
-      .then(async () => {
-        try {
-          await saveNativeState(projectKey, pageKey, payload)
-          this.#persistError = null
-        } catch (error) {
-          this.#persistError = error
-        }
-      })
+    this.#persistPromise = this.#persistPromise.then(async () => {
+      try {
+        await saveNativeState(projectKey, pageKey, payload)
+        this.#persistError = null
+      } catch (error) {
+        this.#persistError = error
+      }
+    })
   }
 
   async #persistProjectMetadata() {
@@ -1177,9 +1236,6 @@ export class CadleApp extends LiteElement {
     this.#resetPageState()
     if (Array.isArray(parsed.shapes)) this.#shapes = sanitizeShapes(parsed.shapes)
     this.#rebindAllOpeningsToWalls()
-    if (typeof parsed.selectedId === 'string' && this.#shapeById(parsed.selectedId)) {
-      this.#selectedId = parsed.selectedId
-    }
     if (typeof parsed.worldWidth === 'number' && Number.isFinite(parsed.worldWidth) && parsed.worldWidth > 0) {
       this.#worldWidth = parsed.worldWidth
     }
@@ -1624,7 +1680,8 @@ export class CadleApp extends LiteElement {
     const ids = new Set<string>()
     for (const id of this.#selectedShapeIds()) {
       const groupId = this.#shapeById(id)?.groupId
-      if (groupId) ids.add(groupId)
+      // Exclude one-wire layout groups from regular grouping operations
+      if (groupId && !groupId.startsWith('onewire-')) ids.add(groupId)
     }
     return [...ids]
   }
@@ -1666,18 +1723,66 @@ export class CadleApp extends LiteElement {
   }
 
   #ungroupNativeSelection(): boolean {
+    const selectedIds = this.#selectedShapeIds()
+    if (!selectedIds.size) return false
+
+    // First, check if we're ungrouping symbols with catalogShapes
+    let unpackedAny = false
+    const groupId = `group-${nextShapeId()}`
+    const unpackedIds: string[] = []
+    for (const id of selectedIds) {
+      const shape = this.#shapeById(id)
+      if (!shape || shape.kind !== 'symbol' || !shape.catalogShapes?.length) continue
+
+      // Unpack catalog shapes: translate them to symbol position and place as group
+      const symbolPosition = shape.position
+      const unpacked = shape.catalogShapes.map((catalogShape) => {
+        const cloned = cloneShape(catalogShape)
+        cloned.id = nextShapeId()
+        cloned.groupId = groupId
+        unpackedIds.push(cloned.id)
+        // Translate shapes to symbol's position
+        return this.#translateShape(cloned, symbolPosition.x, symbolPosition.y)
+      })
+
+      // Add unpacked shapes to canvas
+      this.#shapes.push(...unpacked)
+
+      // Remove the symbol
+      this.#shapes = this.#shapes.filter((s) => s.id !== id)
+      unpackedAny = true
+    }
+
+    if (unpackedAny) {
+      // Select the unpacked shapes as a group
+      this.#selectedIds = new Set(unpackedIds)
+      this.#selectedId = unpackedIds[0] ?? null
+      this.#pushHistory()
+      this.#render()
+      return true
+    }
+
+    // Otherwise, handle regular groups
     const groupIds = this.#selectedGroupIds()
     if (!groupIds.length) return false
+
     const targetGroups = new Set(groupIds)
+    let ungroupedAny = false
+
     for (const shape of this.#shapes) {
       if (!shape.groupId || !targetGroups.has(shape.groupId)) continue
       const updated = { ...shape }
       delete updated.groupId
       this.#setShape(updated)
+      ungroupedAny = true
     }
-    this.#pushHistory()
-    this.#render()
-    return true
+
+    if (ungroupedAny) {
+      this.#pushHistory()
+      this.#render()
+    }
+
+    return ungroupedAny
   }
 
   #hideStageContextMenu() {
@@ -2781,8 +2886,8 @@ export class CadleApp extends LiteElement {
   #groundplanComponentsForFamily(
     family: string
   ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourcePath?: string; sourceName?: string }> {
-    return this.analyzeBindings().groups
-      .filter((group) => group.family === family)
+    return this.analyzeBindings()
+      .groups.filter((group) => group.family === family)
       .flatMap((group) =>
         group.components
           .filter(
@@ -2807,11 +2912,11 @@ export class CadleApp extends LiteElement {
       Math.min(anchorX, Math.max(rail.start.x, rail.end.x) - 20),
       Math.min(rail.start.x, rail.end.x) + 20
     )
+    const startX = snapToGrid(clampX)
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
     const resolvedComponents = familyComponents.length
       ? familyComponents
       : [{ bindingId: `${options.family}1`, kind: 'load' as const, sourcePath: undefined, sourceName: undefined }]
-    const startX = clampX
     const railY = rail.start.y
 
     const rows = new Map<string, Array<(typeof resolvedComponents)[number]>>()
@@ -2832,20 +2937,27 @@ export class CadleApp extends LiteElement {
       return ka.number - kb.number
     })
 
-    const ROW_START_OFFSET_X = 64
-    const ROW_SYMBOL_SPACING_X = 46
-    const ROW_SYMBOL_MARGIN_X = 6
-    const ROW_TOP_OFFSET_Y = 46
-    const ROW_SPACING_Y = 48
+    const ROW_NUMBER_OFFSET_X = -25 // Row number label offset (to the left)
+    const ROW_SYMBOL_SPACING_X = 0 // Minimum spacing
+    const ROW_SYMBOL_MARGIN_X = 0 // No margin for maximum density
+    const ROW_TOP_OFFSET_Y = 130 // Grid-aligned (13 blocks × 10px)
 
     const createdIds: string[] = []
     const breakerBindingId = options.family
+    let breakerContentTopY = railY - KAMRAIL_ATTACH_OFFSET // fallback
+    let breakerNodeY = railY // fallback
     {
-      const x = startX - 10
+      const x = snapToGrid(startX)
       const kind: 'breaker' = 'breaker'
       const component = this.#oneWireComponentSymbol(kind)
       const scale = this.#oneWireSymbolScale(component.path, kind)
-      const center: Point = { x, y: railY - KAMRAIL_ATTACH_OFFSET }
+      const nodeInfo = oneWireSymbolNodeInfo(component.path, scale)
+
+      // Position symbol so its electrical node lands exactly on the trunk X
+      const nodeOffsetX = nodeInfo?.offset.x ?? 0
+      const nodeOffsetY = nodeInfo?.offset.y ?? 0
+      const snappedY = snapToGrid(railY - KAMRAIL_ATTACH_OFFSET)
+      const center: Point = { x: x - nodeOffsetX - 0.9, y: snappedY - nodeOffsetY }
       const groupId = `onewire-${nextShapeId()}`
 
       const labelText = `${Math.max(1, Math.round(options.amps))}A`
@@ -2856,39 +2968,53 @@ export class CadleApp extends LiteElement {
         name: component.name,
         path: component.path,
         scale,
-        // The Automaat symbol carries its own "20A" text field — override it
-        // instead of adding a duplicate loose label next to the symbol.
-        symbolTextOverrides: { 'desc:20A': labelText },
+        strokeWidth: 0.5,
         bindingId: breakerBindingId,
         groupId
       }
       const contentBounds = symbolContentBounds(symbol)
+      breakerContentTopY = contentBounds.y
 
-      // Trikker-style: the wire stops at the visible edge of the symbol.
+      // The electrical node is now exactly at (x, snappedY)
+      breakerNodeY = snappedY
       const connector: LineShape = {
         id: nextShapeId(),
         kind: 'line',
-        start: { x, y: railY },
-        end: { x, y: contentBounds.y + contentBounds.height },
+        start: { x, y: snapToGrid(breakerNodeY) },
+        end: { x: snapToGrid(x), y: snapToGrid(railY) },
         stroke: ONEWIRE_BRANCH_STROKE,
-        strokeWidth: 2,
+        strokeWidth: 1.25,
         bindingId: breakerBindingId,
         groupId
       }
 
-      this.#shapes.push(connector, symbol)
-      createdIds.push(connector.id, symbol.id)
+      // Label positioned at bottom right of connector
+      const label: TextShape = {
+        id: nextShapeId(),
+        kind: 'text',
+        position: { x: x + 8, y: railY + 3 },
+        text: labelText,
+        scale: 0.7,
+        bindingId: breakerBindingId,
+        groupId
+      }
+
+      this.#shapes.push(connector, symbol, label)
+      createdIds.push(connector.id, symbol.id, label.id)
     }
 
+    const ROW_SPACING_Y = 50 // 5 grid blocks (10px × 5)
+
     if (orderedRows.length > 0) {
-      const trunkTopY = railY - ROW_TOP_OFFSET_Y - (orderedRows.length - 1) * ROW_SPACING_Y
+      const trunkTopY = snapToGrid(railY - ROW_TOP_OFFSET_Y - (orderedRows.length - 1) * ROW_SPACING_Y)
+      // Trunk runs vertically from top of breaker symbol down to top row
       const trunk: LineShape = {
         id: nextShapeId(),
         kind: 'line',
-        start: { x: startX, y: railY },
-        end: { x: startX, y: trunkTopY },
+        start: { x: snapToGrid(startX), y: snapToGrid(breakerContentTopY) },
+        end: { x: snapToGrid(startX), y: trunkTopY },
         stroke: ONEWIRE_BRANCH_STROKE,
-        strokeWidth: 2,
+        strokeWidth: 1.25,
         bindingId: breakerBindingId,
         groupId: `onewire-${nextShapeId()}`
       }
@@ -2898,8 +3024,8 @@ export class CadleApp extends LiteElement {
 
     for (const [rowIndex, [bindingId, entries]] of orderedRows.entries()) {
       const rowY = railY - ROW_TOP_OFFSET_Y - rowIndex * ROW_SPACING_Y
-      const rowStartX = startX
-      const symbolBaseX = startX + ROW_START_OFFSET_X
+      const rowJunctionX = snapToGrid(startX) // Junction node where trunk connects
+      const symbolBaseX = snapToGrid(rowJunctionX + 48) // First symbol starts offset to the right of junction
       const bindingNumberMatch = /^([A-Z]+)(\d+)$/.exec(bindingId)
       const rowNumber = bindingNumberMatch ? Number(bindingNumberMatch[2]) : rowIndex + 1
       const groupId = `onewire-${nextShapeId()}`
@@ -2914,6 +3040,51 @@ export class CadleApp extends LiteElement {
       const collapsedEntries =
         lampCount > 1 ? [...entries.filter((entry) => !lampEntries.includes(entry)), lampEntries[0]] : entries
 
+      // Switches must always precede loads in the circuit path.
+      // If intermediate (cross) switches exist, ensure: [regular switch] [intermediate] [regular switch] [load]
+      const sortedByKind = [...collapsedEntries].sort((a, b) => {
+        const aPath = resolvedEntryPath(a)
+        const bPath = resolvedEntryPath(b)
+        const aIsIntermediate = a.kind === 'switch' && /intermediate switch/i.test(aPath)
+        const bIsIntermediate = b.kind === 'switch' && /intermediate switch/i.test(bPath)
+
+        // Regular switches first
+        if (!aIsIntermediate && aPath && a.kind === 'switch' && (bIsIntermediate || b.kind !== 'switch')) return -1
+        if (!bIsIntermediate && bPath && b.kind === 'switch' && (aIsIntermediate || a.kind !== 'switch')) return 1
+
+        // Then intermediate switches
+        if (aIsIntermediate && !bIsIntermediate) return -1
+        if (!aIsIntermediate && bIsIntermediate) return 1
+
+        // Then loads
+        return 0
+      })
+
+      // Reorder to sandwich intermediates: if we have both regular and intermediate, move last regular to after intermediates
+      const hasIntermediate = sortedByKind.some(
+        (e) => e.kind === 'switch' && /intermediate switch/i.test(resolvedEntryPath(e))
+      )
+      const hasRegular = sortedByKind.some(
+        (e) => e.kind === 'switch' && !/intermediate switch/i.test(resolvedEntryPath(e))
+      )
+
+      let orderedEntries = sortedByKind
+      if (hasIntermediate && hasRegular) {
+        const regular = sortedByKind.filter(
+          (e) => e.kind === 'switch' && !/intermediate switch/i.test(resolvedEntryPath(e))
+        )
+        const intermediate = sortedByKind.filter(
+          (e) => e.kind === 'switch' && /intermediate switch/i.test(resolvedEntryPath(e))
+        )
+        const loads = sortedByKind.filter((e) => e.kind !== 'switch')
+        if (regular.length > 1) {
+          const [firstRegular, ...rest] = regular
+          orderedEntries = [firstRegular, ...intermediate, ...rest, ...loads]
+        } else {
+          orderedEntries = [...regular, ...intermediate, ...loads]
+        }
+      }
+
       type RowSymbolSpec = {
         kind: 'switch' | 'load'
         component: { name: string; path: string }
@@ -2924,7 +3095,7 @@ export class CadleApp extends LiteElement {
         rightReach: number
       }
 
-      const rowSymbolSpecs: RowSymbolSpec[] = collapsedEntries.map((entry) => {
+      const rowSymbolSpecs: RowSymbolSpec[] = orderedEntries.map((entry) => {
         const fallback = this.#oneWireComponentSymbol(entry.kind)
         const component = {
           name: entry.sourceName ?? fallback.name,
@@ -2954,20 +3125,28 @@ export class CadleApp extends LiteElement {
       const slotXs: number[] = []
       for (const [symbolIndex, spec] of rowSymbolSpecs.entries()) {
         if (symbolIndex === 0) {
-          slotXs.push(symbolBaseX)
+          slotXs.push(snapToGrid(symbolBaseX))
           continue
         }
         const prevSpec = rowSymbolSpecs[symbolIndex - 1]
         const prevX = slotXs[symbolIndex - 1]
-        const minGap = prevSpec.rightReach + spec.leftReach + ROW_SYMBOL_MARGIN_X
-        const preferredGap = Math.max(minGap, ROW_SYMBOL_SPACING_X)
-        slotXs.push(prevX + preferredGap)
+        // Switch-to-switch: use tight spacing (30px). Switch-to-load: add space (30px)
+        let gap
+        if (prevSpec.kind === 'switch' && spec.kind === 'switch') {
+          gap = 30 // Tight gap between switches
+        } else if (prevSpec.kind === 'switch' && spec.kind === 'load') {
+          gap = 30 // Wider gap before load
+        } else {
+          gap = prevSpec.rightReach + spec.leftReach + ROW_SYMBOL_MARGIN_X
+        }
+        slotXs.push(snapToGrid(prevX + gap))
       }
 
       // Symbols first (Trikker-style slots on the wire axis). The electrical
       // node of each symbol — not its bounding box — lands exactly on the slot.
       const rowSymbols: SymbolShape[] = rowSymbolSpecs.map((spec, symbolIndex) => {
         const slot: Point = { x: slotXs[symbolIndex] ?? symbolBaseX, y: rowY }
+        const isLighting = /lighting|lamp|fluorescent/i.test(spec.component.path)
         const symbol: SymbolShape = {
           id: nextShapeId(),
           kind: 'symbol',
@@ -2975,6 +3154,7 @@ export class CadleApp extends LiteElement {
           name: spec.component.name,
           path: spec.component.path,
           scale: spec.scale,
+          strokeWidth: isLighting ? 0.5 : 0.65,
           bindingId,
           groupId
         }
@@ -2984,8 +3164,9 @@ export class CadleApp extends LiteElement {
 
       // Wire segments between trunk and symbols — the wire is only interrupted
       // around each symbol's node and ENDS at the last consumer (no stub).
-      let cursor = rowStartX
-      let wireEndX = rowStartX
+      // Wire starts at the row junction node (where trunk connects)
+      let cursor = rowJunctionX
+      let wireEndX = rowJunctionX
       const wireSegments: Array<{ from: number; to: number }> = []
       for (const [symbolIndex, symbol] of rowSymbols.entries()) {
         const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale)
@@ -3033,7 +3214,7 @@ export class CadleApp extends LiteElement {
           start: { x: segment.from, y: rowY },
           end: { x: segment.to, y: rowY },
           stroke: ONEWIRE_BRANCH_STROKE,
-          strokeWidth: 2,
+          strokeWidth: 1.25,
           bindingId,
           groupId
         }
@@ -3042,10 +3223,11 @@ export class CadleApp extends LiteElement {
       }
 
       const rowNumberText = `${rowNumber}`
-      const rowNumberX = rowStartX - 14 - Math.max(0, rowNumberText.length - 1) * 7
+      const rowNumberX = rowJunctionX + ROW_NUMBER_OFFSET_X - Math.max(0, rowNumberText.length - 1) * 7
       const rowNumberLabel = {
-        ...createTextShape(nextShapeId(), { x: rowNumberX, y: rowY - 2 }, rowNumberText),
+        ...createTextShape(nextShapeId(), { x: rowNumberX, y: rowY + 5 }, rowNumberText),
         fill: '#000000',
+        scale: 0.7,
         bindingId,
         groupId
       }
@@ -3151,9 +3333,9 @@ export class CadleApp extends LiteElement {
       id: nextShapeId(),
       kind: 'line',
       start: { x: center.x, y: railAnchor.point.y },
-      end: { x: center.x, y: placeBelowRail ? contentBounds.y : contentBounds.y + contentBounds.height },
+      end: { x: center.x, y: placeBelowRail ? contentBounds.y + contentBounds.height : contentBounds.y },
       stroke: ONEWIRE_BRANCH_STROKE,
-      strokeWidth: 2,
+      strokeWidth: 1.25,
       bindingId,
       groupId
     }
@@ -3396,7 +3578,7 @@ export class CadleApp extends LiteElement {
     return {
       version: 1,
       shapes: this.#shapes,
-      selectedId: this.#selectedId as UUID | null,
+      selectedId: null,
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
       worldWidth: this.#worldWidth,
@@ -3481,7 +3663,12 @@ export class CadleApp extends LiteElement {
     return { x, y, width, height }
   }
 
-  #buildSvgDocument(viewBox?: { x: number; y: number; width: number; height: number }, monochrome = false) {
+  #buildSvgDocument(
+    viewBox?: { x: number; y: number; width: number; height: number },
+    monochrome = false,
+    pageName?: string,
+    pageKey?: string
+  ) {
     const buildDocument = buildSvgDocument as unknown as (options: Record<string, unknown>) => string
     const overlayScale = viewBox ? Math.min(viewBox.width / this.#worldWidth, viewBox.height / this.#worldHeight) : 1
     const exportOptions: Record<string, unknown> = {
@@ -3492,7 +3679,9 @@ export class CadleApp extends LiteElement {
       worldHeight: this.#worldHeight,
       pageOverlayScale: overlayScale,
       viewBox,
-      monochrome
+      monochrome,
+      pageName,
+      pageKey
     }
 
     return buildDocument(exportOptions)
@@ -3536,7 +3725,8 @@ export class CadleApp extends LiteElement {
         this.#project?.pages?.[this.#pageKey ?? '']?.name ?? '',
         this.#worldWidth,
         this.#worldHeight,
-        this.#pageKey ?? ''
+        this.#pageKey ?? '',
+        0.65
       )
     )
   }
@@ -3590,6 +3780,28 @@ export class CadleApp extends LiteElement {
     this.#download(`cadle-${this.#paperPreset}.svg`, this.#buildSvgDocument(), 'image/svg+xml;charset=utf-8')
   }
 
+  async #svgToPortraitPng(svgString: string): Promise<string> {
+    const widthPx = 2480
+    const heightPx = 3508
+    // Use a data URL — blob URLs can fail silently in Electron renderer
+    const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image(widthPx, heightPx)
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Unable to render intro page SVG'))
+      img.src = svgDataUrl
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = widthPx
+    canvas.height = heightPx
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas unavailable')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, widthPx, heightPx)
+    ctx.drawImage(image, 0, 0, widthPx, heightPx)
+    return canvas.toDataURL('image/png')
+  }
+
   async #exportPdf() {
     await this.#ensureSymbolMarkupReady()
     const originalPageKey = this.#pageKey
@@ -3622,8 +3834,22 @@ export class CadleApp extends LiteElement {
     let pageIndex = 0
 
     try {
+      // ── Cover / intro page (AREI) ──────────────────────────────────────
+      const introSvg = buildIntroPageSvg(this.#project)
+      const introDataUrl = await this.#svgToPortraitPng(introSvg)
+      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'portrait', compress: true })
+      const introPw = pdf.internal.pageSize.getWidth()
+      const introPh = pdf.internal.pageSize.getHeight()
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(0, 0, introPw, introPh, 'F')
+      pdf.addImage(introDataUrl, 'PNG', 0, 0, introPw, introPh, 'intro-page', 'FAST')
+      pageIndex = 1
+
       for (const [pageKey, page] of projectPages) {
-        const state = this.#nativeStateForPage(pageKey as UUID)
+        // For the currently active page use the captured in-memory state so unsaved
+        // edits are included. For all other pages read from the stored project schema.
+        const state =
+          pageKey === (originalPageKey as string) ? originalState : this.#nativeStateForPage(pageKey as UUID)
         if (!state) continue
 
         this.#applyPersistedState(state)
@@ -3631,18 +3857,34 @@ export class CadleApp extends LiteElement {
         this.#selectedIds = new Set()
         this.#pageKey = pageKey as UUID
 
-        const exported = await this.exportA4PNG('auto')
-        if (!pdf) {
-          pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
-        } else {
-          pdf.addPage('a4', exported.orientation)
-        }
+        const exportViewBox = this.#exportViewBox(this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait')
+        const svgString = this.#buildSvgDocument(exportViewBox ?? undefined, false, page.name, pageKey)
+        const orientation: 'landscape' | 'portrait' = this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait'
+        const widthPx = orientation === 'landscape' ? 3508 : 2480
+        const heightPx = orientation === 'landscape' ? 2480 : 3508
+        const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image(widthPx, heightPx)
+          img.onload = () => resolve(img)
+          img.onerror = () => reject(new Error(`Failed to render page ${page.name}`))
+          img.src = svgDataUrl
+        })
+        const canvas = document.createElement('canvas')
+        canvas.width = widthPx
+        canvas.height = heightPx
+        const ctx2d = canvas.getContext('2d')
+        if (!ctx2d) throw new Error('Canvas unavailable')
+        ctx2d.fillStyle = '#ffffff'
+        ctx2d.fillRect(0, 0, widthPx, heightPx)
+        ctx2d.drawImage(image, 0, 0, widthPx, heightPx)
+        const dataUrl = canvas.toDataURL('image/png')
 
+        pdf.addPage('a4', orientation)
         const pageWidth = pdf.internal.pageSize.getWidth()
         const pageHeight = pdf.internal.pageSize.getHeight()
         pdf.setFillColor(255, 255, 255)
         pdf.rect(0, 0, pageWidth, pageHeight, 'F')
-        pdf.addImage(exported.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, `page-${pageIndex}`, 'FAST')
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, `page-${pageIndex}`, 'FAST')
         pageIndex += 1
       }
 
@@ -3753,8 +3995,8 @@ export class CadleApp extends LiteElement {
   render() {
     const selectedShape = this.#shapeById(this.#selectedId)
     const worldTransform = `translate(${this.#panX} ${this.#panY}) scale(${this.#zoom})`
-    const minorGrid = GRID_SIZE * this.#zoom
-    const majorGrid = GRID_SIZE * 5 * this.#zoom
+    const minorGrid = GRID_SIZE * 2 * this.#zoom
+    const majorGrid = GRID_SIZE * 10 * this.#zoom
     const gridStyle =
       `background-position: ${this.#panX}px ${this.#panY}px; ` +
       `background-size: ${minorGrid}px ${minorGrid}px, ${minorGrid}px ${minorGrid}px, ` +
@@ -3775,7 +4017,7 @@ export class CadleApp extends LiteElement {
             <svg
               class="stage"
               shape-rendering="crispEdges"
-              style="cursor: ${cursor}"
+              style="cursor: ${cursor}; --symbol-stroke-width: ${this.#symbolStrokeWidth}"
               @pointerdown=${this.#onPointerDown}
               @pointermove=${this.#onPointerMove}
               @pointerup=${this.#onPointerUp}

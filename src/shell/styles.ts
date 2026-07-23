@@ -135,8 +135,18 @@ export const shellStyles = css`
   }
 
   .center-stage-toolbar cadle-actions {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .center-stage-toolbar onewire-actions {
+    flex: 0 0 auto;
+  }
+
+  .center-stage-toolbar > span {
     flex: 1 1 auto;
     min-width: 0;
+    text-align: center;
   }
 
   .center-stage-toolbar design-mode-toggle {

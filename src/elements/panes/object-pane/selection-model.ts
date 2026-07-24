@@ -37,6 +37,12 @@ export type SelectionShape = {
     cableSectionMm2?: number
     poles?: number
     phaseConfiguration?: string
+    breakerCurve?: string
+    rcdSensitivityMa?: number
+    rcdType?: string
+    boardId?: string
+    railId?: string
+    notes?: string
   }
 }
 

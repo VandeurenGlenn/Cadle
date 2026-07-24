@@ -123,7 +123,13 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       breakerCurrentA: 25,
       poles: undefined,
       phaseConfiguration: undefined,
-      cableSectionMm2: 2.5
+      cableSectionMm2: 2.5,
+      breakerCurve: undefined,
+      rcdSensitivityMa: undefined,
+      rcdType: undefined,
+      boardId: undefined,
+      railId: undefined,
+      notes: undefined
     }
   )
   assert.equal(electricalMetadataFromCatalog(undefined, 'Wall switch', 'symbols/Switches/general.svg').role, 'switch')

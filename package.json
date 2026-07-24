@@ -16,6 +16,7 @@
     "generate:manifest": "node generate-manifest.js",
     "build": "npm run generate:manifest && rollup -c",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "test:e2e": "npm run build && playwright test",
     "typecheck": "tsc --noEmit",
     "check": "npm test && npm run typecheck && npm run build"
   },
@@ -33,17 +34,19 @@
     "pdfjs-dist": "^6.1.200"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.3.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@vandeurenglenn/lite": "^1.2.3",
     "electron": "^43.2.0",
     "rollup": "^4.62.2",
     "rollup-plugin-css-modules": "^0.2.0",
     "rollup-plugin-material-symbols": "^2.1.7",
     "tslib": "^2.8.1",
-    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

@@ -11,8 +11,13 @@ test('keeps distributor and Belgian supply configuration in the project profile'
     supplyVoltageV: 400,
     phaseConfiguration: 'three-phase',
     earthingSystem: 'TT',
-    defaultPoles: 4
+    defaultPoles: 4,
+    boards: [{
+      id: 'main', name: 'Main board', rails: [{ id: 'rail-1', name: 'Rail 1' }],
+      mainDifferential: { id: 'main-rcd', ratedCurrentA: 40, sensitivityMa: 300, poles: 4, type: 'A' }
+    }]
   })
   assert.equal(profile.distributor, 'Fluvius')
   assert.equal(profile.supplyConfiguration, '3x400V+N')
+  assert.equal(profile.boards?.[0].mainDifferential?.sensitivityMa, 300)
 })

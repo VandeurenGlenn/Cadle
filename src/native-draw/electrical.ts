@@ -11,6 +11,12 @@ export type ElectricalDeviceMetadata = {
   poles?: number
   phaseConfiguration?: ElectricalPhaseConfiguration
   cableSectionMm2?: number
+  breakerCurve?: 'B' | 'C' | 'D' | 'other'
+  rcdSensitivityMa?: number
+  rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
+  boardId?: string
+  railId?: string
+  notes?: string
 }
 
 const finitePositive = (value: unknown): number | undefined =>
@@ -73,7 +79,19 @@ export const electricalMetadataFromCatalog = (
     breakerCurrentA: finitePositive(explicit.breakerCurrentA),
     poles: finitePositive(explicit.poles),
     phaseConfiguration,
-    cableSectionMm2: finitePositive(explicit.cableSectionMm2)
+    cableSectionMm2: finitePositive(explicit.cableSectionMm2),
+    breakerCurve:
+      explicit.breakerCurve === 'B' || explicit.breakerCurve === 'C' || explicit.breakerCurve === 'D' || explicit.breakerCurve === 'other'
+        ? explicit.breakerCurve
+        : undefined,
+    rcdSensitivityMa: finitePositive(explicit.rcdSensitivityMa),
+    rcdType:
+      explicit.rcdType === 'AC' || explicit.rcdType === 'A' || explicit.rcdType === 'F' || explicit.rcdType === 'B' || explicit.rcdType === 'other'
+        ? explicit.rcdType
+        : undefined,
+    boardId: typeof explicit.boardId === 'string' ? explicit.boardId.trim() || undefined : undefined,
+    railId: typeof explicit.railId === 'string' ? explicit.railId.trim() || undefined : undefined,
+    notes: typeof explicit.notes === 'string' ? explicit.notes.trim() || undefined : undefined
   }
 }
 
@@ -103,6 +121,12 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
       raw.phaseConfiguration === 'single-phase' || raw.phaseConfiguration === 'three-phase'
         ? raw.phaseConfiguration
         : undefined,
-    cableSectionMm2: finitePositive(raw.cableSectionMm2)
+    cableSectionMm2: finitePositive(raw.cableSectionMm2),
+    breakerCurve: raw.breakerCurve === 'B' || raw.breakerCurve === 'C' || raw.breakerCurve === 'D' || raw.breakerCurve === 'other' ? raw.breakerCurve : undefined,
+    rcdSensitivityMa: finitePositive(raw.rcdSensitivityMa),
+    rcdType: raw.rcdType === 'AC' || raw.rcdType === 'A' || raw.rcdType === 'F' || raw.rcdType === 'B' || raw.rcdType === 'other' ? raw.rcdType : undefined,
+    boardId: typeof raw.boardId === 'string' ? raw.boardId.trim() || undefined : undefined,
+    railId: typeof raw.railId === 'string' ? raw.railId.trim() || undefined : undefined,
+    notes: typeof raw.notes === 'string' ? raw.notes.trim() || undefined : undefined
   }
 }

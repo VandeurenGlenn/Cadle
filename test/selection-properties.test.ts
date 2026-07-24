@@ -50,11 +50,12 @@ test('updates and clears selected symbol electrical properties', () => {
   const context = { selectedIds: new Set(['one']), selectedId: 'one', groupedSelection: false }
   const updated = updateSelectionProperties(
     [configured],
-    { electrical: { breakerCurrentA: 20, cableSectionMm2: 2.5 } },
+    { electrical: { breakerCurrentA: 20, cableSectionMm2: 2.5, breakerCurve: 'C', rcdSensitivityMa: 30, boardId: 'main', railId: 'rail-1' } },
     context
   )
   assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.breakerCurrentA, 20)
   assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.cableSectionMm2, 2.5)
+  assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.rcdSensitivityMa, 30)
   const cleared = updateSelectionProperties(updated ?? [], { electrical: { breakerCurrentA: null } }, context)
   assert.equal(cleared?.[0].kind === 'symbol' && cleared[0].electrical?.breakerCurrentA, undefined)
 })

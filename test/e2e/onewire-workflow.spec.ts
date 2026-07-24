@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test'
+
+test('create, draw, bind, validate, generate, reload, and export one-wire project', async ({ page }) => {
+  await page.goto('/#!/create-project')
+  const values: Record<string, string> = {
+    'Project name': 'E2E AREI project', 'Page name': 'Ground plan', 'Customer name': 'Ada',
+    'Customer last name': 'Tester', Name: 'E2E', 'Last name': 'Installer', Company: 'Cadle Test',
+    Street: 'Teststraat', 'House number': '1', 'Postal code': '1000', City: 'Brussel'
+  }
+  for (const [label, value] of Object.entries(values)) {
+    await page.locator(`md-outlined-text-field[label="${label}"] input`).fill(value)
+  }
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await expect(page).toHaveURL(/#!\/native-draw/)
+
+  await page.getByRole('tab', { name: 'Symbols catalog' }).click()
+  const stage = page.locator('cadle-app svg.stage')
+  await expect(stage).toBeVisible()
+  const placeAndBind = async (query: string, x: number, bindingId: string) => {
+    const search = page.locator('catalog-element search-element input')
+    await search.fill(query)
+    await expect(page.locator('catalog-element .search-status')).toContainText(query)
+    const item = page.locator('catalog-element catalog-item').filter({ hasText: query }).first()
+    await expect(item).toBeVisible()
+    await item.click()
+    await stage.click({ position: { x, y: 220 } })
+    const binding = page.locator('object-pane input.native-binding-input')
+    await expect(binding).toBeVisible()
+    await binding.fill(bindingId)
+    await binding.press('Tab')
+    await page.waitForTimeout(450)
+  }
+
+  await placeAndBind('Switch general symbol', 260, 'A1')
+  await placeAndBind('Lighting', 420, 'A1')
+
+  const validation = await page.locator('cadle-app').evaluate((element: any) => element.analyzeBindings())
+  expect(validation.valid, JSON.stringify(validation)).toBe(true)
+  expect(validation.groups[0].bindingId).toBe('A1')
+
+  await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
+  await expect.poll(() => page.locator('app-shell').evaluate((element: any) => element.project?.pages?.[element.loadedPage]?.pageType)).toBe('onewire')
+  const generated = await page.locator('cadle-app').evaluate((element: any) => element.generateAutoOneWire())
+  expect(generated.generated, generated.message).toBe(true)
+  const generatedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
+  expect((generatedSvg.match(/data-shape-id=/g) ?? []).length).toBeGreaterThan(3)
+
+  await page.reload()
+  await expect(page).toHaveURL(/#!\/native-draw/)
+  const exportedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
+  expect(exportedSvg).toContain('<svg')
+  expect(exportedSvg.length).toBeGreaterThan(1000)
+})

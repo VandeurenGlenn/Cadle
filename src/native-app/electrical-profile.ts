@@ -8,7 +8,12 @@ export const DEFAULT_AREI_PROFILE: ElectricalProjectProfile = {
   supplyVoltageV: 230,
   phaseConfiguration: 'single-phase',
   earthingSystem: 'unknown',
-  defaultPoles: 2
+  defaultPoles: 2,
+  boards: [{
+    id: 'main',
+    name: 'Main distribution board',
+    rails: [{ id: 'rail-1', name: 'Rail 1' }]
+  }]
 }
 
 export const normalizeElectricalProfile = (
@@ -36,5 +41,13 @@ export const normalizeElectricalProfile = (
   defaultPoles:
     typeof profile?.defaultPoles === 'number' && profile.defaultPoles > 0
       ? profile.defaultPoles
-      : DEFAULT_AREI_PROFILE.defaultPoles
+      : DEFAULT_AREI_PROFILE.defaultPoles,
+  boards: profile?.boards?.length
+    ? profile.boards.map((board) => ({
+        ...board,
+        rails: board.rails?.length ? board.rails.map((rail) => ({ ...rail })) : [{ id: 'rail-1', name: 'Rail 1' }],
+        mainDifferential: board.mainDifferential ? { ...board.mainDifferential } : undefined,
+        additionalDifferentials: board.additionalDifferentials?.map((item) => ({ ...item }))
+      }))
+    : DEFAULT_AREI_PROFILE.boards?.map((board) => ({ ...board, rails: board.rails.map((rail) => ({ ...rail })) }))
 })

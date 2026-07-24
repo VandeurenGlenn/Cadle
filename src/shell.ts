@@ -79,7 +79,7 @@ type NativeAppElement = HTMLElement & {
   exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
   analyzeBindings?: () => CircuitAnalysis
   getBOMRows?: () => BomRow[]
-  generateAutoOneWire?: () => { generated: boolean; circuitCount: number; message?: string }
+  generateAutoOneWire?: (pageIndex?: number) => { generated: boolean; circuitCount: number; pageCount?: number; message?: string }
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
 }
@@ -948,8 +948,31 @@ export class AppShell extends LiteElement {
       globalThis.alert('The one-wire page did not finish loading. Please try again.')
       return
     }
-    const result = nativeApp?.generateAutoOneWire?.()
+    const result = nativeApp?.generateAutoOneWire?.(0)
     if (!result?.generated) globalThis.alert(result?.message ?? 'Unable to generate the one-wire diagram.')
+    if (!result?.generated || !result.pageCount || result.pageCount <= 1) return
+
+    await nativeApp.flushPendingSave?.()
+    for (let pageIndex = 1; pageIndex < result.pageCount; pageIndex += 1) {
+      const pageName = `One-wire diagram ${pageIndex + 1}`
+      let overflowPageKey = Object.entries(this.project.pages).find(
+        ([, page]) => page.pageType === 'onewire' && page.name === pageName
+      )?.[0]
+      if (!overflowPageKey) {
+        await addPage(this.projectKey, pageName, { version: 'native-svg-1', objects: [] }, 'onewire')
+        this.project = await getProjectData(this.projectKey)
+        overflowPageKey = Object.entries(this.project.pages).find(
+          ([, page]) => page.pageType === 'onewire' && page.name === pageName
+        )?.[0]
+      }
+      if (!overflowPageKey) continue
+      await this.loadPage(overflowPageKey)
+      await nativeApp.waitForPageReady?.(overflowPageKey)
+      nativeApp.generateAutoOneWire?.(pageIndex)
+      await nativeApp.flushPendingSave?.()
+    }
+    this.project = await getProjectData(this.projectKey)
+    await this.loadPage(oneWirePage.pageKey)
   }
 
   async validateBindingsForOneWire() {

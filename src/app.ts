@@ -99,19 +99,19 @@ import {
 } from './shell/custom-symbols.js'
 import { getCatalogSymbolStyleDefaults, setStoredCatalogSymbolStyleDefaults } from './shell/catalog-symbol-overrides.js'
 import {
-  analyzeCircuits,
   circuitBomRows,
   type CircuitAnalysis,
   type CircuitComponent,
   type BomRow
 } from './native-app/circuit-analysis.js'
-import { DocumentHistory } from './native-app/controllers/document-history.js'
 import { ViewportController } from './native-app/controllers/viewport-controller.js'
 import { ToolController } from './native-app/controllers/tool-controller.js'
+import { CanvasDocumentController } from './native-app/controllers/canvas-document-controller.js'
+import { OneWireController } from './native-app/controllers/onewire-controller.js'
+import { CatalogController } from './native-app/controllers/catalog-controller.js'
 import {
   symbolContentBounds
 } from './native-app/layout/symbol-layout.js'
-import { buildCatalogSelectionDraft } from './native-app/layout/catalog-selection.js'
 import {
   updateSelectionProperties,
   type SelectionPropertyUpdate
@@ -153,8 +153,9 @@ export class CadleApp extends LiteElement {
   static styles = [styles]
 
   #tools = new ToolController()
-  #shapes: Shape[] = []
-  #selectedId: string | null = null
+  #document = new CanvasDocumentController()
+  #oneWireController = new OneWireController()
+  #catalogController = new CatalogController()
   #draft: DraftShape | null = null
   #drag: DragState | null = null
   #logoDrag: { pointerStart: Point; initial: Point } | null = null
@@ -164,7 +165,6 @@ export class CadleApp extends LiteElement {
     shapeCenter: Point
     initialOffset: { x: number; y: number }
   } | null = null
-  #history = new DocumentHistory()
   #snap = true
   #stagePointerId: number | null = null
   #paperPreset: PaperPreset = 'a4-landscape'
@@ -198,7 +198,6 @@ export class CadleApp extends LiteElement {
   // Rubber-band select
   #bandStart: Point | null = null
   #bandEnd: Point | null = null
-  #selectedIds: Set<string> = new Set()
   #nativeClipboard: Shape[] = []
   #oneWireBindingId = 'A1'
   #oneWirePreset: OneWirePreset = 'sockets'
@@ -435,7 +434,7 @@ export class CadleApp extends LiteElement {
   }
 
   #openCatalogDialog = async (mode: CatalogDialogMode): Promise<boolean> => {
-    const draft = buildCatalogSelectionDraft(this.#shapes, this.#selectedShapeIds())
+    const draft = this.#catalogController.selectionDraft(this.#document.shapes, this.#selectedShapeIds())
     if (!draft) return false
 
     await ensureCustomCatalogLoaded()
@@ -574,8 +573,8 @@ export class CadleApp extends LiteElement {
 
   #onNativeObjectUpdate = (payload: SelectionPropertyUpdate) => {
     const hasLogoSelection =
-      this.#selectedIds.has(PROJECT_LOGO_SHAPE_ID) ||
-      (this.#selectedIds.size === 0 && this.#selectedId === PROJECT_LOGO_SHAPE_ID)
+      this.#document.selectedIds.has(PROJECT_LOGO_SHAPE_ID) ||
+      (this.#document.selectedIds.size === 0 && this.#document.selectedId === PROJECT_LOGO_SHAPE_ID)
     if (hasLogoSelection && this.#project && isProjectLogoVisible(this.#project)) {
       if (typeof payload.scale === 'number') {
         this.#project.logoScale = Math.max(0.4, Math.min(2.5, payload.scale))
@@ -608,26 +607,26 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    const nextShapes = updateSelectionProperties(this.#shapes, payload, {
-      selectedIds: this.#selectedIds,
-      selectedId: this.#selectedId,
+    const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
+      selectedIds: this.#document.selectedIds,
+      selectedId: this.#document.selectedId,
       groupedSelection: this.#selectedGroupId() !== null
     })
     if (!nextShapes) return
-    this.#shapes = nextShapes
+    this.#document.shapes = nextShapes
     this.#pushHistory()
     this.#render()
   }
 
   #onNativeObjectDelete = () => {
-    if (this.#selectedId === PROJECT_LOGO_SHAPE_ID && this.#project) {
+    if (this.#document.selectedId === PROJECT_LOGO_SHAPE_ID && this.#project) {
       this.#project.logoUrl = undefined
       this.#project.logoColor = undefined
       this.#project.logoScale = 1
       this.#project.logoX = undefined
       this.#project.logoY = undefined
-      this.#selectedId = null
-      this.#selectedIds = new Set()
+      this.#document.selectedId = null
+      this.#document.selectedIds = new Set()
       cadleShell.project = this.#project
       void this.#persistProjectMetadata()
       this.#render()
@@ -635,21 +634,21 @@ export class CadleApp extends LiteElement {
     }
 
     const targets =
-      this.#selectedIds.size > 0
-        ? this.#selectedIds
-        : this.#selectedId
-          ? new Set([this.#selectedId])
+      this.#document.selectedIds.size > 0
+        ? this.#document.selectedIds
+        : this.#document.selectedId
+          ? new Set([this.#document.selectedId])
           : new Set<string>()
     if (!targets.size) return
-    this.#shapes = this.#shapes.filter((shape) => !targets.has(shape.id))
-    this.#selectedId = null
-    this.#selectedIds = new Set()
+    this.#document.shapes = this.#document.shapes.filter((shape) => !targets.has(shape.id))
+    this.#document.selectedId = null
+    this.#document.selectedIds = new Set()
     this.#pushHistory()
     this.#render()
   }
 
   #onNativeObjectFlipSide = () => {
-    const shape = this.#shapeById(this.#selectedId)
+    const shape = this.#shapeById(this.#document.selectedId)
     if (!shape || (shape.kind !== 'door' && shape.kind !== 'gate')) return
     const updated: LineShape = { ...shape, flipSide: !shape.flipSide }
     this.#setShape(updated)
@@ -658,11 +657,11 @@ export class CadleApp extends LiteElement {
   }
 
   async #initialize() {
-    this.#history.reset()
+    this.#document.history.reset()
     this.#draft = null
     this.#drag = null
-    this.#selectedId = null
-    this.#selectedIds = new Set()
+    this.#document.selectedId = null
+    this.#document.selectedIds = new Set()
 
     await this.#restore()
     this.#pushHistory(false)
@@ -767,7 +766,7 @@ export class CadleApp extends LiteElement {
 
   #applyPersistedState(parsed: Partial<NativeDocumentState>) {
     this.#resetPageState()
-    if (Array.isArray(parsed.shapes)) this.#shapes = sanitizeShapes(parsed.shapes)
+    if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes)
     this.#rebindAllOpeningsToWalls()
     if (typeof parsed.worldWidth === 'number' && Number.isFinite(parsed.worldWidth) && parsed.worldWidth > 0) {
       this.#worldWidth = parsed.worldWidth
@@ -784,9 +783,9 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
-    this.#shapes = []
-    this.#selectedId = null
-    this.#selectedIds = new Set()
+    this.#document.shapes = []
+    this.#document.selectedId = null
+    this.#document.selectedIds = new Set()
     this.#draft = null
     this.#drag = null
     this.#bandStart = null
@@ -807,10 +806,10 @@ export class CadleApp extends LiteElement {
   }
 
   #pushHistory(persist = true, replaceCurrent = false) {
-    this.#history.push(
+    this.#document.history.push(
       {
-        shapes: this.#shapes,
-        selectedId: this.#selectedId,
+        shapes: this.#document.shapes,
+        selectedId: this.#document.selectedId,
         worldWidth: this.#worldWidth,
         worldHeight: this.#worldHeight
       },
@@ -820,9 +819,9 @@ export class CadleApp extends LiteElement {
   }
 
   #restoreSnapshot(snapshot: Snapshot) {
-    this.#shapes = cloneShapes(snapshot.shapes)
+    this.#document.shapes = cloneShapes(snapshot.shapes)
     this.#rebindAllOpeningsToWalls()
-    this.#selectedId = snapshot.selectedId
+    this.#document.selectedId = snapshot.selectedId
     this.#worldWidth = snapshot.worldWidth
     this.#worldHeight = snapshot.worldHeight
     this.#draft = null
@@ -861,12 +860,12 @@ export class CadleApp extends LiteElement {
   }
 
   #undo() {
-    const snapshot = this.#history.undo()
+    const snapshot = this.#document.history.undo()
     if (snapshot) this.#restoreSnapshot(snapshot)
   }
 
   #redo() {
-    const snapshot = this.#history.redo()
+    const snapshot = this.#document.history.redo()
     if (snapshot) this.#restoreSnapshot(snapshot)
   }
 
@@ -992,7 +991,7 @@ export class CadleApp extends LiteElement {
     const minY = Math.min(a.y, b.y)
     const maxY = Math.max(a.y, b.y)
     const ids: string[] = []
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       const bounds = shapeBounds(shape)
       if (bounds.x + bounds.width >= minX && bounds.x <= maxX && bounds.y + bounds.height >= minY && bounds.y <= maxY) {
         ids.push(shape.id)
@@ -1018,7 +1017,7 @@ export class CadleApp extends LiteElement {
 
   #shapeById(id: string | null): Shape | null {
     if (!id) return null
-    return this.#shapes.find((shape) => shape?.id === id) ?? null
+    return this.#document.shapes.find((shape) => shape?.id === id) ?? null
   }
 
   #pointNearSegment(point: Point, start: Point, end: Point, tolerance: number): boolean {
@@ -1065,7 +1064,7 @@ export class CadleApp extends LiteElement {
 
     let bestWall: LineShape | null = null
     let bestDistance = 8
-    for (const candidate of this.#shapes) {
+    for (const candidate of this.#document.shapes) {
       if (candidate.kind !== 'wall') continue
       const startDistance = this.#pointToSegmentDistance(shape.start, candidate.start, candidate.end)
       const endDistance = this.#pointToSegmentDistance(shape.end, candidate.start, candidate.end)
@@ -1085,8 +1084,8 @@ export class CadleApp extends LiteElement {
   }
 
   #rebindAllOpeningsToWalls() {
-    if (!this.#shapes.length) return
-    this.#shapes = this.#shapes.map((shape) => {
+    if (!this.#document.shapes.length) return
+    this.#document.shapes = this.#document.shapes.map((shape) => {
       if (!this.#isOpeningShape(shape)) return shape
       return this.#bindOpeningToWall(cloneShape(shape) as LineShape)
     })
@@ -1104,8 +1103,8 @@ export class CadleApp extends LiteElement {
       return PROJECT_LOGO_SHAPE_ID
     }
     const tolerance = Math.max(6, 12 / this.#viewport.state.zoom)
-    for (let index = this.#shapes.length - 1; index >= 0; index -= 1) {
-      const shape = this.#shapes[index]
+    for (let index = this.#document.shapes.length - 1; index >= 0; index -= 1) {
+      const shape = this.#document.shapes[index]
       if (
         shape.kind === 'wall' ||
         shape.kind === 'line' ||
@@ -1155,8 +1154,8 @@ export class CadleApp extends LiteElement {
   }
 
   #selectedShapeIds(): string[] {
-    if (this.#selectedIds.size > 0) return [...this.#selectedIds]
-    return this.#selectedId ? [this.#selectedId] : []
+    if (this.#document.selectedIds.size > 0) return [...this.#document.selectedIds]
+    return this.#document.selectedId ? [this.#document.selectedId] : []
   }
 
   #expandSelectionWithGroup(shapeId: string): Set<string> {
@@ -1166,7 +1165,7 @@ export class CadleApp extends LiteElement {
     // One-wire groupIds are layout metadata (realign, label dedupe) — shapes
     // stay individually selectable. Only user-made groups select as a whole.
     if (groupId.startsWith('onewire-')) return new Set([shapeId])
-    return new Set(this.#shapes.filter((item) => item.groupId === groupId).map((item) => item.id))
+    return new Set(this.#document.shapes.filter((item) => item.groupId === groupId).map((item) => item.id))
   }
 
   #selectedGroupIds(): string[] {
@@ -1239,17 +1238,17 @@ export class CadleApp extends LiteElement {
       })
 
       // Add unpacked shapes to canvas
-      this.#shapes.push(...unpacked)
+      this.#document.shapes.push(...unpacked)
 
       // Remove the symbol
-      this.#shapes = this.#shapes.filter((s) => s.id !== id)
+      this.#document.shapes = this.#document.shapes.filter((s) => s.id !== id)
       unpackedAny = true
     }
 
     if (unpackedAny) {
       // Select the unpacked shapes as a group
-      this.#selectedIds = new Set(unpackedIds)
-      this.#selectedId = unpackedIds[0] ?? null
+      this.#document.selectedIds = new Set(unpackedIds)
+      this.#document.selectedId = unpackedIds[0] ?? null
       this.#pushHistory()
       this.#render()
       return true
@@ -1262,7 +1261,7 @@ export class CadleApp extends LiteElement {
     const targetGroups = new Set(groupIds)
     let ungroupedAny = false
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (!shape.groupId || !targetGroups.has(shape.groupId)) continue
       const updated = { ...shape }
       delete updated.groupId
@@ -1491,8 +1490,8 @@ export class CadleApp extends LiteElement {
     const shapeId = shapeElement?.dataset.shapeId ?? null
 
     if (shapeId) {
-      if (!this.#selectedIds.has(shapeId)) this.#selectedIds = this.#expandSelectionWithGroup(shapeId)
-      this.#selectedId = shapeId
+      if (!this.#document.selectedIds.has(shapeId)) this.#document.selectedIds = this.#expandSelectionWithGroup(shapeId)
+      this.#document.selectedId = shapeId
     }
 
     this.#stageContextPastePoint = this.#pointFromEvent(event as PointerEvent)
@@ -1508,8 +1507,8 @@ export class CadleApp extends LiteElement {
     let shapeId = shapeElement?.dataset.shapeId ?? null
     shapeId ??= this.#shapeIdAtPoint(point)
     if (!shapeId) {
-      this.#selectedIds = new Set(this.#shapes.map((shape) => shape.id))
-      this.#selectedId = this.#shapes[0]?.id ?? null
+      this.#document.selectedIds = new Set(this.#document.shapes.map((shape) => shape.id))
+      this.#document.selectedId = this.#document.shapes[0]?.id ?? null
       this.#drag = null
       this.#bandStart = null
       this.#bandEnd = null
@@ -1525,15 +1524,15 @@ export class CadleApp extends LiteElement {
     if (shape.kind === 'text') {
       const nextText = window.prompt('Text', shape.text)?.trim()
       if (!nextText || nextText === shape.text) {
-        this.#selectedId = shape.id
-        this.#selectedIds = new Set([shape.id])
+        this.#document.selectedId = shape.id
+        this.#document.selectedIds = new Set([shape.id])
         this.#render()
         return
       }
 
       this.#setShape({ ...shape, text: nextText } as TextShape)
-      this.#selectedId = shape.id
-      this.#selectedIds = new Set([shape.id])
+      this.#document.selectedId = shape.id
+      this.#document.selectedIds = new Set([shape.id])
       this.#pushHistory()
       this.#render()
       return
@@ -1542,8 +1541,8 @@ export class CadleApp extends LiteElement {
     if (!shape.groupId) return
 
     // In a group: double-click isolates one shape for direct edit/delete operations.
-    this.#selectedIds = new Set([shapeId])
-    this.#selectedId = shapeId
+    this.#document.selectedIds = new Set([shapeId])
+    this.#document.selectedId = shapeId
     this.#drag = null
     this.#bandStart = null
     this.#bandEnd = null
@@ -1680,9 +1679,9 @@ export class CadleApp extends LiteElement {
       }
       return next
     })
-    this.#shapes.push(...pasted)
-    this.#selectedIds = new Set(pasted.map((shape) => shape.id))
-    this.#selectedId = pasted[0]?.id ?? null
+    this.#document.shapes.push(...pasted)
+    this.#document.selectedIds = new Set(pasted.map((shape) => shape.id))
+    this.#document.selectedId = pasted[0]?.id ?? null
     this.#pushHistory()
     this.#render()
     return true
@@ -1691,9 +1690,9 @@ export class CadleApp extends LiteElement {
   #deleteNativeSelection(): boolean {
     const ids = new Set(this.#selectedShapeIds())
     if (!ids.size) return false
-    this.#shapes = this.#shapes.filter((shape) => !ids.has(shape.id))
-    this.#selectedId = null
-    this.#selectedIds = new Set()
+    this.#document.shapes = this.#document.shapes.filter((shape) => !ids.has(shape.id))
+    this.#document.selectedId = null
+    this.#document.selectedIds = new Set()
     this.#pushHistory()
     this.#render()
     return true
@@ -1719,24 +1718,24 @@ export class CadleApp extends LiteElement {
     if (!selected.size) return false
 
     if (action === 'bring-to-front') {
-      const rest = this.#shapes.filter((shape) => !selected.has(shape.id))
-      const picked = this.#shapes.filter((shape) => selected.has(shape.id))
-      this.#shapes = [...rest, ...picked]
+      const rest = this.#document.shapes.filter((shape) => !selected.has(shape.id))
+      const picked = this.#document.shapes.filter((shape) => selected.has(shape.id))
+      this.#document.shapes = [...rest, ...picked]
       this.#pushHistory()
       this.#render()
       return true
     }
 
     if (action === 'send-to-back') {
-      const picked = this.#shapes.filter((shape) => selected.has(shape.id))
-      const rest = this.#shapes.filter((shape) => !selected.has(shape.id))
-      this.#shapes = [...picked, ...rest]
+      const picked = this.#document.shapes.filter((shape) => selected.has(shape.id))
+      const rest = this.#document.shapes.filter((shape) => !selected.has(shape.id))
+      this.#document.shapes = [...picked, ...rest]
       this.#pushHistory()
       this.#render()
       return true
     }
 
-    const next = [...this.#shapes]
+    const next = [...this.#document.shapes]
     let changed = false
     if (action === 'bring-forward') {
       for (let index = next.length - 2; index >= 0; index -= 1) {
@@ -1753,7 +1752,7 @@ export class CadleApp extends LiteElement {
     }
 
     if (!changed) return false
-    this.#shapes = next
+    this.#document.shapes = next
     this.#pushHistory()
     this.#render()
     return true
@@ -1782,8 +1781,8 @@ export class CadleApp extends LiteElement {
       case 'scale-down':
         return this.#transformNativeSelection('scale-down')
       case 'select-all':
-        this.#selectedIds = new Set(this.#shapes.map((shape) => shape.id))
-        this.#selectedId = this.#shapes[0]?.id ?? null
+        this.#document.selectedIds = new Set(this.#document.shapes.map((shape) => shape.id))
+        this.#document.selectedId = this.#document.shapes[0]?.id ?? null
         this.#render()
         return true
       case 'delete':
@@ -1880,8 +1879,8 @@ export class CadleApp extends LiteElement {
       hasWallChain: Boolean(this.#wallChain),
       hasDraft: Boolean(this.#draft),
       hasDrag: Boolean(this.#drag),
-      selectedId: this.#selectedId,
-      selectedCount: this.#selectedIds.size,
+      selectedId: this.#document.selectedId,
+      selectedCount: this.#document.selectedIds.size,
       hasBandStart: Boolean(this.#bandStart),
       hasOneWireAnchor: Boolean(this.#oneWireAnchor)
     })
@@ -1915,8 +1914,8 @@ export class CadleApp extends LiteElement {
     if (action === 'clear-interaction') {
       this.#draft = null
       this.#drag = null
-      this.#selectedId = null
-      this.#selectedIds = new Set()
+      this.#document.selectedId = null
+      this.#document.selectedIds = new Set()
       this.#bandStart = null
       this.#bandEnd = null
       this.#snapTarget = null
@@ -1939,7 +1938,7 @@ export class CadleApp extends LiteElement {
     const SNAP_RADIUS = 20
     let best: Point | null = null
     let bestDist = SNAP_RADIUS
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (!this.#isEndpointSnapShape(shape)) continue
       for (const ep of [shape.start, shape.end]) {
         const dist = Math.hypot(ep.x - point.x, ep.y - point.y)
@@ -2003,7 +2002,7 @@ export class CadleApp extends LiteElement {
     let hostSymbol: SymbolShape | null = null
     let side: 'top' | 'bottom' | 'left' | 'right' | null = null
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind === 'line' && shape.bindingId) {
         for (const ep of [shape.start, shape.end]) {
           const dist = Math.hypot(ep.x - point.x, ep.y - point.y)
@@ -2057,7 +2056,7 @@ export class CadleApp extends LiteElement {
     let bestPoint: Point | null = null
     let bestDistance = snapRadius
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind !== 'wall') continue
       const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
       const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
@@ -2094,7 +2093,7 @@ export class CadleApp extends LiteElement {
     let best: Point | null = null
     let bestDistance = SNAP_RADIUS
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind !== 'line') continue
       const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
       const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
@@ -2176,10 +2175,10 @@ export class CadleApp extends LiteElement {
   // the visible edges of the symbols sitting on it. Wires never cross symbols.
   #realignExistingOneWire(): boolean {
     const isOneWire = (shape: Shape) => typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')
-    const groupedOneWireShapes = this.#shapes.filter(
+    const groupedOneWireShapes = this.#document.shapes.filter(
       (shape) => isOneWire(shape) && !shape.groupId!.startsWith('onewire-kamrail-')
     )
-    const bindingFallbackShapes = this.#shapes.filter((shape) => {
+    const bindingFallbackShapes = this.#document.shapes.filter((shape) => {
       if (shape.kind !== 'line' && shape.kind !== 'symbol') return false
       if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-kamrail-')) return false
       return typeof shape.bindingId === 'string' && shape.bindingId.trim().length > 0
@@ -2331,12 +2330,12 @@ export class CadleApp extends LiteElement {
 
     if (!updatedShapes.size && !removedIds.size) return false
 
-    this.#shapes = this.#shapes
+    this.#document.shapes = this.#document.shapes
       .filter((shape) => !removedIds.has(shape.id))
       .map((shape) => updatedShapes.get(shape.id) ?? shape)
-    this.#shapes.push(...addedShapes)
-    this.#selectedId = null
-    this.#selectedIds = new Set()
+    this.#document.shapes.push(...addedShapes)
+    this.#document.selectedId = null
+    this.#document.selectedIds = new Set()
     this.#pushHistory()
     this.#render()
     return true
@@ -2363,7 +2362,7 @@ export class CadleApp extends LiteElement {
 
   #groundplanShapePool(): Shape[] {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
-    const pool: Shape[] = currentPageType === 'onewire' ? [] : [...this.#shapes]
+    const pool: Shape[] = currentPageType === 'onewire' ? [] : [...this.#document.shapes]
     if (!this.#project?.pages) return pool
 
     for (const pageKey of Object.keys(this.#project.pages) as UUID[]) {
@@ -2379,14 +2378,14 @@ export class CadleApp extends LiteElement {
   }
 
   analyzeBindings(): CircuitAnalysis {
-    return analyzeCircuits(this.#groundplanShapePool(), this.#project?.electricalProfile)
+    return this.#oneWireController.analyze(this.#groundplanShapePool(), this.#project?.electricalProfile)
   }
 
   getBOMRows(): BomRow[] {
     return circuitBomRows(this.analyzeBindings())
   }
 
-  generateAutoOneWire(): { generated: boolean; circuitCount: number; message?: string } {
+  generateAutoOneWire(pageIndex = 0): { generated: boolean; circuitCount: number; pageCount?: number; message?: string } {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     if (currentPageType !== 'onewire') {
       return { generated: false, circuitCount: 0, message: 'Open a one-wire page before generating.' }
@@ -2402,22 +2401,43 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    this.#shapes = this.#shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))
-    const railY = Math.max(220, this.#worldHeight - 180)
-    const rail: LineShape = {
-      id: nextShapeId(),
-      kind: 'line',
-      start: { x: 80, y: railY },
-      end: { x: Math.max(500, this.#worldWidth - 80), y: railY },
-      stroke: '#111111',
-      strokeWidth: KAMRAIL_STROKE_WIDTH,
-      groupId: `onewire-kamrail-${nextShapeId()}`
+    const previousGenerated = this.#document.shapes.filter((shape) => shape.groupId?.startsWith('onewire-'))
+    const retainedShapes = this.#document.shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))
+    this.#document.shapes = [...retainedShapes]
+    const railStartX = 80
+    const railEndX = Math.max(500, this.#worldWidth - 80)
+    const usableWidth = Math.max(1, railEndX - railStartX)
+    const layoutPlan = this.#oneWireController.plan(
+      analysis.families.map((family) => ({
+        family,
+        circuitCount: analysis.groups.filter((group) => group.family === family).length
+      })),
+      usableWidth,
+      Math.max(320, this.#worldHeight - 160)
+    )
+    const visiblePlacements = layoutPlan.placements.filter((placement) => placement.pageIndex === pageIndex)
+    if (!visiblePlacements.length) {
+      return { generated: false, circuitCount: analysis.totalGroups, pageCount: layoutPlan.pageCount, message: 'No circuits are assigned to this one-wire page.' }
     }
-    this.#shapes.push(rail)
+    const rails = new Map<number, LineShape>()
+    for (const railIndex of new Set(visiblePlacements.map((placement) => placement.railIndex))) {
+      const railY = Math.max(220, this.#worldHeight - 180 - railIndex * 320)
+      const rail: LineShape = {
+        id: nextShapeId(), kind: 'line', start: { x: railStartX, y: railY }, end: { x: railEndX, y: railY },
+        stroke: '#111111', strokeWidth: KAMRAIL_STROKE_WIDTH,
+        groupId: `onewire-kamrail-${nextShapeId()}`,
+        generationKey: `board:main:rail:${railIndex}`,
+        sourceLink: { kind: 'board', id: 'main', role: `rail-${railIndex + 1}` }
+      }
+      rails.set(railIndex, rail)
+      this.#document.shapes.push(rail)
+    }
 
-    const usableWidth = Math.max(1, rail.end.x - rail.start.x)
-    analysis.families.forEach((family, index) => {
-      const x = rail.start.x + (usableWidth * (index + 1)) / (analysis.families.length + 1)
+    visiblePlacements.forEach((placement) => {
+      const family = placement.family
+      const rail = rails.get(placement.railIndex)
+      if (!rail) return
+      const x = rail.start.x + (usableWidth * (placement.slotIndex + 0.5)) / layoutPlan.slotsPerRail
       const familyCurrent = Math.max(
         ...analysis.groups
           .filter((group) => group.family === family)
@@ -2426,14 +2446,22 @@ export class CadleApp extends LiteElement {
       this.#addKamrailCircuitBundle(rail, x, { amps: familyCurrent, family, autoIncludeFamily: true })
     })
 
+    const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
+    const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
+    this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
+
     this.#pushHistory()
     this.#render()
-    return { generated: true, circuitCount: analysis.totalGroups }
+    return {
+      generated: true,
+      circuitCount: analysis.totalGroups,
+      pageCount: layoutPlan.pageCount
+    }
   }
 
   #groundplanComponentsForFamily(
     family: string
-  ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourcePath?: string; sourceName?: string }> {
+  ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourceShapeId: string; sourcePath?: string; sourceName?: string }> {
     return this.analyzeBindings()
       .groups.filter((group) => group.family === family)
       .flatMap((group) =>
@@ -2445,6 +2473,7 @@ export class CadleApp extends LiteElement {
           .map((component) => ({
             bindingId: group.bindingId,
             kind: component.role,
+            sourceShapeId: component.shapeId,
             sourcePath: component.path,
             sourceName: component.name
           }))
@@ -2471,9 +2500,9 @@ export class CadleApp extends LiteElement {
     })
 
     if (!result) return false
-    this.#shapes.push(...result.shapes)
-    this.#selectedId = result.selectedId
-    this.#selectedIds = new Set(result.createdIds)
+    this.#document.shapes.push(...result.shapes)
+    this.#document.selectedId = result.selectedId
+    this.#document.selectedIds = new Set(result.createdIds)
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     return true
   }
@@ -2483,7 +2512,7 @@ export class CadleApp extends LiteElement {
     let best: { rail: LineShape; point: Point } | null = null
     let bestDistance = SNAP_RADIUS
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind !== 'line') continue
       if (!shape.groupId?.startsWith('onewire-kamrail-')) continue
       const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
@@ -2512,9 +2541,9 @@ export class CadleApp extends LiteElement {
       groupId
     }
 
-    this.#shapes.push(rail)
-    this.#selectedId = rail.id
-    this.#selectedIds = new Set([rail.id])
+    this.#document.shapes.push(rail)
+    this.#document.selectedId = rail.id
+    this.#document.selectedIds = new Set([rail.id])
     return true
   }
 
@@ -2575,9 +2604,9 @@ export class CadleApp extends LiteElement {
       groupId
     }
 
-    this.#shapes.push(connector, symbol, label)
-    this.#selectedId = symbol.id
-    this.#selectedIds = new Set([connector.id, symbol.id, label.id])
+    this.#document.shapes.push(connector, symbol, label)
+    this.#document.selectedId = symbol.id
+    this.#document.selectedIds = new Set([connector.id, symbol.id, label.id])
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     return true
   }
@@ -2660,9 +2689,9 @@ export class CadleApp extends LiteElement {
       groupId
     }
 
-    this.#shapes.push(connector, newSymbol)
-    this.#selectedId = newSymbol.id
-    this.#selectedIds = new Set([connector.id, newSymbol.id])
+    this.#document.shapes.push(connector, newSymbol)
+    this.#document.selectedId = newSymbol.id
+    this.#document.selectedIds = new Set([connector.id, newSymbol.id])
     return true
   }
 
@@ -2675,7 +2704,7 @@ export class CadleApp extends LiteElement {
     let snapType: 'none' | 'x' | 'y' | 'both' = 'none'
 
     // Snap to existing one-wire circuit X positions (columns) and bus bar Y
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind === 'symbol' && shape.bindingId) {
         for (const cp of this.#symbolConnectionPoints(shape)) {
           const xDist = Math.abs(cp.x - point.x)
@@ -2710,15 +2739,15 @@ export class CadleApp extends LiteElement {
   }
 
   #setShape(shape: Shape) {
-    const index = this.#shapes.findIndex((item) => item?.id === shape.id)
+    const index = this.#document.shapes.findIndex((item) => item?.id === shape.id)
     if (index < 0) return
-    this.#shapes[index] = shape
+    this.#document.shapes[index] = shape
   }
 
   #setShapes(shapes: Shape[]) {
     if (!shapes.length) return
     const updates = new Map(shapes.map((shape) => [shape.id, shape]))
-    this.#shapes = this.#shapes.map((shape) => updates.get(shape.id) ?? shape)
+    this.#document.shapes = this.#document.shapes.map((shape) => updates.get(shape.id) ?? shape)
   }
 
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
@@ -2726,7 +2755,7 @@ export class CadleApp extends LiteElement {
   }
 
   #bindingLabelsTemplate() {
-    return bindingLabelsTemplate(this.#shapes)
+    return bindingLabelsTemplate(this.#document.shapes)
   }
 
   #selectedOutlineTemplate(shape: Shape | null) {
@@ -2750,7 +2779,7 @@ export class CadleApp extends LiteElement {
   }
 
   #publishNativeSelection(selectedShape: Shape | null) {
-    if (this.#selectedId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
+    if (this.#document.selectedId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
       const logoBounds = getProjectLogoBounds(this.#project)
       const logoScaleRaw =
         typeof this.#project?.logoScale === 'number' && Number.isFinite(this.#project.logoScale)
@@ -2777,7 +2806,7 @@ export class CadleApp extends LiteElement {
     const groupedSelection = this.#selectedGroupId()
     pubsub.publish(
       'native.selection.changed',
-      createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#selectedIds.size, {
+      createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
         kindOverride: groupedSelection ? 'group' : undefined,
         bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : undefined
       })
@@ -2787,7 +2816,7 @@ export class CadleApp extends LiteElement {
   #nativeDocumentState(): NativeDocumentState {
     return {
       version: 1,
-      shapes: this.#shapes,
+      shapes: this.#document.shapes,
       selectedId: null,
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
@@ -2811,14 +2840,14 @@ export class CadleApp extends LiteElement {
   #exportViewBox(
     orientation: 'portrait' | 'landscape'
   ): { x: number; y: number; width: number; height: number } | null {
-    if (!this.#shapes.length) return null
+    if (!this.#document.shapes.length) return null
 
     let minX = Number.POSITIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
     let maxX = Number.NEGATIVE_INFINITY
     let maxY = Number.NEGATIVE_INFINITY
 
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       const bounds = shapeBounds(shape)
       minX = Math.min(minX, bounds.x)
       minY = Math.min(minY, bounds.y)
@@ -2882,8 +2911,8 @@ export class CadleApp extends LiteElement {
     const buildDocument = buildSvgDocument as unknown as (options: Record<string, unknown>) => string
     const overlayScale = viewBox ? Math.min(viewBox.width / this.#worldWidth, viewBox.height / this.#worldHeight) : 1
     const exportOptions: Record<string, unknown> = {
-      shapes: this.#shapes,
-      selectedShape: this.#shapeById(this.#selectedId),
+      shapes: this.#document.shapes,
+      selectedShape: this.#shapeById(this.#document.selectedId),
       paper: this.#paperMeta(),
       worldWidth: this.#worldWidth,
       worldHeight: this.#worldHeight,
@@ -2935,7 +2964,7 @@ export class CadleApp extends LiteElement {
 
   async #ensureSymbolMarkupReady() {
     const symbolPaths = new Set<string>()
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind === 'symbol') symbolPaths.add(shape.path)
     }
     if (this.#pendingCatalogSymbol?.path) symbolPaths.add(this.#pendingCatalogSymbol.path)
@@ -2954,7 +2983,7 @@ export class CadleApp extends LiteElement {
 
   #primeSymbolSvgCache() {
     const symbolPaths = new Set<string>()
-    for (const shape of this.#shapes) {
+    for (const shape of this.#document.shapes) {
       if (shape.kind === 'symbol') symbolPaths.add(shape.path)
     }
     if (this.#pendingCatalogSymbol?.path) symbolPaths.add(this.#pendingCatalogSymbol.path)
@@ -3003,7 +3032,7 @@ export class CadleApp extends LiteElement {
     await this.#ensureSymbolMarkupReady()
     const originalPageKey = this.#pageKey
     const originalState = this.#nativeDocumentState()
-    const originalSelectedIds = new Set(this.#selectedIds)
+    const originalSelectedIds = new Set(this.#document.selectedIds)
     const originalDraft = this.#draft ? (cloneShape(this.#draft) as DraftShape) : null
     const originalDrag = this.#drag ? { ...this.#drag, initial: cloneShapes(this.#drag.initial) } : null
     const originalBandStart = this.#bandStart ? { ...this.#bandStart } : null
@@ -3050,8 +3079,8 @@ export class CadleApp extends LiteElement {
         if (!state) continue
 
         this.#applyPersistedState(state)
-        this.#selectedId = null
-        this.#selectedIds = new Set()
+        this.#document.selectedId = null
+        this.#document.selectedIds = new Set()
         this.#pageKey = pageKey as UUID
 
         const exportViewBox = this.#exportViewBox(this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait')
@@ -3099,8 +3128,8 @@ export class CadleApp extends LiteElement {
     } finally {
       this.#applyPersistedState(originalState)
       this.#pageKey = originalPageKey
-      this.#selectedId = originalState.selectedId ?? null
-      this.#selectedIds = originalSelectedIds
+      this.#document.selectedId = originalState.selectedId ?? null
+      this.#document.selectedIds = originalSelectedIds
       this.#draft = originalDraft
       this.#drag = originalDrag
       this.#bandStart = originalBandStart
@@ -3169,7 +3198,7 @@ export class CadleApp extends LiteElement {
 
         if (Array.isArray(nativeShapes)) this.#applyPersistedState({ shapes: nativeShapes })
         else return
-        this.#selectedId = null
+        this.#document.selectedId = null
         this.#draft = null
         this.#drag = null
         this.#pushHistory()
@@ -3182,7 +3211,7 @@ export class CadleApp extends LiteElement {
   }
 
   render() {
-    const selectedShape = this.#shapeById(this.#selectedId)
+    const selectedShape = this.#shapeById(this.#document.selectedId)
     const { zoom, panX, panY } = this.#viewport.state
     const worldTransform = `translate(${panX} ${panY}) scale(${zoom})`
     const minorGrid = GRID_SIZE * 2 * zoom
@@ -3455,20 +3484,20 @@ export class CadleApp extends LiteElement {
   }
 
   #hasWallOpenings(): boolean {
-    return this.#shapes.some((shape) => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate')
+    return this.#document.shapes.some((shape) => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate')
   }
 
   #wallMaskTemplate() {
-    return wallMaskTemplate(this.#shapes, this.#worldWidth, this.#worldHeight)
+    return wallMaskTemplate(this.#document.shapes, this.#worldWidth, this.#worldHeight)
   }
 
   #committedTemplate(selectedShape: Shape | null) {
-    const wallShapes = this.#shapes.filter((shape) => shape.kind === 'wall')
-    const openingShapes = this.#shapes.filter(
+    const wallShapes = this.#document.shapes.filter((shape) => shape.kind === 'wall')
+    const openingShapes = this.#document.shapes.filter(
       (shape) => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate'
     )
-    const symbolShapes = this.#shapes.filter((shape) => shape.kind === 'symbol')
-    const restShapes = this.#shapes.filter(
+    const symbolShapes = this.#document.shapes.filter((shape) => shape.kind === 'symbol')
+    const restShapes = this.#document.shapes.filter(
       (shape) =>
         shape.kind !== 'wall' &&
         shape.kind !== 'door' &&
@@ -3502,7 +3531,7 @@ export class CadleApp extends LiteElement {
       return entries.map((entry) => {
         if (entry.type === 'single') {
           const shape = entry.shape
-          return this.#shapeTemplate(shape, shape.id === this.#selectedId || this.#selectedIds.has(shape.id))
+          return this.#shapeTemplate(shape, shape.id === this.#document.selectedId || this.#document.selectedIds.has(shape.id))
         }
 
         return svg`
@@ -3510,7 +3539,7 @@ export class CadleApp extends LiteElement {
             ${repeat(
               entry.shapes,
               (shape) => shape.id,
-              (shape) => this.#shapeTemplate(shape, shape.id === this.#selectedId || this.#selectedIds.has(shape.id))
+              (shape) => this.#shapeTemplate(shape, shape.id === this.#document.selectedId || this.#document.selectedIds.has(shape.id))
             )}
           </g>
         `
@@ -3556,7 +3585,7 @@ export class CadleApp extends LiteElement {
   }
 
   #render() {
-    this.#publishNativeSelection(this.#shapeById(this.#selectedId))
+    this.#publishNativeSelection(this.#shapeById(this.#document.selectedId))
     this.#publishNativeControlsState()
     this.#primeSymbolSvgCache()
     this.requestRender()
@@ -3657,8 +3686,8 @@ export class CadleApp extends LiteElement {
         return
       case 'clear':
         if (!window.confirm('Clear the drawing?')) return
-        this.#shapes = []
-        this.#selectedId = null
+        this.#document.shapes = []
+        this.#document.selectedId = null
         this.#draft = null
         this.#drag = null
         this.#pushHistory()
@@ -3720,8 +3749,8 @@ export class CadleApp extends LiteElement {
       this.#wallChain = wallResult.wallChain
       this.#chainPreviewEnd = wallResult.chainPreviewEnd
       if (wallResult.committedWall) {
-        this.#shapes.push(wallResult.committedWall)
-        this.#selectedId = wallResult.committedWall.id
+        this.#document.shapes.push(wallResult.committedWall)
+        this.#document.selectedId = wallResult.committedWall.id
         this.#pushHistory()
       }
       this.#render()
@@ -3750,8 +3779,8 @@ export class CadleApp extends LiteElement {
             y: Number.isFinite(labelY) ? labelY - shapeCenter.y : 0
           }
         }
-        this.#selectedId = shapeId
-        this.#selectedIds = this.#expandSelectionWithGroup(shapeId)
+        this.#document.selectedId = shapeId
+        this.#document.selectedIds = this.#expandSelectionWithGroup(shapeId)
         this.#drag = null
         this.#bandStart = null
         this.#bandEnd = null
@@ -3771,7 +3800,7 @@ export class CadleApp extends LiteElement {
       !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
     ) {
       const expanded = this.#expandSelectionWithGroup(shapeId)
-      const next = new Set(this.#selectedIds.size ? this.#selectedIds : this.#selectedId ? [this.#selectedId] : [])
+      const next = new Set(this.#document.selectedIds.size ? this.#document.selectedIds : this.#document.selectedId ? [this.#document.selectedId] : [])
       const shouldRemove = [...expanded].every((id) => next.has(id))
 
       if (shouldRemove) {
@@ -3780,8 +3809,8 @@ export class CadleApp extends LiteElement {
         for (const id of expanded) next.add(id)
       }
 
-      this.#selectedIds = next
-      this.#selectedId = next.values().next().value ?? null
+      this.#document.selectedIds = next
+      this.#document.selectedId = next.values().next().value ?? null
       this.#drag = null
       this.#bandStart = null
       this.#bandEnd = null
@@ -3797,8 +3826,8 @@ export class CadleApp extends LiteElement {
       !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
     ) {
       if (shapeId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
-        this.#selectedIds = new Set([PROJECT_LOGO_SHAPE_ID])
-        this.#selectedId = PROJECT_LOGO_SHAPE_ID
+        this.#document.selectedIds = new Set([PROJECT_LOGO_SHAPE_ID])
+        this.#document.selectedId = PROJECT_LOGO_SHAPE_ID
         const logoBounds = this.#project ? getProjectLogoBounds(this.#project) : null
         this.#logoDrag =
           logoBounds !== null
@@ -3820,8 +3849,8 @@ export class CadleApp extends LiteElement {
       }
 
       const expanded = this.#expandSelectionWithGroup(shapeId)
-      this.#selectedIds = expanded
-      this.#selectedId = shapeId
+      this.#document.selectedIds = expanded
+      this.#document.selectedId = shapeId
       const dragIds = [...expanded]
       const initial = dragIds
         .map((id) => this.#shapeById(id))
@@ -3843,8 +3872,8 @@ export class CadleApp extends LiteElement {
     if (this.#tools.current === 'text') {
       const value = window.prompt('Text', 'Label')?.trim()
       if (!value) return
-      this.#shapes.push(createTextShape(nextShapeId(), rawPoint, value))
-      this.#selectedId = this.#shapes[this.#shapes.length - 1]?.id ?? null
+      this.#document.shapes.push(createTextShape(nextShapeId(), rawPoint, value))
+      this.#document.selectedId = this.#document.shapes[this.#document.shapes.length - 1]?.id ?? null
       this.#pushHistory()
       this.#render()
       return
@@ -3944,9 +3973,9 @@ export class CadleApp extends LiteElement {
       })
       if (!onewire) return
 
-      this.#shapes.push(...onewire.shapes)
-      this.#selectedId = onewire.selectedId
-      this.#selectedIds = onewire.selectedIds
+      this.#document.shapes.push(...onewire.shapes)
+      this.#document.selectedId = onewire.selectedId
+      this.#document.selectedIds = onewire.selectedIds
       this.#oneWireBindingId = onewire.nextBindingId
       this.#oneWireLastPoint = placementPoint
 
@@ -3961,7 +3990,7 @@ export class CadleApp extends LiteElement {
         } else {
           const busBarId = nextShapeId()
           this.#oneWireBusBarId = busBarId
-          this.#shapes.push({ id: busBarId, kind: 'line', start: busStart, end: busEnd } as LineShape)
+          this.#document.shapes.push({ id: busBarId, kind: 'line', start: busStart, end: busEnd } as LineShape)
         }
       }
 
@@ -3974,15 +4003,15 @@ export class CadleApp extends LiteElement {
       const selectResult = resolveSelectPointerDownState({
         shapeId,
         rawPoint,
-        selectedIds: this.#selectedIds,
-        selectedId: this.#selectedId,
-        shapes: this.#shapes,
+        selectedIds: this.#document.selectedIds,
+        selectedId: this.#document.selectedId,
+        shapes: this.#document.shapes,
         pointerId: event.pointerId
       })
       if (shapeId) {
         const expanded = this.#expandSelectionWithGroup(shapeId)
-        this.#selectedIds = expanded
-        this.#selectedId = shapeId
+        this.#document.selectedIds = expanded
+        this.#document.selectedId = shapeId
         const dragIds = [...expanded]
         const initial = dragIds
           .map((id) => this.#shapeById(id))
@@ -3997,8 +4026,8 @@ export class CadleApp extends LiteElement {
         this.#bandEnd = null
         this.#stagePointerId = event.pointerId
       } else {
-        this.#selectedIds = selectResult.selectedIds
-        this.#selectedId = selectResult.selectedId
+        this.#document.selectedIds = selectResult.selectedIds
+        this.#document.selectedId = selectResult.selectedId
         this.#drag = selectResult.drag
         this.#bandStart = selectResult.bandStart
         this.#bandEnd = selectResult.bandEnd
@@ -4062,7 +4091,7 @@ export class CadleApp extends LiteElement {
 
     const drag = this.#drag
     if (drag && this.#stagePointerId === event.pointerId) {
-      const movedShapes = applyDragMove(rawPoint, drag, (point) => this.#snapPoint(point), this.#shapes)
+      const movedShapes = applyDragMove(rawPoint, drag, (point) => this.#snapPoint(point), this.#document.shapes)
       this.#setShapes(movedShapes)
       this.#render()
       return
@@ -4249,9 +4278,9 @@ export class CadleApp extends LiteElement {
       if (this.#pendingCatalogSymbol) {
         const shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol)
         if (placement.rotation) shape.rotation = placement.rotation
-        this.#shapes.push(shape)
-        this.#selectedId = shape.id
-        this.#selectedIds = new Set([shape.id])
+        this.#document.shapes.push(shape)
+        this.#document.selectedId = shape.id
+        this.#document.selectedIds = new Set([shape.id])
         this.#pendingCatalogSymbol = null
         this.#symbolPreviewPoint = null
         this.#snapTarget = null
@@ -4279,8 +4308,8 @@ export class CadleApp extends LiteElement {
 
     if (phase === 'band' && this.#bandStart && this.#bandEnd) {
       const ids = this.#shapesInBand(this.#bandStart, this.#bandEnd)
-      this.#selectedIds = new Set(ids)
-      this.#selectedId = ids[0] ?? null
+      this.#document.selectedIds = new Set(ids)
+      this.#document.selectedId = ids[0] ?? null
       this.#bandStart = null
       this.#bandEnd = null
       this.#stagePointerId = null
@@ -4296,9 +4325,9 @@ export class CadleApp extends LiteElement {
           draftShape.kind === 'door' || draftShape.kind === 'window' || draftShape.kind === 'gate'
             ? this.#bindOpeningToWall(draftShape)
             : draftShape
-        this.#shapes.push(committedShape)
-        this.#selectedId = committedShape.id
-        this.#selectedIds = new Set([committedShape.id])
+        this.#document.shapes.push(committedShape)
+        this.#document.selectedId = committedShape.id
+        this.#document.selectedIds = new Set([committedShape.id])
         this.#pushHistory()
       }
       this.#draft = null

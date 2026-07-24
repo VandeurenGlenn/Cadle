@@ -14,6 +14,24 @@ export type ElectricalProjectProfile = {
   phaseConfiguration: 'single-phase' | 'three-phase'
   earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown'
   defaultPoles: number
+  boards?: ElectricalBoard[]
+}
+
+export type ElectricalBoard = {
+  id: string
+  name: string
+  parentBoardId?: string
+  rails: Array<{ id: string; name: string }>
+  mainDifferential?: DifferentialProtection
+  additionalDifferentials?: DifferentialProtection[]
+}
+
+export type DifferentialProtection = {
+  id: string
+  ratedCurrentA: number
+  sensitivityMa: number
+  poles: number
+  type?: 'AC' | 'A' | 'F' | 'B' | 'other'
 }
 
 export type ProjectInput = {

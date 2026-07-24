@@ -316,7 +316,7 @@ export class ObjectPane extends LiteElement {
   }
 
   #updateElectrical = (field: keyof SelectionShapeElectrical, value: string) => {
-    const numericFields = new Set(['breakerCurrentA', 'cableSectionMm2', 'poles'])
+    const numericFields = new Set(['breakerCurrentA', 'cableSectionMm2', 'poles', 'rcdSensitivityMa'])
     const parsed = numericFields.has(field) ? (value.trim() ? Number(value) : null) : value || null
     if (typeof parsed === 'number' && (!Number.isFinite(parsed) || parsed <= 0)) return
     this._nativeElectrical = { ...(this._nativeElectrical ?? {}), [field]: parsed ?? undefined }
@@ -409,6 +409,16 @@ export class ObjectPane extends LiteElement {
                 <label><span class="native-label">Phase</span><select class="native-select" .value=${this._nativeElectrical?.phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="single-phase">Single-phase</option><option value="three-phase">Three-phase</option></select></label>
               </div>
               <div class="native-note">Values apply to this symbol and are used for its bound circuit.</div>
+              <div class="native-row">
+                <label><span class="native-label">Breaker curve</span><select class="native-select" .value=${this._nativeElectrical?.breakerCurve ?? ''} @change=${(event: Event) => this.#updateElectrical('breakerCurve', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="other">Other</option></select></label>
+                <label><span class="native-label">RCD (mA)</span><input class="native-input" type="number" min="1" .value=${String(this._nativeElectrical?.rcdSensitivityMa ?? '')} @change=${(event: Event) => this.#updateElectrical('rcdSensitivityMa', (event.target as HTMLInputElement).value)} /></label>
+              </div>
+              <div class="native-row">
+                <label><span class="native-label">RCD type</span><select class="native-select" .value=${this._nativeElectrical?.rcdType ?? ''} @change=${(event: Event) => this.#updateElectrical('rcdType', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="AC">AC</option><option value="A">A</option><option value="F">F</option><option value="B">B</option><option value="other">Other</option></select></label>
+                <label><span class="native-label">Board</span><input class="native-input" .value=${this._nativeElectrical?.boardId ?? ''} @change=${(event: Event) => this.#updateElectrical('boardId', (event.target as HTMLInputElement).value)} placeholder="main" /></label>
+              </div>
+              <label class="native-label">Rail</label><input class="native-input" .value=${this._nativeElectrical?.railId ?? ''} @change=${(event: Event) => this.#updateElectrical('railId', (event.target as HTMLInputElement).value)} placeholder="rail-1" />
+              <label class="native-label">Circuit notes</label><textarea class="native-input" .value=${this._nativeElectrical?.notes ?? ''} @change=${(event: Event) => this.#updateElectrical('notes', (event.target as HTMLTextAreaElement).value)}></textarea>
             `
           : ''}
         <label class="native-label">Label position</label>

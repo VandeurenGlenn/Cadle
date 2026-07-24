@@ -14,6 +14,7 @@ type OneWireComponentKind = 'breaker' | 'switch' | 'kamrail' | 'load'
 type OneWireCatalogComponent = {
   bindingId: string
   kind: 'switch' | 'load'
+  sourceShapeId?: string
   sourcePath?: string
   sourceName?: string
 }
@@ -29,6 +30,7 @@ type OneWireResolvedComponent = {
   kind: 'switch' | 'load'
   sourcePath?: string
   sourceName?: string
+  sourceShapeId?: string
 }
 
 type OneWireBuilderDeps = {
@@ -268,6 +270,13 @@ export const buildOneWireRowSection = (
       bindingId,
       groupId: rowGroupId
     }
+    const source = orderedEntries[symbolIndex]
+    symbol.sourceLink = {
+      kind: source?.sourceShapeId ? 'device' : 'circuit',
+      id: source?.sourceShapeId ?? bindingId,
+      role: spec.kind
+    }
+    symbol.generationKey = `device:${source?.sourceShapeId ?? `${bindingId}:${spec.kind}:${symbolIndex}`}`
     if (typeof spec.rotation === 'number') symbol.rotation = spec.rotation
     return symbol
   })
@@ -347,6 +356,8 @@ export const buildOneWireRowSection = (
     bindingId,
     groupId: rowGroupId
   }
+  rowNumberLabel.sourceLink = { kind: 'circuit', id: bindingId, role: 'number-label' }
+  rowNumberLabel.generationKey = `circuit:${bindingId}:number-label`
   shapes.push(rowNumberLabel)
   ids.push(rowNumberLabel.id)
 
@@ -393,6 +404,10 @@ export const buildKamrailCircuitBundle = (
   const shapes: Shape[] = []
 
   const breaker = buildOneWireBreakerSection(railY, startX, options.family, options.family, deps)
+  breaker.shapes.forEach((shape, index) => {
+    shape.sourceLink = { kind: 'board', id: options.family, role: index === 1 ? 'breaker' : index === 0 ? 'feed' : 'label' }
+    shape.generationKey = `board:${options.family}:${shape.sourceLink.role}`
+  })
   shapes.push(...breaker.shapes)
   createdIds.push(...breaker.ids)
 
@@ -410,6 +425,8 @@ export const buildKamrailCircuitBundle = (
       bindingId: options.family,
       groupId: `onewire-${deps.nextShapeId()}`
     }
+    trunk.sourceLink = { kind: 'board', id: options.family, role: 'trunk' }
+    trunk.generationKey = `board:${options.family}:trunk`
     shapes.push(trunk)
     createdIds.push(trunk.id)
   }

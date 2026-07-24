@@ -14,7 +14,18 @@ export type Tool =
 
 export type Point = { x: number; y: number }
 
-export type LineShape = {
+export type OneWireSourceLink = {
+  kind: 'board' | 'circuit' | 'device'
+  id: string
+  role: string
+}
+
+type GeneratedShapeMetadata = {
+  generationKey?: string
+  sourceLink?: OneWireSourceLink
+}
+
+export type LineShape = GeneratedShapeMetadata & {
   id: string
   kind: 'wall' | 'line' | 'door' | 'window' | 'gate'
   start: Point
@@ -32,7 +43,7 @@ export type LineShape = {
   bindingLabelOffset?: { x: number; y: number }
 }
 
-export type RectShape = {
+export type RectShape = GeneratedShapeMetadata & {
   id: string
   kind: 'rect'
   start: Point
@@ -50,7 +61,7 @@ export type RectShape = {
   bindingLabelOffset?: { x: number; y: number }
 }
 
-export type TextShape = {
+export type TextShape = GeneratedShapeMetadata & {
   id: string
   kind: 'text'
   position: Point
@@ -69,7 +80,7 @@ export type TextShape = {
   bindingLabelOffset?: { x: number; y: number }
 }
 
-export type SymbolShape = {
+export type SymbolShape = GeneratedShapeMetadata & {
   id: string
   kind: 'symbol'
   position: Point
@@ -90,7 +101,7 @@ export type SymbolShape = {
   catalogShapes?: Shape[]
 }
 
-export type ImageShape = {
+export type ImageShape = GeneratedShapeMetadata & {
   id: string
   kind: 'image'
   position: Point

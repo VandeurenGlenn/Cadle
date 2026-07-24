@@ -33,6 +33,24 @@ export const isPoint = (value: unknown): value is Point => {
   )
 }
 
+const copyGeneratedMetadata = (
+  source: { generationKey?: unknown; sourceLink?: unknown },
+  target: Shape
+): void => {
+  if (typeof source.generationKey === 'string' && source.generationKey.trim()) {
+    target.generationKey = source.generationKey.trim()
+  }
+  if (source.sourceLink && typeof source.sourceLink === 'object') {
+    const link = source.sourceLink as { kind?: unknown; id?: unknown; role?: unknown }
+    if (
+      (link.kind === 'board' || link.kind === 'circuit' || link.kind === 'device') &&
+      typeof link.id === 'string' && link.id.trim() && typeof link.role === 'string' && link.role.trim()
+    ) {
+      target.sourceLink = { kind: link.kind, id: link.id.trim(), role: link.role.trim() }
+    }
+  }
+}
+
 export const sanitizeShapes = (values: unknown[]): Shape[] => {
   const shapes: Shape[] = []
   for (const value of values) {
@@ -63,6 +81,8 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       groupId?: unknown
       bindingLabelOffset?: unknown
       catalogShapes?: unknown
+      generationKey?: unknown
+      sourceLink?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue
@@ -95,6 +115,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) line.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) line.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) line.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
+      copyGeneratedMetadata(raw, line)
       shapes.push(line)
       continue
     }
@@ -121,6 +142,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) rect.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) rect.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) rect.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
+      copyGeneratedMetadata(raw, rect)
       shapes.push(rect)
       continue
     }
@@ -146,6 +168,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) text.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) text.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) text.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
+      copyGeneratedMetadata(raw, text)
       shapes.push(text)
       continue
     }
@@ -191,6 +214,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (Array.isArray(raw.catalogShapes)) {
         symbol.catalogShapes = sanitizeShapes(raw.catalogShapes)
       }
+      copyGeneratedMetadata(raw, symbol)
       shapes.push(symbol)
       continue
     }
@@ -226,6 +250,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         image.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) image.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) image.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
+      copyGeneratedMetadata(raw, image)
       shapes.push(image)
     }
   }
@@ -256,6 +281,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.bindingId) cloned.bindingId = shape.bindingId
       if (shape.groupId) cloned.groupId = shape.groupId
       if (shape.bindingLabelOffset) cloned.bindingLabelOffset = { ...shape.bindingLabelOffset }
+      copyGeneratedMetadata(shape, cloned)
       return cloned
     }
     case 'rect': {
@@ -276,6 +302,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.bindingId) rect.bindingId = shape.bindingId
       if (shape.groupId) rect.groupId = shape.groupId
       if (shape.bindingLabelOffset) rect.bindingLabelOffset = { ...shape.bindingLabelOffset }
+      copyGeneratedMetadata(shape, rect)
       return rect
     }
     case 'text': {
@@ -295,6 +322,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.bindingId) text.bindingId = shape.bindingId
       if (shape.groupId) text.groupId = shape.groupId
       if (shape.bindingLabelOffset) text.bindingLabelOffset = { ...shape.bindingLabelOffset }
+      copyGeneratedMetadata(shape, text)
       return text
     }
     case 'symbol': {
@@ -317,6 +345,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.bindingId) symbol.bindingId = shape.bindingId
       if (shape.groupId) symbol.groupId = shape.groupId
       if (shape.bindingLabelOffset) symbol.bindingLabelOffset = { ...shape.bindingLabelOffset }
+      copyGeneratedMetadata(shape, symbol)
       return symbol
     }
     case 'image': {
@@ -338,6 +367,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.bindingId) image.bindingId = shape.bindingId
       if (shape.groupId) image.groupId = shape.groupId
       if (shape.bindingLabelOffset) image.bindingLabelOffset = { ...shape.bindingLabelOffset }
+      copyGeneratedMetadata(shape, image)
       return image
     }
   }
@@ -368,6 +398,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
       if (shape.bindingId) scaled.bindingId = shape.bindingId
       if (shape.groupId) scaled.groupId = shape.groupId
+      copyGeneratedMetadata(shape, scaled)
       return scaled
     }
     case 'rect': {
@@ -387,6 +418,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (typeof shape.strokeWidth === 'number') rect.strokeWidth = shape.strokeWidth
       if (shape.bindingId) rect.bindingId = shape.bindingId
       if (shape.groupId) rect.groupId = shape.groupId
+      copyGeneratedMetadata(shape, rect)
       return rect
     }
     case 'text': {
@@ -405,6 +437,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.flipY) text.flipY = true
       if (shape.bindingId) text.bindingId = shape.bindingId
       if (shape.groupId) text.groupId = shape.groupId
+      copyGeneratedMetadata(shape, text)
       return text
     }
     case 'symbol': {
@@ -417,6 +450,8 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         scale: shape.scale * (scaleX + scaleY) * 0.5
       }
       if (shape.symbolTextOverrides) symbol.symbolTextOverrides = { ...shape.symbolTextOverrides }
+      if (shape.electrical) symbol.electrical = { ...shape.electrical }
+      if (shape.catalogShapes) symbol.catalogShapes = cloneShapes(shape.catalogShapes)
       if (shape.rotation) symbol.rotation = shape.rotation
       if (shape.fill) symbol.fill = shape.fill
       if (shape.stroke) symbol.stroke = shape.stroke
@@ -425,6 +460,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.flipY) symbol.flipY = true
       if (shape.bindingId) symbol.bindingId = shape.bindingId
       if (shape.groupId) symbol.groupId = shape.groupId
+      copyGeneratedMetadata(shape, symbol)
       return symbol
     }
     case 'image': {
@@ -445,6 +481,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.flipY) image.flipY = true
       if (shape.bindingId) image.bindingId = shape.bindingId
       if (shape.groupId) image.groupId = shape.groupId
+      copyGeneratedMetadata(shape, image)
       return image
     }
   }

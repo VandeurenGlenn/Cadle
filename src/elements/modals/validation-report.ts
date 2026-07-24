@@ -18,6 +18,12 @@ type ValidationGroup = {
     cableSectionMm2: number
     poles: number
     phaseConfiguration: 'single-phase' | 'three-phase'
+    breakerCurve?: string
+    rcdSensitivityMa?: number
+    rcdType?: string
+    boardId?: string
+    railId?: string
+    notes?: string
     source: 'explicit' | 'suggested'
     sources: {
       breakerCurrentA: 'entered' | 'suggested'
@@ -129,6 +135,12 @@ export class ValidationReportModal extends LiteElement {
                           ${group.specification.phaseConfiguration === 'three-phase' ? '3-phase' : '1-phase'}
                           (${group.specification.sources.phaseConfiguration})
                         </div>
+                        <div>
+                          ${group.specification.breakerCurve ? `Curve ${group.specification.breakerCurve}` : 'Curve not set'} •
+                          ${group.specification.rcdSensitivityMa ? `${group.specification.rcdSensitivityMa} mA ${group.specification.rcdType ?? ''}` : 'RCD not assigned'} •
+                          ${group.specification.boardId ?? 'main'} / ${group.specification.railId ?? 'rail-1'}
+                        </div>
+                        ${group.specification.notes ? html`<div>${group.specification.notes}</div>` : ''}
                       `
                     : ''}
                 </div>

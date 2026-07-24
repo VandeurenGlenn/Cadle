@@ -36,6 +36,11 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' = 'single-phase'
   @property({ type: String }) accessor earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown' = 'unknown'
   @property({ type: Number }) accessor defaultPoles = 2
+  @property({ type: String }) accessor boardName = 'Main distribution board'
+  @property({ type: Number }) accessor mainRcdCurrentA = 40
+  @property({ type: Number }) accessor mainRcdSensitivityMa = 300
+  @property({ type: Number }) accessor mainRcdPoles = 2
+  @property({ type: String }) accessor mainRcdType: 'AC' | 'A' | 'F' | 'B' | 'other' = 'A'
 
   static styles = [styles]
 
@@ -78,6 +83,12 @@ export class ProjectDetailsDialog extends LiteElement {
     this.phaseConfiguration = profile.phaseConfiguration
     this.earthingSystem = profile.earthingSystem
     this.defaultPoles = profile.defaultPoles
+    const board = profile.boards?.[0]
+    this.boardName = board?.name ?? 'Main distribution board'
+    this.mainRcdCurrentA = board?.mainDifferential?.ratedCurrentA ?? 40
+    this.mainRcdSensitivityMa = board?.mainDifferential?.sensitivityMa ?? 300
+    this.mainRcdPoles = board?.mainDifferential?.poles ?? profile.defaultPoles
+    this.mainRcdType = board?.mainDifferential?.type ?? 'A'
   }
 
   #close = () => {
@@ -159,6 +170,21 @@ export class ProjectDetailsDialog extends LiteElement {
         break
       case 'defaultPoles':
         this.defaultPoles = Math.max(1, Number(value) || 2)
+        break
+      case 'boardName':
+        this.boardName = value
+        break
+      case 'mainRcdCurrentA':
+        this.mainRcdCurrentA = Math.max(1, Number(value) || 40)
+        break
+      case 'mainRcdSensitivityMa':
+        this.mainRcdSensitivityMa = Math.max(1, Number(value) || 300)
+        break
+      case 'mainRcdPoles':
+        this.mainRcdPoles = Math.max(1, Number(value) || 2)
+        break
+      case 'mainRcdType':
+        this.mainRcdType = value === 'AC' || value === 'F' || value === 'B' || value === 'other' ? value : 'A'
         break
       default:
         break
@@ -255,7 +281,16 @@ export class ProjectDetailsDialog extends LiteElement {
       supplyVoltageV: this.supplyVoltageV,
       phaseConfiguration: this.phaseConfiguration,
       earthingSystem: this.earthingSystem,
-      defaultPoles: this.defaultPoles
+      defaultPoles: this.defaultPoles,
+      boards: [{
+        id: 'main',
+        name: this.boardName.trim() || 'Main distribution board',
+        rails: [{ id: 'rail-1', name: 'Rail 1' }],
+        mainDifferential: {
+          id: 'main-rcd', ratedCurrentA: this.mainRcdCurrentA, sensitivityMa: this.mainRcdSensitivityMa,
+          poles: this.mainRcdPoles, type: this.mainRcdType
+        }
+      }]
     })
 
     await setProjectData(this.projectKey, nextProject)
@@ -461,6 +496,12 @@ export class ProjectDetailsDialog extends LiteElement {
             <span>Standaard aantal polen</span>
             <input type="number" min="1" step="1" .value=${String(this.defaultPoles)} data-field="defaultPoles" @input=${this.#onMetaInput} />
           </label>
+          <div class="form-section"><strong>Verdeelbord en hoofddifferentieel</strong></div>
+          <label><span>Naam bord</span><input .value=${this.boardName} data-field="boardName" @input=${this.#onMetaInput} /></label>
+          <label><span>Nominale stroom (A)</span><input type="number" min="1" .value=${String(this.mainRcdCurrentA)} data-field="mainRcdCurrentA" @input=${this.#onMetaInput} /></label>
+          <label><span>Gevoeligheid (mA)</span><input type="number" min="1" .value=${String(this.mainRcdSensitivityMa)} data-field="mainRcdSensitivityMa" @input=${this.#onMetaInput} /></label>
+          <label><span>Polen</span><input type="number" min="1" .value=${String(this.mainRcdPoles)} data-field="mainRcdPoles" @input=${this.#onMetaInput} /></label>
+          <label><span>Type</span><select .value=${this.mainRcdType} data-field="mainRcdType" @change=${this.#onMetaInput}><option value="AC">AC</option><option value="A">A</option><option value="F">F</option><option value="B">B</option><option value="other">Andere</option></select></label>
         </div>
         <div class="footer">
           <button

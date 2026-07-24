@@ -10,6 +10,12 @@ export type CircuitSpecification = {
   cableSectionMm2: number
   poles: number
   phaseConfiguration: 'single-phase' | 'three-phase'
+  breakerCurve?: 'B' | 'C' | 'D' | 'other'
+  rcdSensitivityMa?: number
+  rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
+  boardId?: string
+  railId?: string
+  notes?: string
   source: 'explicit' | 'suggested'
   sources: {
     breakerCurrentA: 'entered' | 'suggested'
@@ -84,6 +90,12 @@ const suggestedSpecification = (
   const explicitSection = symbols.map((shape) => shape.electrical?.cableSectionMm2).find((value) => value !== undefined)
   const explicitPoles = symbols.map((shape) => shape.electrical?.poles).find((value) => value !== undefined)
   const explicitPhase = symbols.map((shape) => shape.electrical?.phaseConfiguration).find((value) => value !== undefined)
+  const explicitCurve = symbols.map((shape) => shape.electrical?.breakerCurve).find((value) => value !== undefined)
+  const explicitRcd = symbols.map((shape) => shape.electrical?.rcdSensitivityMa).find((value) => value !== undefined)
+  const explicitRcdType = symbols.map((shape) => shape.electrical?.rcdType).find((value) => value !== undefined)
+  const boardId = symbols.map((shape) => shape.electrical?.boardId).find((value) => value !== undefined)
+  const railId = symbols.map((shape) => shape.electrical?.railId).find((value) => value !== undefined)
+  const notes = symbols.map((shape) => shape.electrical?.notes).find((value) => value !== undefined)
   const types = new Set(components.map((component) => component.circuitType).filter(Boolean))
   const circuitType: ElectricalCircuitType =
     types.size > 1 ? 'mixed' : (([...types][0] as ElectricalCircuitType | undefined) ?? 'other')
@@ -94,6 +106,12 @@ const suggestedSpecification = (
     cableSectionMm2: explicitSection ?? (socketOrMotor ? 2.5 : 1.5),
     poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' ? 4 : 2),
     phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
+    ...(explicitCurve ? { breakerCurve: explicitCurve } : {}),
+    ...(explicitRcd ? { rcdSensitivityMa: explicitRcd } : {}),
+    ...(explicitRcdType ? { rcdType: explicitRcdType } : {}),
+    ...(boardId ? { boardId } : {}),
+    ...(railId ? { railId } : {}),
+    ...(notes ? { notes } : {}),
     source:
       explicitCurrent !== undefined &&
       explicitSection !== undefined &&
@@ -120,7 +138,12 @@ const conflictingSpecificationFields = (symbols: readonly SymbolShape[]): string
     ['breakerCurrentA', 'breaker current'],
     ['cableSectionMm2', 'cable section'],
     ['poles', 'pole count'],
-    ['phaseConfiguration', 'phase configuration']
+    ['phaseConfiguration', 'phase configuration'],
+    ['breakerCurve', 'breaker curve'],
+    ['rcdSensitivityMa', 'RCD sensitivity'],
+    ['rcdType', 'RCD type'],
+    ['boardId', 'board assignment'],
+    ['railId', 'rail assignment']
   ]
   return fields
     .filter(([field]) => {

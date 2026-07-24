@@ -354,7 +354,7 @@ export const buildOneWireRowSection = (
     const countLabel: TextShape = {
       id: deps.nextShapeId(),
       kind: 'text',
-      position: { x: lastSlotX + 16, y: rowY + 5 },
+      position: { x: lastSlotX + 26, y: rowY + 5 },
       text: `x${lampCount}`,
       fill: '#000000',
       scale: 0.7,

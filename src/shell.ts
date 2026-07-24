@@ -527,6 +527,15 @@ export class AppShell extends LiteElement {
       this.projects = []
     }
 
+    // Resolve the initial screen before catalog loading so first-time users never
+    // spend that work looking at an editor without an open project.
+    this.#captureReloadResumeFromHash()
+    const initialRoute = parseHash(location.hash).route
+    if (!initialRoute || ((initialRoute === 'native-draw' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
+      location.hash = '#!/projects'
+    }
+    await this.#onhashchange()
+
     // for (const key of keys) {
     //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
     // }
@@ -572,14 +581,12 @@ export class AppShell extends LiteElement {
     }
 
     onhashchange = this.#onhashchange.bind(this)
-    this.#captureReloadResumeFromHash()
     if (this.showReopenPreviousProjectPrompt) {
       pubsub.publish('shell.reopen-previous-project-prompt', {
         open: true,
         projectName: this.previousProjectName
       })
     }
-    this.#onhashchange()
     this.addEventListener('drop', this.#drop.bind(this))
     this.addEventListener('dragover', this.#dragover.bind(this))
     this.addEventListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)

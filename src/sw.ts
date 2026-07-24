@@ -1,4 +1,6 @@
-const CACHE_NAME = 'cadle-symbol-assets-v1'
+import { isCacheableSvgRequest } from './service-worker/cache-policy.js'
+
+const CACHE_NAME = 'cadle-svg-assets-v2'
 
 type ExtendableEventLike = Event & {
   waitUntil(promise: Promise<unknown>): void
@@ -15,20 +17,6 @@ const serviceWorkerGlobal = globalThis as typeof globalThis & {
     claim: () => Promise<void>
   }
 }
-
-const isSameOriginRequest = (request: Request): boolean => new URL(request.url).origin === location.origin
-
-const isSymbolsManifest = (request: Request): boolean => {
-  const path = new URL(request.url).pathname
-  return /\/(?:www\/)?symbols\/manifest\.js$/i.test(path)
-}
-
-const isSymbolSvg = (request: Request): boolean => {
-  const path = new URL(request.url).pathname
-  return /\/(?:www\/)?symbols\/.+\.svg$/i.test(path)
-}
-
-const shouldCacheRequest = (request: Request): boolean => isSymbolsManifest(request) || isSymbolSvg(request)
 
 const cacheResponse = async (request: Request, response: Response): Promise<Response> => {
   if (!response.ok) return response
@@ -66,7 +54,7 @@ serviceWorkerGlobal.addEventListener('fetch', (event) => {
   const fetchEvent = event as FetchEventLike
   const request = fetchEvent.request
 
-  if (request.method !== 'GET' || !isSameOriginRequest(request) || !shouldCacheRequest(request)) return
+  if (!isCacheableSvgRequest(request, location.origin)) return
 
   fetchEvent.respondWith(cacheFirst(request))
 })

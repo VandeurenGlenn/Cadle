@@ -17,10 +17,17 @@ type OneWireCatalogComponent = {
   sourceShapeId?: string
   sourcePath?: string
   sourceName?: string
+  breakerCurrentA?: number
+  cableSectionMm2?: number
+  poles?: number
+  breakerCurve?: string
 }
 
 type OneWireBundleOptions = {
   amps: number
+  poles?: number
+  phaseConfiguration?: 'single-phase' | 'three-phase'
+  breakerCurve?: string
   family: string
   autoIncludeFamily: boolean
 }
@@ -31,6 +38,10 @@ type OneWireResolvedComponent = {
   sourcePath?: string
   sourceName?: string
   sourceShapeId?: string
+  breakerCurrentA?: number
+  cableSectionMm2?: number
+  poles?: number
+  breakerCurve?: string
 }
 
 type OneWireBuilderDeps = {
@@ -92,7 +103,8 @@ export const buildOneWireBreakerSection = (
   startX: number,
   bindingId: string,
   familyLabel: string,
-  deps: OneWireBuilderDeps
+  deps: OneWireBuilderDeps,
+  specification?: Pick<OneWireBundleOptions, 'amps' | 'poles' | 'phaseConfiguration'>
 ): { shapes: Shape[]; ids: string[]; breakerContentTopY: number } => {
   const x = snapToGrid(startX)
   const component = deps.oneWireComponentSymbol('breaker')
@@ -115,6 +127,11 @@ export const buildOneWireBreakerSection = (
     strokeWidth: 0.5,
     bindingId,
     groupId
+  }
+  symbol.symbolTextOverrides = {
+    'desc:nP': `${specification?.poles ?? 2}P`,
+    'desc:n': specification?.phaseConfiguration === 'three-phase' ? '3N' : '1N',
+    'desc:20A': `${specification?.amps ?? 20}A`
   }
 
   const connector: LineShape = {
@@ -361,6 +378,20 @@ export const buildOneWireRowSection = (
   shapes.push(rowNumberLabel)
   ids.push(rowNumberLabel.id)
 
+  const specification = entries[0]
+  if (specification?.breakerCurrentA || specification?.cableSectionMm2) {
+    const curve = specification.breakerCurve ?? 'C'
+    const specificationLabel: TextShape = {
+      id: deps.nextShapeId(), kind: 'text', position: { x: rowJunctionX - 25, y: rowY + 22 },
+      text: `${curve}${specification.breakerCurrentA ?? 16} · ${specification.poles ?? 2}P · ${specification.cableSectionMm2 ?? 1.5} mm²`,
+      fill: '#000000', scale: 0.55, bindingId, groupId: rowGroupId,
+      sourceLink: { kind: 'circuit', id: bindingId, role: 'specification-label' },
+      generationKey: `circuit:${bindingId}:specification-label`
+    }
+    shapes.push(specificationLabel)
+    ids.push(specificationLabel.id)
+  }
+
   if (lampCount > 1) {
     const countLabel: TextShape = {
       id: deps.nextShapeId(),
@@ -403,7 +434,7 @@ export const buildKamrailCircuitBundle = (
   const createdIds: string[] = []
   const shapes: Shape[] = []
 
-  const breaker = buildOneWireBreakerSection(railY, startX, options.family, options.family, deps)
+  const breaker = buildOneWireBreakerSection(railY, startX, options.family, options.family, deps, options)
   breaker.shapes.forEach((shape, index) => {
     shape.sourceLink = { kind: 'board', id: options.family, role: index === 1 ? 'breaker' : index === 0 ? 'feed' : 'label' }
     shape.generationKey = `board:${options.family}:${shape.sourceLink.role}`

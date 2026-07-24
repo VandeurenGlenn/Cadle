@@ -48,7 +48,11 @@ import type {
   Tool
 } from './native-draw/types.js'
 import type { Project, UUID } from './types.js'
-import { setProjectData } from './api/project.js'
+import {
+  electricalMetadataFromCatalog,
+  type ElectricalDeviceMetadata
+} from './native-draw/electrical.js'
+import { getProjectData, setProjectData } from './api/project.js'
 import pubsub from './pubsub.js'
 import { downloadTextFile } from './native-app/export/downloads.js'
 import {
@@ -102,6 +106,7 @@ import {
   circuitBomRows,
   type CircuitAnalysis,
   type CircuitComponent,
+  type CircuitGroup,
   type BomRow
 } from './native-app/circuit-analysis.js'
 import { ViewportController } from './native-app/controllers/viewport-controller.js'
@@ -176,6 +181,7 @@ export class CadleApp extends LiteElement {
   #pageKey: UUID | null = null
   #project: Project | null = null
   #persistPromise: Promise<void> = Promise.resolve()
+  #circuitUpdatePromise: Promise<void> = Promise.resolve()
   #persistError: unknown = null
   #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
@@ -607,6 +613,22 @@ export class CadleApp extends LiteElement {
       }
     }
 
+    const selectedShape = this.#shapeById(this.#document.selectedId)
+    const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
+    if (payload.electrical && circuitGroup) {
+      const { role, circuitType, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
+      if (Object.keys(circuitProperties).length > 0) {
+        this.#circuitUpdatePromise = this.#circuitUpdatePromise.then(() =>
+          this.#updateCircuitProperties(circuitGroup.bindingId, circuitProperties)
+        )
+        return
+      }
+      void role
+      void circuitType
+      void oneWireEligible
+      void ratedCurrentA
+    }
+
     const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
       selectedIds: this.#document.selectedIds,
       selectedId: this.#document.selectedId,
@@ -717,6 +739,10 @@ export class CadleApp extends LiteElement {
   async flushPendingSave(): Promise<void> {
     await this.#persistPromise
     if (this.#persistError) throw this.#persistError
+  }
+
+  async flushPendingCircuitUpdates(): Promise<void> {
+    await this.#circuitUpdatePromise
   }
 
   #persist() {
@@ -2443,7 +2469,14 @@ export class CadleApp extends LiteElement {
           .filter((group) => group.family === family)
           .map((group) => group.specification.breakerCurrentA)
       )
-      this.#addKamrailCircuitBundle(rail, x, { amps: familyCurrent, family, autoIncludeFamily: true })
+      const familyGroups = analysis.groups.filter((group) => group.family === family)
+      this.#addKamrailCircuitBundle(rail, x, {
+        amps: familyCurrent,
+        poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
+        phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase') ? 'three-phase' : 'single-phase',
+        family,
+        autoIncludeFamily: true
+      })
     })
 
     const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
@@ -2461,7 +2494,7 @@ export class CadleApp extends LiteElement {
 
   #groundplanComponentsForFamily(
     family: string
-  ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourceShapeId: string; sourcePath?: string; sourceName?: string }> {
+  ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourceShapeId: string; sourcePath?: string; sourceName?: string; breakerCurrentA: number; cableSectionMm2: number; poles: number; breakerCurve?: string }> {
     return this.analyzeBindings()
       .groups.filter((group) => group.family === family)
       .flatMap((group) =>
@@ -2474,6 +2507,10 @@ export class CadleApp extends LiteElement {
             bindingId: group.bindingId,
             kind: component.role,
             sourceShapeId: component.shapeId,
+            breakerCurrentA: group.specification.breakerCurrentA,
+            cableSectionMm2: group.specification.cableSectionMm2,
+            poles: group.specification.poles,
+            breakerCurve: group.specification.breakerCurve,
             sourcePath: component.path,
             sourceName: component.name
           }))
@@ -2483,7 +2520,7 @@ export class CadleApp extends LiteElement {
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; family: string; autoIncludeFamily: boolean }
+    options: { amps: number; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase'; family: string; autoIncludeFamily: boolean }
   ): boolean {
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
     const result = buildKamrailCircuitBundle({
@@ -2766,6 +2803,93 @@ export class CadleApp extends LiteElement {
     return safeAreaTemplate(this.#safeAreaRect())
   }
 
+  #circuitGroupForShape(shape: Shape): CircuitGroup | null {
+    const analysis = this.analyzeBindings()
+    if (shape.sourceLink?.kind === 'device') {
+      return analysis.groups.find((group) => group.components.some((item) => item.shapeId === shape.sourceLink?.id)) ?? null
+    }
+    if (shape.sourceLink?.kind === 'circuit') {
+      return analysis.groups.find((group) => group.bindingId === shape.sourceLink?.id) ?? null
+    }
+    const binding = shape.bindingId?.trim().toUpperCase()
+    if (binding) {
+      const exact = analysis.groups.find((group) => group.bindingId === binding)
+      if (exact) return exact
+      const familyMatches = analysis.groups.filter((group) => group.family === binding)
+      if (familyMatches.length === 1) return familyMatches[0]
+    }
+    if (shape.sourceLink?.kind === 'board') {
+      const familyMatches = analysis.groups.filter((group) => group.family === shape.sourceLink?.id)
+      if (familyMatches.length === 1) return familyMatches[0]
+    }
+    return null
+  }
+
+  #effectiveCircuitElectrical(shape: Shape, group: CircuitGroup): ElectricalDeviceMetadata {
+    const component = shape.sourceLink?.kind === 'device'
+      ? group.components.find((item) => item.shapeId === shape.sourceLink?.id)
+      : undefined
+    const base = shape.kind === 'symbol'
+      ? (shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path))
+      : { role: component?.role ?? 'neutral', oneWireEligible: true }
+    return {
+      ...base,
+      role: component?.role ?? (shape.sourceLink?.role === 'breaker' ? 'protection' : base.role),
+      oneWireEligible: true,
+      circuitType: group.specification.circuitType,
+      breakerCurrentA: group.specification.breakerCurrentA,
+      cableSectionMm2: group.specification.cableSectionMm2,
+      poles: group.specification.poles,
+      phaseConfiguration: group.specification.phaseConfiguration,
+      breakerCurve: group.specification.breakerCurve ?? 'C',
+      rcdSensitivityMa: group.specification.rcdSensitivityMa,
+      rcdType: group.specification.rcdType,
+      boardId: group.specification.boardId ?? 'main',
+      railId: group.specification.railId ?? 'rail-1',
+      notes: group.specification.notes
+    }
+  }
+
+  async #updateCircuitProperties(
+    bindingId: string,
+    update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>
+  ): Promise<void> {
+    if (!this.#projectKey || !this.#project) return
+    const apply = (shape: Shape): Shape => {
+      if (shape.kind !== 'symbol' || shape.bindingId?.trim().toUpperCase() !== bindingId) return shape
+      const electrical = { ...(shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path)) }
+      for (const [key, value] of Object.entries(update)) {
+        if (value === null || value === undefined) delete (electrical as Record<string, unknown>)[key]
+        else (electrical as Record<string, unknown>)[key] = value
+      }
+      return { ...shape, electrical }
+    }
+
+    const currentPageType = this.#pageKey ? this.#project.pages[this.#pageKey]?.pageType : undefined
+    if (currentPageType !== 'onewire') {
+      this.#document.shapes = this.#document.shapes.map(apply)
+      this.#pushHistory()
+      this.#render()
+      await this.flushPendingSave()
+    }
+
+    for (const pageKey of Object.keys(this.#project.pages) as UUID[]) {
+      if (this.#project.pages[pageKey]?.pageType === 'onewire') continue
+      if (pageKey === this.#pageKey) continue
+      const state = this.#nativeStateForPage(pageKey)
+      if (!state || !Array.isArray(state.shapes)) continue
+      const nextState = { ...state, shapes: sanitizeShapes(state.shapes).map(apply), selectedId: null } as NativeDocumentState
+      await saveNativeState(this.#projectKey, pageKey, nextState)
+    }
+    this.#project = await getProjectData(this.#projectKey)
+    if (currentPageType !== 'onewire') return
+    const oneWirePages = Object.entries(this.#project.pages)
+      .filter(([, page]) => page.pageType === 'onewire')
+      .sort(([, left], [, right]) => (left.order ?? 0) - (right.order ?? 0))
+    const pageIndex = Math.max(0, oneWirePages.findIndex(([key]) => key === this.#pageKey))
+    this.generateAutoOneWire(pageIndex)
+  }
+
   #rubberBandTemplate() {
     return rubberBandTemplate(this.#bandStart, this.#bandEnd)
   }
@@ -2804,11 +2928,18 @@ export class CadleApp extends LiteElement {
     }
 
     const groupedSelection = this.#selectedGroupId()
+    const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
+    const effectiveElectrical = selectedShape && circuitGroup
+      ? this.#effectiveCircuitElectrical(selectedShape, circuitGroup)
+      : undefined
+    const isProtectionText = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
     pubsub.publish(
       'native.selection.changed',
       createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
         kindOverride: groupedSelection ? 'group' : undefined,
-        bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : undefined
+        bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : circuitGroup?.bindingId,
+        electricalOverride: effectiveElectrical,
+        hideSymbolTextFields: Boolean(circuitGroup && isProtectionText)
       })
     )
   }

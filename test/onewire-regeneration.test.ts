@@ -20,7 +20,7 @@ test('preserves manually positioned generated objects by stable generation key',
   const result = reconcileGeneratedOneWire([previous], [fresh])
   assert.equal(result.preserved, 1)
   assert.deepEqual(result.shapes[0].kind === 'symbol' ? result.shapes[0].position : null, { x: 440, y: 100 })
-  assert.equal(result.shapes[0].id, 'new-id')
+  assert.equal(result.shapes[0].id, 'old-id')
 })
 
 test('reports added and removed generated source objects', () => {

@@ -82,6 +82,7 @@ type NativeAppElement = HTMLElement & {
   generateAutoOneWire?: (pageIndex?: number) => { generated: boolean; circuitCount: number; pageCount?: number; message?: string }
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
+  flushPendingCircuitUpdates?: () => Promise<void>
 }
 
 type ShellProjectStore = {
@@ -919,6 +920,7 @@ export class AppShell extends LiteElement {
 
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     try {
+      await nativeApp?.flushPendingCircuitUpdates?.()
       await nativeApp?.flushPendingSave?.()
     } catch {
       globalThis.alert('The floor plan could not be saved. One-wire generation was cancelled to protect your work.')

@@ -106,7 +106,7 @@ const suggestedSpecification = (
     cableSectionMm2: explicitSection ?? (socketOrMotor ? 2.5 : 1.5),
     poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' ? 4 : 2),
     phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
-    ...(explicitCurve ? { breakerCurve: explicitCurve } : {}),
+    breakerCurve: explicitCurve ?? 'C',
     ...(explicitRcd ? { rcdSensitivityMa: explicitRcd } : {}),
     ...(explicitRcdType ? { rcdType: explicitRcdType } : {}),
     ...(boardId ? { boardId } : {}),

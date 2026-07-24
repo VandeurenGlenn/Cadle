@@ -92,6 +92,7 @@ test('prefers explicit electrical metadata and derives circuit specifications', 
     cableSectionMm2: 4,
     poles: 4,
     phaseConfiguration: 'three-phase',
+    breakerCurve: 'C',
     source: 'explicit',
     sources: {
       breakerCurrentA: 'entered', cableSectionMm2: 'entered', poles: 'entered', phaseConfiguration: 'entered'
@@ -220,6 +221,8 @@ test('keeps partially entered circuit specifications marked as suggested', () =>
 
   assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
   assert.equal(analysis.groups[0].specification.cableSectionMm2, 2.5)
+  assert.equal(analysis.groups[0].specification.poles, 2)
+  assert.equal(analysis.groups[0].specification.breakerCurve, 'C')
   assert.equal(analysis.groups[0].specification.source, 'suggested')
   assert.equal(analysis.groups[0].specification.sources.breakerCurrentA, 'entered')
   assert.equal(analysis.groups[0].specification.sources.cableSectionMm2, 'suggested')

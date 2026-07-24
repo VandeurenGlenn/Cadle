@@ -3,12 +3,12 @@ import type { Shape } from '../../native-draw/types.js'
 const preserveManualGeometry = (fresh: Shape, previous: Shape): Shape => {
   if (fresh.kind !== previous.kind) return fresh
   if ('position' in fresh && 'position' in previous) {
-    const preserved = { ...fresh, position: { ...previous.position }, rotation: previous.rotation } as Shape
+    const preserved = { ...fresh, id: previous.id, position: { ...previous.position }, rotation: previous.rotation } as Shape
     if ('scale' in preserved && 'scale' in previous) preserved.scale = previous.scale
     return preserved
   }
   if ('start' in fresh && 'start' in previous && 'end' in fresh && 'end' in previous) {
-    return { ...fresh, start: { ...previous.start }, end: { ...previous.end } } as Shape
+    return { ...fresh, id: previous.id, start: { ...previous.start }, end: { ...previous.end } } as Shape
   }
   return fresh
 }

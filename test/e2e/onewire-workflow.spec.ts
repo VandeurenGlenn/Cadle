@@ -32,11 +32,30 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   }
 
   await placeAndBind('Switch general symbol', 260, 'A1')
-  await placeAndBind('Lighting', 420, 'A1')
+  await placeAndBind('Electrical wall outlet for floorplan', 420, 'A1')
+
+  const pane = page.locator('object-pane')
+  const breakerCurrent = pane.getByRole('spinbutton', { name: 'Breaker (A)' })
+  const cableSection = pane.getByRole('spinbutton', { name: 'Cable (mm²)' })
+  const poles = pane.getByRole('spinbutton', { name: 'Poles', exact: true })
+  const breakerCurve = pane.getByRole('combobox', { name: 'Breaker curve' })
+  await expect(breakerCurrent).toHaveValue('20')
+  await expect(cableSection).toHaveValue('2.5')
+  await expect(poles).toHaveValue('2')
+  await expect(breakerCurve).toHaveValue('C')
+  await breakerCurrent.fill('25')
+  await breakerCurrent.press('Tab')
+  await cableSection.fill('4')
+  await cableSection.press('Tab')
+  await breakerCurve.selectOption('D')
+  await page.waitForTimeout(600)
 
   const validation = await page.locator('cadle-app').evaluate((element: any) => element.analyzeBindings())
   expect(validation.valid, JSON.stringify(validation)).toBe(true)
   expect(validation.groups[0].bindingId).toBe('A1')
+  expect(validation.groups[0].specification.breakerCurrentA).toBe(25)
+  expect(validation.groups[0].specification.cableSectionMm2).toBe(4)
+  expect(validation.groups[0].specification.breakerCurve).toBe('D')
 
   await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
   await expect.poll(() => page.locator('app-shell').evaluate((element: any) => element.project?.pages?.[element.loadedPage]?.pageType)).toBe('onewire')
@@ -44,6 +63,8 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(generated.generated, generated.message).toBe(true)
   const generatedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect((generatedSvg.match(/data-shape-id=/g) ?? []).length).toBeGreaterThan(3)
+  expect(generatedSvg).toContain('D25')
+  expect(generatedSvg).toContain('4 mm²')
 
   await page.reload()
   await expect(page).toHaveURL(/#!\/native-draw/)

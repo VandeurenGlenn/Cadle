@@ -54,6 +54,10 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   )
   assert.ok(result.shapes.every((shape) => shape.bindingId === 'A1'))
   assert.equal(new Set(result.shapes.map((shape) => shape.groupId)).size, 1)
+  const breaker = result.shapes.find((shape) => shape.kind === 'symbol')
+  assert.deepEqual(breaker?.kind === 'symbol' ? breaker.symbolTextOverrides : null, {
+    'desc:nP': '2P', 'desc:n': '1N', 'desc:20A': '20A'
+  })
 
   const connector = result.shapes[0]
   assert.equal(connector.kind, 'line')

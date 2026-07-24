@@ -1,7 +1,7 @@
 import type { Shape } from '../../native-draw/types.js'
 import { shapeBounds } from '../../native-draw/model.js'
 import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
-import type { ElectricalDeviceMetadata } from '../../native-draw/electrical.js'
+import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../native-draw/electrical.js'
 
 export type NativeSelectionSymbolTextField = {
   key: string
@@ -71,6 +71,8 @@ export const createNativeSelectionChangedPayload = (
   options?: {
     kindOverride?: string
     bindingIdOverride?: string
+    electricalOverride?: ElectricalDeviceMetadata
+    hideSymbolTextFields?: boolean
   }
 ): NativeSelectionChangedPayload => {
   const selectionCount = selectedIdsCount > 0 ? selectedIdsCount : selectedShape ? 1 : 0
@@ -92,8 +94,22 @@ export const createNativeSelectionChangedPayload = (
   if (selectedShape.kind === 'text') shapePayload.text = selectedShape.text
   if (selectedShape.kind === 'symbol') {
     shapePayload.path = selectedShape.path
-    if (selectedShape.electrical) shapePayload.electrical = { ...selectedShape.electrical }
-    const editableFields = listEditableSymbolTextFields(selectedShape.path)
+    const sourceElectrical = options?.electricalOverride ?? selectedShape.electrical ?? electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
+    if (sourceElectrical.oneWireEligible || selectedShape.bindingId) {
+      const socketOrMotor = sourceElectrical.circuitType === 'sockets' || sourceElectrical.circuitType === 'motor' || sourceElectrical.circuitType === 'mixed'
+      shapePayload.electrical = {
+        ...sourceElectrical,
+        breakerCurrentA: sourceElectrical.breakerCurrentA ?? (socketOrMotor ? 20 : 16),
+        cableSectionMm2: sourceElectrical.cableSectionMm2 ?? (socketOrMotor ? 2.5 : 1.5),
+        poles: sourceElectrical.poles ?? 2,
+        phaseConfiguration: sourceElectrical.phaseConfiguration ?? 'single-phase',
+        breakerCurve: sourceElectrical.breakerCurve ?? 'C',
+        boardId: sourceElectrical.boardId ?? 'main',
+        railId: sourceElectrical.railId ?? 'rail-1'
+      }
+    }
+    const isProtectionSymbol = /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
+    const editableFields = options?.hideSymbolTextFields || isProtectionSymbol ? [] : listEditableSymbolTextFields(selectedShape.path)
     if (editableFields.length) {
       const overrides = selectedShape.symbolTextOverrides ?? {}
       shapePayload.symbolTextFields = editableFields.map((field) => ({

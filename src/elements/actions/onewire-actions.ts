@@ -57,7 +57,7 @@ export class OneWireActions extends LiteElement {
     if (preset) this.currentPreset = preset
   }
 
-  #onActionChange = (action: string) => {
+  #onActionChange = (_action: string) => {
     // Show one-wire actions when in native-draw mode
     this.isVisible = location.hash.includes('#!/native-draw')
   }

@@ -31,21 +31,16 @@ import {
   nextShapeId,
   samePoint,
   sanitizeShapes,
-  scaleDraftShape,
-  scalePoint,
-  scaleShape,
   shapeBounds
 } from './native-draw/model.js'
 import { parseHash } from './shell/routing.js'
 import type {
   DraftShape,
   DragState,
-  ImageShape,
   LineShape,
   NativeCatalogPick,
   PaperPreset,
   Point,
-  RectShape,
   Shape,
   Snapshot,
   SymbolShape,
@@ -55,21 +50,17 @@ import type {
 import type { Project, UUID } from './types.js'
 import { setProjectData } from './api/project.js'
 import pubsub from './pubsub.js'
-import { downloadTextFile, savePdfFromPng } from './native-app/downloads.js'
+import { downloadTextFile } from './native-app/export/downloads.js'
 import {
   buildSvgDocument,
-  buildWallMask,
-  safeAreaRect,
-  selectedOutlineMarkup,
-  shapeMarkup
-} from './native-app/svg-export.js'
+  safeAreaRect
+} from './native-app/export/svg-export.js'
 import {
   buildProjectTitleBlockMarkup,
   getProjectLogoBounds,
-  getProjectTitleBlockBounds,
   isProjectLogoVisible,
   PROJECT_LOGO_SHAPE_ID
-} from './native-app/project-title-block.js'
+} from './native-app/layout/project-title-block.js'
 import { buildIntroPageSvg } from './native-app/intro-page.js'
 import {
   bindingLabelsTemplate,
@@ -81,22 +72,21 @@ import {
   wallChainPreviewTemplate,
   wallMaskTemplate
 } from './native-app/svg-templates.js'
-import { translateShape } from './native-app/shape-transforms.js'
-import { buildOneWireCircuit } from './native-app/onewire-builder.js'
-import { buildKamrailCircuitBundle } from './native-app/onewire-helpers.js'
-import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './native-app/onewire-symbol-nodes.js'
-import { nextPanFromPointer } from './native-app/pointer-pan.js'
-import { canCommitDraft, resolvePointerUpPhase } from './native-app/pointer-up.js'
+import { translateShape } from './native-app/interaction/shape-transforms.js'
+import { buildKamrailCircuitBundle } from './native-app/layout/onewire-helpers.js'
+import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './native-app/layout/onewire-symbol-nodes.js'
+import { nextPanFromPointer } from './native-app/interaction/pointer-pan.js'
+import { canCommitDraft, resolvePointerUpPhase } from './native-app/interaction/pointer-up.js'
 import {
   resolveSelectPointerDownState,
   resolveOneWirePointerDown,
   resolveWallPointerDown
-} from './native-app/pointer-down.js'
-import { applyDragMove, updateDraftShapeEnd, updateWallChainPreview } from './native-app/pointer-move.js'
-import { resolveNativeEscapeAction } from './native-app/keyboard.js'
-import { createDraftShape, createSymbolShape, createTextShape } from './native-app/pointer-down-builders.js'
-import { createNativeSelectionChangedPayload } from './native-app/selection-payload.js'
-import { transformShapeForSelection, type SelectionTransformAction } from './native-app/selection-transforms.js'
+} from './native-app/interaction/pointer-down.js'
+import { applyDragMove, updateDraftShapeEnd, updateWallChainPreview } from './native-app/interaction/pointer-move.js'
+import { resolveNativeEscapeAction } from './native-app/interaction/keyboard.js'
+import { createDraftShape, createSymbolShape, createTextShape } from './native-app/interaction/pointer-down-builders.js'
+import { createNativeSelectionChangedPayload } from './native-app/interaction/selection-payload.js'
+import { transformShapeForSelection, type SelectionTransformAction } from './native-app/interaction/selection-transforms.js'
 import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './native-app/symbol-svg-cache.js'
 import { isEscape } from './controllers/keyboard/commands/escape.js'
 import { isPanKeyDown, isPanKeyUp } from './controllers/keyboard/commands/pan.js'
@@ -107,11 +97,7 @@ import {
   getStoredCustomSymbols,
   setStoredCustomSymbols
 } from './shell/custom-symbols.js'
-import {
-  ensureCatalogSymbolOverridesLoaded,
-  getCatalogSymbolStyleDefaults,
-  setStoredCatalogSymbolStyleDefaults
-} from './shell/catalog-symbol-overrides.js'
+import { getCatalogSymbolStyleDefaults, setStoredCatalogSymbolStyleDefaults } from './shell/catalog-symbol-overrides.js'
 import {
   analyzeCircuits,
   circuitBomRows,
@@ -119,13 +105,19 @@ import {
   type CircuitComponent,
   type BomRow
 } from './native-app/circuit-analysis.js'
-import { DocumentHistory } from './native-app/document-history.js'
-import { ViewportController } from './native-app/viewport-controller.js'
-import { ToolController } from './native-app/tool-controller.js'
+import { DocumentHistory } from './native-app/controllers/document-history.js'
+import { ViewportController } from './native-app/controllers/viewport-controller.js'
+import { ToolController } from './native-app/controllers/tool-controller.js'
+import {
+  symbolContentBounds
+} from './native-app/layout/symbol-layout.js'
+import { buildCatalogSelectionDraft } from './native-app/layout/catalog-selection.js'
+import {
+  updateSelectionProperties,
+  type SelectionPropertyUpdate
+} from './native-app/interaction/selection-properties.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
-type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
-
 type CatalogDialogMode = 'add' | 'replace'
 
 type CatalogDialogCategoryOption = {
@@ -153,136 +145,8 @@ const SYMBOL_PLACEMENT_ROTATE_THRESHOLD = 6
 const KAMRAIL_HALF_LENGTH = 420
 const KAMRAIL_STROKE_WIDTH = 10
 const KAMRAIL_ATTACH_OFFSET = 20
-const KAMRAIL_AUTO_COMPONENT_SPACING = 120
 const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
 const ONEWIRE_BRANCH_STROKE = '#000000'
-
-const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
-
-const getBindingLabelNearMargin = (shape: Shape): number => (shape.kind === 'symbol' ? 2 : 5)
-
-type OpticalInsets = { left: number; right: number; top: number; bottom: number }
-
-const symbolOpticalInsetsCache = new Map<string, OpticalInsets | null>()
-const symbolMeasurementHostId = 'cadle-symbol-measurement-host'
-
-const parseViewBox = (viewBox: string): { minX: number; minY: number; width: number; height: number } | null => {
-  const parts = viewBox
-    .trim()
-    .split(/\s+/)
-    .map((part) => Number(part))
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return null
-  const [minX, minY, width, height] = parts
-  if (width <= 0 || height <= 0) return null
-  return { minX, minY, width, height }
-}
-
-const getSymbolMeasurementHost = (): SVGSVGElement | null => {
-  if (typeof document === 'undefined') return null
-  const existing = document.getElementById(symbolMeasurementHostId)
-  if (existing && existing instanceof SVGSVGElement) return existing
-
-  const host = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  host.id = symbolMeasurementHostId
-  host.setAttribute('aria-hidden', 'true')
-  host.style.position = 'absolute'
-  host.style.left = '-10000px'
-  host.style.top = '-10000px'
-  host.style.visibility = 'hidden'
-  host.style.pointerEvents = 'none'
-  host.style.overflow = 'hidden'
-  const mountTarget = document.body ?? document.documentElement
-  mountTarget.appendChild(host)
-  return host
-}
-
-const symbolOpticalInsets = (path: string): OpticalInsets | null => {
-  const cached = symbolOpticalInsetsCache.get(path)
-  if (cached !== undefined) return cached
-
-  const symbolSvg = getCachedSymbolSvg(path)
-  if (!symbolSvg) {
-    symbolOpticalInsetsCache.set(path, null)
-    return null
-  }
-
-  const viewBox = parseViewBox(symbolSvg.viewBox)
-  const host = getSymbolMeasurementHost()
-  if (!viewBox || !host) {
-    symbolOpticalInsetsCache.set(path, null)
-    return null
-  }
-
-  const previousViewBox = host.getAttribute('viewBox')
-  const previousWidth = host.getAttribute('width')
-  const previousHeight = host.getAttribute('height')
-  const previousContent = host.innerHTML
-  host.setAttribute('viewBox', symbolSvg.viewBox)
-  host.setAttribute('width', `${viewBox.width}`)
-  host.setAttribute('height', `${viewBox.height}`)
-  host.innerHTML = symbolSvg.inner
-
-  let box: DOMRect | null = null
-  try {
-    box = host.getBBox()
-  } catch {
-    box = null
-  }
-
-  host.innerHTML = previousContent
-  if (previousViewBox == null) host.removeAttribute('viewBox')
-  else host.setAttribute('viewBox', previousViewBox)
-  if (previousWidth == null) host.removeAttribute('width')
-  else host.setAttribute('width', previousWidth)
-  if (previousHeight == null) host.removeAttribute('height')
-  else host.setAttribute('height', previousHeight)
-
-  if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) {
-    symbolOpticalInsetsCache.set(path, null)
-    return null
-  }
-
-  const left = Math.max(0, Math.min(0.49, (box.x - viewBox.minX) / viewBox.width))
-  const right = Math.max(0, Math.min(0.49, (viewBox.minX + viewBox.width - (box.x + box.width)) / viewBox.width))
-  const top = Math.max(0, Math.min(0.49, (box.y - viewBox.minY) / viewBox.height))
-  const bottom = Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height))
-  const insets = { left, right, top, bottom }
-  symbolOpticalInsetsCache.set(path, insets)
-  return insets
-}
-
-const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) => {
-  const size = 24 * Math.max(0.4, shape.scale)
-  const x = shape.position.x - size / 2
-  const y = shape.position.y - size / 2
-  const fullBox = { x, y, width: size, height: size }
-  if (shape.rotation || shape.flipX || shape.flipY) return fullBox
-  const insets = symbolOpticalInsets(shape.path)
-  if (!insets) return fullBox
-  return {
-    x: x + size * insets.left,
-    y: y + size * insets.top,
-    width: Math.max(1, size * (1 - insets.left - insets.right)),
-    height: Math.max(1, size * (1 - insets.top - insets.bottom))
-  }
-}
-
-const getBindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: number; y: number } => {
-  const bounds = shape.kind === 'symbol' ? symbolContentBounds(shape) : shapeBounds(shape)
-  const bindingId = 'bindingId' in shape && typeof shape.bindingId === 'string' ? shape.bindingId : ''
-  const labelWidth = Math.max(14, bindingId.length * 7.2)
-  const labelHeight = 12
-  const nearMargin = getBindingLabelNearMargin(shape)
-  const centerX = bounds.x + bounds.width / 2
-  const centerY = bounds.y + bounds.height / 2
-  const horizontalOffset = bounds.width / 2 + nearMargin + labelWidth / 2
-  const verticalOffset = bounds.height / 2 + nearMargin + labelHeight / 2
-
-  if (side === 'left') return { x: -horizontalOffset, y: 0 }
-  if (side === 'right') return { x: horizontalOffset, y: 0 }
-  if (side === 'top') return { x: 0, y: -verticalOffset }
-  return { x: 0, y: verticalOffset }
-}
 
 @customElement('cadle-app')
 export class CadleApp extends LiteElement {
@@ -563,48 +427,6 @@ export class CadleApp extends LiteElement {
     return true
   }
 
-  #buildCatalogSelectionDraft(): {
-    svgMarkup: string
-    defaultScale: number
-    fallbackName: string
-    shapes: Shape[]
-  } | null {
-    const selectedIds = new Set(this.#selectedShapeIds())
-    if (!selectedIds.size) return null
-    const selectedShapes = this.#shapes.filter((shape) => selectedIds.has(shape.id)).map((shape) => cloneShape(shape))
-    if (!selectedShapes.length) return null
-
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    for (const shape of selectedShapes) {
-      const bounds = shapeBounds(shape)
-      minX = Math.min(minX, bounds.x)
-      minY = Math.min(minY, bounds.y)
-      maxX = Math.max(maxX, bounds.x + bounds.width)
-      maxY = Math.max(maxY, bounds.y + bounds.height)
-    }
-
-    const padding = 8
-    const contentWidth = Math.max(1, maxX - minX)
-    const contentHeight = Math.max(1, maxY - minY)
-    const defaultScale = Math.max(0.4, Math.min(20, Math.max(contentWidth, contentHeight) / 24))
-    const translatedShapes = selectedShapes.map((shape) =>
-      this.#translateShape(cloneShape(shape), -minX + padding, -minY + padding)
-    )
-    const width = Math.max(24, maxX - minX + padding * 2)
-    const height = Math.max(24, maxY - minY + padding * 2)
-    const markup = translatedShapes.map((shape) => shapeMarkup(shape, false)).join('')
-    const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${markup}</svg>`
-
-    const fallbackName =
-      selectedShapes.length === 1
-        ? `${selectedShapes[0].kind.charAt(0).toUpperCase() + selectedShapes[0].kind.slice(1)} symbol`
-        : 'Custom symbol'
-    return { svgMarkup, defaultScale, fallbackName, shapes: translatedShapes }
-  }
-
   #catalogDialogCategoryOptionsForFolder(): CatalogDialogCategoryOption[] {
     const folder = this.#catalogDialogFolder.trim() || undefined
     const options = this.#catalogDialogCategoryOptions.filter((entry) => (entry.folder ?? '') === (folder ?? ''))
@@ -613,7 +435,7 @@ export class CadleApp extends LiteElement {
   }
 
   #openCatalogDialog = async (mode: CatalogDialogMode): Promise<boolean> => {
-    const draft = this.#buildCatalogSelectionDraft()
+    const draft = buildCatalogSelectionDraft(this.#shapes, this.#selectedShapeIds())
     if (!draft) return false
 
     await ensureCustomCatalogLoaded()
@@ -750,23 +572,7 @@ export class CadleApp extends LiteElement {
     return this.#openCatalogDialog('replace')
   }
 
-  #onNativeObjectUpdate = (payload: {
-    text?: string
-    symbolTextOverrides?: Record<string, string>
-    bindingId?: string
-    bindingLabelSide?: BindingLabelSide | 'auto'
-    rotation?: number
-    scale?: number
-    flipX?: boolean
-    flipY?: boolean
-    fill?: string
-    stroke?: string
-    strokeWidth?: number
-    fontFamily?: string
-    letterSpacing?: number
-    x?: number
-    y?: number
-  }) => {
+  #onNativeObjectUpdate = (payload: SelectionPropertyUpdate) => {
     const hasLogoSelection =
       this.#selectedIds.has(PROJECT_LOGO_SHAPE_ID) ||
       (this.#selectedIds.size === 0 && this.#selectedId === PROJECT_LOGO_SHAPE_ID)
@@ -802,241 +608,13 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    const bindingId =
-      'bindingId' in payload && typeof payload.bindingId === 'string'
-        ? (() => {
-            const raw = payload.bindingId.trim().toUpperCase()
-            return raw && raw !== 'UNDEFINED' && raw !== 'NULL' ? raw : undefined
-          })()
-        : undefined
-    const bindingLabelSide =
-      payload.bindingLabelSide === 'auto'
-        ? 'auto'
-        : payload.bindingLabelSide === 'left' ||
-            payload.bindingLabelSide === 'right' ||
-            payload.bindingLabelSide === 'top' ||
-            payload.bindingLabelSide === 'bottom'
-          ? payload.bindingLabelSide
-          : undefined
-    const groupedSelection = this.#selectedGroupId() !== null
-    const targets = this.#selectedIds.size > 0 ? [...this.#selectedIds] : this.#selectedId ? [this.#selectedId] : []
-    if (!targets.length) return
-    const targetShapeSet = new Set(targets)
-    let selectionCenter: Point | null = null
-    if (targets.length > 1) {
-      let minX = Number.POSITIVE_INFINITY
-      let minY = Number.POSITIVE_INFINITY
-      let maxX = Number.NEGATIVE_INFINITY
-      let maxY = Number.NEGATIVE_INFINITY
-      for (const candidate of this.#shapes) {
-        if (!targetShapeSet.has(candidate.id)) continue
-        const bounds = shapeBounds(candidate)
-        minX = Math.min(minX, bounds.x)
-        minY = Math.min(minY, bounds.y)
-        maxX = Math.max(maxX, bounds.x + bounds.width)
-        maxY = Math.max(maxY, bounds.y + bounds.height)
-      }
-      if (Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
-        selectionCenter = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
-      }
-    }
-    for (const id of targets) {
-      const shape = this.#shapeById(id)
-      if (!shape) continue
-      const updated = cloneShape(shape) as Shape & {
-        rotation?: number
-        scale?: number
-        flipX?: boolean
-        flipY?: boolean
-        fill?: string
-        stroke?: string
-        strokeWidth?: number
-        bindingId?: string
-        bindingLabelOffset?: { x: number; y: number }
-      }
-      if ('bindingId' in payload) {
-        if (bindingId) {
-          if (!groupedSelection || id === this.#selectedId) updated.bindingId = bindingId
-          else delete updated.bindingId
-        } else {
-          delete updated.bindingId
-        }
-      }
-      if (bindingLabelSide === 'auto') {
-        delete updated.bindingLabelOffset
-      } else if (bindingLabelSide) {
-        updated.bindingLabelOffset = getBindingLabelOffset(updated, bindingLabelSide)
-      }
-      if (typeof payload.rotation === 'number') {
-        if (
-          updated.kind === 'symbol' ||
-          updated.kind === 'image' ||
-          updated.kind === 'text' ||
-          updated.kind === 'rect'
-        ) {
-          updated.rotation = ((payload.rotation % 360) + 360) % 360
-        } else if (
-          updated.kind === 'wall' ||
-          updated.kind === 'line' ||
-          updated.kind === 'door' ||
-          updated.kind === 'window' ||
-          updated.kind === 'gate'
-        ) {
-          const angle = ((payload.rotation % 360) + 360) % 360
-          const radians = (angle * Math.PI) / 180
-          const centerX = (updated.start.x + updated.end.x) / 2
-          const centerY = (updated.start.y + updated.end.y) / 2
-          const length = Math.hypot(updated.end.x - updated.start.x, updated.end.y - updated.start.y)
-          const half = length / 2
-          const dx = Math.cos(radians) * half
-          const dy = Math.sin(radians) * half
-          updated.start = { x: centerX - dx, y: centerY - dy }
-          updated.end = { x: centerX + dx, y: centerY + dy }
-          updated.rotation = angle
-        }
-      }
-      if (typeof payload.scale === 'number') {
-        const nextScale = Math.max(0.1, Math.min(20, payload.scale))
-        if (updated.kind === 'symbol' || updated.kind === 'text') {
-          updated.scale = nextScale
-        } else if (updated.kind === 'rect') {
-          const currentScale = typeof updated.scale === 'number' && Number.isFinite(updated.scale) ? updated.scale : 1
-          const factor = nextScale / currentScale
-          const centerX = (updated.start.x + updated.end.x) / 2
-          const centerY = (updated.start.y + updated.end.y) / 2
-          updated.start = {
-            x: centerX + (updated.start.x - centerX) * factor,
-            y: centerY + (updated.start.y - centerY) * factor
-          }
-          updated.end = {
-            x: centerX + (updated.end.x - centerX) * factor,
-            y: centerY + (updated.end.y - centerY) * factor
-          }
-          updated.scale = nextScale
-        } else if (
-          updated.kind === 'wall' ||
-          updated.kind === 'line' ||
-          updated.kind === 'door' ||
-          updated.kind === 'window' ||
-          updated.kind === 'gate'
-        ) {
-          const currentScale = typeof updated.scale === 'number' && Number.isFinite(updated.scale) ? updated.scale : 1
-          const factor = nextScale / currentScale
-          const centerX = selectionCenter?.x ?? (updated.start.x + updated.end.x) / 2
-          const centerY = selectionCenter?.y ?? (updated.start.y + updated.end.y) / 2
-          updated.start = {
-            x: centerX + (updated.start.x - centerX) * factor,
-            y: centerY + (updated.start.y - centerY) * factor
-          }
-          updated.end = {
-            x: centerX + (updated.end.x - centerX) * factor,
-            y: centerY + (updated.end.y - centerY) * factor
-          }
-          updated.scale = nextScale
-        }
-      }
-      if (typeof payload.flipX === 'boolean') {
-        if (
-          updated.kind === 'symbol' ||
-          updated.kind === 'image' ||
-          updated.kind === 'text' ||
-          updated.kind === 'rect'
-        ) {
-          if (payload.flipX) updated.flipX = true
-          else delete updated.flipX
-        } else if (
-          updated.kind === 'wall' ||
-          updated.kind === 'line' ||
-          updated.kind === 'door' ||
-          updated.kind === 'window' ||
-          updated.kind === 'gate'
-        ) {
-          const centerX = (updated.start.x + updated.end.x) / 2
-          updated.start = { x: centerX * 2 - updated.start.x, y: updated.start.y }
-          updated.end = { x: centerX * 2 - updated.end.x, y: updated.end.y }
-          if (payload.flipX) updated.flipX = true
-          else delete updated.flipX
-        }
-      }
-      if (typeof payload.flipY === 'boolean') {
-        if (
-          updated.kind === 'symbol' ||
-          updated.kind === 'image' ||
-          updated.kind === 'text' ||
-          updated.kind === 'rect'
-        ) {
-          if (payload.flipY) updated.flipY = true
-          else delete updated.flipY
-        } else if (
-          updated.kind === 'wall' ||
-          updated.kind === 'line' ||
-          updated.kind === 'door' ||
-          updated.kind === 'window' ||
-          updated.kind === 'gate'
-        ) {
-          const centerY = (updated.start.y + updated.end.y) / 2
-          updated.start = { x: updated.start.x, y: centerY * 2 - updated.start.y }
-          updated.end = { x: updated.end.x, y: centerY * 2 - updated.end.y }
-          if (payload.flipY) updated.flipY = true
-          else delete updated.flipY
-        }
-      }
-      if (typeof payload.fill === 'string') {
-        if (payload.fill) updated.fill = payload.fill
-        else delete updated.fill
-      }
-      if (typeof payload.text === 'string' && updated.kind === 'text') {
-        updated.text = payload.text
-      }
-      if (payload.symbolTextOverrides && updated.kind === 'symbol') {
-        const cleanedEntries = Object.entries(payload.symbolTextOverrides)
-          .filter(
-            (entry): entry is [string, string] =>
-              typeof entry[0] === 'string' &&
-              Boolean(entry[0].trim()) &&
-              typeof entry[1] === 'string' &&
-              Boolean(entry[1].trim())
-          )
-          .map(([key, value]) => [key.trim(), value] as const)
-        if (cleanedEntries.length) {
-          updated.symbolTextOverrides = Object.fromEntries(cleanedEntries)
-        } else {
-          delete updated.symbolTextOverrides
-        }
-      }
-      if (typeof payload.stroke === 'string') {
-        if (payload.stroke) updated.stroke = payload.stroke
-        else delete updated.stroke
-      }
-      if (typeof payload.strokeWidth === 'number') {
-        const nextWidth = Math.max(0.5, Math.min(40, payload.strokeWidth))
-        updated.strokeWidth = nextWidth
-      }
-      if (typeof payload.fontFamily === 'string' && updated.kind === 'text') {
-        if (payload.fontFamily) {
-          ;(updated as TextShape).fontFamily = payload.fontFamily
-        } else {
-          delete (updated as TextShape).fontFamily
-        }
-      }
-      if (typeof payload.letterSpacing === 'number' && updated.kind === 'text') {
-        ;(updated as TextShape).letterSpacing = payload.letterSpacing
-      }
-      let nextShape = updated as Shape
-      if (typeof payload.x === 'number' || typeof payload.y === 'number') {
-        const bounds = shapeBounds(nextShape)
-        const currentX = bounds.x + bounds.width / 2
-        const currentY = bounds.y + bounds.height / 2
-        const targetX = typeof payload.x === 'number' ? payload.x : currentX
-        const targetY = typeof payload.y === 'number' ? payload.y : currentY
-        const dx = targetX - currentX
-        const dy = targetY - currentY
-        if (dx !== 0 || dy !== 0) {
-          nextShape = translateShape(nextShape, dx, dy)
-        }
-      }
-      this.#setShape(nextShape)
-    }
+    const nextShapes = updateSelectionProperties(this.#shapes, payload, {
+      selectedIds: this.#selectedIds,
+      selectedId: this.#selectedId,
+      groupedSelection: this.#selectedGroupId() !== null
+    })
+    if (!nextShapes) return
+    this.#shapes = nextShapes
     this.#pushHistory()
     this.#render()
   }
@@ -1504,20 +1082,6 @@ export class CadleApp extends LiteElement {
     if (bestWall) bound.wallId = bestWall.id
     else delete bound.wallId
     return bound
-  }
-
-  #linkedOpeningIdsForWalls(shapeIds: Iterable<string>): string[] {
-    const wallIds = new Set<string>()
-    for (const id of shapeIds) {
-      const shape = this.#shapeById(id)
-      if (shape?.kind === 'wall') wallIds.add(shape.id)
-    }
-    if (!wallIds.size) return []
-
-    return this.#shapes
-      .filter((shape): shape is LineShape => this.#isOpeningShape(shape))
-      .filter((shape) => typeof shape.wallId === 'string' && wallIds.has(shape.wallId))
-      .map((shape) => shape.id)
   }
 
   #rebindAllOpeningsToWalls() {
@@ -2607,12 +2171,6 @@ export class CadleApp extends LiteElement {
     return Math.max(0.55, inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER)
   }
 
-  // Symbols are placed with their geometric center on the wire axis; shifting by
-  // optical insets moved switches/circles off the line, so keep this an identity.
-  #alignSymbolCenterToVisibleContent(target: Point, _path: string, _scale: number): Point {
-    return target
-  }
-
   // Trikker-style cleanup for existing one-wire groups: symbols are centered on
   // their row axis and each horizontal wire is re-cut into segments that stop at
   // the visible edges of the symbols sitting on it. Wires never cross symbols.
@@ -3163,10 +2721,6 @@ export class CadleApp extends LiteElement {
     this.#shapes = this.#shapes.map((shape) => updates.get(shape.id) ?? shape)
   }
 
-  #shapeMarkup(shape: Shape, selected: boolean, extraClass = ''): string {
-    return shapeMarkup(shape, selected, extraClass)
-  }
-
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
     return shapeTemplate(shape, selected, extraClass)
   }
@@ -3228,10 +2782,6 @@ export class CadleApp extends LiteElement {
         bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : undefined
       })
     )
-  }
-
-  #selectedOutlineMarkup(shape: Shape | null): string {
-    return selectedOutlineMarkup(shape)
   }
 
   #nativeDocumentState(): NativeDocumentState {
@@ -3369,11 +2919,6 @@ export class CadleApp extends LiteElement {
     return null
   }
 
-  #projectTitleBlockBounds(layoutScale = 1) {
-    if (!this.#project) return null
-    return getProjectTitleBlockBounds(this.#worldWidth, this.#worldHeight, layoutScale)
-  }
-
   #projectTitleBlockTemplate() {
     if (!this.#project) return nothing
     return unsafeSVG(
@@ -3430,11 +2975,6 @@ export class CadleApp extends LiteElement {
 
   #safeAreaRect() {
     return safeAreaRect(this.#paperMeta(), this.#printMargin, this.#worldWidth, this.#worldHeight)
-  }
-
-  async #exportSvg() {
-    await this.#ensureSymbolMarkupReady()
-    this.#download(`cadle-${this.#paperPreset}.svg`, this.#buildSvgDocument(), 'image/svg+xml;charset=utf-8')
   }
 
   async #svgToPortraitPng(svgString: string): Promise<string> {
@@ -3639,10 +3179,6 @@ export class CadleApp extends LiteElement {
         window.alert('Invalid JSON file')
       }
     })
-  }
-
-  #buildWallMask(): string {
-    return buildWallMask(this.#shapes, this.#worldWidth, this.#worldHeight)
   }
 
   render() {
@@ -4048,108 +3584,6 @@ export class CadleApp extends LiteElement {
   #advanceOneWireBinding() {
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     this.#render()
-  }
-
-  #onClick = (event: Event) => {
-    const target = event.target instanceof HTMLElement ? event.target : null
-
-    const paperButton = target?.closest<HTMLElement>('[data-paper]')
-    if (paperButton) {
-      const preset = paperButton.dataset.paper as PaperPreset | undefined
-      if (preset && preset in PAPER_PRESETS) {
-        this.#paperPreset = preset
-        this.#persist()
-        this.#render()
-      }
-      return
-    }
-
-    const oneWirePresetButton = target?.closest<HTMLElement>('[data-onewire-preset]')
-    if (oneWirePresetButton) {
-      const preset = oneWirePresetButton.dataset.onewirePreset as OneWirePreset | undefined
-      if (preset && preset in ONE_WIRE_PRESETS) {
-        this.#oneWirePreset = preset
-        this.#oneWireMode = 'preset'
-        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
-        else this.#render()
-      }
-      return
-    }
-
-    const oneWireComposeButton = target?.closest<HTMLElement>('[data-onewire-compose]')
-    if (oneWireComposeButton) {
-      const next = oneWireComposeButton.dataset.onewireCompose
-      if (next === 'breaker' || next === 'switch' || next === 'kamrail' || next === 'load') {
-        this.#oneWireMode = 'compose'
-        this.#oneWireComposeKind = next
-        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
-        else this.#render()
-      }
-      return
-    }
-
-    const actionButton = target?.closest<HTMLElement>('[data-action]')
-    if (!actionButton) return
-    actionButton.closest<HTMLDetailsElement>('.nc-download')?.removeAttribute('open')
-
-    switch (actionButton.dataset.action) {
-      case 'undo':
-        this.#undo()
-        return
-      case 'redo':
-        this.#redo()
-        return
-      case 'toggle-snap':
-        this.#snap = !this.#snap
-        this.#render()
-        return
-      case 'export-json':
-        this.#download('cadle-drawing.json', this.#serialize(), 'application/json;charset=utf-8')
-        return
-      case 'export-pdf':
-        void this.#exportPdf().catch(() => window.alert('Unable to export PDF'))
-        return
-      case 'import-json':
-        this.shadowRoot?.querySelector<HTMLInputElement>('.file-input')?.click()
-        return
-      case 'export-svg':
-        void this.#exportSvg().catch(() => window.alert('Unable to export SVG'))
-        return
-      case 'print-svg':
-        void this.#printSvg().catch(() => window.alert('Unable to print SVG'))
-        return
-      case 'margin-inc':
-        this.#printMargin = Math.min(this.#printMargin + 1, 50)
-        this.#persist()
-        this.#render()
-        return
-      case 'onewire-next':
-        this.#advanceOneWireBinding()
-        return
-      case 'onewire-reset-panel':
-        this.#oneWireAnchor = null
-        this.#oneWireLastPoint = null
-        this.#oneWireBusBarId = null
-        this.#render()
-        return
-      case 'onewire-realign':
-        if (!this.#realignExistingOneWire()) window.alert('No one-wire elements to realign on this page.')
-        return
-      case 'margin-dec':
-        this.#printMargin = Math.max(this.#printMargin - 1, 0)
-        this.#persist()
-        this.#render()
-        return
-      case 'clear':
-        if (!window.confirm('Clear the drawing?')) return
-        this.#shapes = []
-        this.#selectedId = null
-        this.#draft = null
-        this.#drag = null
-        this.#pushHistory()
-        this.#render()
-        return
-    }
   }
 
   #onNativeControlsCommand = (payload: {

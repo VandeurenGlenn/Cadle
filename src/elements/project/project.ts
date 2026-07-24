@@ -8,7 +8,7 @@ import '@vandeurenglenn/lite-elements/list-item.js'
 import './../list/item.js'
 import '../../contextmenu.js'
 import { Project, type PageType, UUID } from '../../types.js'
-import { addPage, getProjectData, getProjects, set, setProjectData } from '../../api/project.js'
+import { addPage, getProjectData, setProjectData } from '../../api/project.js'
 declare global {
   interface HTMLElementTagNameMap {
     'project-element': ProjectElement
@@ -29,39 +29,6 @@ export class ProjectElement extends LiteElement {
   @property({ attribute: false })
   accessor clipboard = undefined
 
-  @property({ type: String })
-  accessor projectName = ''
-
-  @property({ type: String })
-  accessor customer = ''
-
-  @property({ type: String })
-  accessor installer = ''
-
-  @property({ type: String })
-  accessor company = ''
-
-  @property({ type: String })
-  accessor street = ''
-
-  @property({ type: String })
-  accessor houseNumber = ''
-
-  @property({ type: String })
-  accessor postalCode = ''
-
-  @property({ type: String })
-  accessor city = ''
-
-  @property({ type: String })
-  accessor logoUrl = ''
-
-  @property({ type: String })
-  accessor logoColor = ''
-
-  @property({ type: Number })
-  accessor logoScale = 1
-
   @query('.page-input')
   accessor pageInput!: HTMLInputElement
 
@@ -78,189 +45,15 @@ export class ProjectElement extends LiteElement {
 
     const menu = this.shadowRoot?.querySelector('context-menu')
     menu?.addEventListener('selected', this.#contextMenuItemSelected.bind(this) as EventListener)
-    this.#syncFormFromProject()
   }
 
   onChange(name: string): void {
-    if (name === 'project') {
-      this.#syncFormFromProject()
-    }
     if (name === 'loadedPage') {
       queueMicrotask(() => {
         const selector = this.shadowRoot?.querySelector('custom-selector') as { selected?: string } | null
         if (selector) selector.selected = this.loadedPage
       })
     }
-  }
-
-  #syncFormFromProject() {
-    this.projectName = this.project?.name ?? ''
-    this.logoUrl = this.project?.logoUrl?.trim() ?? ''
-    this.logoColor = this.project?.logoColor?.trim() ?? ''
-    this.logoScale =
-      typeof this.project?.logoScale === 'number' && Number.isFinite(this.project.logoScale)
-        ? Math.max(0.4, Math.min(2.5, this.project.logoScale))
-        : 1
-    this.customer = [this.project?.customer?.name ?? '', this.project?.customer?.lastname ?? '']
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join(' ')
-    this.installer = [this.project?.installer?.name ?? '', this.project?.installer?.lastname ?? '']
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join(' ')
-    this.company = this.project?.company ?? ''
-    this.street = this.project?.address?.street ?? ''
-    this.houseNumber = this.project?.address?.number ?? ''
-    this.postalCode = this.project?.address?.postalCode ?? ''
-    this.city = this.project?.address?.city ?? ''
-  }
-
-  #onMetaInput = (event: Event) => {
-    const target = event.currentTarget as HTMLInputElement | null
-    const field = target?.dataset.field ?? ''
-    const value = target?.value ?? ''
-    switch (field) {
-      case 'projectName':
-        this.projectName = value
-        break
-      case 'customer':
-        this.customer = value
-        break
-      case 'installer':
-        this.installer = value
-        break
-      case 'company':
-        this.company = value
-        break
-      case 'street':
-        this.street = value
-        break
-      case 'houseNumber':
-        this.houseNumber = value
-        break
-      case 'postalCode':
-        this.postalCode = value
-        break
-      case 'city':
-        this.city = value
-        break
-      case 'logoUrl':
-        this.logoUrl = value
-        this.#syncLogoPreview()
-        break
-      case 'logoColor':
-        this.logoColor = value
-        this.#syncLogoPreview()
-        break
-      case 'logoScale':
-        this.logoScale = Math.max(0.4, Math.min(2.5, Number(value) || 1))
-        this.#syncLogoPreview()
-        break
-      default:
-        break
-    }
-  }
-
-  #logoPickerValue() {
-    const value = this.logoColor.trim()
-    return /^#[0-9a-f]{6}$/i.test(value) ? value : '#2d231c'
-  }
-
-  #onLogoFilePicked = async (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement | null
-    const file = input?.files?.[0]
-    if (!file) return
-
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onerror = () => reject(new Error('Unable to read logo file'))
-      reader.onload = () => {
-        const result = reader.result
-        if (typeof result === 'string') resolve(result)
-        else reject(new Error('Unsupported logo file payload'))
-      }
-      reader.readAsDataURL(file)
-    })
-
-    this.logoUrl = dataUrl
-    this.#syncLogoPreview()
-    if (input) input.value = ''
-  }
-
-  #clearLogo = () => {
-    this.logoUrl = ''
-    this.#syncLogoPreview()
-  }
-
-  #onLogoColorPick = (event: Event) => {
-    const target = event.currentTarget as HTMLInputElement | null
-    this.logoColor = target?.value?.trim() ?? ''
-    this.#syncLogoPreview()
-  }
-
-  #syncLogoPreview = () => {
-    if (!this.project) return
-    const nextProject = structuredClone(this.project)
-    const logo = this.logoUrl.trim()
-    const logoColor = this.logoColor.trim()
-    nextProject.logoUrl = logo.length > 0 ? logo : undefined
-    nextProject.logoColor = logoColor.length > 0 ? logoColor : undefined
-    nextProject.logoScale = Math.max(0.4, Math.min(2.5, this.logoScale))
-    this.project = nextProject
-    cadleShell.project = nextProject
-  }
-
-  #saveProjectDetails = async () => {
-    if (!this.project || !this.projectKey) return
-    const splitPersonName = (value: string): { first: string; last: string } => {
-      const parts = value.trim().split(/\s+/).filter(Boolean)
-      if (parts.length === 0) return { first: '', last: '' }
-      if (parts.length === 1) return { first: parts[0], last: '' }
-      return {
-        first: parts.slice(0, -1).join(' '),
-        last: parts[parts.length - 1]
-      }
-    }
-
-    const customerParts = this.customer.trim().split(/\s+/).filter(Boolean)
-    const customerName = customerParts.length > 0 ? customerParts.slice(0, -1).join(' ') || customerParts[0] : ''
-    const customerLastName = customerParts.length > 1 ? customerParts[customerParts.length - 1] : ''
-    const installer = splitPersonName(this.installer)
-
-    if (!this.project.customer) {
-      this.project.customer = { name: '', lastname: '' }
-    }
-    if (!this.project.installer) {
-      this.project.installer = { name: '', lastname: '' }
-    }
-    if (!this.project.address) {
-      this.project.address = { street: '', number: '', postalCode: '', city: '' }
-    }
-
-    this.project.name = this.projectName.trim()
-    const logo = this.logoUrl.trim()
-    const logoColor = this.logoColor.trim()
-    this.project.logoUrl = logo.length > 0 ? logo : undefined
-    this.project.logoColor = logoColor.length > 0 ? logoColor : undefined
-    this.project.logoScale = Math.max(0.4, Math.min(2.5, this.logoScale))
-    this.project.customer.name = customerName
-    this.project.customer.lastname = customerLastName
-    this.project.installer.name = installer.first
-    this.project.installer.lastname = installer.last
-    this.project.company = this.company.trim()
-    this.project.address.street = this.street.trim()
-    this.project.address.number = this.houseNumber.trim()
-    this.project.address.postalCode = this.postalCode.trim()
-    this.project.address.city = this.city.trim()
-
-    await setProjectData(this.projectKey, this.project)
-    await set(this.projectKey, this.project.name)
-
-    this.project = await getProjectData(this.projectKey)
-    cadleShell.project = this.project
-    cadleShell.projectName = this.project.name
-    cadleShell.projects = await getProjects()
   }
 
   set addingPage(value: boolean) {

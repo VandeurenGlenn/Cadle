@@ -282,26 +282,6 @@ export class CatalogItem extends LiteElement {
     )
   }
 
-  #isDarkSvgColor(value) {
-    if (typeof value !== 'string') return false
-    const normalized = value.trim().toLowerCase()
-    return (
-      normalized === '#000' ||
-      normalized === '#000000' ||
-      normalized === 'black' ||
-      normalized === '#111' ||
-      normalized === '#111111' ||
-      normalized === '#222' ||
-      normalized === '#222222' ||
-      normalized === 'rgb(0,0,0)' ||
-      normalized === 'rgb(0, 0, 0)' ||
-      normalized === 'rgb(17,17,17)' ||
-      normalized === 'rgb(17, 17, 17)' ||
-      normalized === 'rgb(34,34,34)' ||
-      normalized === 'rgb(34, 34, 34)'
-    )
-  }
-
   #normalizeBindingId(value) {
     if (typeof value !== 'string') return ''
     return value.trim().toUpperCase()

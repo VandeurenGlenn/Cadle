@@ -45,8 +45,10 @@ import './elements/actions/onewire-actions.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
-import { bomRowsToCsv, type BomRow, type CircuitAnalysis } from './native-app/circuit-analysis.js'
-import { downloadTextFile } from './native-app/downloads.js'
+import { type BomRow, type CircuitAnalysis } from './native-app/circuit-analysis.js'
+import { ensureOneWirePage } from './shell/page-operations.js'
+import { clonePageSchema } from './shell/page-schema.js'
+import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -499,35 +501,6 @@ export class AppShell extends LiteElement {
     this.#refreshBoundOneLineCatalog()
   }
 
-  #beforePrint = async () => {
-    this.actions.hide()
-    // No style mutation on DrawField in Lite; skip
-    const exported = await this.exportA4PNG('auto')
-    const dataUrl = exported.dataUrl
-    let windowContent = '<!DOCTYPE html>'
-    windowContent += '<html>'
-    windowContent += '<head><title>Print Cadle Project</title>'
-    windowContent += '<style>'
-    windowContent += `@page{size:A4 ${exported.orientation};margin:0;}`
-    windowContent += 'html,body{margin:0;background:#fff;}'
-    windowContent +=
-      'img{width:100%;display:block;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}'
-    windowContent += '</style></head>'
-    windowContent += '<body style="margin:0;background:#fff;">'
-    windowContent += '<img src="' + dataUrl + '" onload=window.print();>'
-    windowContent += '</body>'
-    windowContent += '</html>'
-    const printWin = window.open('', '', 'width=340,height=260')
-    if (!printWin) return
-    printWin.document.open()
-    printWin.document.write(windowContent)
-  }
-
-  #afterPrint = () => {
-    // No style mutation on DrawField in Lite; skip
-    this.actions.show()
-  }
-
   #registerServiceWorker = async () => {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return
 
@@ -758,7 +731,7 @@ export class AppShell extends LiteElement {
         (dialog.querySelector('#clone-switches-loads') as HTMLInputElement | null)?.checked ?? false
       const pageNameField = dialog.querySelector('#clone-page-name') as HTMLInputElement | null
       const newPageName = pageNameField?.value?.trim() || `${page.name} copy`
-      const clonedSchema = this.#clonePageSchema(page.schema, {
+      const clonedSchema = clonePageSchema(page.schema, {
         includeWalls: includeWalls || outsideWalls,
         outsideWallsOnly: outsideWalls,
         includeOpenings,
@@ -780,27 +753,6 @@ export class AppShell extends LiteElement {
       await setProjectData(this.projectKey, this.project)
       this.project = await getProjectData(this.projectKey)
     }
-  }
-
-  #clonePageSchema(
-    schema: { version?: string; objects?: unknown[] },
-    options: {
-      includeWalls: boolean
-      outsideWallsOnly: boolean
-      includeOpenings: boolean
-      includeElectrical: boolean
-    }
-  ) {
-    const version = schema?.version ?? '6.0.0'
-    const objects = Array.isArray(schema?.objects) ? schema.objects : []
-    const { includeWalls, outsideWallsOnly, includeOpenings, includeElectrical } = options
-
-    const shouldFilter = includeWalls || includeOpenings || includeElectrical
-    if (!shouldFilter) {
-      return structuredClone({ version, objects })
-    }
-
-    return { version, objects: structuredClone(objects) }
   }
 
   async openClonePageDialog(pageKey: string) {
@@ -921,11 +873,7 @@ export class AppShell extends LiteElement {
 
   async downloadAsPNG(name: string) {
     const dataUrl = await this.toPNG()
-    // const url = URL.createObjectURL(blob);
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = `${this.projectName}-${name}.png`
-    a.click()
+    downloadDataUrl(dataUrl, `${this.projectName}-${name}.png`)
   }
 
   get drawer() {
@@ -977,16 +925,12 @@ export class AppShell extends LiteElement {
     }
     this.project = await getProjectData(this.projectKey)
 
-    let oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')
-    if (!oneWirePage) {
-      await addPage(this.projectKey, 'One-wire diagram', { version: 'native-svg-1', objects: [] }, 'onewire')
-      this.project = await getProjectData(this.projectKey)
-      oneWirePage = Object.entries(this.project.pages ?? {}).find(([, page]) => page.pageType === 'onewire')
-    }
+    const oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
     if (!oneWirePage) return
+    this.project = oneWirePage.project
 
-    await this.loadPage(oneWirePage[0])
-    const pageReady = await nativeApp?.waitForPageReady?.(oneWirePage[0])
+    await this.loadPage(oneWirePage.pageKey)
+    const pageReady = await nativeApp?.waitForPageReady?.(oneWirePage.pageKey)
     if (!pageReady) {
       globalThis.alert('The one-wire page did not finish loading. Please try again.')
       return
@@ -1006,12 +950,9 @@ export class AppShell extends LiteElement {
   async generateBOM() {
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     const rows = nativeApp?.getBOMRows?.() ?? []
-    if (!rows.length) {
+    if (!downloadBom(rows, this.projectName || this.project?.name || 'cadle-project')) {
       globalThis.alert('No bound floor-plan symbols were found for the BOM.')
-      return
     }
-    const safeName = (this.projectName || this.project?.name || 'cadle-project').replace(/[^a-z0-9_-]+/gi, '-')
-    downloadTextFile(`${safeName}-bom.csv`, bomRowsToCsv(rows), 'text/csv;charset=utf-8')
   }
 
   undo() {

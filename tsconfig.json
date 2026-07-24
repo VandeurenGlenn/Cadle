@@ -8,6 +8,8 @@
     "strictNullChecks": false,
     "strictPropertyInitialization": false,
     "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "typeRoots": [
       "./src/types",

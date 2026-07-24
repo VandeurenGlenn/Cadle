@@ -2,7 +2,10 @@ import { LiteElement, html, customElement, property, query } from '@vandeurengle
 import styles from './projects.css' with { type: 'css' }
 import { Projects, type Project, type UUID } from './../types.js'
 import '@material/web/elevation/elevation.js'
+import '@material/web/dialog/dialog.js'
+import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
+import '@material/web/button/text-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -12,6 +15,8 @@ import { del, getProjects, renameProject, upload } from '../api/project.js'
 import pubsub from '../pubsub.js'
 @customElement('projects-field')
 export class ProjectsField extends LiteElement {
+  static readonly WELCOME_SEEN_STORAGE = 'cadle.welcomeSeen'
+
   @property({ attribute: false })
   accessor projects: Projects = []
 
@@ -23,6 +28,9 @@ export class ProjectsField extends LiteElement {
 
   @query('.contextmenu')
   accessor contextmenu!: CustomDropdown
+
+  @query('.welcome-dialog')
+  accessor welcomeDialog!: HTMLElement & { open: boolean; close?: () => void }
 
   _currentSelected
   _transitionEnd?: () => void
@@ -41,6 +49,12 @@ export class ProjectsField extends LiteElement {
     this.showReopenPreviousProjectPrompt = Boolean(shell.showReopenPreviousProjectPrompt)
     this.previousProjectName = String(shell.previousProjectName ?? '')
     pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
+    if (this.projects.length === 0 && !localStorage.getItem(ProjectsField.WELCOME_SEEN_STORAGE)) {
+      localStorage.setItem(ProjectsField.WELCOME_SEEN_STORAGE, 'true')
+      requestAnimationFrame(() => {
+        if (this.welcomeDialog) this.welcomeDialog.open = true
+      })
+    }
   }
 
   disconnectedCallback(): void {
@@ -119,6 +133,21 @@ export class ProjectsField extends LiteElement {
   #dismissPreviousProjectPrompt = () => {
     const shell = cadleShell as unknown as { dismissReopenPreviousProjectPrompt?: () => void }
     shell.dismissReopenPreviousProjectPrompt?.()
+  }
+
+  #closeWelcome = () => {
+    if (this.welcomeDialog?.close) this.welcomeDialog.close()
+    else if (this.welcomeDialog) this.welcomeDialog.open = false
+  }
+
+  #createFirstProject = () => {
+    this.#closeWelcome()
+    location.hash = '#!/create-project'
+  }
+
+  #uploadFirstProject = () => {
+    this.#closeWelcome()
+    void upload()
   }
 
   _loadProject(key: string, projectName: string) {
@@ -322,6 +351,18 @@ export class ProjectsField extends LiteElement {
 
   render() {
     return html`
+      <md-dialog class="welcome-dialog">
+        <div slot="headline">Hello, welcome to Cadle</div>
+        <div slot="content" class="welcome-dialog-content">
+          <p>Cadle helps you build a ground plan and turn its circuits into a clear AREI one-wire diagram.</p>
+          <p>Start a new project, or upload an existing Cadle project to continue working.</p>
+        </div>
+        <div slot="actions">
+          <md-text-button @click=${this.#closeWelcome}>Maybe later</md-text-button>
+          <md-outlined-button @click=${this.#uploadFirstProject}>Upload project</md-outlined-button>
+          <md-filled-button @click=${this.#createFirstProject}>Create project</md-filled-button>
+        </div>
+      </md-dialog>
       <custom-dropdown class="contextmenu">
         <custom-list-item
           data-action="editProjectDetails"

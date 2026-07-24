@@ -191,7 +191,7 @@ test('does not use a device rated current as its breaker current', () => {
 test('uses project phase and pole defaults with field-level provenance', () => {
   const analysis = analyzeCircuits(
     [symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')],
-    { standard: 'AREI', edition: 'Book 1', supplyVoltageV: 400, phaseConfiguration: 'three-phase', earthingSystem: 'TT', defaultPoles: 4 }
+    { standard: 'AREI', edition: 'Book 1', distributor: 'Fluvius', supplyConfiguration: '3x400V+N', supplyVoltageV: 400, phaseConfiguration: 'three-phase', earthingSystem: 'TT', defaultPoles: 4 }
   )
   assert.equal(analysis.groups[0].specification.phaseConfiguration, 'three-phase')
   assert.equal(analysis.groups[0].specification.poles, 4)

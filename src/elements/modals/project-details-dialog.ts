@@ -30,6 +30,8 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor logoColor = ''
   @property({ type: Number }) accessor logoScale = 1
   @property({ type: String }) accessor electricalEdition = ''
+  @property({ type: String }) accessor distributor = ''
+  @property({ type: String }) accessor supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other' = '1x230V+N'
   @property({ type: Number }) accessor supplyVoltageV = 230
   @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' = 'single-phase'
   @property({ type: String }) accessor earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown' = 'unknown'
@@ -70,6 +72,8 @@ export class ProjectDetailsDialog extends LiteElement {
     this.mainFuseA = this.project?.mainFuseA ?? 0
     const profile = normalizeElectricalProfile(this.project?.electricalProfile)
     this.electricalEdition = profile.edition
+    this.distributor = profile.distributor
+    this.supplyConfiguration = profile.supplyConfiguration
     this.supplyVoltageV = profile.supplyVoltageV
     this.phaseConfiguration = profile.phaseConfiguration
     this.earthingSystem = profile.earthingSystem
@@ -130,6 +134,20 @@ export class ProjectDetailsDialog extends LiteElement {
       case 'electricalEdition':
         this.electricalEdition = value
         break
+      case 'distributor':
+        this.distributor = value
+        break
+      case 'supplyConfiguration': {
+        const configuration =
+          value === '3x230V' || value === '3x400V+N' || value === 'other' ? value : '1x230V+N'
+        this.supplyConfiguration = configuration
+        if (configuration !== 'other') {
+          this.supplyVoltageV = configuration === '3x400V+N' ? 400 : 230
+          this.phaseConfiguration = configuration === '1x230V+N' ? 'single-phase' : 'three-phase'
+          this.defaultPoles = configuration === '3x400V+N' ? 4 : configuration === '3x230V' ? 3 : 2
+        }
+        break
+      }
       case 'supplyVoltageV':
         this.supplyVoltageV = Math.max(1, Number(value) || 230)
         break
@@ -232,6 +250,8 @@ export class ProjectDetailsDialog extends LiteElement {
     nextProject.electricalProfile = normalizeElectricalProfile({
       standard: 'AREI',
       edition: this.electricalEdition,
+      distributor: this.distributor,
+      supplyConfiguration: this.supplyConfiguration,
       supplyVoltageV: this.supplyVoltageV,
       phaseConfiguration: this.phaseConfiguration,
       earthingSystem: this.earthingSystem,
@@ -403,6 +423,19 @@ export class ProjectDetailsDialog extends LiteElement {
             <span>AREI-georiënteerde projectdefaults; controleer de actuele uitgave en installatiegegevens.</span>
           </div>
           <label><span>Norm</span><input value="AREI" disabled /></label>
+          <label>
+            <span>Distributienetbeheerder</span>
+            <input .value=${this.distributor} data-field="distributor" @input=${this.#onMetaInput} placeholder="bv. Fluvius" />
+          </label>
+          <label>
+            <span>Netaansluiting</span>
+            <select .value=${this.supplyConfiguration} data-field="supplyConfiguration" @change=${this.#onMetaInput}>
+              <option value="1x230V+N">1 × 230 V (L + N)</option>
+              <option value="3x230V">3 × 230 V (L1 + L2 + L3)</option>
+              <option value="3x400V+N">3 × 400 V + N (L1 + L2 + L3 + N)</option>
+              <option value="other">Andere / handmatig</option>
+            </select>
+          </label>
           <label>
             <span>Uitgave / referentie</span>
             <input .value=${this.electricalEdition} data-field="electricalEdition" @input=${this.#onMetaInput} />

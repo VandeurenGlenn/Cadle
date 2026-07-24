@@ -8,6 +8,8 @@ export interface JsonObject {
 export type ElectricalProjectProfile = {
   standard: 'AREI'
   edition: string
+  distributor: string
+  supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other'
   supplyVoltageV: number
   phaseConfiguration: 'single-phase' | 'three-phase'
   earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown'

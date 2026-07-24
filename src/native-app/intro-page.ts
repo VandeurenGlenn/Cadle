@@ -60,6 +60,8 @@ export const buildIntroPageSvg = (project: Project | null): string => {
   const btw = val(project?.installer?.btw)
   const eanCode = val(project?.eanCode)
   const mainFuseA = typeof project?.mainFuseA === 'number' ? `${project.mainFuseA} A` : '—'
+  const distributor = val(project?.electricalProfile?.distributor)
+  const supplyConfiguration = val(project?.electricalProfile?.supplyConfiguration)
 
   const street = val(project?.address?.street)
   const num = e(project?.address?.number?.trim() ?? '')
@@ -112,6 +114,8 @@ export const buildIntroPageSvg = (project: Project | null): string => {
   ${fieldRow(13, S2_Y + 39, 'BTW / KBO', btw)}
   ${inputBox(COL + 3, S2_Y + 9, 88, 13, 'EAN-CODE (18 CIJFERS)', eanCode)}
   ${inputBox(COL + 3, S2_Y + 30, 42, 13, 'HOOFDZEKERING', mainFuseA)}
+  ${inputBox(COL + 49, S2_Y + 30, 42, 13, 'NETBEHEERDER', distributor)}
+  ${inputBox(COL + 3, S2_Y + 46, 88, 13, 'NETAANSLUITING', supplyConfiguration)}
   ${vline(COL, S2_Y, S2_Y + S2_H)}
   ${hline(S2_Y + S2_H)}
 

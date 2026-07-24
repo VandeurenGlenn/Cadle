@@ -3,6 +3,8 @@ import type { ElectricalProjectProfile } from '../types.js'
 export const DEFAULT_AREI_PROFILE: ElectricalProjectProfile = {
   standard: 'AREI',
   edition: 'Book 1 (current edition)',
+  distributor: '',
+  supplyConfiguration: '1x230V+N',
   supplyVoltageV: 230,
   phaseConfiguration: 'single-phase',
   earthingSystem: 'unknown',
@@ -14,6 +16,13 @@ export const normalizeElectricalProfile = (
 ): ElectricalProjectProfile => ({
   standard: 'AREI',
   edition: profile?.edition?.trim() || DEFAULT_AREI_PROFILE.edition,
+  distributor: profile?.distributor?.trim() || '',
+  supplyConfiguration:
+    profile?.supplyConfiguration === '3x230V' ||
+    profile?.supplyConfiguration === '3x400V+N' ||
+    profile?.supplyConfiguration === 'other'
+      ? profile.supplyConfiguration
+      : '1x230V+N',
   supplyVoltageV:
     typeof profile?.supplyVoltageV === 'number' && profile.supplyVoltageV > 0
       ? profile.supplyVoltageV

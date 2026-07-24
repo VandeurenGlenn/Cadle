@@ -196,6 +196,7 @@ export class ProjectsField extends LiteElement {
     cadleShell.projects = projects
     if (cadleShell.projectKey === (id as unknown as UUID) && cadleShell.project) {
       cadleShell.project.name = nextName
+      cadleShell.projectName = nextName
     }
     this._currentSelected = id
     this.contextmenu.open = false

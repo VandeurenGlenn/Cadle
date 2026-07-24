@@ -5,13 +5,11 @@ import { repeat } from 'lit/directives/repeat.js'
 import jsPDF from 'jspdf'
 import styles from './app.css' with { type: 'css' }
 import { loadNativeState, saveNativeState, type NativeDocumentState } from './native-project-data.js'
-import { migrateLegacyProjectToNativeState, migrateLegacySchemaToNativeState } from './native-draw/legacy-project.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_WIDTH,
   GRID_SIZE,
-  LEGACY_STORAGE_KEY,
   ONE_WIRE_BREAKER_WIDTH,
   ONE_WIRE_CIRCUIT_SPACING,
   ONE_WIRE_NODE_SIZE,
@@ -1179,20 +1177,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY)
-    if (!raw) {
-      this.#resetPageState()
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as Partial<NativeDocumentState>
-      this.#applyPersistedState(parsed)
-      window.localStorage.removeItem(LEGACY_STORAGE_KEY)
-      this.#persist()
-    } catch {
-      this.#resetPageState()
-    }
+    this.#resetPageState()
   }
 
   #onHashChange = () => {
@@ -2165,6 +2150,51 @@ export class CadleApp extends LiteElement {
     return true
   }
 
+  #arrangeNativeSelection(action: 'bring-forward' | 'bring-to-front' | 'send-backwards' | 'send-to-back'): boolean {
+    const selected = new Set(this.#selectedShapeIds())
+    if (!selected.size) return false
+
+    if (action === 'bring-to-front') {
+      const rest = this.#shapes.filter((shape) => !selected.has(shape.id))
+      const picked = this.#shapes.filter((shape) => selected.has(shape.id))
+      this.#shapes = [...rest, ...picked]
+      this.#pushHistory()
+      this.#render()
+      return true
+    }
+
+    if (action === 'send-to-back') {
+      const picked = this.#shapes.filter((shape) => selected.has(shape.id))
+      const rest = this.#shapes.filter((shape) => !selected.has(shape.id))
+      this.#shapes = [...picked, ...rest]
+      this.#pushHistory()
+      this.#render()
+      return true
+    }
+
+    const next = [...this.#shapes]
+    let changed = false
+    if (action === 'bring-forward') {
+      for (let index = next.length - 2; index >= 0; index -= 1) {
+        if (!selected.has(next[index].id) || selected.has(next[index + 1].id)) continue
+        ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+        changed = true
+      }
+    } else {
+      for (let index = 1; index < next.length; index += 1) {
+        if (!selected.has(next[index].id) || selected.has(next[index - 1].id)) continue
+        ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
+        changed = true
+      }
+    }
+
+    if (!changed) return false
+    this.#shapes = next
+    this.#pushHistory()
+    this.#render()
+    return true
+  }
+
   #applyNativeHotkey(action: NativeHotkeyAction): boolean {
     switch (action) {
       case 'undo':
@@ -2262,6 +2292,17 @@ export class CadleApp extends LiteElement {
         return this.#transformNativeSelection('flip-horizontal')
       case 'flip-vertical':
         return this.#transformNativeSelection('flip-vertical')
+      case 'bring-forward':
+        return this.#arrangeNativeSelection('bring-forward')
+      case 'bring-to-front':
+        return this.#arrangeNativeSelection('bring-to-front')
+      case 'send-backwards':
+        return this.#arrangeNativeSelection('send-backwards')
+      case 'send-to-back':
+        return this.#arrangeNativeSelection('send-to-back')
+      case 'print':
+        void this.#printSvg().catch(() => window.alert('Unable to print SVG'))
+        return true
       case 'escape':
         return false
     }
@@ -3325,9 +3366,6 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    const legacy = migrateLegacySchemaToNativeState(schema)
-    if (legacy) return legacy
-
     return null
   }
 
@@ -3588,12 +3626,8 @@ export class CadleApp extends LiteElement {
         const parsed = JSON.parse(text) as unknown
         const nativeShapes =
           parsed && typeof parsed === 'object' && 'shapes' in parsed ? (parsed as { shapes?: unknown }).shapes : null
-        const migrated =
-          migrateLegacyProjectToNativeState(parsed, this.#pageKey ?? undefined) ??
-          migrateLegacySchemaToNativeState(parsed)
 
         if (Array.isArray(nativeShapes)) this.#applyPersistedState({ shapes: nativeShapes })
-        else if (migrated) this.#applyPersistedState(migrated)
         else return
         this.#selectedId = null
         this.#draft = null

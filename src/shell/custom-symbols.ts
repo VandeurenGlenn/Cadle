@@ -22,7 +22,6 @@ export type CustomCatalogCategory = {
   name: string
 }
 
-const LEGACY_STORAGE_KEY = 'cadle.customSymbols'
 const SYMBOLS_STORAGE_KEY = 'custom-symbols'
 const FOLDERS_STORAGE_KEY = 'custom-catalog-folders'
 const CATEGORIES_STORAGE_KEY = 'custom-catalog-categories'
@@ -131,18 +130,6 @@ const parseCategoryList = (source: string): CustomCatalogCategory[] => {
   }
 }
 
-const readLegacySymbols = (): CustomCatalogSymbol[] => {
-  try {
-    return parseSymbolList(localStorage.getItem(LEGACY_STORAGE_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
-
-const writeLegacySymbols = (symbols: CustomCatalogSymbol[]) => {
-  localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(symbols))
-}
-
 const readPersistedSymbols = async (): Promise<CustomCatalogSymbol[]> => {
   try {
     const encoded = (await customCatalogStore.get(SYMBOLS_STORAGE_KEY)) as Uint8Array | undefined
@@ -245,16 +232,7 @@ export async function ensureCustomCatalogLoaded(): Promise<void> {
 
   initializingPromise = (async () => {
     const persisted = await readPersistedSymbols()
-    if (persisted.length > 0) {
-      symbolsCache = persisted
-    } else {
-      const legacy = readLegacySymbols()
-      symbolsCache = legacy
-      if (legacy.length > 0) {
-        await persistSymbols(legacy)
-        writeLegacySymbols(legacy)
-      }
-    }
+    symbolsCache = persisted
 
     const persistedFolders = await readPersistedFolders()
     const persistedCategories = await readPersistedCategories()
@@ -290,7 +268,6 @@ export async function setStoredCustomSymbols(symbols: CustomCatalogSymbol[]): Pr
   mergeStructureFromSymbols(symbolsCache)
   await persistSymbols(normalized)
   await persistStructure()
-  writeLegacySymbols(normalized)
 }
 
 export function getStoredCustomFolders(): string[] {
@@ -325,7 +302,6 @@ export async function renameCustomCatalogFolder(currentName: string, nextName: s
   }))
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export async function deleteCustomCatalogFolder(folderName: string): Promise<void> {
@@ -343,7 +319,6 @@ export async function deleteCustomCatalogFolder(folderName: string): Promise<voi
   }))
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export async function createCustomCatalogCategory(categoryName: string, folder?: string): Promise<void> {
@@ -389,7 +364,6 @@ export async function renameCustomCatalogCategory(
   })
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export async function deleteCustomCatalogCategory(categoryName: string, folder?: string): Promise<void> {
@@ -411,7 +385,6 @@ export async function deleteCustomCatalogCategory(categoryName: string, folder?:
   ensureCategory('My Symbols', normalizedFolder)
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export async function moveCustomCatalogCategory(
@@ -455,7 +428,6 @@ export async function moveCustomCatalogCategory(
 
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export async function moveCustomCatalogSymbol(
@@ -498,7 +470,6 @@ export async function moveCustomCatalogSymbol(
 
   await persistSymbols(symbolsCache)
   await persistStructure()
-  writeLegacySymbols(symbolsCache)
 }
 
 export function getCustomCatalogSections(): Catalog {

@@ -1,6 +1,5 @@
 import type { PaperPreset } from '../native-draw/types.js'
 
-export const LEGACY_STORAGE_KEY = 'cadle-native-drawing-v1'
 export const DEFAULT_WORLD_WIDTH = 2400
 export const DEFAULT_WORLD_HEIGHT = 1400
 export const GRID_SIZE = 10

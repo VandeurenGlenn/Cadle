@@ -1,10 +1,5 @@
 import type { Project, UUID } from './types.js'
 import { getProjectData, projectDataStore, projectStore, setProjectData } from './api/project.js'
-import {
-  migrateLegacyProjectToNativeState,
-  migrateLegacySchemaToNativeState,
-  type LegacyNativeDocumentState
-} from './native-draw/legacy-project.js'
 import { parseHash } from './shell/routing.js'
 import { asNativeState, type NativeDocumentState } from './native-draw/document-state.js'
 
@@ -35,14 +30,6 @@ const createDefaultPage = (name = 'Page 1', order = 0) => ({
   },
   order
 })
-
-const upgradeLegacyState = (state: LegacyNativeDocumentState | null): NativeDocumentState | null =>
-  state
-    ? {
-        ...state,
-        selectedId: null
-      }
-    : null
 
 const parseNativeFromSchema = (schema: unknown): NativeDocumentState | null => {
   const direct = asNativeState(schema)
@@ -169,10 +156,7 @@ export const loadNativeState = async (): Promise<NativeLoadResult> => {
     projectKey,
     pageKey,
     project,
-    state:
-      parseNativeFromProject(project, pageKey) ??
-      upgradeLegacyState(migrateLegacySchemaToNativeState(project.pages?.[pageKey]?.schema)) ??
-      upgradeLegacyState(migrateLegacyProjectToNativeState(project, pageKey))
+    state: parseNativeFromProject(project, pageKey)
   }
 }
 

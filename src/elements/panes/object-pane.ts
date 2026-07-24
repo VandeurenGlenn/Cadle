@@ -3,47 +3,12 @@ import pubsub from '../../pubsub.js'
 import styles from './object-pane.css' with { type: 'css' }
 import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
 import type { PanelLabelRow } from '../../helpers/panel-labels.js'
+import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SymbolTextField } from './object-pane/selection-model.js'
+import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/lite-elements/icon.js'
-
-type BindingLabelSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
-
-type SymbolTextField = {
-  key: string
-  label: string
-  value: string
-}
-
-const SYSTEM_FONTS = [
-  'Arial',
-  'Helvetica',
-  'Times New Roman',
-  'Courier New',
-  'Georgia',
-  'Verdana',
-  'Trebuchet MS',
-  'Comic Sans MS',
-  'Impact',
-  'Palatino Linotype',
-  'Lucida Console',
-  'Tahoma',
-  'Lucida Grande',
-  'Segoe UI',
-  'Calibri',
-  'Menlo',
-  'Monaco',
-  'Consolas'
-]
-
-const GOOGLE_FONTS_URL = 'https://fonts.google.com'
-
-const inferBindingLabelSide = (offset: { x: number; y: number } | null): BindingLabelSide => {
-  if (!offset) return 'auto'
-  if (Math.abs(offset.x) >= Math.abs(offset.y)) return offset.x < 0 ? 'left' : 'right'
-  return offset.y < 0 ? 'top' : 'bottom'
-}
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
@@ -144,36 +109,11 @@ export class ObjectPane extends LiteElement {
     })
   }
 
-  #onNativeSelectionChanged = (payload: {
-    selectionCount?: number
-    shape?: {
-      id?: string
-      kind?: string
-      text?: string
-      path?: string
-      symbolTextFields?: SymbolTextField[]
-      bindingId?: string
-      name?: string
-      canFlip?: boolean
-      flipSide?: boolean
-      flipX?: boolean
-      flipY?: boolean
-      rotation?: number
-      scale?: number
-      fill?: string
-      stroke?: string
-      canSetStrokeWidth?: boolean
-      strokeWidth?: number
-      fontFamily?: string
-      letterSpacing?: number
-      x?: number
-      y?: number
-      bindingLabelOffset?: { x: number; y: number }
-    }
-  }) => {
+  #onNativeSelectionChanged = (payload: SelectionPayload) => {
     this.#cancelBindingSave()
-    this._selectionCount = Number.isFinite(payload?.selectionCount) ? Number(payload.selectionCount) : 0
-    if (!payload?.shape) {
+    const selection = normalizeSelection(payload)
+    this._selectionCount = selection.selectionCount
+    if (!selection.shape) {
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
       this._nativeSelectedId = ''
       this._nativeSelectedKind = ''
@@ -199,55 +139,29 @@ export class ObjectPane extends LiteElement {
       return
     }
 
-    const kind = typeof payload.shape.kind === 'string' ? payload.shape.kind : 'shape'
-    this._nativeSelectedId = typeof payload.shape.id === 'string' ? payload.shape.id : ''
-    this._nativeSelectedKind = kind
-    this._nativeBindingId = typeof payload.shape.bindingId === 'string' ? payload.shape.bindingId : ''
-    this._nativeName = typeof payload.shape.name === 'string' ? payload.shape.name : ''
-    this._nativeText = typeof payload.shape.text === 'string' ? payload.shape.text : ''
-    this._nativeSymbolTextFields = Array.isArray(payload.shape.symbolTextFields)
-      ? payload.shape.symbolTextFields
-          .filter(
-            (field): field is SymbolTextField =>
-              Boolean(field) &&
-              typeof field === 'object' &&
-              typeof field.key === 'string' &&
-              typeof field.label === 'string' &&
-              typeof field.value === 'string'
-          )
-          .map((field) => ({ ...field }))
-      : []
-    this._nativeCanFlip = payload.shape.canFlip === true
-    this._nativeFlipSide = payload.shape.flipSide === true
-    this._nativeFlipX = typeof payload.shape.flipX === 'boolean' ? payload.shape.flipX : null
-    this._nativeFlipY = typeof payload.shape.flipY === 'boolean' ? payload.shape.flipY : null
-    this._nativeRotation = typeof payload.shape.rotation === 'number' ? payload.shape.rotation : null
-    this._nativeScale =
-      typeof payload.shape.scale === 'number' && Number.isFinite(payload.shape.scale) ? payload.shape.scale : null
-    this._nativeFill = typeof payload.shape.fill === 'string' ? payload.shape.fill : ''
-    this._nativeStroke = typeof payload.shape.stroke === 'string' ? payload.shape.stroke : ''
-    this._nativeCanSetStrokeWidth = payload.shape.canSetStrokeWidth === true
-    this._nativeStrokeWidth =
-      typeof payload.shape.strokeWidth === 'number' && Number.isFinite(payload.shape.strokeWidth)
-        ? payload.shape.strokeWidth
-        : null
-    this._nativeX = typeof payload.shape.x === 'number' && Number.isFinite(payload.shape.x) ? payload.shape.x : null
-    this._nativeY = typeof payload.shape.y === 'number' && Number.isFinite(payload.shape.y) ? payload.shape.y : null
-    this._nativeFontFamily = typeof payload.shape.fontFamily === 'string' ? payload.shape.fontFamily : ''
-    this._nativeLetterSpacing =
-      typeof payload.shape.letterSpacing === 'number' && Number.isFinite(payload.shape.letterSpacing)
-        ? payload.shape.letterSpacing
-        : null
-    this._nativeBindingLabelSide = inferBindingLabelSide(payload.shape.bindingLabelOffset ?? null)
-    this._activeObjectLabel = kind.charAt(0).toUpperCase() + kind.slice(1)
-  }
-
-  #onBindingLabelSideChange = (event: Event) => {
-    const target = event.target as HTMLSelectElement | null
-    const value = target?.value
-    if (value !== 'auto' && value !== 'left' && value !== 'right' && value !== 'top' && value !== 'bottom') return
-    this._nativeBindingLabelSide = value
-    pubsub.publish('native.object.update', { bindingLabelSide: value })
+    const shape = selection.shape
+    this._nativeSelectedId = shape.id
+    this._nativeSelectedKind = shape.kind
+    this._nativeBindingId = shape.bindingId
+    this._nativeName = shape.name
+    this._nativeText = shape.text
+    this._nativeSymbolTextFields = shape.symbolTextFields
+    this._nativeCanFlip = shape.canFlip
+    this._nativeFlipSide = shape.flipSide
+    this._nativeFlipX = shape.flipX
+    this._nativeFlipY = shape.flipY
+    this._nativeRotation = shape.rotation
+    this._nativeScale = shape.scale
+    this._nativeFill = shape.fill
+    this._nativeStroke = shape.stroke
+    this._nativeCanSetStrokeWidth = shape.canSetStrokeWidth
+    this._nativeStrokeWidth = shape.strokeWidth
+    this._nativeX = shape.x
+    this._nativeY = shape.y
+    this._nativeFontFamily = shape.fontFamily
+    this._nativeLetterSpacing = shape.letterSpacing
+    this._nativeBindingLabelSide = shape.bindingLabelSide
+    this._activeObjectLabel = shape.label
   }
 
   #setBindingLabelSide = (side: BindingLabelSide) => {

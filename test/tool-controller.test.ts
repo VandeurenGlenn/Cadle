@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ToolController } from '../src/native-app/tool-controller.ts'
+import { ToolController } from '../src/native-app/controllers/tool-controller.ts'
 
 test('maps shell actions to editor tools', () => {
   const tools = new ToolController()

@@ -100,10 +100,6 @@ export class StatusBar extends LiteElement {
     this.action = value ?? ''
   }
 
-  #onZoom = (value: number) => {
-    if (typeof value === 'number') this.zoom = value
-  }
-
   #onSnap = (value: boolean) => {
     this.snap = !!value
   }

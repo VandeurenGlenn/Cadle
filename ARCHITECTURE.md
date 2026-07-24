@@ -10,11 +10,14 @@ domain modules below instead of increasing the responsibilities of `app.ts` or `
 - `src/shell.ts` — application shell and project/page orchestration.
 - `src/native-draw/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
-- `src/native-app/` — focused editor use cases and controllers, including history, pointer behavior, circuit analysis,
-  one-wire generation, and export.
+- `src/native-app/controllers/` — stateful editor controllers for history, tools, and the viewport.
+- `src/native-app/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
+- `src/native-app/layout/` — catalog, symbol, title-block, and one-wire layout generation.
+- `src/native-app/export/` — SVG/PDF/download concerns. Shared editor policies remain directly in `src/native-app/`.
 - `src/api/` — persistence gateways for projects and catalogs.
-- `src/elements/`, `src/fields/`, `src/screens/` — custom elements grouped by UI role.
-- `src/shell/` — services used by the application shell, such as routing, presence, catalog state, and styles.
+- `src/elements/`, `src/fields/` — custom elements grouped by UI role. Complex panes keep models and configuration in
+  a same-named subfolder (for example, `elements/panes/object-pane/`).
+- `src/shell/` — routing, presence, catalog state, page operations, exports, and other shell services.
 - `test/` — Node tests for pure domain modules and controllers.
 
 ## Dependency direction

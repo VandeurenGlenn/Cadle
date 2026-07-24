@@ -1,4 +1,4 @@
-import { isPrimaryShortcut, isMac } from '../hotkeys.js'
+import { isPrimaryShortcut, isMac } from '../utils.js'
 
 export const isPrint = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'p' && isPrimaryShortcut(event)
 export const print = () => window.print()

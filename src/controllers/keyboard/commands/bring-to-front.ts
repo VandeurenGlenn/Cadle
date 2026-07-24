@@ -1,4 +1,4 @@
-import { isPrimaryShortcut, isMac } from '../hotkeys.js'
+import { isPrimaryShortcut, isMac } from '../utils.js'
 
 export const isBringToFront = (event: KeyboardEvent): boolean =>
   event.key === ']' && event.shiftKey && isPrimaryShortcut(event)

@@ -1,4 +1,4 @@
-import { isPrimaryShortcut, isMac } from '../hotkeys.js'
+import { isPrimaryShortcut, isMac } from '../utils.js'
 
 export const isSendBackwards = (event: KeyboardEvent): boolean => event.key === '[' && isPrimaryShortcut(event)
 export const sendBackwards = () => undefined

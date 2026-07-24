@@ -13,12 +13,11 @@ window.onhashchange = async () => {
 
   if (!customElements.get(`${selected}-field`)) await import(`./${selected}.js`)
   pages.select(selected)
-}
 
-location.hash = '#!/projects'
-window.onhashchange?.(
   new HashChangeEvent('hashchange', {
     oldURL: location.href,
     newURL: location.href
   })
-)
+}
+
+location.hash = '#!/projects'

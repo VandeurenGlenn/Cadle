@@ -1,4 +1,5 @@
-import { isPrimaryShortcut, isMac, type NativeHotkeyAction } from '../hotkeys.js'
+import { isPrimaryShortcut, isMac } from '../utils.js'
+import type { NativeHotkeyAction } from '../hotkeys.js'
 
 export const isCut = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'x' && isPrimaryShortcut(event)
 export const cut = (): NativeHotkeyAction => 'cut'

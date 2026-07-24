@@ -100,6 +100,8 @@ import { createDraftShape, createSymbolShape, createTextShape } from './native-a
 import { createNativeSelectionChangedPayload } from './native-app/selection-payload.js'
 import { transformShapeForSelection, type SelectionTransformAction } from './native-app/selection-transforms.js'
 import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './native-app/symbol-svg-cache.js'
+import { isEscape } from './controllers/keyboard/commands/escape.js'
+import { isPanKeyDown, isPanKeyUp } from './controllers/keyboard/commands/pan.js'
 import {
   ensureCustomCatalogLoaded,
   getStoredCustomCategories,
@@ -1439,7 +1441,7 @@ export class CadleApp extends LiteElement {
   // ── Space-key pan ──────────────────────────────────────────────────────────
 
   #onKeyUp = (event: KeyboardEvent) => {
-    if (event.code === 'Space') {
+    if (isPanKeyUp(event)) {
       this.#spaceDown = false
       if (this.#isPanning) {
         this.#isPanning = false
@@ -4855,12 +4857,12 @@ export class CadleApp extends LiteElement {
   #onKeyDown = (event: KeyboardEvent) => {
     if (isEditableKeyboardEvent(event)) return
 
-    if (event.key === 'Escape' && this.#stageContextMenuOpen) {
+    if (isEscape(event) && this.#stageContextMenuOpen) {
       this.#hideStageContextMenu()
       return
     }
 
-    if (event.code === 'Space' && !this.#spaceDown) {
+    if (isPanKeyDown(event) && !this.#spaceDown) {
       this.#spaceDown = true
       this.#render()
       return

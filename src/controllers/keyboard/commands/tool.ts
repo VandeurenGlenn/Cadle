@@ -1,4 +1,5 @@
-import { isEditableTarget, type NativeHotkeyAction } from '../hotkeys.js'
+import { isEditableTarget } from '../utils.js'
+import type { NativeHotkeyAction } from '../hotkeys.js'
 
 const TOOL_MAP: Record<string, NativeHotkeyAction | undefined> = {
   v: 'tool-select',
@@ -7,7 +8,11 @@ const TOOL_MAP: Record<string, NativeHotkeyAction | undefined> = {
   n: 'tool-window',
   g: 'tool-gate',
   l: 'tool-line',
+  r: 'tool-rect',
+  c: 'tool-circle',
+  a: 'tool-arc',
   t: 'tool-text',
+  s: 'tool-symbol',
   o: 'tool-onewire'
 }
 
@@ -19,4 +24,4 @@ export const isToolHotkey = (event: KeyboardEvent): boolean => {
 }
 
 export const tool = (event: KeyboardEvent): NativeHotkeyAction | undefined => TOOL_MAP[event.key.toLowerCase()]
-export const keys = [['v'], ['w'], ['d'], ['n'], ['g'], ['l'], ['t'], ['o']]
+export const keys = [['v'], ['w'], ['d'], ['n'], ['g'], ['l'], ['r'], ['c'], ['a'], ['t'], ['s'], ['o']]

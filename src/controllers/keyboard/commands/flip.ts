@@ -1,6 +1,20 @@
-import { isPrimaryShortcut, isMac } from '../hotkeys.js'
+import type { NativeHotkeyAction } from '../hotkeys.js'
 
-export const isFlip = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 'f' && isPrimaryShortcut(event)
-export const flip = () => undefined
-export const keyCombination = { key: 'f', metaKey: isMac, ctrlKey: !isMac }
-export const keys = [isMac ? ['meta', 'f'] : ['ctrl', 'f']]
+export const isFlip = (event: KeyboardEvent): boolean =>
+  event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && ['h', 'v'].includes(event.key.toLowerCase())
+
+export const flip = (event: KeyboardEvent): NativeHotkeyAction | null => {
+  const key = event.key.toLowerCase()
+  if (key === 'h') return 'flip-horizontal'
+  if (key === 'v') return 'flip-vertical'
+  return null
+}
+
+export const keyCombination = [
+  { key: 'H', shiftKey: true },
+  { key: 'V', shiftKey: true }
+]
+export const keys = [
+  ['shift', 'h'],
+  ['shift', 'v']
+]

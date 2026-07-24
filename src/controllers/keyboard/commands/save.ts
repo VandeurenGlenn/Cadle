@@ -1,4 +1,4 @@
-import { isPrimaryShortcut, isMac } from '../hotkeys.js'
+import { isPrimaryShortcut, isMac } from '../utils.js'
 
 export const isSave = (event: KeyboardEvent): boolean => event.key.toLowerCase() === 's' && isPrimaryShortcut(event)
 export const save = () => window.cadleShell?.savePage?.()

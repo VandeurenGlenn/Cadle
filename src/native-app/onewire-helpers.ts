@@ -357,7 +357,7 @@ export const buildOneWireRowSection = (
       position: { x: lastSlotX + 16, y: rowY + 5 },
       text: `x${lampCount}`,
       fill: '#000000',
-      scale: 0.8,
+      scale: 0.7,
       bindingId,
       groupId: rowGroupId
     }

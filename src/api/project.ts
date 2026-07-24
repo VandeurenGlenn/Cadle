@@ -32,7 +32,21 @@ export const keys = () => projectStore.keys()
 
 export const get = (key) => projectStore.get(key)
 
-export const del = (key) => projectStore.delete(new TextEncoder().encode(key))
+export const del = async (key: string) => {
+  await projectStore.delete(key)
+  await projectDataStore.delete(key)
+}
+
+export const renameProject = async (key: string, nextName: string) => {
+  await projectStore.put(key, nextName)
+  try {
+    const project = await getProjectData(key as UUID)
+    project.name = nextName
+    await setProjectData(key as UUID, project)
+  } catch {
+    // Keep index rename even if metadata payload is missing/corrupt.
+  }
+}
 
 export const set = (key, value) => projectStore.put(key, value)
 

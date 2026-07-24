@@ -8,7 +8,7 @@ import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
-import { del, getProjects, upload } from '../api/project.js'
+import { del, getProjects, renameProject, upload } from '../api/project.js'
 import pubsub from '../pubsub.js'
 @customElement('projects-field')
 export class ProjectsField extends LiteElement {
@@ -27,12 +27,13 @@ export class ProjectsField extends LiteElement {
   _currentSelected
   _transitionEnd?: () => void
   _reopenPromptFocusedButton: 'open' | 'dismiss' = 'open'
+  _onClick = (event: Event) => this._click(event)
   static styles = [styles]
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
     this.projects = await getProjects()
-    this.shadowRoot?.addEventListener('click', this._click.bind(this))
+    this.shadowRoot?.addEventListener('click', this._onClick)
     const shell = cadleShell as unknown as {
       showReopenPreviousProjectPrompt?: boolean
       previousProjectName?: string
@@ -44,7 +45,27 @@ export class ProjectsField extends LiteElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
+    this.shadowRoot?.removeEventListener('click', this._onClick)
     pubsub.unsubscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
+  }
+
+  _actionTarget(event: Event): HTMLElement | null {
+    const path = event.composedPath()
+    for (const node of path) {
+      if (!(node instanceof HTMLElement)) continue
+      if (node.hasAttribute('data-action')) return node
+    }
+    return null
+  }
+
+  _pathAttribute(event: Event, attribute: string): string | null {
+    const path = event.composedPath()
+    for (const node of path) {
+      if (!(node instanceof HTMLElement)) continue
+      const value = node.getAttribute(attribute)
+      if (value) return value
+    }
+    return null
   }
 
   #onReopenPreviousProjectPrompt = (payload: { open?: boolean; projectName?: string }) => {
@@ -105,12 +126,18 @@ export class ProjectsField extends LiteElement {
   }
 
   _click(event: Event) {
-    const target = event.target as HTMLElement | null
-    if (!target) return
+    const actionTarget = this._actionTarget(event)
+    if (!actionTarget) return
 
-    const action = target.getAttribute('data-action')
-    const id = target.getAttribute('data-id')
-    const name = target.getAttribute('data-name')
+    const action = actionTarget.getAttribute('data-action')
+    const selectedId =
+      this._pathAttribute(event, 'data-id') ??
+      actionTarget.getAttribute('data-id') ??
+      (typeof this._currentSelected === 'string' ? this._currentSelected : null)
+    const selectedProject = selectedId ? this.projects.find(([projectId]) => projectId === selectedId) : undefined
+    const id = selectedId
+    const name =
+      this._pathAttribute(event, 'data-name') ?? actionTarget.getAttribute('data-name') ?? selectedProject?.[1] ?? null
     const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
 
     if (action === 'showContextMenu') {
@@ -145,11 +172,33 @@ export class ProjectsField extends LiteElement {
       return
     }
 
+    if (action === 'rename') {
+      if (!id) return
+      void this._rename(id, name)
+      return
+    }
+
     if (action === 'delete') {
       if (!id) return
       void this._delete(id)
       return
     }
+  }
+
+  async _rename(id: string, currentName: string | null) {
+    const fallback = this.projects.find(([projectId]) => projectId === id)?.[1] ?? ''
+    const nextName = window.prompt('Project name', currentName ?? fallback)?.trim()
+    if (!nextName || nextName === fallback) return
+
+    await renameProject(id, nextName)
+    const projects = await getProjects()
+    this.projects = projects
+    cadleShell.projects = projects
+    if (cadleShell.projectKey === (id as unknown as UUID) && cadleShell.project) {
+      cadleShell.project.name = nextName
+    }
+    this._currentSelected = id
+    this.contextmenu.open = false
   }
 
   async _delete(id: string) {
@@ -160,7 +209,9 @@ export class ProjectsField extends LiteElement {
     }
 
     const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
+    this.projects = projects
     cadleShell.projects = projects
+    this._currentSelected = undefined
     if (dropdown) (dropdown as CustomDropdown & { shown?: boolean }).shown = false
   }
 

@@ -96,8 +96,10 @@ const applyProperties = (
       const scalable = updated as Extract<Shape, { start: Point; end: Point }> & { scale?: number }
       const currentScale = typeof scalable.scale === 'number' && Number.isFinite(scalable.scale) ? scalable.scale : 1
       const factor = nextScale / currentScale
-      const centerX = center?.x ?? (scalable.start.x + scalable.end.x) / 2
-      const centerY = center?.y ?? (scalable.start.y + scalable.end.y) / 2
+      const ownCenterX = (scalable.start.x + scalable.end.x) / 2
+      const ownCenterY = (scalable.start.y + scalable.end.y) / 2
+      const centerX = updated.kind === 'rect' ? ownCenterX : (center?.x ?? ownCenterX)
+      const centerY = updated.kind === 'rect' ? ownCenterY : (center?.y ?? ownCenterY)
       scalable.start = {
         x: centerX + (scalable.start.x - centerX) * factor,
         y: centerY + (scalable.start.y - centerY) * factor

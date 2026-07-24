@@ -121,6 +121,9 @@ import {
   type CircuitComponent,
   type BomRow
 } from './native-app/circuit-analysis.js'
+import { DocumentHistory } from './native-app/document-history.js'
+import { ViewportController } from './native-app/viewport-controller.js'
+import { ToolController } from './native-app/tool-controller.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
 type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
@@ -287,7 +290,7 @@ const getBindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: numbe
 export class CadleApp extends LiteElement {
   static styles = [styles]
 
-  #tool: Tool = 'select'
+  #tools = new ToolController()
   #shapes: Shape[] = []
   #selectedId: string | null = null
   #draft: DraftShape | null = null
@@ -299,8 +302,7 @@ export class CadleApp extends LiteElement {
     shapeCenter: Point
     initialOffset: { x: number; y: number }
   } | null = null
-  #history: Snapshot[] = []
-  #historyIndex = -1
+  #history = new DocumentHistory()
   #snap = true
   #stagePointerId: number | null = null
   #paperPreset: PaperPreset = 'a4-landscape'
@@ -327,9 +329,7 @@ export class CadleApp extends LiteElement {
   // Active symbol placement gesture: anchor stays fixed while dragging sets the rotation.
   #symbolPlacement: { anchor: Point; rotation: number } | null = null
   // Zoom & pan state
-  #zoom = 1
-  #panX = 0
-  #panY = 0
+  #viewport = new ViewportController()
   #isPanning = false
   #panStart: { px: number; py: number; panX: number; panY: number } | null = null
   #spaceDown = false
@@ -370,70 +370,6 @@ export class CadleApp extends LiteElement {
   #catalogDialogFolderOptions: string[] = []
   #catalogDialogCategoryOptions: CatalogDialogCategoryOption[] = []
   #catalogDialogReplaceOptions: CatalogDialogReplaceOption[] = []
-
-  #toolFromShellAction(action: string): Tool {
-    switch (action) {
-      case 'draw-wall':
-        return 'wall'
-      case 'draw-door':
-        return 'door'
-      case 'draw-window':
-        return 'window'
-      case 'draw-gate':
-        return 'gate'
-      case 'draw-line':
-      case 'draw-cable':
-        return 'line'
-      case 'draw-onewire':
-        return 'onewire'
-      case 'draw-square':
-        return 'rect'
-      case 'draw-circle':
-        return 'circle'
-      case 'draw-arc':
-        return 'arc'
-      case 'draw-text':
-        return 'text'
-      case 'draw-symbol':
-        return 'symbol'
-      case 'draw':
-        return 'line'
-      case 'resize':
-      case 'select':
-      default:
-        return 'select'
-    }
-  }
-
-  #shellActionFromTool(tool: Tool): string {
-    switch (tool) {
-      case 'wall':
-        return 'draw-wall'
-      case 'door':
-        return 'draw-door'
-      case 'window':
-        return 'draw-window'
-      case 'gate':
-        return 'draw-gate'
-      case 'line':
-        return 'draw-line'
-      case 'onewire':
-        return 'draw-onewire'
-      case 'rect':
-        return 'draw-square'
-      case 'circle':
-        return 'draw-circle'
-      case 'arc':
-        return 'draw-arc'
-      case 'text':
-        return 'draw-text'
-      case 'symbol':
-        return 'draw-symbol'
-      case 'select':
-      default:
-        return 'select'
-    }
-  }
 
   connectedCallback() {
     super.connectedCallback()
@@ -532,7 +468,7 @@ export class CadleApp extends LiteElement {
   }
 
   #onShellAction = (action: string) => {
-    const nextTool = this.#toolFromShellAction(action ?? '')
+    const nextTool = this.#tools.toolForShellAction(action ?? '')
     this.#activateTool(nextTool)
   }
 
@@ -596,7 +532,7 @@ export class CadleApp extends LiteElement {
       metadata
     }
     this.#symbolPreviewPoint = null
-    this.#tool = 'symbol'
+    this.#tools.select('symbol')
     this.#draft = null
     this.#render()
   }
@@ -1146,8 +1082,7 @@ export class CadleApp extends LiteElement {
   }
 
   async #initialize() {
-    this.#history = []
-    this.#historyIndex = -1
+    this.#history.reset()
     this.#draft = null
     this.#drag = null
     this.#selectedId = null
@@ -1274,20 +1209,15 @@ export class CadleApp extends LiteElement {
   }
 
   #pushHistory(persist = true, replaceCurrent = false) {
-    const snapshot: Snapshot = {
-      shapes: cloneShapes(this.#shapes),
-      selectedId: this.#selectedId,
-      worldWidth: this.#worldWidth,
-      worldHeight: this.#worldHeight
-    }
-    if (replaceCurrent && this.#historyIndex >= 0) {
-      this.#history[this.#historyIndex] = snapshot
-      if (persist) this.#persist()
-      return
-    }
-    this.#history = this.#history.slice(0, this.#historyIndex + 1)
-    this.#history.push(snapshot)
-    this.#historyIndex = this.#history.length - 1
+    this.#history.push(
+      {
+        shapes: this.#shapes,
+        selectedId: this.#selectedId,
+        worldWidth: this.#worldWidth,
+        worldHeight: this.#worldHeight
+      },
+      replaceCurrent
+    )
     if (persist) this.#persist()
   }
 
@@ -1327,15 +1257,13 @@ export class CadleApp extends LiteElement {
   }
 
   #undo() {
-    if (this.#historyIndex <= 0) return
-    this.#historyIndex -= 1
-    this.#restoreSnapshot(this.#history[this.#historyIndex])
+    const snapshot = this.#history.undo()
+    if (snapshot) this.#restoreSnapshot(snapshot)
   }
 
   #redo() {
-    if (this.#historyIndex >= this.#history.length - 1) return
-    this.#historyIndex += 1
-    this.#restoreSnapshot(this.#history[this.#historyIndex])
+    const snapshot = this.#history.redo()
+    if (snapshot) this.#restoreSnapshot(snapshot)
   }
 
   #snapPoint(point: Point): Point {
@@ -1354,7 +1282,7 @@ export class CadleApp extends LiteElement {
     // Convert screen → world via our explicit pan/zoom transform
     const screenX = event.clientX - rect.left
     const screenY = event.clientY - rect.top
-    const worldPt = this.#screenToWorld(screenX, screenY)
+    const worldPt = this.#viewport.screenToWorld({ x: screenX, y: screenY })
     return {
       x: Math.max(0, Math.min(this.#worldWidth, worldPt.x)),
       y: Math.max(0, Math.min(this.#worldHeight, worldPt.y))
@@ -1363,27 +1291,9 @@ export class CadleApp extends LiteElement {
 
   // ── Zoom & pan helpers ────────────────────────────────────────────────────
 
-  #clampZoom(z: number): number {
-    return Math.max(0.1, Math.min(8, z))
-  }
-
   // Zoom centred on a screen-space point (px, py are relative to the panel element).
   #zoomAt(px: number, py: number, factor: number) {
-    const next = this.#clampZoom(this.#zoom * factor)
-    if (next === this.#zoom) return
-    // Keep the point under the cursor stationary: adjust pan so world-point stays the same.
-    this.#panX = px - (px - this.#panX) * (next / this.#zoom)
-    this.#panY = py - (py - this.#panY) * (next / this.#zoom)
-    this.#zoom = next
-    this.#render()
-  }
-
-  // Convert a screen-space event point (relative to panel) to world coordinates.
-  #screenToWorld(screenX: number, screenY: number): Point {
-    return {
-      x: (screenX - this.#panX) / this.#zoom,
-      y: (screenY - this.#panY) / this.#zoom
-    }
+    if (this.#viewport.zoomAt({ x: px, y: py }, factor)) this.#render()
   }
 
   #autoCenterView() {
@@ -1395,15 +1305,10 @@ export class CadleApp extends LiteElement {
 
     // Fit the page (world) so the safe-area dashed boundary, grid and content
     // are shown coherently — like a print preview.
-    const margin = 12
-    const availableWidth = rect.width - margin * 2
-    const availableHeight = rect.height - margin * 2
-    const zoomX = availableWidth / this.#worldWidth
-    const zoomY = availableHeight / this.#worldHeight
-    this.#zoom = this.#clampZoom(Math.min(1, zoomX, zoomY))
-
-    this.#panX = (rect.width - this.#worldWidth * this.#zoom) / 2
-    this.#panY = (rect.height - this.#worldHeight * this.#zoom) / 2
+    this.#viewport.fit(
+      { width: rect.width, height: rect.height },
+      { width: this.#worldWidth, height: this.#worldHeight }
+    )
   }
 
   #onWheel = (event: WheelEvent) => {
@@ -1470,8 +1375,7 @@ export class CadleApp extends LiteElement {
       this.#zoomAt(px, py, factor)
     } else {
       // Scroll/pan
-      this.#panX -= event.deltaX
-      this.#panY -= event.deltaY
+      this.#viewport.panBy(-event.deltaX, -event.deltaY)
       this.#render()
     }
   }
@@ -1609,7 +1513,7 @@ export class CadleApp extends LiteElement {
     ) {
       return PROJECT_LOGO_SHAPE_ID
     }
-    const tolerance = Math.max(6, 12 / this.#zoom)
+    const tolerance = Math.max(6, 12 / this.#viewport.state.zoom)
     for (let index = this.#shapes.length - 1; index >= 0; index -= 1) {
       const shape = this.#shapes[index]
       if (
@@ -1637,9 +1541,8 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
-    if (tool === this.#tool) return
-    this.#tool = tool
-    const shellAction = this.#shellActionFromTool(tool)
+    if (!this.#tools.select(tool)) return
+    const shellAction = this.#tools.shellAction()
     if (window.cadleShell?.action !== shellAction) {
       window.cadleShell.action = shellAction
     }
@@ -1724,7 +1627,7 @@ export class CadleApp extends LiteElement {
 
   #ungroupNativeSelection(): boolean {
     const selectedIds = this.#selectedShapeIds()
-    if (!selectedIds.size) return false
+    if (!selectedIds.length) return false
 
     // First, check if we're ungrouping symbols with catalogShapes
     let unpackedAny = false
@@ -2325,7 +2228,7 @@ export class CadleApp extends LiteElement {
 
   #handleEscapeKey() {
     const action = resolveNativeEscapeAction({
-      tool: this.#tool,
+      tool: this.#tools.current,
       hasPendingCatalogSymbol: Boolean(this.#pendingCatalogSymbol),
       hasSymbolPreviewPoint: Boolean(this.#symbolPreviewPoint),
       hasWallChain: Boolean(this.#wallChain),
@@ -2341,7 +2244,7 @@ export class CadleApp extends LiteElement {
       this.#pendingCatalogSymbol = null
       this.#symbolPreviewPoint = null
       this.#symbolPlacement = null
-      this.#tool = 'select'
+      this.#tools.select('select')
       this.#render()
       return
     }
@@ -2377,7 +2280,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool !== 'select') {
+    if (this.#tools.current !== 'select') {
       this.#activateTool('select')
     }
   }
@@ -2523,7 +2426,7 @@ export class CadleApp extends LiteElement {
       const sideByPointer = Math.sign((point.x - closest.x) * nx + (point.y - closest.y) * ny)
       const side = sideByPointer === 0 ? 1 : sideByPointer
       const wallStrokePx = typeof shape.strokeWidth === 'number' ? shape.strokeWidth : 12
-      const wallHalfThickness = wallStrokePx / (2 * Math.max(this.#zoom, 0.1))
+      const wallHalfThickness = wallStrokePx / (2 * Math.max(this.#viewport.state.zoom, 0.1))
       const wallDerivedMinGap = wallHalfThickness * (5 / 6)
       const wallEdgeOffset = Math.max(symbolHalfExtent * WALL_EDGE_OFFSET_FACTOR, wallDerivedMinGap)
       const centerOffset = wallHalfThickness + symbolHalfExtent + wallEdgeOffset
@@ -2581,13 +2484,18 @@ export class CadleApp extends LiteElement {
   }
 
   #shouldShowSnapIndicator(): boolean {
-    if (!this.#snapTarget || !this.#snap || this.#tool === 'select') return false
-    if (this.#tool === 'wall') return Boolean(this.#wallChain)
-    if (this.#tool === 'door' || this.#tool === 'window' || this.#tool === 'gate' || this.#tool === 'line') {
+    if (!this.#snapTarget || !this.#snap || this.#tools.current === 'select') return false
+    if (this.#tools.current === 'wall') return Boolean(this.#wallChain)
+    if (
+      this.#tools.current === 'door' ||
+      this.#tools.current === 'window' ||
+      this.#tools.current === 'gate' ||
+      this.#tools.current === 'line'
+    ) {
       return Boolean(this.#draft)
     }
-    if (this.#tool === 'symbol') return Boolean(this.#pendingCatalogSymbol)
-    if (this.#tool === 'onewire') return true
+    if (this.#tools.current === 'symbol') return Boolean(this.#pendingCatalogSymbol)
+    if (this.#tools.current === 'onewire') return true
     return false
   }
 
@@ -3994,11 +3902,12 @@ export class CadleApp extends LiteElement {
 
   render() {
     const selectedShape = this.#shapeById(this.#selectedId)
-    const worldTransform = `translate(${this.#panX} ${this.#panY}) scale(${this.#zoom})`
-    const minorGrid = GRID_SIZE * 2 * this.#zoom
-    const majorGrid = GRID_SIZE * 10 * this.#zoom
+    const { zoom, panX, panY } = this.#viewport.state
+    const worldTransform = `translate(${panX} ${panY}) scale(${zoom})`
+    const minorGrid = GRID_SIZE * 2 * zoom
+    const majorGrid = GRID_SIZE * 10 * zoom
     const gridStyle =
-      `background-position: ${this.#panX}px ${this.#panY}px; ` +
+      `background-position: ${panX}px ${panY}px; ` +
       `background-size: ${minorGrid}px ${minorGrid}px, ${minorGrid}px ${minorGrid}px, ` +
       `${majorGrid}px ${majorGrid}px, ${majorGrid}px ${majorGrid}px`
     const cursor = this.#isPanning || this.#spaceDown ? 'grab' : 'default'
@@ -4343,7 +4252,7 @@ export class CadleApp extends LiteElement {
 
   #previewTemplate() {
     const symbolPreviewShape: SymbolShape | null =
-      this.#tool === 'symbol' && this.#pendingCatalogSymbol && this.#symbolPreviewPoint
+      this.#tools.current === 'symbol' && this.#pendingCatalogSymbol && this.#symbolPreviewPoint
         ? {
             id: '__symbol-preview__',
             kind: 'symbol',
@@ -4387,35 +4296,6 @@ export class CadleApp extends LiteElement {
     this.requestRender()
   }
 
-  #toolLabel(tool: Tool): string {
-    switch (tool) {
-      case 'select':
-        return 'Select'
-      case 'wall':
-        return 'Wall'
-      case 'line':
-        return 'Line'
-      case 'door':
-        return 'Door'
-      case 'window':
-        return 'Window'
-      case 'gate':
-        return 'Gate'
-      case 'rect':
-        return 'Box'
-      case 'circle':
-        return 'Circle'
-      case 'arc':
-        return 'Arc'
-      case 'text':
-        return 'Text'
-      case 'symbol':
-        return 'Symbol'
-      case 'onewire':
-        return `One-wire ${this.#oneWireBindingId}`
-    }
-  }
-
   #nextOneWireBindingId(): string {
     return nextOneWireBindingId(this.#oneWireBindingId, this.#oneWirePreset)
   }
@@ -4445,7 +4325,7 @@ export class CadleApp extends LiteElement {
       if (preset && preset in ONE_WIRE_PRESETS) {
         this.#oneWirePreset = preset
         this.#oneWireMode = 'preset'
-        if (this.#tool !== 'onewire') this.#activateTool('onewire')
+        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
         else this.#render()
       }
       return
@@ -4457,7 +4337,7 @@ export class CadleApp extends LiteElement {
       if (next === 'breaker' || next === 'switch' || next === 'kamrail' || next === 'load') {
         this.#oneWireMode = 'compose'
         this.#oneWireComposeKind = next
-        if (this.#tool !== 'onewire') this.#activateTool('onewire')
+        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
         else this.#render()
       }
       return
@@ -4545,7 +4425,7 @@ export class CadleApp extends LiteElement {
     if (preset && preset in ONE_WIRE_PRESETS) {
       this.#oneWirePreset = preset
       this.#oneWireMode = 'preset'
-      if (this.#tool !== 'onewire') this.#activateTool('onewire')
+      if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
       else this.#render()
       return
     }
@@ -4554,7 +4434,7 @@ export class CadleApp extends LiteElement {
     if (compose === 'breaker' || compose === 'switch' || compose === 'kamrail' || compose === 'load') {
       this.#oneWireMode = 'compose'
       this.#oneWireComposeKind = compose
-      if (this.#tool !== 'onewire') this.#activateTool('onewire')
+      if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
       else this.#render()
       return
     }
@@ -4572,13 +4452,13 @@ export class CadleApp extends LiteElement {
         return
       case 'onewire-next':
         this.#advanceOneWireBinding()
-        if (this.#tool !== 'onewire') this.#activateTool('onewire')
+        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
         return
       case 'onewire-reset-panel':
         this.#oneWireAnchor = null
         this.#oneWireLastPoint = null
         this.#oneWireBusBarId = null
-        if (this.#tool !== 'onewire') this.#activateTool('onewire')
+        if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
         else this.#render()
         return
       case 'onewire-realign':
@@ -4627,8 +4507,8 @@ export class CadleApp extends LiteElement {
         this.#panStart = {
           px: event.clientX - rect.left,
           py: event.clientY - rect.top,
-          panX: this.#panX,
-          panY: this.#panY
+          panX: this.#viewport.state.panX,
+          panY: this.#viewport.state.panY
         }
         this.#stagePointerId = event.pointerId
         ;(stage as SVGSVGElement).setPointerCapture(event.pointerId)
@@ -4639,7 +4519,7 @@ export class CadleApp extends LiteElement {
     const rawPoint = this.#pointFromEvent(event)
     if (!rawPoint) return
 
-    if (this.#tool === 'wall') {
+    if (this.#tools.current === 'wall') {
       // Wall chain must win before shape selection so existing walls can be used as click targets.
       const gridSnapped = this.#snapPoint(rawPoint)
       const { point, snapped } = this.#snapToEndpoints(gridSnapped)
@@ -4708,8 +4588,8 @@ export class CadleApp extends LiteElement {
     if (
       shapeId &&
       isAdditiveSelection &&
-      this.#tool !== 'onewire' &&
-      !(this.#tool === 'symbol' && this.#pendingCatalogSymbol)
+      this.#tools.current !== 'onewire' &&
+      !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
     ) {
       const expanded = this.#expandSelectionWithGroup(shapeId)
       const next = new Set(this.#selectedIds.size ? this.#selectedIds : this.#selectedId ? [this.#selectedId] : [])
@@ -4734,8 +4614,8 @@ export class CadleApp extends LiteElement {
     if (
       shapeId &&
       event.button === 0 &&
-      this.#tool !== 'onewire' &&
-      !(this.#tool === 'symbol' && this.#pendingCatalogSymbol)
+      this.#tools.current !== 'onewire' &&
+      !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
     ) {
       if (shapeId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
         this.#selectedIds = new Set([PROJECT_LOGO_SHAPE_ID])
@@ -4781,7 +4661,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool === 'text') {
+    if (this.#tools.current === 'text') {
       const value = window.prompt('Text', 'Label')?.trim()
       if (!value) return
       this.#shapes.push(createTextShape(nextShapeId(), rawPoint, value))
@@ -4791,7 +4671,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool === 'symbol' && event.button === 0 && this.#pendingCatalogSymbol) {
+    if (this.#tools.current === 'symbol' && event.button === 0 && this.#pendingCatalogSymbol) {
       const snapped = this.#snapSymbolPlacementPoint(rawPoint)
       this.#symbolPreviewPoint = snapped.point
       this.#snapTarget = snapped.snapped ? snapped.point : null
@@ -4806,7 +4686,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool === 'onewire') {
+    if (this.#tools.current === 'onewire') {
       if (event.button !== 0) return
 
       const clickedShape = shapeId ? this.#shapeById(shapeId) : null
@@ -4911,7 +4791,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool === 'select' || (this.#tool === 'symbol' && !this.#pendingCatalogSymbol)) {
+    if (this.#tools.current === 'select' || (this.#tools.current === 'symbol' && !this.#pendingCatalogSymbol)) {
       const selectResult = resolveSelectPointerDownState({
         shapeId,
         rawPoint,
@@ -4953,12 +4833,14 @@ export class CadleApp extends LiteElement {
     if (event.button !== 0) return
     const gridSnapped = this.#snapPoint(rawPoint)
     const point =
-      this.#tool === 'line'
+      this.#tools.current === 'line'
         ? this.#snapToElectricalPoints(gridSnapped).point
-        : this.#tool === 'door' || this.#tool === 'window' || this.#tool === 'gate'
+        : this.#tools.current === 'door' ||
+            this.#tools.current === 'window' ||
+            this.#tools.current === 'gate'
           ? this.#snapToEndpoints(gridSnapped).point
           : gridSnapped
-    this.#draft = createDraftShape(nextShapeId(), point, this.#tool)
+    this.#draft = createDraftShape(nextShapeId(), point, this.#tools.current)
     this.#stagePointerId = event.pointerId
     ;(stage as SVGSVGElement).setPointerCapture(event.pointerId)
     this.#render()
@@ -4973,8 +4855,7 @@ export class CadleApp extends LiteElement {
         const px = event.clientX - rect.left
         const py = event.clientY - rect.top
         const next = nextPanFromPointer(this.#panStart, px, py)
-        this.#panX = next.panX
-        this.#panY = next.panY
+        this.#viewport.setPan(next.panX, next.panY)
         this.#renderPreviewOnly()
       }
       return
@@ -5042,7 +4923,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tool === 'symbol' && this.#pendingCatalogSymbol) {
+    if (this.#tools.current === 'symbol' && this.#pendingCatalogSymbol) {
       const snapped = this.#snapSymbolPlacementPoint(rawPoint)
       const nextPreview = snapped.point
       const nextSnapTarget = snapped.snapped ? snapped.point : null
@@ -5063,7 +4944,7 @@ export class CadleApp extends LiteElement {
     }
 
     // Wall chain: update live preview with snap
-    if (this.#tool === 'wall' && this.#wallChain) {
+    if (this.#tools.current === 'wall' && this.#wallChain) {
       const wallPreview = updateWallChainPreview(
         rawPoint,
         (point) => this.#snapPoint(point),
@@ -5077,7 +4958,7 @@ export class CadleApp extends LiteElement {
     }
 
     // One-wire: show snap preview
-    if (this.#tool === 'onewire') {
+    if (this.#tools.current === 'onewire') {
       if (this.#oneWireMode === 'compose' && this.#oneWireComposeKind === 'kamrail') {
         const snapped = this.#snapPoint(rawPoint)
         this.#snapTarget = snapped

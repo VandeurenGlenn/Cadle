@@ -6,18 +6,9 @@ import {
   type LegacyNativeDocumentState
 } from './native-draw/legacy-project.js'
 import { parseHash } from './shell/routing.js'
-import type { PaperPreset, Shape } from './native-draw/types.js'
-import { sanitizeShapes } from './native-draw/model.js'
+import { asNativeState, type NativeDocumentState } from './native-draw/document-state.js'
 
-export type NativeDocumentState = {
-  version: 1
-  shapes: Shape[]
-  selectedId: UUID | null
-  paperPreset: PaperPreset
-  printMargin: number
-  worldWidth: number
-  worldHeight: number
-}
+export { asNativeState, type NativeDocumentState } from './native-draw/document-state.js'
 
 type NativeSchemaObject = {
   kind: 'cadle-native-svg-document'
@@ -45,12 +36,6 @@ const createDefaultPage = (name = 'Page 1', order = 0) => ({
   order
 })
 
-const isFinitePositive = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
-
-const isFiniteNonNegative = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
-
 const upgradeLegacyState = (state: LegacyNativeDocumentState | null): NativeDocumentState | null =>
   state
     ? {
@@ -58,33 +43,6 @@ const upgradeLegacyState = (state: LegacyNativeDocumentState | null): NativeDocu
         selectedId: null
       }
     : null
-
-export const asNativeState = (value: unknown): NativeDocumentState | null => {
-  if (!value || typeof value !== 'object') return null
-  const candidate = value as Partial<NativeDocumentState>
-  if (!Array.isArray(candidate.shapes)) return null
-  if (!isFinitePositive(candidate.worldWidth)) return null
-  if (!isFinitePositive(candidate.worldHeight)) return null
-  if (!isFiniteNonNegative(candidate.printMargin)) return null
-  if (
-    candidate.paperPreset !== 'a4-portrait' &&
-    candidate.paperPreset !== 'a4-landscape' &&
-    candidate.paperPreset !== 'a3-portrait' &&
-    candidate.paperPreset !== 'a3-landscape'
-  ) {
-    return null
-  }
-
-  return {
-    version: 1,
-    shapes: sanitizeShapes(candidate.shapes),
-    selectedId: null,
-    paperPreset: candidate.paperPreset,
-    printMargin: candidate.printMargin,
-    worldWidth: candidate.worldWidth,
-    worldHeight: candidate.worldHeight
-  }
-}
 
 const parseNativeFromSchema = (schema: unknown): NativeDocumentState | null => {
   const direct = asNativeState(schema)

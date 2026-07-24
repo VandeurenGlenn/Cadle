@@ -62,6 +62,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       bindingId?: unknown
       groupId?: unknown
       bindingLabelOffset?: unknown
+      catalogShapes?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue

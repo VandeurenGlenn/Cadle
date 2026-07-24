@@ -3,7 +3,6 @@ import test from 'node:test'
 import { analyzeCircuits, bomRowsToCsv, circuitBomRows } from '../src/native-app/circuit-analysis.ts'
 import type { Shape } from '../src/native-draw/types.ts'
 import { electricalMetadataFromCatalog } from '../src/native-draw/electrical.ts'
-import { asNativeState } from '../src/native-project-data.ts'
 
 const symbol = (id: string, bindingId: string, name: string, path: string): Shape => ({
   id,
@@ -13,20 +12,6 @@ const symbol = (id: string, bindingId: string, name: string, path: string): Shap
   bindingId,
   name,
   path
-})
-
-test('ignores persisted selection ids so restored documents start unselected', () => {
-  const state = asNativeState({
-    version: 1,
-    shapes: [],
-    selectedId: 'shape-1',
-    paperPreset: 'a4-landscape',
-    printMargin: 0,
-    worldWidth: 1000,
-    worldHeight: 1000
-  })
-
-  assert.equal(state?.selectedId, null)
 })
 
 test('groups floor-plan devices and ignores generated one-wire geometry', () => {

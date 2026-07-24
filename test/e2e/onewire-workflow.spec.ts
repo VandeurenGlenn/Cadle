@@ -50,6 +50,13 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   await breakerCurve.selectOption('D')
   await page.waitForTimeout(600)
 
+  await placeAndBind('Switch general symbol', 500, 'B1')
+  await placeAndBind('Lighting', 580, 'B1')
+  await expect(breakerCurrent).toHaveValue('16')
+  await expect(cableSection).toHaveValue('1.5')
+  await expect(poles).toHaveValue('2')
+  await expect(breakerCurve).toHaveValue('C')
+
   const validation = await page.locator('cadle-app').evaluate((element: any) => element.analyzeBindings())
   expect(validation.valid, JSON.stringify(validation)).toBe(true)
   expect(validation.groups[0].bindingId).toBe('A1')
@@ -65,6 +72,8 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect((generatedSvg.match(/data-shape-id=/g) ?? []).length).toBeGreaterThan(3)
   expect(generatedSvg).toContain('D25')
   expect(generatedSvg).toContain('4 mm²')
+  expect(generatedSvg).toContain('C16')
+  expect(generatedSvg).toContain('1.5 mm²')
 
   await page.reload()
   await expect(page).toHaveURL(/#!\/native-draw/)

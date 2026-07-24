@@ -2,6 +2,7 @@ import type { Shape } from '../../native-draw/types.js'
 import { shapeBounds } from '../../native-draw/model.js'
 import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../native-draw/electrical.js'
+import { circuitDefaults } from '../circuit-defaults.js'
 
 export type NativeSelectionSymbolTextField = {
   key: string
@@ -96,16 +97,16 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.path = selectedShape.path
     const sourceElectrical = options?.electricalOverride ?? selectedShape.electrical ?? electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
     if (sourceElectrical.oneWireEligible || selectedShape.bindingId) {
-      const socketOrMotor = sourceElectrical.circuitType === 'sockets' || sourceElectrical.circuitType === 'motor' || sourceElectrical.circuitType === 'mixed'
+      const defaults = circuitDefaults(sourceElectrical.circuitType)
       shapePayload.electrical = {
         ...sourceElectrical,
-        breakerCurrentA: sourceElectrical.breakerCurrentA ?? (socketOrMotor ? 20 : 16),
-        cableSectionMm2: sourceElectrical.cableSectionMm2 ?? (socketOrMotor ? 2.5 : 1.5),
-        poles: sourceElectrical.poles ?? 2,
-        phaseConfiguration: sourceElectrical.phaseConfiguration ?? 'single-phase',
-        breakerCurve: sourceElectrical.breakerCurve ?? 'C',
-        boardId: sourceElectrical.boardId ?? 'main',
-        railId: sourceElectrical.railId ?? 'rail-1'
+        breakerCurrentA: sourceElectrical.breakerCurrentA ?? defaults.breakerCurrentA,
+        cableSectionMm2: sourceElectrical.cableSectionMm2 ?? defaults.cableSectionMm2,
+        poles: sourceElectrical.poles ?? defaults.poles,
+        phaseConfiguration: sourceElectrical.phaseConfiguration ?? defaults.phaseConfiguration,
+        breakerCurve: sourceElectrical.breakerCurve ?? defaults.breakerCurve,
+        boardId: sourceElectrical.boardId ?? defaults.boardId,
+        railId: sourceElectrical.railId ?? defaults.railId
       }
     }
     const isProtectionSymbol = /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)

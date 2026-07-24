@@ -1,6 +1,7 @@
 import type { Shape, SymbolShape } from '../native-draw/types.js'
 import { inferCircuitType, inferElectricalRole, type ElectricalCircuitType } from '../native-draw/electrical.js'
 import type { ElectricalProjectProfile } from '../types.js'
+import { circuitDefaults } from './circuit-defaults.js'
 
 export type CircuitComponentRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 
@@ -96,17 +97,19 @@ const suggestedSpecification = (
   const boardId = symbols.map((shape) => shape.electrical?.boardId).find((value) => value !== undefined)
   const railId = symbols.map((shape) => shape.electrical?.railId).find((value) => value !== undefined)
   const notes = symbols.map((shape) => shape.electrical?.notes).find((value) => value !== undefined)
-  const types = new Set(components.map((component) => component.circuitType).filter(Boolean))
+  const loadComponents = components.filter((component) => component.role === 'load')
+  const typeSources = loadComponents.length > 0 ? loadComponents : components
+  const types = new Set(typeSources.map((component) => component.circuitType).filter(Boolean))
   const circuitType: ElectricalCircuitType =
     types.size > 1 ? 'mixed' : (([...types][0] as ElectricalCircuitType | undefined) ?? 'other')
-  const socketOrMotor = circuitType === 'sockets' || circuitType === 'motor' || circuitType === 'mixed'
+  const defaults = circuitDefaults(circuitType)
   return {
     circuitType,
-    breakerCurrentA: explicitCurrent ?? (socketOrMotor ? 20 : 16),
-    cableSectionMm2: explicitSection ?? (socketOrMotor ? 2.5 : 1.5),
+    breakerCurrentA: explicitCurrent ?? defaults.breakerCurrentA,
+    cableSectionMm2: explicitSection ?? defaults.cableSectionMm2,
     poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' ? 4 : 2),
     phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
-    breakerCurve: explicitCurve ?? 'C',
+    breakerCurve: explicitCurve ?? defaults.breakerCurve,
     ...(explicitRcd ? { rcdSensitivityMa: explicitRcd } : {}),
     ...(explicitRcdType ? { rcdType: explicitRcdType } : {}),
     ...(boardId ? { boardId } : {}),

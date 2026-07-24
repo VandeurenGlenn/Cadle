@@ -37,6 +37,12 @@ test('groups floor-plan devices and ignores generated one-wire geometry', () => 
       { bindingId: 'B2', switches: 0, loads: 1 }
     ]
   )
+  assert.equal(analysis.groups[0].specification.circuitType, 'lighting')
+  assert.equal(analysis.groups[0].specification.breakerCurrentA, 16)
+  assert.equal(analysis.groups[0].specification.cableSectionMm2, 1.5)
+  assert.equal(analysis.groups[0].specification.breakerCurve, 'C')
+  assert.equal(analysis.groups[1].specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[1].specification.cableSectionMm2, 2.5)
 })
 
 test('reports incomplete and unknown circuit symbols', () => {

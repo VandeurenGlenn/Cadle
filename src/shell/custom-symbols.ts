@@ -1,5 +1,7 @@
 import type { Catalog, JsonValue } from './../types.js'
 import { customCatalogStore } from '../api/catalog.js'
+import { sanitizeShapes } from '../native-draw/model.js'
+import type { Shape } from '../native-draw/types.js'
 /**
  * User-imported SVG symbols are persisted to @leofcoin/storage and merged
  * into the live catalog as catalog sections grouped by folder/category.
@@ -11,6 +13,7 @@ export type CustomCatalogSymbol = {
   kind?: string
   name: string
   path: string
+  shapes?: Shape[]
   metadata?: Record<string, JsonValue>
 }
 
@@ -49,12 +52,14 @@ const sanitizeSymbol = (input: unknown): CustomCatalogSymbol | null => {
     candidate.metadata && typeof candidate.metadata === 'object' && !Array.isArray(candidate.metadata)
       ? (candidate.metadata as Record<string, JsonValue>)
       : undefined
+  const shapes = Array.isArray(candidate.shapes) ? sanitizeShapes(candidate.shapes) : undefined
   return {
     folder: toFolderValue(candidate.folder),
     category,
     kind: kind || category,
     name,
     path,
+    shapes,
     metadata
   }
 }

@@ -15,7 +15,9 @@
     "serve-2": "jsproject --serve www --port 4332",
     "generate:manifest": "node generate-manifest.js",
     "build": "npm run generate:manifest && rollup -c",
-    "test": "node --import tsx --test test/**/*.test.ts"
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm test && npm run typecheck && npm run build"
   },
   "keywords": [],
   "author": "",

@@ -38,6 +38,7 @@ import {
   scaleShape,
   shapeBounds
 } from './native-draw/model.js'
+import { parseHash } from './shell/routing.js'
 import type {
   DraftShape,
   DragState,
@@ -84,11 +85,8 @@ import {
 } from './native-app/svg-templates.js'
 import { translateShape } from './native-app/shape-transforms.js'
 import { buildOneWireCircuit } from './native-app/onewire-builder.js'
-import {
-  oneWireSymbolNodeInfo,
-  oneWireSymbolRotationFor,
-  oneWireSymbolScaleFor
-} from './native-app/onewire-symbol-nodes.js'
+import { buildKamrailCircuitBundle } from './native-app/onewire-helpers.js'
+import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './native-app/onewire-symbol-nodes.js'
 import { nextPanFromPointer } from './native-app/pointer-pan.js'
 import { canCommitDraft, resolvePointerUpPhase } from './native-app/pointer-up.js'
 import {
@@ -1091,10 +1089,43 @@ export class CadleApp extends LiteElement {
     await this.#restore()
     this.#pushHistory(false)
     this.#render()
-    this.#syncWorldSize()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await this.#syncWorldSizeSettled()
     this.#autoCenterView()
     this.#render()
+  }
+
+  async #syncWorldSizeSettled(maxFrames = 8): Promise<void> {
+    const initialPanel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+    if (initialPanel) {
+      const initialRect = initialPanel.getBoundingClientRect()
+      if (Math.round(initialRect.width) > 32 && Math.round(initialRect.height) > 32) {
+        this.#syncWorldSize()
+        return
+      }
+    }
+
+    let previousWidth = -1
+    let previousHeight = -1
+    let stableFrames = 0
+
+    for (let index = 0; index < maxFrames; index += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+      if (!panel) continue
+      const rect = panel.getBoundingClientRect()
+      const width = Math.max(1, Math.round(rect.width))
+      const height = Math.max(1, Math.round(rect.height))
+
+      if (width === previousWidth && height === previousHeight) stableFrames += 1
+      else stableFrames = 0
+
+      previousWidth = width
+      previousHeight = height
+
+      if (stableFrames >= 1) break
+    }
+
+    this.#syncWorldSize()
   }
 
   #startInitialize() {
@@ -1164,6 +1195,8 @@ export class CadleApp extends LiteElement {
 
   #onHashChange = () => {
     if (!this.#connected) return
+    const { route } = parseHash(window.location.hash)
+    if (route !== 'native-draw') return
     this.#startInitialize()
   }
 
@@ -1239,6 +1272,12 @@ export class CadleApp extends LiteElement {
       this.#syncWorldSize()
     })
     this.#resizeObserver.observe(this)
+    requestAnimationFrame(() => {
+      const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+      if (!panel || !this.#resizeObserver) return
+      this.#resizeObserver.observe(panel)
+      this.#syncWorldSize()
+    })
   }
 
   #syncWorldSize() {
@@ -2816,354 +2855,24 @@ export class CadleApp extends LiteElement {
     anchorX: number,
     options: { amps: number; family: string; autoIncludeFamily: boolean }
   ): boolean {
-    const clampX = Math.max(
-      Math.min(anchorX, Math.max(rail.start.x, rail.end.x) - 20),
-      Math.min(rail.start.x, rail.end.x) + 20
-    )
-    const startX = snapToGrid(clampX)
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
-    const resolvedComponents = familyComponents.length
-      ? familyComponents
-      : [{ bindingId: `${options.family}1`, kind: 'load' as const, sourcePath: undefined, sourceName: undefined }]
-    const railY = rail.start.y
-
-    const rows = new Map<string, Array<(typeof resolvedComponents)[number]>>()
-    for (const entry of resolvedComponents) {
-      const existing = rows.get(entry.bindingId)
-      if (existing) existing.push(entry)
-      else rows.set(entry.bindingId, [entry])
-    }
-
-    const orderedRows = [...rows.entries()].sort((a, b) => {
-      const parse = (value: string): { letter: string; number: number } => {
-        const match = /^([A-Z]+)(\d+)?$/.exec(value)
-        return { letter: match?.[1] ?? value, number: Number(match?.[2] ?? '0') }
-      }
-      const ka = parse(a[0])
-      const kb = parse(b[0])
-      if (ka.letter !== kb.letter) return ka.letter.localeCompare(kb.letter)
-      return ka.number - kb.number
+    const result = buildKamrailCircuitBundle({
+      rail,
+      anchorX,
+      options,
+      familyComponents,
+      nextShapeId,
+      oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
+      oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
+      symbolContentBounds,
+      branchStroke: ONEWIRE_BRANCH_STROKE,
+      kamrailAttachOffset: KAMRAIL_ATTACH_OFFSET
     })
 
-    const ROW_NUMBER_OFFSET_X = -25 // Row number label offset (to the left)
-    const ROW_SYMBOL_SPACING_X = 0 // Minimum spacing
-    const ROW_SYMBOL_MARGIN_X = 0 // No margin for maximum density
-    const ROW_TOP_OFFSET_Y = 130 // Grid-aligned (13 blocks × 10px)
-
-    const createdIds: string[] = []
-    const breakerBindingId = options.family
-    let breakerContentTopY = railY - KAMRAIL_ATTACH_OFFSET // fallback
-    let breakerNodeY = railY // fallback
-    {
-      const x = snapToGrid(startX)
-      const kind: 'breaker' = 'breaker'
-      const component = this.#oneWireComponentSymbol(kind)
-      const scale = this.#oneWireSymbolScale(component.path, kind)
-      const nodeInfo = oneWireSymbolNodeInfo(component.path, scale)
-
-      // Position symbol so its electrical node lands exactly on the trunk X
-      const nodeOffsetX = nodeInfo?.offset.x ?? 0
-      const nodeOffsetY = nodeInfo?.offset.y ?? 0
-      const snappedY = snapToGrid(railY - KAMRAIL_ATTACH_OFFSET)
-      const center: Point = { x: x - nodeOffsetX - 0.9, y: snappedY - nodeOffsetY }
-      const groupId = `onewire-${nextShapeId()}`
-
-      const labelText = `${Math.max(1, Math.round(options.amps))}A`
-      const symbol: SymbolShape = {
-        id: nextShapeId(),
-        kind: 'symbol',
-        position: center,
-        name: component.name,
-        path: component.path,
-        scale,
-        strokeWidth: 0.5,
-        bindingId: breakerBindingId,
-        groupId
-      }
-      const contentBounds = symbolContentBounds(symbol)
-      breakerContentTopY = contentBounds.y
-
-      // The electrical node is now exactly at (x, snappedY)
-      breakerNodeY = snappedY
-      const connector: LineShape = {
-        id: nextShapeId(),
-        kind: 'line',
-        start: { x, y: snapToGrid(breakerNodeY) },
-        end: { x: snapToGrid(x), y: snapToGrid(railY) },
-        stroke: ONEWIRE_BRANCH_STROKE,
-        strokeWidth: 1.25,
-        bindingId: breakerBindingId,
-        groupId
-      }
-
-      // Label positioned at bottom right of connector
-      const label: TextShape = {
-        id: nextShapeId(),
-        kind: 'text',
-        position: { x: x + 8, y: railY + 3 },
-        text: labelText,
-        scale: 0.7,
-        bindingId: breakerBindingId,
-        groupId
-      }
-
-      this.#shapes.push(connector, symbol, label)
-      createdIds.push(connector.id, symbol.id, label.id)
-    }
-
-    const ROW_SPACING_Y = 50 // 5 grid blocks (10px × 5)
-
-    if (orderedRows.length > 0) {
-      const trunkTopY = snapToGrid(railY - ROW_TOP_OFFSET_Y - (orderedRows.length - 1) * ROW_SPACING_Y)
-      // Trunk runs vertically from top of breaker symbol down to top row
-      const trunk: LineShape = {
-        id: nextShapeId(),
-        kind: 'line',
-        start: { x: snapToGrid(startX), y: snapToGrid(breakerContentTopY) },
-        end: { x: snapToGrid(startX), y: trunkTopY },
-        stroke: ONEWIRE_BRANCH_STROKE,
-        strokeWidth: 1.25,
-        bindingId: breakerBindingId,
-        groupId: `onewire-${nextShapeId()}`
-      }
-      this.#shapes.push(trunk)
-      createdIds.push(trunk.id)
-    }
-
-    for (const [rowIndex, [bindingId, entries]] of orderedRows.entries()) {
-      const rowY = railY - ROW_TOP_OFFSET_Y - rowIndex * ROW_SPACING_Y
-      const rowJunctionX = snapToGrid(startX) // Junction node where trunk connects
-      const symbolBaseX = snapToGrid(rowJunctionX + 48) // First symbol starts offset to the right of junction
-      const bindingNumberMatch = /^([A-Z]+)(\d+)$/.exec(bindingId)
-      const rowNumber = bindingNumberMatch ? Number(bindingNumberMatch[2]) : rowIndex + 1
-      const groupId = `onewire-${nextShapeId()}`
-
-      // Multiple lamp consumers collapse into one lamp symbol + a "xN" count.
-      const resolvedEntryPath = (entry: (typeof entries)[number]): string =>
-        entry.sourcePath ?? this.#oneWireComponentSymbol(entry.kind).path
-      const lampEntries = entries.filter(
-        (entry) => entry.kind === 'load' && /lighting|lamp|fluorescent/i.test(resolvedEntryPath(entry))
-      )
-      const lampCount = lampEntries.length
-      const collapsedEntries =
-        lampCount > 1 ? [...entries.filter((entry) => !lampEntries.includes(entry)), lampEntries[0]] : entries
-
-      // Switches must always precede loads in the circuit path.
-      // If intermediate (cross) switches exist, ensure: [regular switch] [intermediate] [regular switch] [load]
-      const sortedByKind = [...collapsedEntries].sort((a, b) => {
-        const aPath = resolvedEntryPath(a)
-        const bPath = resolvedEntryPath(b)
-        const aIsIntermediate = a.kind === 'switch' && /intermediate switch/i.test(aPath)
-        const bIsIntermediate = b.kind === 'switch' && /intermediate switch/i.test(bPath)
-
-        // Regular switches first
-        if (!aIsIntermediate && aPath && a.kind === 'switch' && (bIsIntermediate || b.kind !== 'switch')) return -1
-        if (!bIsIntermediate && bPath && b.kind === 'switch' && (aIsIntermediate || a.kind !== 'switch')) return 1
-
-        // Then intermediate switches
-        if (aIsIntermediate && !bIsIntermediate) return -1
-        if (!aIsIntermediate && bIsIntermediate) return 1
-
-        // Then loads
-        return 0
-      })
-
-      // Reorder to sandwich intermediates: if we have both regular and intermediate, move last regular to after intermediates
-      const hasIntermediate = sortedByKind.some(
-        (e) => e.kind === 'switch' && /intermediate switch/i.test(resolvedEntryPath(e))
-      )
-      const hasRegular = sortedByKind.some(
-        (e) => e.kind === 'switch' && !/intermediate switch/i.test(resolvedEntryPath(e))
-      )
-
-      let orderedEntries = sortedByKind
-      if (hasIntermediate && hasRegular) {
-        const regular = sortedByKind.filter(
-          (e) => e.kind === 'switch' && !/intermediate switch/i.test(resolvedEntryPath(e))
-        )
-        const intermediate = sortedByKind.filter(
-          (e) => e.kind === 'switch' && /intermediate switch/i.test(resolvedEntryPath(e))
-        )
-        const loads = sortedByKind.filter((e) => e.kind !== 'switch')
-        if (regular.length > 1) {
-          const [firstRegular, ...rest] = regular
-          orderedEntries = [firstRegular, ...intermediate, ...rest, ...loads]
-        } else {
-          orderedEntries = [...regular, ...intermediate, ...loads]
-        }
-      }
-
-      type RowSymbolSpec = {
-        kind: 'switch' | 'load'
-        component: { name: string; path: string }
-        scale: number
-        node: ReturnType<typeof oneWireSymbolNodeInfo>
-        rotation: number | undefined
-        leftReach: number
-        rightReach: number
-      }
-
-      const rowSymbolSpecs: RowSymbolSpec[] = orderedEntries.map((entry) => {
-        const fallback = this.#oneWireComponentSymbol(entry.kind)
-        const component = {
-          name: entry.sourceName ?? fallback.name,
-          path: entry.sourcePath ?? fallback.path
-        }
-        const scale = this.#oneWireSymbolScale(component.path, entry.kind)
-        const node = oneWireSymbolNodeInfo(component.path, scale)
-        const rotation = oneWireSymbolRotationFor(component.path)
-        const probeSlotX = 0
-        const probe: SymbolShape = {
-          id: nextShapeId(),
-          kind: 'symbol',
-          position: node ? { x: probeSlotX - node.offset.x, y: rowY - node.offset.y } : { x: probeSlotX, y: rowY },
-          name: component.name,
-          path: component.path,
-          scale,
-          bindingId,
-          groupId
-        }
-        if (typeof rotation === 'number') probe.rotation = rotation
-        const bounds = symbolContentBounds(probe)
-        const leftReach = probeSlotX - bounds.x
-        const rightReach = bounds.x + bounds.width - probeSlotX
-        return { kind: entry.kind, component, scale, node, rotation, leftReach, rightReach }
-      })
-
-      const slotXs: number[] = []
-      for (const [symbolIndex, spec] of rowSymbolSpecs.entries()) {
-        if (symbolIndex === 0) {
-          slotXs.push(snapToGrid(symbolBaseX))
-          continue
-        }
-        const prevSpec = rowSymbolSpecs[symbolIndex - 1]
-        const prevX = slotXs[symbolIndex - 1]
-        // Switch-to-switch: use tight spacing (30px). Switch-to-load: add space (30px)
-        let gap
-        if (prevSpec.kind === 'switch' && spec.kind === 'switch') {
-          gap = 30 // Tight gap between switches
-        } else if (prevSpec.kind === 'switch' && spec.kind === 'load') {
-          gap = 30 // Wider gap before load
-        } else {
-          gap = prevSpec.rightReach + spec.leftReach + ROW_SYMBOL_MARGIN_X
-        }
-        slotXs.push(snapToGrid(prevX + gap))
-      }
-
-      // Symbols first (Trikker-style slots on the wire axis). The electrical
-      // node of each symbol — not its bounding box — lands exactly on the slot.
-      const rowSymbols: SymbolShape[] = rowSymbolSpecs.map((spec, symbolIndex) => {
-        const slot: Point = { x: slotXs[symbolIndex] ?? symbolBaseX, y: rowY }
-        const isLighting = /lighting|lamp|fluorescent/i.test(spec.component.path)
-        const symbol: SymbolShape = {
-          id: nextShapeId(),
-          kind: 'symbol',
-          position: spec.node ? { x: slot.x - spec.node.offset.x, y: slot.y - spec.node.offset.y } : slot,
-          name: spec.component.name,
-          path: spec.component.path,
-          scale: spec.scale,
-          strokeWidth: isLighting ? 0.5 : 0.65,
-          bindingId,
-          groupId
-        }
-        if (typeof spec.rotation === 'number') symbol.rotation = spec.rotation
-        return symbol
-      })
-
-      // Wire segments between trunk and symbols — the wire is only interrupted
-      // around each symbol's node and ENDS at the last consumer (no stub).
-      // Wire starts at the row junction node (where trunk connects)
-      let cursor = rowJunctionX
-      let wireEndX = rowJunctionX
-      const wireSegments: Array<{ from: number; to: number }> = []
-      for (const [symbolIndex, symbol] of rowSymbols.entries()) {
-        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale)
-        const slotX = slotXs[symbolIndex] ?? symbolBaseX
-        const spec = rowSymbolSpecs[symbolIndex]
-        if (node) {
-          if (node.cutHalfWidth === null) {
-            // Passthrough (lamp cross): the wire runs under it up to its node.
-            wireEndX = Math.max(wireEndX, slotX)
-            continue
-          }
-          const from = slotX - node.cutHalfWidth
-          const to = slotX + node.cutHalfWidth
-          if (from > cursor + 0.5) wireSegments.push({ from: cursor, to: from })
-          cursor = Math.max(cursor, to)
-          wireEndX = Math.max(wireEndX, cursor)
-          continue
-        }
-        if (spec?.kind === 'load') {
-          // Unknown load symbols: cut around center-reach to avoid branches
-          // crossing through the symbol while keeping a tight connection.
-          const bounds = symbolContentBounds(symbol)
-          const leftReach = Math.max(0, slotX - bounds.x)
-          const rightReach = Math.max(0, bounds.x + bounds.width - slotX)
-          const centeredHalfWidth = Math.max(2, Math.min(leftReach, rightReach))
-          const from = slotX - centeredHalfWidth
-          const to = slotX + centeredHalfWidth
-          if (from > cursor + 0.5) wireSegments.push({ from: cursor, to: from })
-          cursor = Math.max(cursor, to)
-          wireEndX = Math.max(wireEndX, cursor)
-          continue
-        }
-        const bounds = symbolContentBounds(symbol)
-        if (bounds.x > cursor + 0.5) wireSegments.push({ from: cursor, to: bounds.x })
-        cursor = Math.max(cursor, bounds.x + bounds.width)
-        wireEndX = Math.max(wireEndX, cursor)
-      }
-      if (wireEndX > cursor + 0.5) wireSegments.push({ from: cursor, to: wireEndX })
-      const lastSlotX = slotXs.length ? slotXs[slotXs.length - 1] : symbolBaseX
-
-      for (const segment of wireSegments) {
-        const wire: LineShape = {
-          id: nextShapeId(),
-          kind: 'line',
-          start: { x: segment.from, y: rowY },
-          end: { x: segment.to, y: rowY },
-          stroke: ONEWIRE_BRANCH_STROKE,
-          strokeWidth: 1.25,
-          bindingId,
-          groupId
-        }
-        this.#shapes.push(wire)
-        createdIds.push(wire.id)
-      }
-
-      const rowNumberText = `${rowNumber}`
-      const rowNumberX = rowJunctionX + ROW_NUMBER_OFFSET_X - Math.max(0, rowNumberText.length - 1) * 7
-      const rowNumberLabel = {
-        ...createTextShape(nextShapeId(), { x: rowNumberX, y: rowY + 5 }, rowNumberText),
-        fill: '#000000',
-        scale: 0.7,
-        bindingId,
-        groupId
-      }
-      this.#shapes.push(rowNumberLabel)
-      createdIds.push(rowNumberLabel.id)
-
-      // Lamp count indicator ("x4") right next to the collapsed lamp symbol.
-      if (lampCount > 1) {
-        const countLabel = {
-          ...createTextShape(nextShapeId(), { x: lastSlotX + 16, y: rowY + 5 }, `x${lampCount}`),
-          fill: '#000000',
-          scale: 0.8,
-          bindingId,
-          groupId
-        }
-        this.#shapes.push(countLabel)
-        createdIds.push(countLabel.id)
-      }
-
-      for (const symbol of rowSymbols) {
-        this.#shapes.push(symbol)
-        createdIds.push(symbol.id)
-      }
-    }
-
-    if (!createdIds.length) return false
-    this.#selectedId = createdIds[1] ?? createdIds[0] ?? null
-    this.#selectedIds = new Set(createdIds)
+    if (!result) return false
+    this.#shapes.push(...result.shapes)
+    this.#selectedId = result.selectedId
+    this.#selectedIds = new Set(result.createdIds)
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     return true
   }
@@ -4835,9 +4544,7 @@ export class CadleApp extends LiteElement {
     const point =
       this.#tools.current === 'line'
         ? this.#snapToElectricalPoints(gridSnapped).point
-        : this.#tools.current === 'door' ||
-            this.#tools.current === 'window' ||
-            this.#tools.current === 'gate'
+        : this.#tools.current === 'door' || this.#tools.current === 'window' || this.#tools.current === 'gate'
           ? this.#snapToEndpoints(gridSnapped).point
           : gridSnapped
     this.#draft = createDraftShape(nextShapeId(), point, this.#tools.current)

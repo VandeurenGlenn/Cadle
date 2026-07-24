@@ -950,6 +950,13 @@ export class AppShell extends LiteElement {
     this.projectDirty = false
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
+
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    if (nativeApp?.waitForPageReady) {
+      await nativeApp.waitForPageReady(key)
+      return
+    }
+
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     })

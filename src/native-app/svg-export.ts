@@ -285,8 +285,8 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
         `
     }
     case 'text':
-      const textFillAttr = `fill="${escapeHtml(shape.fill ?? '#2b2622')}"`
-      const textStrokeAttr = shape.stroke ? ` stroke="${escapeHtml(shape.stroke)}"` : ''
+      const textFillAttr = `fill="${escapeHtml(shape.fill ?? '#000000')}"`
+      const textStrokeAttr = shape.stroke ? ` stroke="${escapeHtml(shape.stroke)}"` : ' stroke="none"'
       const fontFamilyStyle = shape.fontFamily ? `font-family: ${shape.fontFamily}; ` : ''
       const letterSpacingStyle =
         typeof shape.letterSpacing === 'number' ? `letter-spacing: ${shape.letterSpacing}px; ` : ''

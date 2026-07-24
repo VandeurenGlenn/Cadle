@@ -24,7 +24,8 @@ export const createTextShape = (id: string, position: Point, text: string): Text
   id,
   kind: 'text',
   position,
-  text
+  text,
+  fill: '#000000'
 })
 
 export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalogPick): SymbolShape => {

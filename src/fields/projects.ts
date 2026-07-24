@@ -1,6 +1,6 @@
 import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './projects.css' with { type: 'css' }
-import { Projects, type UUID } from './../types.js'
+import { Projects, type Project, type UUID } from './../types.js'
 import '@material/web/elevation/elevation.js'
 import '@material/web/button/outlined-button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
@@ -125,6 +125,55 @@ export class ProjectsField extends LiteElement {
     cadleShell.loadProject(key as unknown as UUID, projectName)
   }
 
+  _selectedProject() {
+    if (typeof this._currentSelected !== 'string') return null
+    const selected = this.projects.find(([projectId]) => projectId === this._currentSelected)
+    return selected ? { id: selected[0], name: selected[1] } : null
+  }
+
+  _onProjectRowClick(id: string, name: string) {
+    this._loadProject(id, name)
+  }
+
+  _onProjectMenuTriggerClick(event: Event, id: string) {
+    event.stopPropagation()
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
+    if (this._transitionEnd) dropdown?.removeEventListener('transitionend', this._transitionEnd)
+    if (this._currentSelected !== undefined && id !== this._currentSelected) {
+      this._transitionEnd = () => {
+        this._showContextMenu(id)
+        this._currentSelected = id
+        dropdown?.removeEventListener('transitionend', this._transitionEnd)
+      }
+
+      dropdown?.addEventListener('transitionend', this._transitionEnd)
+      if (this._currentSelected) this._showContextMenu(this._currentSelected)
+    } else {
+      this._showContextMenu(id)
+      if (!this.contextmenu.open) this._currentSelected = undefined
+      else this._currentSelected = id
+    }
+  }
+
+  _onContextActionClick(event: Event, action: 'edit' | 'rename' | 'delete') {
+    event.stopPropagation()
+    const selected = this._selectedProject()
+    if (!selected) return
+
+    if (action === 'edit') {
+      this._loadProject(selected.id, selected.name)
+      this.contextmenu.open = false
+      return
+    }
+
+    if (action === 'rename') {
+      void this._rename(selected.id, selected.name)
+      return
+    }
+
+    void this._delete(selected.id)
+  }
+
   _click(event: Event) {
     const actionTarget = this._actionTarget(event)
     if (!actionTarget) return
@@ -203,6 +252,7 @@ export class ProjectsField extends LiteElement {
   }
 
   async _delete(id: string) {
+    const deletingActiveProject = cadleShell.projectKey === (id as UUID)
     await del(id)
     const projects: Projects = []
     for (const [key, value] of await getProjects()) {
@@ -212,8 +262,26 @@ export class ProjectsField extends LiteElement {
     const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
     this.projects = projects
     cadleShell.projects = projects
+
+    if (deletingActiveProject) {
+      cadleShell.projectKey = '' as UUID
+      cadleShell.loadedPage = ''
+      cadleShell.projectName = ''
+      cadleShell.project = {} as Project
+      cadleShell.previousProjectKey = ''
+      cadleShell.previousPageKey = ''
+      cadleShell.previousProjectName = ''
+      cadleShell.showReopenPreviousProjectPrompt = false
+      localStorage.removeItem('cadle.lastOpenProjectKey')
+      localStorage.removeItem('cadle.lastOpenPageKey')
+      location.hash = '#!/projects'
+    }
+
     this._currentSelected = undefined
-    if (dropdown) (dropdown as CustomDropdown & { shown?: boolean }).shown = false
+    if (dropdown) {
+      dropdown.open = false
+      ;(dropdown as CustomDropdown & { shown?: boolean }).shown = false
+    }
   }
 
   __showContextMenu(projectName: string) {
@@ -238,12 +306,14 @@ export class ProjectsField extends LiteElement {
             data-id=${key}
             data-name=${name}
             data-action="loadProject"
+            @click=${() => this._onProjectRowClick(key, name)}
             tabindex="0">
             <span>${name}</span>
             <custom-icon-button
               icon="more_vert"
               data-id=${key}
               data-action="showContextMenu"
+              @click=${(event: Event) => this._onProjectMenuTriggerClick(event, key)}
               slot="end"></custom-icon-button>
           </custom-list-item>`
       )}
@@ -253,19 +323,25 @@ export class ProjectsField extends LiteElement {
   render() {
     return html`
       <custom-dropdown class="contextmenu">
-        <custom-list-item data-action="editProjectDetails">
+        <custom-list-item
+          data-action="editProjectDetails"
+          @click=${(event: Event) => this._onContextActionClick(event, 'edit')}>
           <span>projectgegevens</span>
           <custom-icon
             icon="edit_note"
             slot="end"></custom-icon>
         </custom-list-item>
-        <custom-list-item data-action="rename">
+        <custom-list-item
+          data-action="rename"
+          @click=${(event: Event) => this._onContextActionClick(event, 'rename')}>
           <span>rename</span>
           <custom-icon
             icon="abc"
             slot="end"></custom-icon>
         </custom-list-item>
-        <custom-list-item data-action="delete">
+        <custom-list-item
+          data-action="delete"
+          @click=${(event: Event) => this._onContextActionClick(event, 'delete')}>
           <span>delete</span>
           <custom-icon
             icon="delete"

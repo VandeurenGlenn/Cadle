@@ -3,7 +3,7 @@ import pubsub from '../../pubsub.js'
 import styles from './object-pane.css' with { type: 'css' }
 import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
 import type { PanelLabelRow } from '../../helpers/panel-labels.js'
-import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SymbolTextField } from './object-pane/selection-model.js'
+import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SelectionShapeElectrical, type SymbolTextField } from './object-pane/selection-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
@@ -81,6 +81,9 @@ export class ObjectPane extends LiteElement {
   @property({ type: String, attribute: false })
   private accessor _nativeBindingLabelSide: BindingLabelSide = 'right'
 
+  @property({ attribute: false })
+  private accessor _nativeElectrical: SelectionShapeElectrical | null = null
+
   @query('.native-binding-input')
   private accessor _nativeBindingInput!: HTMLInputElement
 
@@ -136,6 +139,7 @@ export class ObjectPane extends LiteElement {
       this._nativeFontFamily = ''
       this._nativeLetterSpacing = null
       this._nativeBindingLabelSide = 'auto'
+      this._nativeElectrical = null
       return
     }
 
@@ -161,6 +165,7 @@ export class ObjectPane extends LiteElement {
     this._nativeFontFamily = shape.fontFamily
     this._nativeLetterSpacing = shape.letterSpacing
     this._nativeBindingLabelSide = shape.bindingLabelSide
+    this._nativeElectrical = shape.electrical
     this._activeObjectLabel = shape.label
   }
 
@@ -310,6 +315,14 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('native.object.update', { letterSpacing: raw })
   }
 
+  #updateElectrical = (field: keyof SelectionShapeElectrical, value: string) => {
+    const numericFields = new Set(['breakerCurrentA', 'cableSectionMm2', 'poles'])
+    const parsed = numericFields.has(field) ? (value.trim() ? Number(value) : null) : value || null
+    if (typeof parsed === 'number' && (!Number.isFinite(parsed) || parsed <= 0)) return
+    this._nativeElectrical = { ...(this._nativeElectrical ?? {}), [field]: parsed ?? undefined }
+    pubsub.publish('native.object.update', { electrical: { [field]: parsed } })
+  }
+
   #flipNativeShape = () => {
     if (!this._nativeCanFlip) return
     pubsub.publish('native.object.flip-side', {})
@@ -376,6 +389,28 @@ export class ObjectPane extends LiteElement {
           @input=${this.#onNativeBindingInput}
           @change=${this.#saveNativeBinding}
           placeholder="e.g. Q1" />
+        ${!multiple && this._nativeSelectedKind === 'symbol'
+          ? html`
+              <div class="native-section-title">Circuit properties</div>
+              <label class="native-label">Role</label>
+              <select class="native-select" .value=${this._nativeElectrical?.role ?? ''} @change=${(event: Event) => this.#updateElectrical('role', (event.target as HTMLSelectElement).value)}>
+                <option value="">Not classified</option><option value="switch">Switch</option><option value="load">Load</option><option value="protection">Protection</option><option value="junction">Junction</option><option value="neutral">Other</option>
+              </select>
+              <label class="native-label">Circuit type</label>
+              <select class="native-select" .value=${this._nativeElectrical?.circuitType ?? ''} @change=${(event: Event) => this.#updateElectrical('circuitType', (event.target as HTMLSelectElement).value)}>
+                <option value="">Infer from symbol</option><option value="lighting">Lighting</option><option value="sockets">Sockets</option><option value="motor">Motor</option><option value="mixed">Mixed</option><option value="other">Other</option>
+              </select>
+              <div class="native-row">
+                <label><span class="native-label">Breaker (A)</span><input class="native-input" type="number" min="1" .value=${String(this._nativeElectrical?.breakerCurrentA ?? '')} @change=${(event: Event) => this.#updateElectrical('breakerCurrentA', (event.target as HTMLInputElement).value)} /></label>
+                <label><span class="native-label">Cable (mm²)</span><input class="native-input" type="number" min="0.1" step="0.1" .value=${String(this._nativeElectrical?.cableSectionMm2 ?? '')} @change=${(event: Event) => this.#updateElectrical('cableSectionMm2', (event.target as HTMLInputElement).value)} /></label>
+              </div>
+              <div class="native-row">
+                <label><span class="native-label">Poles</span><input class="native-input" type="number" min="1" step="1" .value=${String(this._nativeElectrical?.poles ?? '')} @change=${(event: Event) => this.#updateElectrical('poles', (event.target as HTMLInputElement).value)} /></label>
+                <label><span class="native-label">Phase</span><select class="native-select" .value=${this._nativeElectrical?.phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="single-phase">Single-phase</option><option value="three-phase">Three-phase</option></select></label>
+              </div>
+              <div class="native-note">Values apply to this symbol and are used for its bound circuit.</div>
+            `
+          : ''}
         <label class="native-label">Label position</label>
         <div
           class="native-chip-row"

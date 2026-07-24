@@ -23,6 +23,7 @@ const createSymbol = (
   position: Point,
   name: string,
   path: string,
+  bindingId: string,
   groupId: string,
   kind: 'breaker' | 'switch' | 'load'
 ): SymbolShape => ({
@@ -31,6 +32,7 @@ const createSymbol = (
   position,
   name,
   path,
+  bindingId,
   scale:
     kind === 'breaker'
       ? Math.max(0.4, inferSymbolScale(path))
@@ -53,12 +55,21 @@ const createBreakerSymbol = (
   center: Point,
   _boxW: number,
   _boxH: number,
+  bindingId: string,
   groupId: string
-): SymbolShape[] => [createSymbol(nextId(), center, 'Automaat', RESIDENTIAL_BREAKER_SYMBOL_PATH, groupId, 'breaker')]
+): SymbolShape[] => [
+  createSymbol(nextId(), center, 'Automaat', RESIDENTIAL_BREAKER_SYMBOL_PATH, bindingId, groupId, 'breaker')
+]
 
 // Use existing residential symbol for switch
-const createSwitchSymbol = (nextId: () => string, center: Point, _size: number, groupId: string): SymbolShape[] => [
-  createSymbol(nextId(), center, 'Switch', RESIDENTIAL_SWITCH_SYMBOL_PATH, groupId, 'switch')
+const createSwitchSymbol = (
+  nextId: () => string,
+  center: Point,
+  _size: number,
+  bindingId: string,
+  groupId: string
+): SymbolShape[] => [
+  createSymbol(nextId(), center, 'Switch', RESIDENTIAL_SWITCH_SYMBOL_PATH, bindingId, groupId, 'switch')
 ]
 
 // Use preset-specific residential symbol for load
@@ -67,8 +78,11 @@ const createLoadSymbol = (
   center: Point,
   _size: number,
   preset: OneWirePresetConfig,
+  bindingId: string,
   groupId: string
-): SymbolShape[] => [createSymbol(nextId(), center, 'Load', loadSymbolPathForPreset(preset), groupId, 'load')]
+): SymbolShape[] => [
+  createSymbol(nextId(), center, 'Load', loadSymbolPathForPreset(preset), bindingId, groupId, 'load')
+]
 
 // Vertical gap between components inside a circuit column.
 const COMPONENT_GAP = 44
@@ -110,9 +124,9 @@ export const buildOneWireCircuit = (
   // Labels sit to the right of each component
   const labelX = x + nodeSize / 2 + 8
 
-  const breakerShapes = createBreakerSymbol(nextId, breakerCenter, nodeSize, breakerWidth, groupId)
-  const switchShapes = createSwitchSymbol(nextId, switchCenter, nodeSize, groupId)
-  const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, groupId)
+  const breakerShapes = createBreakerSymbol(nextId, breakerCenter, nodeSize, breakerWidth, bindingId, groupId)
+  const switchShapes = createSwitchSymbol(nextId, switchCenter, nodeSize, bindingId, groupId)
+  const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, bindingId, groupId)
 
   const shapes: Shape[] = [
     // Binding-ID label to the left of the busbar connection point

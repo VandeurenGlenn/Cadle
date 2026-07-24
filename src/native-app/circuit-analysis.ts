@@ -1,5 +1,6 @@
 import type { Shape, SymbolShape } from '../native-draw/types.js'
 import { inferCircuitType, inferElectricalRole, type ElectricalCircuitType } from '../native-draw/electrical.js'
+import type { ElectricalProjectProfile } from '../types.js'
 
 export type CircuitComponentRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 
@@ -10,6 +11,12 @@ export type CircuitSpecification = {
   poles: number
   phaseConfiguration: 'single-phase' | 'three-phase'
   source: 'explicit' | 'suggested'
+  sources: {
+    breakerCurrentA: 'entered' | 'suggested'
+    cableSectionMm2: 'entered' | 'suggested'
+    poles: 'entered' | 'project' | 'suggested'
+    phaseConfiguration: 'entered' | 'project' | 'suggested'
+  }
 }
 
 export type CircuitComponent = {
@@ -68,7 +75,11 @@ export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
   return shape.electrical?.role ?? inferElectricalRole(shape.name, shape.path)
 }
 
-const suggestedSpecification = (components: CircuitComponent[], symbols: SymbolShape[]): CircuitSpecification => {
+const suggestedSpecification = (
+  components: CircuitComponent[],
+  symbols: SymbolShape[],
+  profile?: ElectricalProjectProfile
+): CircuitSpecification => {
   const explicitCurrent = symbols.map((shape) => shape.electrical?.breakerCurrentA).find((value) => value !== undefined)
   const explicitSection = symbols.map((shape) => shape.electrical?.cableSectionMm2).find((value) => value !== undefined)
   const explicitPoles = symbols.map((shape) => shape.electrical?.poles).find((value) => value !== undefined)
@@ -81,12 +92,21 @@ const suggestedSpecification = (components: CircuitComponent[], symbols: SymbolS
     circuitType,
     breakerCurrentA: explicitCurrent ?? (socketOrMotor ? 20 : 16),
     cableSectionMm2: explicitSection ?? (socketOrMotor ? 2.5 : 1.5),
-    poles: explicitPoles ?? (explicitPhase === 'three-phase' ? 4 : 2),
-    phaseConfiguration: explicitPhase ?? 'single-phase',
+    poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' ? 4 : 2),
+    phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
     source:
-      explicitCurrent !== undefined || explicitSection !== undefined || explicitPoles !== undefined || explicitPhase !== undefined
+      explicitCurrent !== undefined &&
+      explicitSection !== undefined &&
+      explicitPoles !== undefined &&
+      explicitPhase !== undefined
         ? 'explicit'
-        : 'suggested'
+        : 'suggested',
+    sources: {
+      breakerCurrentA: explicitCurrent !== undefined ? 'entered' : 'suggested',
+      cableSectionMm2: explicitSection !== undefined ? 'entered' : 'suggested',
+      poles: explicitPoles !== undefined ? 'entered' : profile ? 'project' : 'suggested',
+      phaseConfiguration: explicitPhase !== undefined ? 'entered' : profile ? 'project' : 'suggested'
+    }
   }
 }
 
@@ -112,7 +132,7 @@ const conflictingSpecificationFields = (symbols: readonly SymbolShape[]): string
     .map(([, label]) => label)
 }
 
-export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
+export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalProjectProfile): CircuitAnalysis => {
   const grouped = new Map<string, CircuitComponent[]>()
   const issues: CircuitIssue[] = []
 
@@ -177,7 +197,7 @@ export const analyzeCircuits = (shapes: readonly Shape[]): CircuitAnalysis => {
         junctions,
         neutral,
         ready: loads > 0,
-        specification: suggestedSpecification(components, symbols)
+        specification: suggestedSpecification(components, symbols, profile)
       }
     })
     .sort((left, right) => left.family.localeCompare(right.family) || (left.number ?? 0) - (right.number ?? 0))

@@ -2,6 +2,7 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './project-details-dialog.css' with { type: 'css' }
 import type { Project, Projects, UUID } from '../../types.js'
 import { getProjectData, getProjects, set, setProjectData } from '../../api/project.js'
+import { normalizeElectricalProfile } from '../../native-app/electrical-profile.js'
 
 type ProjectDetailsSavedDetail = {
   project: Project
@@ -28,6 +29,11 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor logoUrl = ''
   @property({ type: String }) accessor logoColor = ''
   @property({ type: Number }) accessor logoScale = 1
+  @property({ type: String }) accessor electricalEdition = ''
+  @property({ type: Number }) accessor supplyVoltageV = 230
+  @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' = 'single-phase'
+  @property({ type: String }) accessor earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown' = 'unknown'
+  @property({ type: Number }) accessor defaultPoles = 2
 
   static styles = [styles]
 
@@ -62,6 +68,12 @@ export class ProjectDetailsDialog extends LiteElement {
     this.installerBtw = this.project?.installer?.btw ?? ''
     this.eanCode = this.project?.eanCode ?? ''
     this.mainFuseA = this.project?.mainFuseA ?? 0
+    const profile = normalizeElectricalProfile(this.project?.electricalProfile)
+    this.electricalEdition = profile.edition
+    this.supplyVoltageV = profile.supplyVoltageV
+    this.phaseConfiguration = profile.phaseConfiguration
+    this.earthingSystem = profile.earthingSystem
+    this.defaultPoles = profile.defaultPoles
   }
 
   #close = () => {
@@ -114,6 +126,21 @@ export class ProjectDetailsDialog extends LiteElement {
         break
       case 'logoScale':
         this.logoScale = Math.max(0.4, Math.min(2.5, Number(value) || 1))
+        break
+      case 'electricalEdition':
+        this.electricalEdition = value
+        break
+      case 'supplyVoltageV':
+        this.supplyVoltageV = Math.max(1, Number(value) || 230)
+        break
+      case 'phaseConfiguration':
+        this.phaseConfiguration = value === 'three-phase' ? 'three-phase' : 'single-phase'
+        break
+      case 'earthingSystem':
+        this.earthingSystem = value === 'TT' || value === 'TN' || value === 'IT' ? value : 'unknown'
+        break
+      case 'defaultPoles':
+        this.defaultPoles = Math.max(1, Number(value) || 2)
         break
       default:
         break
@@ -202,6 +229,14 @@ export class ProjectDetailsDialog extends LiteElement {
     nextProject.installer.btw = this.installerBtw.trim() || undefined
     nextProject.eanCode = this.eanCode.trim() || undefined
     nextProject.mainFuseA = this.mainFuseA > 0 ? this.mainFuseA : undefined
+    nextProject.electricalProfile = normalizeElectricalProfile({
+      standard: 'AREI',
+      edition: this.electricalEdition,
+      supplyVoltageV: this.supplyVoltageV,
+      phaseConfiguration: this.phaseConfiguration,
+      earthingSystem: this.earthingSystem,
+      defaultPoles: this.defaultPoles
+    })
 
     await setProjectData(this.projectKey, nextProject)
     await set(this.projectKey, nextProject.name)
@@ -362,6 +397,36 @@ export class ProjectDetailsDialog extends LiteElement {
               data-field="mainFuseA"
               @input=${this.#onMetaInput}
               placeholder="40" />
+          </label>
+          <div class="form-section">
+            <strong>Elektrisch profiel</strong>
+            <span>AREI-georiënteerde projectdefaults; controleer de actuele uitgave en installatiegegevens.</span>
+          </div>
+          <label><span>Norm</span><input value="AREI" disabled /></label>
+          <label>
+            <span>Uitgave / referentie</span>
+            <input .value=${this.electricalEdition} data-field="electricalEdition" @input=${this.#onMetaInput} />
+          </label>
+          <label>
+            <span>Netspanning (V)</span>
+            <input type="number" min="1" .value=${String(this.supplyVoltageV)} data-field="supplyVoltageV" @input=${this.#onMetaInput} />
+          </label>
+          <label>
+            <span>Fasen</span>
+            <select .value=${this.phaseConfiguration} data-field="phaseConfiguration" @change=${this.#onMetaInput}>
+              <option value="single-phase">Monofasig</option><option value="three-phase">Driefasig</option>
+            </select>
+          </label>
+          <label>
+            <span>Aardingsstelsel</span>
+            <select .value=${this.earthingSystem} data-field="earthingSystem" @change=${this.#onMetaInput}>
+              <option value="unknown">Nog te bevestigen</option><option value="TT">TT</option>
+              <option value="TN">TN</option><option value="IT">IT</option>
+            </select>
+          </label>
+          <label>
+            <span>Standaard aantal polen</span>
+            <input type="number" min="1" step="1" .value=${String(this.defaultPoles)} data-field="defaultPoles" @input=${this.#onMetaInput} />
           </label>
         </div>
         <div class="footer">

@@ -5,6 +5,15 @@ export interface JsonObject {
   [key: string]: JsonValue
 }
 
+export type ElectricalProjectProfile = {
+  standard: 'AREI'
+  edition: string
+  supplyVoltageV: number
+  phaseConfiguration: 'single-phase' | 'three-phase'
+  earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown'
+  defaultPoles: number
+}
+
 export type ProjectInput = {
   name: string
   logoUrl?: string
@@ -30,6 +39,7 @@ export type ProjectInput = {
   }
   eanCode?: string
   mainFuseA?: number
+  electricalProfile?: ElectricalProjectProfile
 }
 
 export interface Project extends ProjectInput {

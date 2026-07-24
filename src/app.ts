@@ -2379,7 +2379,7 @@ export class CadleApp extends LiteElement {
   }
 
   analyzeBindings(): CircuitAnalysis {
-    return analyzeCircuits(this.#groundplanShapePool())
+    return analyzeCircuits(this.#groundplanShapePool(), this.#project?.electricalProfile)
   }
 
   getBOMRows(): BomRow[] {

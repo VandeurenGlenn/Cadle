@@ -2,6 +2,7 @@ import { cloneShape, shapeBounds } from '../../native-draw/model.js'
 import type { Point, Shape } from '../../native-draw/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
+import type { ElectricalDeviceMetadata } from '../../native-draw/electrical.js'
 
 export type SelectionPropertyUpdate = {
   text?: string
@@ -19,6 +20,7 @@ export type SelectionPropertyUpdate = {
   letterSpacing?: number
   x?: number
   y?: number
+  electrical?: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>
 }
 
 export type SelectionUpdateContext = {
@@ -154,6 +156,15 @@ const applyProperties = (
       .map(([key, value]) => [key.trim(), value] as const)
     if (entries.length) updated.symbolTextOverrides = Object.fromEntries(entries)
     else delete updated.symbolTextOverrides
+  }
+
+  if (payload.electrical && updated.kind === 'symbol') {
+    const electrical = { ...(updated.electrical ?? { role: 'neutral' as const, oneWireEligible: true }) }
+    for (const [key, value] of Object.entries(payload.electrical)) {
+      if (value === null || value === undefined) delete (electrical as Record<string, unknown>)[key]
+      else (electrical as Record<string, unknown>)[key] = value
+    }
+    updated.electrical = electrical
   }
 
   if (typeof payload.x !== 'number' && typeof payload.y !== 'number') return updated

@@ -1,6 +1,7 @@
 import type { Shape } from '../../native-draw/types.js'
 import { shapeBounds } from '../../native-draw/model.js'
 import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
+import type { ElectricalDeviceMetadata } from '../../native-draw/electrical.js'
 
 export type NativeSelectionSymbolTextField = {
   key: string
@@ -14,6 +15,7 @@ export type NativeSelectionShapePayload = {
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
+  electrical?: ElectricalDeviceMetadata
   bindingId?: string
   bindingLabelOffset?: { x: number; y: number }
   name?: string
@@ -90,6 +92,7 @@ export const createNativeSelectionChangedPayload = (
   if (selectedShape.kind === 'text') shapePayload.text = selectedShape.text
   if (selectedShape.kind === 'symbol') {
     shapePayload.path = selectedShape.path
+    if (selectedShape.electrical) shapePayload.electrical = { ...selectedShape.electrical }
     const editableFields = listEditableSymbolTextFields(selectedShape.path)
     if (editableFields.length) {
       const overrides = selectedShape.symbolTextOverrides ?? {}

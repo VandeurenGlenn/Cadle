@@ -44,3 +44,17 @@ test('moves a selected shape by its visual center', () => {
 
   assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].position : null, { x: 50, y: 60 })
 })
+
+test('updates and clears selected symbol electrical properties', () => {
+  const configured = { ...symbol('one'), electrical: { role: 'load' as const, oneWireEligible: true, breakerCurrentA: 16 } }
+  const context = { selectedIds: new Set(['one']), selectedId: 'one', groupedSelection: false }
+  const updated = updateSelectionProperties(
+    [configured],
+    { electrical: { breakerCurrentA: 20, cableSectionMm2: 2.5 } },
+    context
+  )
+  assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.breakerCurrentA, 20)
+  assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.cableSectionMm2, 2.5)
+  const cleared = updateSelectionProperties(updated ?? [], { electrical: { breakerCurrentA: null } }, context)
+  assert.equal(cleared?.[0].kind === 'symbol' && cleared[0].electrical?.breakerCurrentA, undefined)
+})

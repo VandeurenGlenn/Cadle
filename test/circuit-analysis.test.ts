@@ -92,7 +92,10 @@ test('prefers explicit electrical metadata and derives circuit specifications', 
     cableSectionMm2: 4,
     poles: 4,
     phaseConfiguration: 'three-phase',
-    source: 'explicit'
+    source: 'explicit',
+    sources: {
+      breakerCurrentA: 'entered', cableSectionMm2: 'entered', poles: 'entered', phaseConfiguration: 'entered'
+    }
   })
 })
 
@@ -182,6 +185,38 @@ test('does not use a device rated current as its breaker current', () => {
 
   assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
   assert.equal(analysis.groups[0].specification.source, 'suggested')
+  assert.equal(analysis.groups[0].specification.sources.breakerCurrentA, 'suggested')
+})
+
+test('uses project phase and pole defaults with field-level provenance', () => {
+  const analysis = analyzeCircuits(
+    [symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')],
+    { standard: 'AREI', edition: 'Book 1', supplyVoltageV: 400, phaseConfiguration: 'three-phase', earthingSystem: 'TT', defaultPoles: 4 }
+  )
+  assert.equal(analysis.groups[0].specification.phaseConfiguration, 'three-phase')
+  assert.equal(analysis.groups[0].specification.poles, 4)
+  assert.equal(analysis.groups[0].specification.sources.phaseConfiguration, 'project')
+  assert.equal(analysis.groups[0].specification.sources.poles, 'project')
+})
+
+test('keeps partially entered circuit specifications marked as suggested', () => {
+  const partiallyConfigured = {
+    ...symbol('socket', 'S1', 'Socket', 'symbols/Socket outlets/socket.svg'),
+    electrical: {
+      role: 'load' as const,
+      oneWireEligible: true,
+      circuitType: 'sockets' as const,
+      breakerCurrentA: 20
+    }
+  }
+
+  const analysis = analyzeCircuits([partiallyConfigured])
+
+  assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[0].specification.cableSectionMm2, 2.5)
+  assert.equal(analysis.groups[0].specification.source, 'suggested')
+  assert.equal(analysis.groups[0].specification.sources.breakerCurrentA, 'entered')
+  assert.equal(analysis.groups[0].specification.sources.cableSectionMm2, 'suggested')
 })
 
 test('rejects conflicting explicit circuit specifications', () => {

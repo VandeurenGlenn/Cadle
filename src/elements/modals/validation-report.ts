@@ -13,6 +13,19 @@ type ValidationGroup = {
   switches: number
   loads: number
   neutral: number
+  specification?: {
+    breakerCurrentA: number
+    cableSectionMm2: number
+    poles: number
+    phaseConfiguration: 'single-phase' | 'three-phase'
+    source: 'explicit' | 'suggested'
+    sources: {
+      breakerCurrentA: 'entered' | 'suggested'
+      cableSectionMm2: 'entered' | 'suggested'
+      poles: 'entered' | 'project' | 'suggested'
+      phaseConfiguration: 'entered' | 'project' | 'suggested'
+    }
+  }
 }
 
 export type ValidationReport = {
@@ -65,6 +78,14 @@ export class ValidationReportModal extends LiteElement {
             <div class="stat"><strong>${report.errorCount}</strong><span>Errors</span></div>
             <div class="stat"><strong>${report.warningCount}</strong><span>Warnings</span></div>
           </div>
+          <div class="group">
+            <strong>AREI-oriented preflight</strong>
+            <div>
+              This check catches missing drawing data and conflicting circuit values. Suggested protection and cable
+              values must still be confirmed by the designer and the completed installation remains subject to an
+              authorised inspection.
+            </div>
+          </div>
           <div class="issues">
             <div class="row">
               <strong>Issues</strong>
@@ -99,18 +120,33 @@ export class ValidationReportModal extends LiteElement {
                     <span class="pill ${group.ready ? 'ok' : 'warn'}">${group.ready ? 'ready' : 'incomplete'}</span>
                   </div>
                   <div>${group.switches} switches • ${group.loads} loads/sockets • ${group.neutral} other</div>
+                  ${group.specification
+                    ? html`
+                        <div>
+                          ${group.specification.breakerCurrentA} A (${group.specification.sources.breakerCurrentA}) •
+                          ${group.specification.cableSectionMm2} mm² (${group.specification.sources.cableSectionMm2}) •
+                          ${group.specification.poles}P (${group.specification.sources.poles}) •
+                          ${group.specification.phaseConfiguration === 'three-phase' ? '3-phase' : '1-phase'}
+                          (${group.specification.sources.phaseConfiguration})
+                        </div>
+                      `
+                    : ''}
                 </div>
               `
             )}
           </div>
         </div>
         <div class="footer">
-          <div>${report.valid ? 'Validation passed.' : 'Fix issues or continue when you are ready.'}</div>
+          <div>
+            ${report.valid
+              ? 'Preflight passed. Confirm suggested values before inspection.'
+              : 'Fix the errors before generating the one-wire diagram.'}
+          </div>
           <div class="footer-actions">
             <button @click=${this.#close}>Done</button>
             <button
               class="primary"
-              ?disabled=${report.totalGroups === 0}
+              ?disabled=${!report.valid}
               @click=${this.#generateOneWire}>
               Generate One-Wire
             </button>

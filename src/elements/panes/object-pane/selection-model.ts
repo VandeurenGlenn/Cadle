@@ -6,6 +6,8 @@ export type SymbolTextField = {
   value: string
 }
 
+export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
+
 export type SelectionShape = {
   id?: string
   kind?: string
@@ -28,6 +30,14 @@ export type SelectionShape = {
   x?: number
   y?: number
   bindingLabelOffset?: { x: number; y: number }
+  electrical?: {
+    role?: string
+    circuitType?: string
+    breakerCurrentA?: number
+    cableSectionMm2?: number
+    poles?: number
+    phaseConfiguration?: string
+  }
 }
 
 export type SelectionPayload = {
@@ -87,7 +97,8 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       y: finiteNumber(shape.y),
       fontFamily: typeof shape.fontFamily === 'string' ? shape.fontFamily : '',
       letterSpacing: finiteNumber(shape.letterSpacing),
-      bindingLabelSide: inferBindingLabelSide(shape.bindingLabelOffset ?? null)
+      bindingLabelSide: inferBindingLabelSide(shape.bindingLabelOffset ?? null),
+      electrical: shape.electrical && typeof shape.electrical === 'object' ? { ...shape.electrical } : null
     }
   }
 }

@@ -49,6 +49,7 @@ import { type BomRow, type CircuitAnalysis } from './native-app/circuit-analysis
 import { ensureOneWirePage } from './shell/page-operations.js'
 import { clonePageSchema } from './shell/page-schema.js'
 import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
+import { evaluateOneWirePreflight } from './shell/onewire-preflight.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -924,6 +925,18 @@ export class AppShell extends LiteElement {
       return
     }
     this.project = await getProjectData(this.projectKey)
+
+    const report = nativeApp?.analyzeBindings?.() ?? null
+    const preflight = evaluateOneWirePreflight(report)
+    if (preflight.ready === false) {
+      if (report) {
+        this.validationReportData = report
+        this.validationReportOpen = true
+      } else {
+        globalThis.alert(preflight.message)
+      }
+      return
+    }
 
     const oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
     if (!oneWirePage) return

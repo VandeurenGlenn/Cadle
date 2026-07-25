@@ -389,48 +389,108 @@ export class ProjectsField extends LiteElement {
             slot="end"></custom-icon>
         </custom-list-item>
       </custom-dropdown>
-      <flex-container>
-        <header class="header">
-          <h1>Projects</h1>
-          <p>Pick up where you left off, or start something new.</p>
-        </header>
-        <div class="actions-row">
-          <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
-          <flex-it></flex-it>
-          <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
-        </div>
-        ${this.showReopenPreviousProjectPrompt
-          ? html`
-              <section
-                class="projects-reopen-bubble"
-                @keydown=${this.#handleReopenPromptKeydown}>
-                <div class="projects-reopen-title">Open previous project?</div>
-                <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
-                <div class="projects-reopen-actions">
-                  <md-filled-button
-                    @click=${this.#openPreviousProjectFromPrompt}
-                    ?data-focused=${this._reopenPromptFocusedButton === 'open'}
-                    >Open</md-filled-button
-                  >
-                  <md-outlined-button
-                    @click=${this.#dismissPreviousProjectPrompt}
-                    ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
-                    >Dismiss</md-outlined-button
-                  >
-                </div>
-              </section>
-            `
-          : ''}
-        ${this.projects?.length > 0
-          ? this.#projectsTemplate
-          : html` <section class="empty-state">
-              <h3>Welcome to Cadle</h3>
-              <h4>Start by creating a project or uploading an existing one.</h4>
-              <p>
-                Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.
-              </p>
-            </section>`}
-      </flex-container>
+      <div class="projects-landing">
+        <section class="projects-hero" aria-labelledby="projects-hero-title">
+          <div class="hero-eyebrow"><span></span> Built for Belgian electrical plans</div>
+          <div class="hero-copy">
+            <h2 id="projects-hero-title">From ground plan<br />to one-wire.</h2>
+            <p>Draw naturally, connect your circuits, and let Cadle keep the technical structure clear.</p>
+          </div>
+          <div class="groundplan-scene" aria-hidden="true">
+            <svg viewBox="0 0 520 390" role="img">
+              <defs>
+                <linearGradient id="plan-glow" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="var(--md-sys-color-primary)" stop-opacity=".28"></stop>
+                  <stop offset="1" stop-color="var(--md-sys-color-tertiary)" stop-opacity=".04"></stop>
+                </linearGradient>
+                <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity=".14"></feDropShadow>
+                </filter>
+              </defs>
+              <rect class="plan-paper" x="42" y="28" width="436" height="326" rx="20"></rect>
+              <rect class="plan-wash" x="42" y="28" width="436" height="326" rx="20"></rect>
+              <g class="plan-lines" filter="url(#soft-shadow)">
+                <path class="plan-stroke s1" pathLength="1" d="M92 82H270V202H92Z"></path>
+                <path class="plan-stroke s2" pathLength="1" d="M270 82H426V164H270"></path>
+                <path class="plan-stroke s3" pathLength="1" d="M92 202V304H226V202"></path>
+                <path class="plan-stroke s4" pathLength="1" d="M226 304H426V164"></path>
+                <path class="plan-stroke s5" pathLength="1" d="M270 164H346V304"></path>
+                <path class="plan-door s6" pathLength="1" d="M270 120h32m-32 0a32 32 0 0 1 32 32"></path>
+                <path class="plan-door s7" pathLength="1" d="M226 246h-28m28 0a28 28 0 0 0-28 28"></path>
+                <path class="plan-door s8" pathLength="1" d="M346 224h28m-28 0a28 28 0 0 1 28 28"></path>
+              </g>
+              <g class="circuit">
+                <path class="circuit-wire" pathLength="1" d="M128 122H224V164H310V264H390"></path>
+                <g class="device d1" transform="translate(128 122)">
+                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                </g>
+                <g class="device d2" transform="translate(224 164)">
+                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                </g>
+                <g class="device d3" transform="translate(310 264)">
+                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                </g>
+                <g class="device d4" transform="translate(390 264)">
+                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                </g>
+                <circle class="current-dot" r="5">
+                  <animateMotion dur="4s" repeatCount="indefinite" path="M128 122H224V164H310V264H390"></animateMotion>
+                </circle>
+              </g>
+              <g class="plan-labels">
+                <text x="108" y="104">LIVING</text>
+                <text x="292" y="106">KITCHEN</text>
+                <text x="112" y="226">HALL</text>
+                <text x="272" y="328">TECHNICAL PLAN</text>
+              </g>
+            </svg>
+            <div class="scene-status"><span></span> Circuit A1 connected</div>
+          </div>
+        </section>
+
+        <flex-container>
+          <header class="header">
+            <h1>Projects</h1>
+            <p>Pick up where you left off, or start something new.</p>
+          </header>
+          <div class="actions-row">
+            <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
+            <flex-it></flex-it>
+            <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
+          </div>
+          ${this.showReopenPreviousProjectPrompt
+            ? html`
+                <section
+                  class="projects-reopen-bubble"
+                  @keydown=${this.#handleReopenPromptKeydown}>
+                  <div class="projects-reopen-title">Open previous project?</div>
+                  <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
+                  <div class="projects-reopen-actions">
+                    <md-filled-button
+                      @click=${this.#openPreviousProjectFromPrompt}
+                      ?data-focused=${this._reopenPromptFocusedButton === 'open'}
+                      >Open</md-filled-button
+                    >
+                    <md-outlined-button
+                      @click=${this.#dismissPreviousProjectPrompt}
+                      ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
+                      >Dismiss</md-outlined-button
+                    >
+                  </div>
+                </section>
+              `
+            : ''}
+          ${this.projects?.length > 0
+            ? this.#projectsTemplate
+            : html` <section class="empty-state">
+                <h3>Welcome to Cadle</h3>
+                <h4>Start by creating a project or uploading an existing one.</h4>
+                <p>
+                  Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.
+                </p>
+              </section>`}
+        </flex-container>
+      </div>
     `
   }
 }

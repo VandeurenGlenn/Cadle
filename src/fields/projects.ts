@@ -394,11 +394,11 @@ export class ProjectsField extends LiteElement {
           <div class="hero-eyebrow"><span></span> Built for Belgian electrical plans</div>
           <div class="mobile-brand" aria-label="Cadle">
             <svg viewBox="0 0 72 72" aria-hidden="true">
-              <path class="brand-plan" d="M55 18H22a7 7 0 0 0-7 7v29h26V39h14"></path>
-              <path class="brand-circuit" d="M23 30h18v17h14"></path>
-              <circle cx="23" cy="30" r="4"></circle>
-              <circle cx="41" cy="47" r="4"></circle>
-              <path class="brand-pencil" d="m49 15 8 8-18 18-10 2 2-10Z"></path>
+              <path class="brand-plan" d="M54 18H28c-8 0-12 4-12 12v12c0 8 4 12 12 12h26"></path>
+              <path class="brand-circuit" d="M25 36h30"></path>
+              <circle class="brand-node" cx="25" cy="36" r="4"></circle>
+              <circle class="brand-terminal" cx="55" cy="36" r="5"></circle>
+              <path class="brand-terminal-mark" d="M52.5 36h5M55 33.5v5"></path>
             </svg>
             <span>Cadle</span>
           </div>

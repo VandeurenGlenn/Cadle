@@ -469,27 +469,28 @@ custom-icon-button {
   .mobile-brand .brand-plan {
     fill: none;
     stroke: var(--md-sys-color-on-background);
-    stroke-width: 4;
+    stroke-width: 4.5;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
   .mobile-brand .brand-circuit {
     fill: none;
     stroke: var(--md-sys-color-primary);
-    stroke-width: 2.5;
+    stroke-width: 3;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .mobile-brand circle {
+  .mobile-brand .brand-node,
+  .mobile-brand .brand-terminal {
     fill: var(--md-sys-color-surface-container-highest);
     stroke: var(--md-sys-color-primary);
-    stroke-width: 2.5;
+    stroke-width: 3;
   }
-  .mobile-brand .brand-pencil {
-    fill: var(--md-sys-color-primary);
-    stroke: var(--md-sys-color-on-primary);
-    stroke-width: 1.5;
-    stroke-linejoin: round;
+  .mobile-brand .brand-terminal-mark {
+    fill: none;
+    stroke: var(--md-sys-color-primary);
+    stroke-width: 2;
+    stroke-linecap: round;
   }
   .hero-copy,
   .groundplan-scene {

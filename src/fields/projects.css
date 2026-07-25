@@ -203,18 +203,6 @@
   animation: show-status 0.5s 2.7s ease forwards;
   backdrop-filter: blur(18px);
 }
-.welcome-dialog {
-  max-width: min(560px, calc(100vw - 32px));
-}
-.welcome-dialog-content {
-  display: grid;
-  gap: var(--cadle-space-3);
-  color: var(--md-sys-color-on-surface-variant);
-}
-.welcome-dialog-content p {
-  margin: 0;
-  line-height: 1.5;
-}
 .contextmenu {
   transform-origin: top right;
   border-radius: var(--md-sys-shape-corner-large);

@@ -21,13 +21,7 @@ test('first load without an open project shows Projects instead of an empty edit
   )
   expect(startupResources.some((url) => /\/(?:app\.js|jspdf[^/]*\.js|pdf-importer[^/]*\.js)$/.test(url))).toBe(false)
 
-  const welcome = page.locator('projects-field md-dialog.welcome-dialog')
-  await expect(welcome).toBeVisible()
-  await expect(welcome.getByText('Hello, welcome to Cadle')).toBeVisible()
-  await expect(welcome.getByRole('button', { name: 'Create project' })).toBeVisible()
-  await expect(welcome.getByRole('button', { name: 'Upload project' })).toBeVisible()
-  await welcome.getByRole('button', { name: 'Maybe later' }).click()
-  await expect(welcome).not.toBeVisible()
+  await expect(page.locator('projects-field md-dialog.welcome-dialog')).toHaveCount(0)
 
   await page.setViewportSize({ width: 390, height: 844 })
   const projectsField = page.locator('projects-field')
@@ -44,5 +38,5 @@ test('first load without an open project shows Projects instead of an empty edit
   expect(projectsCardBounds?.y).toBeLessThan(430)
 
   await page.reload()
-  await expect(page.locator('projects-field md-dialog.welcome-dialog')).not.toBeVisible()
+  await expect(page.locator('projects-field md-dialog.welcome-dialog')).toHaveCount(0)
 })

@@ -538,34 +538,15 @@ export class AppShell extends LiteElement {
     }
   }
 
-  async connectedCallback(): Promise<void> {
-    if (super.connectedCallback) await super.connectedCallback()
-    // const entries = await this.projectStore.entries()
-    // for (const [key, value] of entries) {
-    //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
-    // }
-    try {
-      const projectsArray = await getProjects()
-      this.projects = projectsArray
-    } catch (error) {
-      console.error(error)
-      this.projects = []
-    }
+  #afterInitialPaint = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
 
-    // Resolve the initial screen before catalog loading so first-time users never
-    // spend that work looking at an editor without an open project.
-    this.#captureReloadResumeFromHash()
-    const initialRoute = parseHash(location.hash).route
-    if (!initialRoute || ((initialRoute === 'native-draw' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
-      location.hash = '#!/projects'
-    }
-    await this.#onhashchange()
-
-    // for (const key of keys) {
-    //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
-    // }
-    void this.#registerServiceWorker()
+  #preloadCatalogAfterInitialPaint = async () => {
+    await this.#afterInitialPaint()
     await ensureCustomCatalogLoaded()
+
     try {
       const manifestCandidates = [
         new URL('./symbols/manifest.js', location.href).toString(),
@@ -593,6 +574,36 @@ export class AppShell extends LiteElement {
       this._baseCatalog = []
       this.catalog = []
     }
+  }
+
+  async connectedCallback(): Promise<void> {
+    if (super.connectedCallback) await super.connectedCallback()
+    // const entries = await this.projectStore.entries()
+    // for (const [key, value] of entries) {
+    //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
+    // }
+    try {
+      const projectsArray = await getProjects()
+      this.projects = projectsArray
+    } catch (error) {
+      console.error(error)
+      this.projects = []
+    }
+
+    // Resolve the initial screen before catalog loading so first-time users never
+    // spend that work looking at an editor without an open project.
+    this.#captureReloadResumeFromHash()
+    const initialRoute = parseHash(location.hash).route
+    if (!initialRoute || ((initialRoute === 'native-draw' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
+      location.hash = '#!/projects'
+    }
+    await this.#onhashchange()
+
+    // for (const key of keys) {
+    //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
+    // }
+    void this.#registerServiceWorker()
+    void this.#preloadCatalogAfterInitialPaint()
 
     // No requestUpdate in Lite; rely on reactive property
     // addEventListener('beforeprint', this.#beforePrint)

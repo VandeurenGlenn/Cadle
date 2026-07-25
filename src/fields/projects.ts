@@ -472,6 +472,15 @@ export class ProjectsField extends LiteElement {
               : ''}
             ${this.projects?.length > 0 ? this.#projectsTemplate : ''}
           </flex-container>
+          ${this.projectsLoaded && this.projects?.length === 0
+            ? html`<aside class="welcome-spark" aria-label="Cadle spark">
+                <span class="spark-icon" aria-hidden="true">✦</span>
+                <div>
+                  <strong>A little spark before you start</strong>
+                  <p>Why did the circuit break up with the wire? Too much resistance.</p>
+                </div>
+              </aside>`
+            : ''}
         </div>
       </div>
     `

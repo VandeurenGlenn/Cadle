@@ -22,6 +22,7 @@
   <body>
     <style>
       app-shell,
+      cadle-startup,
       cadle-app,
       body,
       html {
@@ -44,7 +45,8 @@
         color: var(--md-sys-color-on-background);
       }
 
-      app-shell:not(:defined) {
+      app-shell:not(:defined),
+      cadle-startup:not(:defined) {
         display: grid;
         place-items: center;
         box-sizing: border-box;
@@ -279,7 +281,7 @@
       }
     </style>
 
-    <app-shell>
+    <cadle-startup>
       <main class="boot-landing">
         <section class="boot-hero">
           <small>Built for Belgian electrical plans</small>
@@ -340,10 +342,10 @@
           </div>
         </section>
       </main>
-    </app-shell>
+    </cadle-startup>
 
     <script
-      src="./shell.js"
+      src="./bootstrap.js"
       type="module"></script>
   </body>
 </html>

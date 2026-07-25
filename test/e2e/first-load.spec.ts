@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
 
 test('paints the Projects entry point without JavaScript', async ({ page }) => {
-  await page.route('**/shell.js', (route) => route.abort())
+  await page.route('**/bootstrap.js', (route) => route.abort())
   await page.goto('/')
 
-  const fallback = page.locator('app-shell:not(:defined) .boot-projects')
+  const fallback = page.locator('cadle-startup:not(:defined) .boot-projects')
   await expect(fallback.getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(fallback.getByRole('link', { name: 'Create project' })).toHaveAttribute('href', '#!/create-project')
 })

@@ -45,7 +45,7 @@ export class ProjectsField extends LiteElement {
       this.projectsLoaded = true
     }
     this.shadowRoot?.addEventListener('click', this._onClick)
-    const shell = cadleShell as unknown as {
+    const shell = globalThis.cadleShell as unknown as {
       showReopenPreviousProjectPrompt?: boolean
       previousProjectName?: string
     }

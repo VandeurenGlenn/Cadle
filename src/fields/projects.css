@@ -236,6 +236,11 @@
 .contextmenu custom-list-item:last-of-type {
   border-bottom: none;
 }
+.projects-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
 flex-container {
   align-items: stretch;
   gap: 0;
@@ -364,6 +369,13 @@ custom-icon-button {
   margin: 0;
   padding: var(--cadle-space-2) 0;
 }
+.welcome-bubble {
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface-container));
+  box-shadow: var(--cadle-elevation-1);
+}
 .empty-state h3 {
   margin: 0 0 var(--cadle-space-2) 0;
   font: var(--md-sys-typescale-title-medium);
@@ -432,9 +444,12 @@ custom-icon-button {
     width: min(520px, 100%);
     margin-top: -24px;
   }
-  flex-container {
+  .projects-panel {
     width: min(620px, 100%);
     justify-self: center;
+  }
+  flex-container {
+    width: 100%;
     max-height: none;
   }
 }
@@ -448,6 +463,11 @@ custom-icon-button {
   }
   .projects-hero {
     gap: 18px;
+  }
+  .welcome-bubble {
+    order: -1;
+    padding: 16px 18px;
+    text-align: left;
   }
   .hero-eyebrow {
     font-size: 11px;

@@ -458,48 +458,51 @@ export class ProjectsField extends LiteElement {
           </div>
         </section>
 
-        <flex-container>
-          <header class="header">
-            <h1>Projects</h1>
-            <p>Pick up where you left off, or start something new.</p>
-          </header>
-          <div class="actions-row">
-            <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
-            <flex-it></flex-it>
-            <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
-          </div>
-          ${this.showReopenPreviousProjectPrompt
-            ? html`
-                <section
-                  class="projects-reopen-bubble"
-                  @keydown=${this.#handleReopenPromptKeydown}>
-                  <div class="projects-reopen-title">Open previous project?</div>
-                  <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
-                  <div class="projects-reopen-actions">
-                    <md-filled-button
-                      @click=${this.#openPreviousProjectFromPrompt}
-                      ?data-focused=${this._reopenPromptFocusedButton === 'open'}
-                      >Open</md-filled-button
-                    >
-                    <md-outlined-button
-                      @click=${this.#dismissPreviousProjectPrompt}
-                      ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
-                      >Dismiss</md-outlined-button
-                    >
-                  </div>
-                </section>
-              `
-            : ''}
-          ${this.projects?.length > 0
-            ? this.#projectsTemplate
-            : html` <section class="empty-state">
+        <div class="projects-panel">
+          ${this.projects?.length === 0
+            ? html` <section class="empty-state welcome-bubble">
                 <h3>Welcome to Cadle</h3>
                 <h4>Start by creating a project or uploading an existing one.</h4>
                 <p>
                   Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.
                 </p>
-              </section>`}
-        </flex-container>
+              </section>`
+            : ''}
+          <flex-container>
+            <header class="header">
+              <h1>Projects</h1>
+              <p>Pick up where you left off, or start something new.</p>
+            </header>
+            <div class="actions-row">
+              <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
+              <flex-it></flex-it>
+              <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
+            </div>
+            ${this.showReopenPreviousProjectPrompt
+              ? html`
+                  <section
+                    class="projects-reopen-bubble"
+                    @keydown=${this.#handleReopenPromptKeydown}>
+                    <div class="projects-reopen-title">Open previous project?</div>
+                    <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
+                    <div class="projects-reopen-actions">
+                      <md-filled-button
+                        @click=${this.#openPreviousProjectFromPrompt}
+                        ?data-focused=${this._reopenPromptFocusedButton === 'open'}
+                        >Open</md-filled-button
+                      >
+                      <md-outlined-button
+                        @click=${this.#dismissPreviousProjectPrompt}
+                        ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
+                        >Dismiss</md-outlined-button
+                      >
+                    </div>
+                  </section>
+                `
+              : ''}
+            ${this.projects?.length > 0 ? this.#projectsTemplate : ''}
+          </flex-container>
+        </div>
       </div>
     `
   }

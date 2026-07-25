@@ -357,13 +357,6 @@ custom-icon-button {
   margin: 0;
   padding: var(--cadle-space-2) 0;
 }
-.welcome-bubble {
-  padding: 18px 20px;
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface-container));
-  box-shadow: var(--cadle-elevation-1);
-}
 .welcome-spark {
   display: flex;
   align-items: flex-start;
@@ -477,11 +470,6 @@ custom-icon-button {
   }
   .projects-hero {
     gap: 18px;
-  }
-  .welcome-bubble {
-    order: -1;
-    padding: 16px 18px;
-    text-align: left;
   }
   .hero-eyebrow {
     font-size: 11px;

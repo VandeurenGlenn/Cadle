@@ -429,15 +429,6 @@ export class ProjectsField extends LiteElement {
         </section>
 
         <div class="projects-panel">
-          ${this.projectsLoaded && this.projects?.length === 0
-            ? html` <section class="empty-state welcome-bubble">
-                <h3>Welcome to Cadle</h3>
-                <h4>Start by creating a project or uploading an existing one.</h4>
-                <p>
-                  Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.
-                </p>
-              </section>`
-            : ''}
           <flex-container>
             <header class="header">
               <h1>Projects</h1>

@@ -91,6 +91,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(generatedSvg).toContain('1.5 mm²')
 
   await page.reload()
+  await expect(page.locator('projects-field .welcome-bubble')).toHaveCount(0)
   const reopenProject = page.locator('projects-field').getByRole('button', { name: 'Open', exact: true })
   await expect.poll(async () =>
     (await reopenProject.isVisible()) ||

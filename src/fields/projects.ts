@@ -16,6 +16,9 @@ export class ProjectsField extends LiteElement {
   @property({ attribute: false })
   accessor projects: Projects = []
 
+  @property({ type: Boolean, attribute: false })
+  accessor projectsLoaded = false
+
   @property({ type: Boolean })
   accessor showReopenPreviousProjectPrompt = false
 
@@ -33,7 +36,14 @@ export class ProjectsField extends LiteElement {
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
-    this.projects = await getProjects()
+    try {
+      this.projects = await getProjects()
+    } catch (error) {
+      console.error('Failed to load projects', error)
+      this.projects = []
+    } finally {
+      this.projectsLoaded = true
+    }
     this.shadowRoot?.addEventListener('click', this._onClick)
     const shell = cadleShell as unknown as {
       showReopenPreviousProjectPrompt?: boolean
@@ -419,7 +429,7 @@ export class ProjectsField extends LiteElement {
         </section>
 
         <div class="projects-panel">
-          ${this.projects?.length === 0
+          ${this.projectsLoaded && this.projects?.length === 0
             ? html` <section class="empty-state welcome-bubble">
                 <h3>Welcome to Cadle</h3>
                 <h4>Start by creating a project or uploading an existing one.</h4>

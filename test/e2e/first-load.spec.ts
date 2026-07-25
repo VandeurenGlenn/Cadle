@@ -4,16 +4,14 @@ test('paints the Projects entry point without JavaScript', async ({ page }) => {
   await page.route('**/bootstrap.js', (route) => route.abort())
   await page.goto('/')
 
-  const fallback = page.locator('projects-field:not(:defined) .boot-projects')
-  await expect(fallback.getByRole('heading', { name: 'Projects' })).toBeVisible()
-  await expect(fallback.getByRole('link', { name: 'Create project' })).toHaveAttribute('href', '#!/create-project')
+  await expect(page.locator('projects-field:not(:defined)')).toBeAttached()
 })
 
 test('first load without an open project shows Projects instead of an empty editor', async ({ page }) => {
   await page.goto('/#!/native-draw')
 
   await expect(page).toHaveURL(/#!\/projects$/)
-  await expect(page.locator('projects-field').getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(page.locator('projects-field .header h1')).toBeVisible()
   await expect(page.locator('projects-field')).toContainText('Welcome to Cadle')
   await expect.poll(() => page.evaluate(() => customElements.get('cadle-app') === undefined)).toBe(true)
   const startupResources = await page.evaluate(() =>

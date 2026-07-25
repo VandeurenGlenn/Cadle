@@ -8,10 +8,16 @@
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>Cadle</title>
+    <meta
+      name="description"
+      content="Create electrical ground plans and AREI one-wire diagrams with Cadle." />
     <link
       rel="stylesheet"
-      href="./themes/default/theme.css" />
+      href="./themes/default/theme.css"
+      media="print"
+      onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="./themes/default/theme.css" /></noscript>
   </head>
   <body>
     <style>
@@ -37,9 +43,61 @@
         background: var(--md-sys-color-background);
         color: var(--md-sys-color-on-background);
       }
+
+      app-shell:not(:defined) {
+        display: grid;
+        place-items: start center;
+        box-sizing: border-box;
+        padding: 32px 16px;
+        background: #fffbff;
+        color: #211a1d;
+      }
+
+      .boot-projects {
+        width: min(720px, 100%);
+        box-sizing: border-box;
+        padding: 24px;
+        border: 1px solid #d8c2ca;
+        border-radius: 16px;
+        background: #fff7fa;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+      }
+
+      .boot-projects h1,
+      .boot-projects p {
+        margin: 0;
+      }
+
+      .boot-projects p {
+        margin-top: 8px;
+        color: #514347;
+      }
+
+      .boot-projects-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+      }
+
+      .boot-projects a {
+        padding: 10px 18px;
+        border-radius: 20px;
+        background: #8b4a62;
+        color: #fff;
+        font-weight: 700;
+        text-decoration: none;
+      }
     </style>
 
-    <app-shell></app-shell>
+    <app-shell>
+      <main class="boot-projects">
+        <h1>Projects</h1>
+        <p>Open an existing Cadle project or start a new electrical plan.</p>
+        <div class="boot-projects-actions">
+          <a href="#!/create-project">Create project</a>
+        </div>
+      </main>
+    </app-shell>
 
     <script
       src="./shell.js"

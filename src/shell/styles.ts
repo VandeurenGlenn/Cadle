@@ -9,6 +9,15 @@ export const shellStyles = css`
     --custom-top-app-bar-height: var(--cadle-header-height);
   }
 
+  .route-only {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    background: var(--md-sys-color-background);
+  }
+
   .shell-frame {
     display: grid;
     grid-template-rows: minmax(0, 1fr) var(--cadle-status-bar, 28px);

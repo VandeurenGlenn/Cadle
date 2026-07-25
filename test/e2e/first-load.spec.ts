@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test'
 
+test('paints the Projects entry point without JavaScript', async ({ page }) => {
+  await page.route('**/shell.js', (route) => route.abort())
+  await page.goto('/')
+
+  const fallback = page.locator('app-shell:not(:defined) .boot-projects')
+  await expect(fallback.getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(fallback.getByRole('link', { name: 'Create project' })).toHaveAttribute('href', '#!/create-project')
+})
+
 test('first load without an open project shows Projects instead of an empty editor', async ({ page }) => {
   await page.goto('/#!/native-draw')
 

@@ -115,6 +115,9 @@ export class AppShell extends LiteElement {
   @property({ attribute: false, provides: 'loadedPage' })
   accessor loadedPage: string = ''
 
+  @property({ type: String, attribute: false })
+  accessor activeRoute = 'projects'
+
   _currentColor: string = ''
 
   get projectLoaded(): boolean {
@@ -646,6 +649,8 @@ export class AppShell extends LiteElement {
     const nextRoute =
       route === 'draw' || route === 'save' ? 'native-draw' : validRoutes.has(route) ? route : fallbackRoute
     if (nextRoute === 'native-draw') await this.#ensureNativeEditorLoaded()
+    this.activeRoute = nextRoute
+    await this.rendered
     if (nextRoute !== 'native-draw' && !customElements.get(`${nextRoute}-field`)) {
       try {
         await import(`./${nextRoute}.js`)
@@ -1084,7 +1089,24 @@ export class AppShell extends LiteElement {
     }
   }
 
+  #lightweightRouteTemplate() {
+    const route = this.activeRoute
+    const routeContent =
+      route === 'create-project'
+        ? html`<create-project-field data-route="create-project"></create-project-field>`
+        : route === 'add-page'
+          ? html`<add-page-field data-route="add-page"></add-page-field>`
+          : route === 'settings'
+            ? html`<settings-field data-route="settings"></settings-field>`
+            : route === 'home'
+              ? html`<home-field data-route="home"></home-field>`
+              : html`<projects-field data-route="projects"></projects-field>`
+    return html`<main class="route-only">${routeContent}</main>`
+  }
+
   render() {
+    if (this.activeRoute !== 'native-draw') return this.#lightweightRouteTemplate()
+
     return html`
       <md-dialog></md-dialog>
       <validation-report

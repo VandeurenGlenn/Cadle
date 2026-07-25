@@ -119,41 +119,6 @@
         animation-delay: 0.4s;
       }
 
-      .boot-projects {
-        width: 100%;
-        box-sizing: border-box;
-        padding: clamp(22px, 3vw, 34px);
-        border: 1px solid #d8c2ca;
-        border-radius: 24px;
-        background: #fff7fa;
-        box-shadow: 0 8px 30px rgb(0 0 0 / 10%);
-      }
-
-      .boot-projects h1,
-      .boot-projects p {
-        margin: 0;
-      }
-
-      .boot-projects p {
-        margin-top: 8px;
-        color: #514347;
-      }
-
-      .boot-projects-actions {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: 24px;
-      }
-
-      .boot-projects a {
-        padding: 10px 18px;
-        border-radius: 20px;
-        background: #8b4a62;
-        color: #fff;
-        font-weight: 700;
-        text-decoration: none;
-      }
-
       @keyframes boot-draw {
         from {
           stroke-dashoffset: 1;
@@ -169,7 +134,6 @@
           color: #f5e9ec;
         }
 
-        .boot-projects,
         .boot-plan rect {
           background: #241d1f;
           fill: #241d1f;
@@ -179,7 +143,7 @@
 
         .boot-hero small,
         .boot-hero > p,
-        .boot-projects p {
+        .boot-hero > p {
           color: #d7c1c7;
         }
 
@@ -267,10 +231,6 @@
           stroke-linecap: round;
         }
 
-        .boot-projects {
-          border-radius: 20px;
-          padding: 22px;
-        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -333,13 +293,6 @@
               pathLength="1"
               d="M92 154V218H226V154M226 218H426V128"></path>
           </svg>
-        </section>
-        <section class="boot-projects">
-          <h1>Projects</h1>
-          <p>Open an existing Cadle project or start a new electrical plan.</p>
-          <div class="boot-projects-actions">
-            <a href="#!/create-project">Create project</a>
-          </div>
         </section>
       </main>
     </cadle-startup>

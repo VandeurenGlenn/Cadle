@@ -67,6 +67,9 @@
   background: var(--md-sys-color-primary);
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
 }
+.mobile-brand {
+  display: none;
+}
 .hero-copy {
   position: relative;
   z-index: 1;
@@ -437,23 +440,64 @@ custom-icon-button {
 }
 
 @media (max-width: 560px) {
+  :host {
+    padding: 20px 16px 32px;
+  }
+  .projects-landing {
+    gap: 20px;
+  }
+  .projects-hero {
+    gap: 18px;
+  }
   .hero-eyebrow {
     font-size: 11px;
   }
-  .hero-copy h2 {
-    font-size: clamp(38px, 13vw, 58px);
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--md-sys-color-on-background);
+    font-size: 34px;
+    font-weight: 720;
+    letter-spacing: -0.04em;
   }
-  .hero-copy p {
-    font-size: 15px;
+  .mobile-brand svg {
+    width: 58px;
+    height: 58px;
+    overflow: visible;
   }
+  .mobile-brand .brand-plan {
+    fill: none;
+    stroke: var(--md-sys-color-on-background);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .mobile-brand .brand-circuit {
+    fill: none;
+    stroke: var(--md-sys-color-primary);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .mobile-brand circle {
+    fill: var(--md-sys-color-surface-container-highest);
+    stroke: var(--md-sys-color-primary);
+    stroke-width: 2.5;
+  }
+  .mobile-brand .brand-pencil {
+    fill: var(--md-sys-color-primary);
+    stroke: var(--md-sys-color-on-primary);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+  }
+  .hero-copy,
   .groundplan-scene {
-    margin-top: -12px;
+    display: none;
   }
-  .scene-status {
-    right: 2%;
-    bottom: 1%;
-    padding: 8px 10px;
-    font-size: 11px;
+  flex-container {
+    border-radius: 20px;
+    padding: 22px;
   }
 }
 

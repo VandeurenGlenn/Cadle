@@ -84,6 +84,10 @@
         line-height: 1.6;
       }
 
+      .boot-mobile-brand {
+        display: none;
+      }
+
       .boot-plan {
         display: block;
         width: min(560px, 100%);
@@ -200,6 +204,72 @@
         }
       }
 
+      @media (max-width: 560px) {
+        app-shell:not(:defined) {
+          padding: 20px 16px 32px;
+        }
+
+        .boot-landing {
+          gap: 20px;
+        }
+
+        .boot-hero h1,
+        .boot-hero > p,
+        .boot-plan {
+          display: none;
+        }
+
+        .boot-mobile-brand {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          margin-top: 18px;
+          font-size: 34px;
+          font-weight: 720;
+          letter-spacing: -0.04em;
+        }
+
+        .boot-mobile-brand svg {
+          width: 58px;
+          height: 58px;
+        }
+
+        .boot-mobile-brand .brand-plan {
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 4;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .boot-mobile-brand .brand-circuit {
+          fill: none;
+          stroke: #8b4a62;
+          stroke-width: 2.5;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .boot-mobile-brand circle {
+          fill: #fff7fa;
+          stroke: #8b4a62;
+          stroke-width: 2.5;
+        }
+
+        .boot-mobile-brand .brand-pencil {
+          fill: #8b4a62;
+          stroke: #fff;
+          stroke-width: 1.5;
+          stroke-linejoin: round;
+        }
+
+        .boot-projects {
+          border-radius: 20px;
+          padding: 22px;
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .boot-plan path {
           animation: none;
@@ -212,6 +282,30 @@
       <main class="boot-landing">
         <section class="boot-hero">
           <small>Built for Belgian electrical plans</small>
+          <div class="boot-mobile-brand" aria-label="Cadle">
+            <svg
+              viewBox="0 0 72 72"
+              aria-hidden="true">
+              <path
+                class="brand-plan"
+                d="M55 18H22a7 7 0 0 0-7 7v29h26V39h14"></path>
+              <path
+                class="brand-circuit"
+                d="M23 30h18v17h14"></path>
+              <circle
+                cx="23"
+                cy="30"
+                r="4"></circle>
+              <circle
+                cx="41"
+                cy="47"
+                r="4"></circle>
+              <path
+                class="brand-pencil"
+                d="m49 15 8 8-18 18-10 2 2-10Z"></path>
+            </svg>
+            <span>Cadle</span>
+          </div>
           <h1>From ground plan<br />to one-wire.</h1>
           <p>Draw naturally, connect your circuits, and let Cadle keep the technical structure clear.</p>
           <svg

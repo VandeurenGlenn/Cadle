@@ -29,6 +29,16 @@ test('first load without an open project shows Projects instead of an empty edit
   await welcome.getByRole('button', { name: 'Maybe later' }).click()
   await expect(welcome).not.toBeVisible()
 
+  await page.setViewportSize({ width: 390, height: 844 })
+  const projectsField = page.locator('projects-field')
+  await expect(projectsField.locator('.mobile-brand')).toBeVisible()
+  await expect(projectsField.locator('.hero-copy')).toBeHidden()
+  await expect(projectsField.locator('.groundplan-scene')).toBeHidden()
+  const projectsCard = projectsField.locator('flex-container')
+  await expect(projectsCard).toBeVisible()
+  const projectsCardBounds = await projectsCard.boundingBox()
+  expect(projectsCardBounds?.y).toBeLessThan(240)
+
   await page.reload()
   await expect(page.locator('projects-field md-dialog.welcome-dialog')).not.toBeVisible()
 })

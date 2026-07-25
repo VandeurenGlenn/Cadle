@@ -392,6 +392,16 @@ export class ProjectsField extends LiteElement {
       <div class="projects-landing">
         <section class="projects-hero" aria-labelledby="projects-hero-title">
           <div class="hero-eyebrow"><span></span> Built for Belgian electrical plans</div>
+          <div class="mobile-brand" aria-label="Cadle">
+            <svg viewBox="0 0 72 72" aria-hidden="true">
+              <path class="brand-plan" d="M55 18H22a7 7 0 0 0-7 7v29h26V39h14"></path>
+              <path class="brand-circuit" d="M23 30h18v17h14"></path>
+              <circle cx="23" cy="30" r="4"></circle>
+              <circle cx="41" cy="47" r="4"></circle>
+              <path class="brand-pencil" d="m49 15 8 8-18 18-10 2 2-10Z"></path>
+            </svg>
+            <span>Cadle</span>
+          </div>
           <div class="hero-copy">
             <h2 id="projects-hero-title">From ground plan<br />to one-wire.</h2>
             <p>Draw naturally, connect your circuits, and let Cadle keep the technical structure clear.</p>

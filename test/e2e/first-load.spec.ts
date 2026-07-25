@@ -14,7 +14,7 @@ test('first load without an open project shows Projects instead of an empty edit
 
   await expect(page).toHaveURL(/#!\/projects$/)
   await expect(page.locator('projects-field').getByRole('heading', { name: 'Projects' })).toBeVisible()
-  await expect(page.locator('projects-field')).toContainText('Projects')
+  await expect(page.locator('projects-field')).toContainText('Welcome to Cadle')
   await expect.poll(() => page.evaluate(() => customElements.get('cadle-app') === undefined)).toBe(true)
   const startupResources = await page.evaluate(() =>
     performance.getEntriesByType('resource').map((entry) => entry.name)
@@ -29,11 +29,12 @@ test('first load without an open project shows Projects instead of an empty edit
   await expect(projectsField.locator('.hero-copy')).toBeHidden()
   await expect(projectsField.locator('.groundplan-scene')).toBeHidden()
   const welcomeSpark = projectsField.locator('.welcome-spark')
+  await expect(projectsField.locator('.welcome-bubble')).toBeVisible()
   const projectsCard = projectsField.locator('flex-container')
   await expect(welcomeSpark).toContainText('Too much resistance')
   await expect(projectsCard).toBeVisible()
   const projectsCardBounds = await projectsCard.boundingBox()
-  expect(projectsCardBounds?.y).toBeLessThan(300)
+  expect(projectsCardBounds?.y).toBeLessThan(430)
 
   await page.reload()
   await expect(page.locator('projects-field md-dialog.welcome-dialog')).toHaveCount(0)

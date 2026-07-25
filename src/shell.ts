@@ -2,7 +2,6 @@ import { LiteElement, html, property, customElement, query } from '@vandeurengle
 import { shellStyles } from './shell/styles.js'
 import { parseHash } from './shell/routing.js'
 import { PresenceController } from './shell/presence.js'
-import './elements/design-mode-toggle.js'
 import { iconSetTemplate } from './shell/icon-set.js'
 import {
   ensureCustomCatalogLoaded,
@@ -20,19 +19,9 @@ import '@material/web/iconbutton/icon-button.js'
 import '@material/web/list/list.js'
 import '@material/web/list/list-item.js'
 import '@vandeurenglenn/lite-elements/pages.js'
-import './app.js'
-import './elements/panes/project-pane.js'
-import './elements/panes/object-pane.js'
-import './elements/pdf-importer.js'
 import './elements/header.js'
-import './elements/status-bar.js'
-import './elements/actions/actions.js'
 import pubsub from './pubsub.js'
-import './elements/modals/validation-report.js'
 import type { ValidationReport } from './elements/modals/validation-report.js'
-import './elements/modals/template-library.js'
-import './elements/modals/project-details-dialog.js'
-import './elements/panels/history-panel.js'
 import '@material/web/textfield/filled-text-field.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
@@ -40,8 +29,6 @@ import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
-import './elements/actions/project-actions.js'
-import './elements/actions/onewire-actions.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
@@ -281,6 +268,26 @@ export class AppShell extends LiteElement {
     ['#a85427', '#1f6a38', '#6d4d8a', '#c44d56', '#0077b6'][Math.floor(Math.random() * 5)]
 
   private _presence = new PresenceController(this._presenceName, this._presenceColor, () => this.#syncRemotePresence())
+  #nativeEditorModules: Promise<unknown> | null = null
+
+  #ensureNativeEditorLoaded(): Promise<unknown> {
+    this.#nativeEditorModules ??= Promise.all([
+      import('./app.js'),
+      import('./elements/design-mode-toggle.js'),
+      import('./elements/panes/project-pane.js'),
+      import('./elements/panes/object-pane.js'),
+      import('./elements/status-bar.js'),
+      import('./elements/actions/actions.js'),
+      import('./elements/actions/project-actions.js'),
+      import('./elements/actions/onewire-actions.js'),
+      import('./elements/modals/validation-report.js'),
+      import('./elements/modals/template-library.js'),
+      import('./elements/modals/project-details-dialog.js'),
+      import('./elements/panels/history-panel.js')
+    ])
+    return this.#nativeEditorModules
+  }
+
   constructor() {
     super()
     globalThis.cadleShell = this
@@ -539,7 +546,6 @@ export class AppShell extends LiteElement {
     // for (const key of keys) {
     //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
     // }
-    await import('./elements/actions/actions.js')
     void this.#registerServiceWorker()
     await ensureCustomCatalogLoaded()
     try {
@@ -639,6 +645,7 @@ export class AppShell extends LiteElement {
     const fallbackRoute = this.project?.pages ? 'native-draw' : 'projects'
     const nextRoute =
       route === 'draw' || route === 'save' ? 'native-draw' : validRoutes.has(route) ? route : fallbackRoute
+    if (nextRoute === 'native-draw') await this.#ensureNativeEditorLoaded()
     if (nextRoute !== 'native-draw' && !customElements.get(`${nextRoute}-field`)) {
       try {
         await import(`./${nextRoute}.js`)

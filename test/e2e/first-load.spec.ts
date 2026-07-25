@@ -6,6 +6,11 @@ test('first load without an open project shows Projects instead of an empty edit
   await expect(page).toHaveURL(/#!\/projects$/)
   await expect(page.locator('projects-field').getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(page.locator('projects-field')).toContainText('Welcome to Cadle')
+  await expect.poll(() => page.evaluate(() => customElements.get('cadle-app') === undefined)).toBe(true)
+  const startupResources = await page.evaluate(() =>
+    performance.getEntriesByType('resource').map((entry) => entry.name)
+  )
+  expect(startupResources.some((url) => /\/(?:app\.js|jspdf[^/]*\.js|pdf-importer[^/]*\.js)$/.test(url))).toBe(false)
 
   const welcome = page.locator('projects-field md-dialog.welcome-dialog')
   await expect(welcome).toBeVisible()

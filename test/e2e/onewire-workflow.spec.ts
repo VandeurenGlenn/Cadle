@@ -76,7 +76,14 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(generatedSvg).toContain('1.5 mm²')
 
   await page.reload()
+  const reopenProject = page.locator('projects-field').getByRole('button', { name: 'Open', exact: true })
+  await expect.poll(async () =>
+    (await reopenProject.isVisible()) ||
+    (await page.evaluate(() => typeof customElements.get('cadle-app')?.prototype?.toSVG === 'function'))
+  ).toBe(true)
+  if (await reopenProject.isVisible()) await reopenProject.click()
   await expect(page).toHaveURL(/#!\/native-draw/)
+  await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => typeof element.toSVG)).toBe('function')
   const exportedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect(exportedSvg).toContain('<svg')
   expect(exportedSvg.length).toBeGreaterThan(1000)

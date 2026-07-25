@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf'
-
 export type A4ExportResult = {
   dataUrl: string
   orientation: 'portrait' | 'landscape'
@@ -19,7 +17,8 @@ export const downloadTextFile = (filename: string, content: string, type: string
   URL.revokeObjectURL(url)
 }
 
-export const savePdfFromPng = (filename: string, exported: A4ExportResult) => {
+export const savePdfFromPng = async (filename: string, exported: A4ExportResult) => {
+  const { default: jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: exported.orientation, compress: true })
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()

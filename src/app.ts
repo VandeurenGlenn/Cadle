@@ -2,7 +2,7 @@ import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { repeat } from 'lit/directives/repeat.js'
-import jsPDF from 'jspdf'
+import type jsPDFType from 'jspdf'
 import styles from './app.css' with { type: 'css' }
 import { loadNativeState, saveNativeState, type NativeDocumentState } from './native-project-data.js'
 import {
@@ -3161,6 +3161,7 @@ export class CadleApp extends LiteElement {
 
   async #exportPdf() {
     await this.#ensureSymbolMarkupReady()
+    const { default: jsPDF } = await import('jspdf')
     const originalPageKey = this.#pageKey
     const originalState = this.#nativeDocumentState()
     const originalSelectedIds = new Set(this.#document.selectedIds)
@@ -3187,7 +3188,7 @@ export class CadleApp extends LiteElement {
       return orderA - orderB || a.creationTime - b.creationTime
     })
 
-    let pdf: jsPDF | null = null
+    let pdf: jsPDFType | null = null
     let pageIndex = 0
 
     try {

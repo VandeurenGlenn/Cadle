@@ -1,5 +1,5 @@
 import Storage from '@leofcoin/storage'
-import jsPDF from 'jspdf'
+import type jsPDFType from 'jspdf'
 import type { PDFImporter } from '../elements/pdf-importer.js'
 import { Project, ProjectInput, type PageType, UUID } from '../types.js'
 
@@ -12,8 +12,6 @@ export const projectDataStore = new Storage('project-data', 'cadle')
 await projectStore.init()
 await projectDataStore.init()
 
-console.log('projectStore', projectStore)
-console.log(await projectStore.keys())
 /** */
 export const getProjects = async () => {
   const projects: [string, string][] = []
@@ -151,12 +149,10 @@ export const upload = async () => {
 }
 
 export const download = async () => {
-  console.log('down')
+  const { default: jsPDF } = await import('jspdf')
   const initialPageKey = cadleShell.loadedPage
 
-  let pdf: jsPDF | undefined
-
-  console.log(cadleShell.project)
+  let pdf: jsPDFType | undefined
 
   try {
     let i = 0
@@ -224,6 +220,7 @@ export const importPlan = async () => {
     const file = input.files[0]
     if (!file) return
 
+    await import('../elements/pdf-importer.js')
     // Show PDF importer dialog
     const importer = document.createElement('pdf-importer')
     const dialog = document.createElement('dialog')

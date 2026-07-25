@@ -1,9 +1,9 @@
 import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import styles from './projects.css' with { type: 'css' }
 import { Projects, type Project, type UUID } from './../types.js'
+import '@vandeurenglenn/flex-elements/column.js'
 import '@material/web/elevation/elevation.js'
-import '@material/web/button/filled-button.js'
-import '@material/web/button/outlined-button.js'
+import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -88,7 +88,7 @@ export class ProjectsField extends LiteElement {
       // Set up keyboard listener for the prompt
       setTimeout(() => {
         const openBtn = this.shadowRoot?.querySelector(
-          '.projects-reopen-actions md-filled-button'
+          '.projects-reopen-actions custom-button'
         ) as HTMLElement | null
         openBtn?.focus()
       }, 0)
@@ -106,8 +106,8 @@ export class ProjectsField extends LiteElement {
       setTimeout(() => {
         const selector =
           this._reopenPromptFocusedButton === 'open'
-            ? '.projects-reopen-actions md-filled-button'
-            : '.projects-reopen-actions md-outlined-button'
+            ? '.projects-reopen-actions custom-button[type="filled"]'
+            : '.projects-reopen-actions custom-button[type="outlined"]'
         const btn = this.shadowRoot?.querySelector(selector) as HTMLElement | null
         btn?.focus()
       }, 0)
@@ -360,15 +360,35 @@ export class ProjectsField extends LiteElement {
         </custom-list-item>
       </custom-dropdown>
       <div class="projects-landing">
-        <section class="projects-hero" aria-labelledby="projects-hero-title">
+        <section
+          class="projects-hero"
+          aria-labelledby="projects-hero-title">
           <div class="hero-eyebrow"><span></span> Built for Belgian electrical plans</div>
-          <div class="mobile-brand" aria-label="Cadle">
-            <svg viewBox="0 0 72 72" aria-hidden="true">
-              <path class="brand-plan" d="M54 18H28c-8 0-12 4-12 12v12c0 8 4 12 12 12h26"></path>
-              <path class="brand-circuit" d="M25 36h30"></path>
-              <circle class="brand-node" cx="25" cy="36" r="4"></circle>
-              <circle class="brand-terminal" cx="55" cy="36" r="5"></circle>
-              <path class="brand-terminal-mark" d="M52.5 36h5M55 33.5v5"></path>
+          <div
+            class="mobile-brand"
+            aria-label="Cadle">
+            <svg
+              viewBox="0 0 72 72"
+              aria-hidden="true">
+              <path
+                class="brand-plan"
+                d="M54 18H28c-8 0-12 4-12 12v12c0 8 4 12 12 12h26"></path>
+              <path
+                class="brand-circuit"
+                d="M25 36h30"></path>
+              <circle
+                class="brand-node"
+                cx="25"
+                cy="36"
+                r="4"></circle>
+              <circle
+                class="brand-terminal"
+                cx="55"
+                cy="36"
+                r="5"></circle>
+              <path
+                class="brand-terminal-mark"
+                d="M52.5 36h5M55 33.5v5"></path>
             </svg>
             <span>Cadle</span>
           </div>
@@ -376,52 +396,150 @@ export class ProjectsField extends LiteElement {
             <h2 id="projects-hero-title">From ground plan<br />to one-wire.</h2>
             <p>Draw naturally, connect your circuits, and let Cadle keep the technical structure clear.</p>
           </div>
-          <div class="groundplan-scene" aria-hidden="true">
-            <svg viewBox="0 0 520 390" role="img">
+          <div
+            class="groundplan-scene"
+            aria-hidden="true">
+            <svg
+              viewBox="0 0 520 390"
+              role="img">
               <defs>
-                <linearGradient id="plan-glow" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="var(--md-sys-color-primary)" stop-opacity=".28"></stop>
-                  <stop offset="1" stop-color="var(--md-sys-color-tertiary)" stop-opacity=".04"></stop>
+                <linearGradient
+                  id="plan-glow"
+                  x1="0"
+                  y1="0"
+                  x2="1"
+                  y2="1">
+                  <stop
+                    offset="0"
+                    stop-color="var(--md-sys-color-primary)"
+                    stop-opacity=".28"></stop>
+                  <stop
+                    offset="1"
+                    stop-color="var(--md-sys-color-tertiary)"
+                    stop-opacity=".04"></stop>
                 </linearGradient>
-                <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity=".14"></feDropShadow>
+                <filter
+                  id="soft-shadow"
+                  x="-20%"
+                  y="-20%"
+                  width="140%"
+                  height="140%">
+                  <feDropShadow
+                    dx="0"
+                    dy="12"
+                    stdDeviation="12"
+                    flood-opacity=".14"></feDropShadow>
                 </filter>
               </defs>
-              <rect class="plan-paper" x="42" y="28" width="436" height="326" rx="20"></rect>
-              <rect class="plan-wash" x="42" y="28" width="436" height="326" rx="20"></rect>
-              <g class="plan-lines" filter="url(#soft-shadow)">
-                <path class="plan-stroke s1" pathLength="1" d="M92 82H270V202H92Z"></path>
-                <path class="plan-stroke s2" pathLength="1" d="M270 82H426V164H270"></path>
-                <path class="plan-stroke s3" pathLength="1" d="M92 202V304H226V202"></path>
-                <path class="plan-stroke s4" pathLength="1" d="M226 304H426V164"></path>
-                <path class="plan-stroke s5" pathLength="1" d="M270 164H346V304"></path>
-                <path class="plan-door s6" pathLength="1" d="M270 120h32m-32 0a32 32 0 0 1 32 32"></path>
-                <path class="plan-door s7" pathLength="1" d="M226 246h-28m28 0a28 28 0 0 0-28 28"></path>
-                <path class="plan-door s8" pathLength="1" d="M346 224h28m-28 0a28 28 0 0 1 28 28"></path>
+              <rect
+                class="plan-paper"
+                x="42"
+                y="28"
+                width="436"
+                height="326"
+                rx="20"></rect>
+              <rect
+                class="plan-wash"
+                x="42"
+                y="28"
+                width="436"
+                height="326"
+                rx="20"></rect>
+              <g
+                class="plan-lines"
+                filter="url(#soft-shadow)">
+                <path
+                  class="plan-stroke s1"
+                  pathLength="1"
+                  d="M92 82H270V202H92Z"></path>
+                <path
+                  class="plan-stroke s2"
+                  pathLength="1"
+                  d="M270 82H426V164H270"></path>
+                <path
+                  class="plan-stroke s3"
+                  pathLength="1"
+                  d="M92 202V304H226V202"></path>
+                <path
+                  class="plan-stroke s4"
+                  pathLength="1"
+                  d="M226 304H426V164"></path>
+                <path
+                  class="plan-stroke s5"
+                  pathLength="1"
+                  d="M270 164H346V304"></path>
+                <path
+                  class="plan-door s6"
+                  pathLength="1"
+                  d="M270 120h32m-32 0a32 32 0 0 1 32 32"></path>
+                <path
+                  class="plan-door s7"
+                  pathLength="1"
+                  d="M226 246h-28m28 0a28 28 0 0 0-28 28"></path>
+                <path
+                  class="plan-door s8"
+                  pathLength="1"
+                  d="M346 224h28m-28 0a28 28 0 0 1 28 28"></path>
               </g>
               <g class="circuit">
-                <path class="circuit-wire" pathLength="1" d="M128 122H224V164H310V264H390"></path>
-                <g class="device d1" transform="translate(128 122)">
-                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                <path
+                  class="circuit-wire"
+                  pathLength="1"
+                  d="M128 122H224V164H310V264H390"></path>
+                <g
+                  class="device d1"
+                  transform="translate(128 122)">
+                  <circle r="10"></circle>
+                  <path d="M-4 0h8M0-4v8"></path>
                 </g>
-                <g class="device d2" transform="translate(224 164)">
-                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                <g
+                  class="device d2"
+                  transform="translate(224 164)">
+                  <circle r="10"></circle>
+                  <path d="M-4 0h8M0-4v8"></path>
                 </g>
-                <g class="device d3" transform="translate(310 264)">
-                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                <g
+                  class="device d3"
+                  transform="translate(310 264)">
+                  <circle r="10"></circle>
+                  <path d="M-4 0h8M0-4v8"></path>
                 </g>
-                <g class="device d4" transform="translate(390 264)">
-                  <circle r="10"></circle><path d="M-4 0h8M0-4v8"></path>
+                <g
+                  class="device d4"
+                  transform="translate(390 264)">
+                  <circle r="10"></circle>
+                  <path d="M-4 0h8M0-4v8"></path>
                 </g>
-                <circle class="current-dot" r="5">
-                  <animateMotion dur="4s" repeatCount="indefinite" path="M128 122H224V164H310V264H390"></animateMotion>
+                <circle
+                  class="current-dot"
+                  r="5">
+                  <animateMotion
+                    dur="4s"
+                    repeatCount="indefinite"
+                    path="M128 122H224V164H310V264H390"></animateMotion>
                 </circle>
               </g>
               <g class="plan-labels">
-                <text x="108" y="104">LIVING</text>
-                <text x="292" y="106">KITCHEN</text>
-                <text x="112" y="226">HALL</text>
-                <text x="272" y="328">TECHNICAL PLAN</text>
+                <text
+                  x="108"
+                  y="104">
+                  LIVING
+                </text>
+                <text
+                  x="292"
+                  y="106">
+                  KITCHEN
+                </text>
+                <text
+                  x="112"
+                  y="226">
+                  HALL
+                </text>
+                <text
+                  x="272"
+                  y="328">
+                  TECHNICAL PLAN
+                </text>
               </g>
             </svg>
             <div class="scene-status"><span></span> Circuit A1 connected</div>
@@ -433,7 +551,10 @@ export class ProjectsField extends LiteElement {
             ? html`<section class="welcome-bubble">
                 <h3>Welcome to Cadle</h3>
                 <p>Start by creating a project or uploading an existing one.</p>
-                <p>Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left off.</p>
+                <p>
+                  Projects save your pages, symbols, and one-line mappings so you can continue exactly where you left
+                  off.
+                </p>
               </section>`
             : ''}
           <flex-container>
@@ -442,9 +563,9 @@ export class ProjectsField extends LiteElement {
               <p>Pick up where you left off, or start something new.</p>
             </header>
             <div class="actions-row">
-              <md-outlined-button @click=${() => upload()}>Upload</md-outlined-button>
+            <custom-button type="outlined" label="Upload" @click=${() => upload()}></custom-button>
               <flex-it></flex-it>
-              <md-filled-button @click=${() => (location.hash = '#!/create-project')}>Create</md-filled-button>
+            <custom-button type="filled" label="Create" @click=${() => (location.hash = '#!/create-project')}></custom-button>
             </div>
             ${this.showReopenPreviousProjectPrompt
               ? html`
@@ -454,16 +575,18 @@ export class ProjectsField extends LiteElement {
                     <div class="projects-reopen-title">Open previous project?</div>
                     <div class="projects-reopen-name">${this.previousProjectName || 'Previous project'}</div>
                     <div class="projects-reopen-actions">
-                      <md-filled-button
+                      <custom-button
+                        type="filled"
+                        label="Open"
                         @click=${this.#openPreviousProjectFromPrompt}
                         ?data-focused=${this._reopenPromptFocusedButton === 'open'}
-                        >Open</md-filled-button
-                      >
-                      <md-outlined-button
+                      ></custom-button>
+                      <custom-button
+                        type="outlined"
+                        label="Dismiss"
                         @click=${this.#dismissPreviousProjectPrompt}
                         ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
-                        >Dismiss</md-outlined-button
-                      >
+                      ></custom-button>
                     </div>
                   </section>
                 `
@@ -471,8 +594,14 @@ export class ProjectsField extends LiteElement {
             ${this.projects?.length > 0 ? this.#projectsTemplate : ''}
           </flex-container>
           ${this.projectsLoaded && this.projects?.length === 0
-            ? html`<aside class="welcome-spark" aria-label="Cadle spark">
-                <span class="spark-icon" aria-hidden="true">✦</span>
+            ? html`<aside
+                class="welcome-spark"
+                aria-label="Cadle spark">
+                <span
+                  class="spark-icon"
+                  aria-hidden="true"
+                  >✦</span
+                >
                 <div>
                   <strong>A little spark before you start</strong>
                   <p>Why did the circuit break up with the wire? Too much resistance.</p>

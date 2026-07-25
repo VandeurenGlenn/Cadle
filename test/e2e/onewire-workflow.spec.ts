@@ -92,7 +92,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
 
   await page.reload()
   await expect(page.locator('projects-field .welcome-bubble')).toHaveCount(0)
-  const reopenProject = page.locator('projects-field').getByRole('button', { name: 'Open', exact: true })
+  const reopenProject = page.locator('projects-field custom-button[label="Open"]')
   await expect.poll(async () =>
     (await reopenProject.isVisible()) ||
     (await page.evaluate(() => typeof customElements.get('cadle-app')?.prototype?.toSVG === 'function'))

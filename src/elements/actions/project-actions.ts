@@ -1,6 +1,6 @@
 import { LiteElement, html, customElement, query } from '@vandeurenglenn/lite'
 import styles from './project-actions.css' with { type: 'css' }
-import '@material/web/button/text-button.js'
+import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/icon.js'
@@ -368,21 +368,21 @@ export class ProjectActions extends LiteElement {
   render() {
     return html`
       <flex-row>
-        <md-text-button
+        <custom-button
+          type="text"
+          label="File"
           data-action="file"
-          @click=${this.#toggleMenu}
-          >File</md-text-button
-        >
-        <md-text-button
+          @click=${this.#toggleMenu}></custom-button>
+        <custom-button
+          type="text"
+          label="Draw"
           data-action="draw"
-          @click=${this.#toggleMenu}
-          >Draw</md-text-button
-        >
-        <md-text-button
+          @click=${this.#toggleMenu}></custom-button>
+        <custom-button
+          type="text"
+          label="Help"
           data-action="help"
-          @click=${this.#toggleMenu}
-          >Help</md-text-button
-        >
+          @click=${this.#toggleMenu}></custom-button>
       </flex-row>
       <custom-dropdown>
         <custom-elevation level="1"></custom-elevation>

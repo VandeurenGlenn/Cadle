@@ -331,6 +331,15 @@ md-outlined-button {
   --md-outlined-button-label-text-weight: 600;
   text-transform: none;
 }
+custom-button {
+  --custom-button-label-text-color: var(--md-sys-color-on-surface);
+  --custom-button-label-text-weight: 600;
+  text-transform: none;
+}
+custom-button[type='filled'] {
+  --custom-button-container-color: var(--md-sys-color-primary);
+  --custom-button-label-text-color: var(--md-sys-color-on-primary);
+}
 .list {
   display: flex;
   flex-direction: column;

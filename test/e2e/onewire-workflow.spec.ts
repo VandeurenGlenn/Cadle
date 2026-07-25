@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('create, draw, bind, validate, generate, reload, and export one-wire project', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 800 })
   await page.goto('/#!/create-project')
   const values: Record<string, string> = {
     'Project name': 'E2E AREI project', 'Page name': 'Ground plan', 'Customer name': 'Ada',
@@ -13,6 +14,20 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   await page.getByRole('button', { name: 'Create project' }).click()
   await expect(page).toHaveURL(/#!\/native-draw/)
 
+  const drawer = page.locator('app-shell .left-rail')
+  const drawerToggle = page.getByRole('button', { name: 'Open project menu' })
+  await expect(drawerToggle).toBeVisible()
+  await expect(drawerToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(drawer).toHaveAttribute('data-mobile-open', 'false')
+  await expect(drawer).toBeHidden()
+  await drawerToggle.click()
+  await expect(drawerToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(drawer).toBeVisible()
+  await page.getByRole('button', { name: 'Close project menu' }).click({ position: { x: 550, y: 400 } })
+  await expect(drawerToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(drawer).toBeHidden()
+
+  await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('tab', { name: 'Symbols catalog' }).click()
   const stage = page.locator('cadle-app svg.stage')
   await expect(stage).toBeVisible()

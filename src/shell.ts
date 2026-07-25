@@ -118,6 +118,9 @@ export class AppShell extends LiteElement {
   @property({ type: String, attribute: false })
   accessor activeRoute = 'projects'
 
+  @property({ type: Boolean, attribute: false })
+  accessor mobileDrawerOpen = false
+
   _currentColor: string = ''
 
   get projectLoaded(): boolean {
@@ -321,6 +324,18 @@ export class AppShell extends LiteElement {
   #dismissReopenPreviousProjectPrompt = () => {
     this.showReopenPreviousProjectPrompt = false
     pubsub.publish('shell.reopen-previous-project-prompt', { open: false, projectName: '' })
+  }
+
+  #toggleMobileDrawer = () => {
+    this.mobileDrawerOpen = !this.mobileDrawerOpen
+  }
+
+  #closeMobileDrawer = () => {
+    this.mobileDrawerOpen = false
+  }
+
+  #onWindowKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && this.mobileDrawerOpen) this.#closeMobileDrawer()
   }
 
   #openPreviousProjectFromPrompt = async () => {
@@ -608,6 +623,7 @@ export class AppShell extends LiteElement {
     this.addEventListener('presence-pointer-leave', (() => {
       this.#broadcastPresence(undefined, true)
     }) as EventListener)
+    window.addEventListener('keydown', this.#onWindowKeydown)
     // this.addEventListener('mousedown', () => {
     //   const target = this.shadowRoot.querySelector('[open]')
     //   if (target) target.open = false
@@ -620,6 +636,7 @@ export class AppShell extends LiteElement {
   disconnectedCallback(): void {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
+    window.removeEventListener('keydown', this.#onWindowKeydown)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
 
@@ -648,6 +665,7 @@ export class AppShell extends LiteElement {
     const fallbackRoute = this.project?.pages ? 'native-draw' : 'projects'
     const nextRoute =
       route === 'draw' || route === 'save' ? 'native-draw' : validRoutes.has(route) ? route : fallbackRoute
+    this.#closeMobileDrawer()
     if (nextRoute === 'native-draw') await this.#ensureNativeEditorLoaded()
     this.activeRoute = nextRoute
     await this.rendered
@@ -1154,7 +1172,10 @@ export class AppShell extends LiteElement {
       ${iconSetTemplate}
       <div class="shell-frame">
         <section class="layout">
-          <aside class="left-rail">
+          <aside
+            id="project-drawer"
+            class="left-rail"
+            data-mobile-open=${this.mobileDrawerOpen ? 'true' : 'false'}>
             <cadle-header>
               <project-actions></project-actions>
             </cadle-header>
@@ -1215,6 +1236,15 @@ export class AppShell extends LiteElement {
           </aside>
           <main class="center-stage">
             <div class="center-stage-toolbar">
+              <button
+                class="mobile-drawer-toggle"
+                type="button"
+                aria-label="Open project menu"
+                aria-controls="project-drawer"
+                aria-expanded=${this.mobileDrawerOpen ? 'true' : 'false'}
+                @click=${this.#toggleMobileDrawer}>
+                <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
+              </button>
               <cadle-actions></cadle-actions>
               <onewire-actions></onewire-actions>
               ${this.loadedPage && this.project?.pages?.[this.loadedPage]
@@ -1236,6 +1266,12 @@ export class AppShell extends LiteElement {
           <aside class="right-rail">
             <object-pane></object-pane>
           </aside>
+          <button
+            class="mobile-drawer-backdrop"
+            type="button"
+            aria-label="Close project menu"
+            data-open=${this.mobileDrawerOpen ? 'true' : 'false'}
+            @click=${this.#closeMobileDrawer}></button>
         </section>
         <status-bar></status-bar>
       </div>

@@ -162,6 +162,34 @@ export const shellStyles = css`
     flex: 0 0 auto;
   }
 
+  .mobile-drawer-toggle,
+  .mobile-drawer-backdrop {
+    display: none;
+  }
+
+  .mobile-drawer-toggle {
+    appearance: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: var(--md-sys-color-on-surface);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .mobile-drawer-toggle:hover {
+    background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  }
+
+  .mobile-drawer-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--cadle-focus-ring);
+  }
+
   .left-rail project-pane,
   .right-rail object-pane {
     position: static !important;
@@ -288,6 +316,56 @@ export const shellStyles = css`
 
     .right-rail {
       display: none;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .left-rail {
+      position: fixed;
+      z-index: 12020;
+      inset: 0 auto var(--cadle-status-bar, 28px) 0;
+      width: min(86vw, 320px);
+      transform: translateX(-102%);
+      visibility: hidden;
+      box-shadow: var(--cadle-elevation-3);
+      transition:
+        transform var(--cadle-motion-standard),
+        visibility 0s linear var(--cadle-motion-standard);
+    }
+
+    .left-rail[data-mobile-open='true'] {
+      transform: translateX(0);
+      visibility: visible;
+      transition-delay: 0s;
+    }
+
+    .mobile-drawer-toggle {
+      display: inline-flex;
+      flex: 0 0 auto;
+    }
+
+    .mobile-drawer-backdrop {
+      position: fixed;
+      z-index: 12010;
+      inset: 0 0 var(--cadle-status-bar, 28px);
+      width: auto;
+      height: auto;
+      padding: 0;
+      border: 0;
+      background: rgb(0 0 0 / 38%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--cadle-motion-standard);
+    }
+
+    .mobile-drawer-backdrop[data-open='true'] {
+      display: block;
+      opacity: 1;
+      pointer-events: auto;
     }
   }
 `

@@ -1,4 +1,3 @@
-import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import './fields/projects.js'
 
 const afterPaint = () =>
@@ -6,29 +5,18 @@ const afterPaint = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   })
 
-@customElement('cadle-startup')
-export class CadleStartup extends LiteElement {
-  #handoffStarted = false
+const projects = document.querySelector('projects-field')
 
-  async connectedCallback(): Promise<void> {
-    if (super.connectedCallback) await super.connectedCallback()
-    await this.rendered
-    if (this.#handoffStarted) return
-    this.#handoffStarted = true
-    await afterPaint()
+if (projects) {
+  await customElements.whenDefined('projects-field')
+  await afterPaint()
 
-    // Start shell loading only after Projects has had a real paint opportunity.
-    // The shell takes over this host once its custom element is registered.
-    try {
-      await import('./shell.js')
-      const shell = document.createElement('app-shell')
-      this.replaceWith(shell)
-    } catch (error) {
-      console.error('Failed to load Cadle shell', error)
-    }
-  }
-
-  render() {
-    return html`<projects-field></projects-field>`
+  // Projects is already hydrated and painted. Load the shell behind it, then
+  // hand the document over once the full application is ready.
+  try {
+    await import('./shell.js')
+    projects.replaceWith(document.createElement('app-shell'))
+  } catch (error) {
+    console.error('Failed to load Cadle shell', error)
   }
 }

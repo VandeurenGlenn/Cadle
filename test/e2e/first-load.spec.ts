@@ -4,7 +4,7 @@ test('paints the Projects entry point without JavaScript', async ({ page }) => {
   await page.route('**/bootstrap.js', (route) => route.abort())
   await page.goto('/')
 
-  const fallback = page.locator('cadle-startup:not(:defined) .boot-projects')
+  const fallback = page.locator('projects-field:not(:defined) .boot-projects')
   await expect(fallback.getByRole('heading', { name: 'Projects' })).toBeVisible()
   await expect(fallback.getByRole('link', { name: 'Create project' })).toHaveAttribute('href', '#!/create-project')
 })

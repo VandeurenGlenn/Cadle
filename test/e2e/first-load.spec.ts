@@ -4,9 +4,9 @@ test('paints the Projects entry point without JavaScript', async ({ page }) => {
   await page.route('**/bootstrap.js', (route) => route.abort())
   await page.goto('/')
 
-  const fallback = page.locator('cadle-startup:not(:defined) .boot-hero')
-  await expect(fallback.getByText('Built for Belgian electrical plans')).toBeVisible()
-  await expect(fallback.getByRole('heading', { name: /From ground plan/ })).toBeVisible()
+  const fallback = page.locator('cadle-startup:not(:defined) .boot-projects')
+  await expect(fallback.getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(fallback.getByRole('link', { name: 'Create project' })).toHaveAttribute('href', '#!/create-project')
 })
 
 test('first load without an open project shows Projects instead of an empty editor', async ({ page }) => {

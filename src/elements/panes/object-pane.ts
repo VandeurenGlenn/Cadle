@@ -32,6 +32,9 @@ export class ObjectPane extends LiteElement {
   private accessor _nativeName = ''
 
   @property({ type: String, attribute: false })
+  private accessor _nativePath = ''
+
+  @property({ type: String, attribute: false })
   private accessor _nativeText = ''
 
   @property({ attribute: false })
@@ -123,6 +126,7 @@ export class ObjectPane extends LiteElement {
       this._nativeSelectedKind = ''
       if (this._selectionCount === 0) this._nativeBindingId = ''
       this._nativeName = ''
+      this._nativePath = ''
       this._nativeText = ''
       this._nativeCanFlip = false
       this._nativeFlipSide = false
@@ -149,6 +153,7 @@ export class ObjectPane extends LiteElement {
     this._nativeSelectedKind = shape.kind
     this._nativeBindingId = shape.bindingId
     this._nativeName = shape.name
+    this._nativePath = shape.path ?? ''
     this._nativeText = shape.text
     this._nativeSymbolTextFields = shape.symbolTextFields
     this._nativeCanFlip = shape.canFlip
@@ -365,6 +370,7 @@ export class ObjectPane extends LiteElement {
   }
 
   #renderNativeSelection() {
+    const isResidualBreaker = /residual-current/i.test(`${this._nativePath} ${this._nativeName}`)
     const hasSelection = this._selectionCount > 0
     if (!hasSelection) {
       return html`
@@ -440,12 +446,14 @@ export class ObjectPane extends LiteElement {
                 <label><span class="native-label">Phase / conductors</span><select data-electrical-field="phaseConfiguration" class="native-select" .value=${this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="L1+N">L1 + N</option><option value="L2+N">L2 + N</option><option value="L3+N">L3 + N</option><option value="L1+L2+L3+N">L1 + L2 + L3 + N</option></select></label>
               </div>
               <div class="native-note">Values apply to this symbol and are used for its bound circuit.</div>
-              <div class="native-row">
+              ${isResidualBreaker ? '' : html`<div class="native-row">
                 <label><span class="native-label">Breaker curve</span><select data-electrical-field="breakerCurve" class="native-select" .value=${this.#effectiveElectrical().breakerCurve ?? ''} @change=${(event: Event) => this.#updateElectrical('breakerCurve', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="other">Other</option></select></label>
+              </div>`}
+              ${isResidualBreaker ? html`<div class="native-row">
                 <label><span class="native-label">RCD (mA)</span><input class="native-input" type="number" min="1" .value=${String(this.#effectiveElectrical().rcdSensitivityMa ?? '')} @change=${(event: Event) => this.#updateElectrical('rcdSensitivityMa', (event.target as HTMLInputElement).value)} /></label>
-              </div>
-              <div class="native-row">
                 <label><span class="native-label">RCD type</span><select class="native-select" .value=${this.#effectiveElectrical().rcdType ?? ''} @change=${(event: Event) => this.#updateElectrical('rcdType', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="AC">AC</option><option value="A">A</option><option value="F">F</option><option value="B">B</option><option value="other">Other</option></select></label>
+              </div>` : ''}
+              <div class="native-row">
                 <label><span class="native-label">Board</span><input class="native-input" .value=${this.#effectiveElectrical().boardId ?? ''} @change=${(event: Event) => this.#updateElectrical('boardId', (event.target as HTMLInputElement).value)} placeholder="main" /></label>
               </div>
               <label class="native-label">Rail</label><input class="native-input" .value=${this.#effectiveElectrical().railId ?? ''} @change=${(event: Event) => this.#updateElectrical('railId', (event.target as HTMLInputElement).value)} placeholder="rail-1" />

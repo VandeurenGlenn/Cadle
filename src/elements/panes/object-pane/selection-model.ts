@@ -11,6 +11,7 @@ export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
 export type SelectionShape = {
   id?: string
   kind?: string
+  path?: string
   text?: string
   symbolTextFields?: SymbolTextField[]
   bindingId?: string
@@ -84,6 +85,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
     shape: {
       id: typeof shape.id === 'string' ? shape.id : '',
       kind,
+      path: typeof shape.path === 'string' ? shape.path : '',
       label: kind.charAt(0).toUpperCase() + kind.slice(1),
       bindingId: typeof shape.bindingId === 'string' ? shape.bindingId : '',
       name: typeof shape.name === 'string' ? shape.name : '',

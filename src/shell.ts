@@ -757,17 +757,7 @@ export class AppShell extends LiteElement {
       location.hash = this.#nativeDrawHash()
     }
 
-    if (action === 'open-project' && projectKey) {
-      console.log(projectKey)
-      await this.savePage()
-      this.project = await getProjectData(projectKey as UUID)
-      this.projectKey = projectKey as UUID
-      console.log(this.project)
-      const keys = Object.keys(this.project.pages)
-      if (keys[0]) await this.loadPage(keys[0])
-      location.hash = this.#nativeDrawHash()
-      this.projectPane?.select?.('project')
-    }
+    if (action === 'open-project' && projectKey) await this.#openProject(projectKey as UUID)
 
     if (action === 'clone-page') {
       const pageKey = dialog.dataset?.pageKey
@@ -884,30 +874,18 @@ export class AppShell extends LiteElement {
   }
 
   async loadProject(projectKey: UUID, projectName: string) {
-    this.dialog?.addEventListener('close', this.#dialogAction)
-    console.log(projectKey, projectName)
-    const dialog = cadleShell.dialog
-    if (!dialog) return
-    dialog.dataset.key = projectKey
-    dialog.innerHTML = `
-      <form id="load" slot="content" method="dialog">  
-        <flex-column>
-          <p>Are you sure you want to open ${projectName}?</p>
-          <small>make sure you saved your open project</small>
-        </flex-column>
-      </form>
-      <flex-row slot="actions" style="width: 100%;">
-        <md-outlined-button form="load" value="cancel-open-project">
-          cancel
-        </md-outlined-button>
-        <flex-it></flex-it>
-        <md-filled-button form="load" value="open-project">
-          open
-        </md-filled-button>
-      </flex-row>
-    
-    `
-    if (cadleShell.dialog) cadleShell.dialog.open = true
+    void projectName
+    await this.#openProject(projectKey)
+  }
+
+  async #openProject(projectKey: UUID) {
+    await this.savePage()
+    this.project = await getProjectData(projectKey)
+    this.projectKey = projectKey
+    const keys = Object.keys(this.project.pages)
+    if (keys[0]) await this.loadPage(keys[0])
+    location.hash = this.#nativeDrawHash()
+    this.projectPane?.select?.('project')
   }
 
   async exportA4PNG(orientation: A4Orientation | 'auto' = 'auto'): Promise<A4ExportResult> {

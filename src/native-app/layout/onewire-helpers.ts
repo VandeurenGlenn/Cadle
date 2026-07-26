@@ -160,7 +160,7 @@ export const buildOneWireBreakerSection = (
 
   const specificationLabel: TextShape = {
     id: deps.nextShapeId(), kind: 'text', position: { x: x - 35, y: railY + 48 },
-    text: `C${specification?.amps ?? 20} · ${specification?.poles ?? 2}P · ${specification?.cableSectionMm2 ?? 1.5} mm²`,
+    text: `${specification?.cableSectionMm2 ?? 1.5} mm²`,
     fill: '#000000', stroke: 'none', scale: 0.55, bindingId, groupId
   }
 

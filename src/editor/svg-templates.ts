@@ -2,6 +2,7 @@ import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
+import { symbolTextLayer } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 
 type OpticalInsets = { left: number; right: number; top: number; bottom: number }
@@ -63,7 +64,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
   host.setAttribute('viewBox', symbolSvg.viewBox)
   host.setAttribute('width', `${viewBox.width}`)
   host.setAttribute('height', `${viewBox.height}`)
-  host.innerHTML = symbolSvg.inner
+  host.innerHTML = `${symbolSvg.inner}${symbolTextLayer(path)}`
 
   let box: DOMRect | null = null
   try {
@@ -340,6 +341,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
       const symbolInner = symbolSvg
         ? applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         : ''
+      const metadataText = symbolTextLayer(shape.path, shape.symbolTextOverrides)
       const symbolStyle =
         `${shape.fill ? `--symbol-fill:${shape.fill};` : ''}` +
         `${shape.stroke ? `--symbol-stroke:${shape.stroke};` : ''}` +
@@ -348,7 +350,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}</svg>`
+              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
               : nothing
           }
         </g>

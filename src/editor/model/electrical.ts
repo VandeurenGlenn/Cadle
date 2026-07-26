@@ -41,8 +41,13 @@ const finitePositive = (value: unknown): number | undefined =>
 
 const deviceSearchText = (name: string, path: string): string => `${name} ${path}`.toLowerCase()
 
-export const isEarthingDevice = (name: string, path: string): boolean =>
-  /\b(earthing|earth|grounding|ground|aarding|equipotential)\b/.test(deviceSearchText(name, path))
+export const isEarthingDevice = (name: string, path: string): boolean => {
+  const searchable = deviceSearchText(name, path)
+  // "Wall outlet with grounding" describes a socket contact, not an earthing
+  // electrode. Treat grounding words as earthing only outside load terminology.
+  if (/\b(socket|outlet|stopcontact)\b/.test(searchable)) return false
+  return /\b(earthing|earth|grounding|ground|aarding|equipotential)\b/.test(searchable)
+}
 
 export const isDistributionBoardDevice = (name: string, path: string): boolean =>
   /\b(distribution.?board|switchboard|panelboard|board|bord|verdeelbord|verdeelkast|schakelkast|electrical.?cabinet|distribution.?panel)\b/.test(

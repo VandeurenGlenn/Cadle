@@ -101,3 +101,26 @@ test('restores custom symbol appearance from persisted catalog geometry', () => 
   assert.equal(symbol?.kind === 'symbol' ? symbol.stroke : null, '#2455cc')
   assert.equal(symbol?.kind === 'symbol' ? symbol.strokeWidth : null, 2.5)
 })
+
+test('migrates a placed custom Spot to the built-in Spot.svg', () => {
+  const state = asNativeState({
+    version: 1,
+    shapes: [{
+      id: 'custom-spot',
+      kind: 'symbol',
+      position: { x: 100, y: 100 },
+      name: 'Spot',
+      path: 'data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C/svg%3E',
+      scale: 1
+    }],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 0,
+    worldWidth: 1000,
+    worldHeight: 1000
+  })
+
+  const spot = state?.shapes[0]
+  assert.equal(spot?.kind === 'symbol' ? spot.name : null, 'Spot')
+  assert.equal(spot?.kind === 'symbol' ? spot.path : null, 'symbols/Consumption appliances/Spot.svg')
+})

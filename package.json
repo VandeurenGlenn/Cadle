@@ -14,11 +14,15 @@
     "desktop": "electron .",
     "serve-2": "jsproject --serve www --port 4332",
     "generate:manifest": "node generate-manifest.js",
+    "symbols:audit": "node scripts/svg-symbols.mjs --audit",
+    "symbols:preview": "node scripts/svg-symbol-preview.mjs",
+    "symbols:validate": "node scripts/svg-symbols.mjs",
+    "onewire:model:train": "node scripts/train-onewire-model.mjs",
     "build": "npm run generate:manifest && rollup -c",
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:e2e": "npm run build && playwright test",
     "typecheck": "tsc --noEmit",
-    "check": "npm test && npm run typecheck && npm run build"
+    "check": "npm run symbols:validate && npm test && npm run typecheck && npm run build"
   },
   "keywords": [],
   "author": "",

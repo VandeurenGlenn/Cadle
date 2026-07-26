@@ -78,7 +78,12 @@ import {
   wallMaskTemplate
 } from './editor/svg-templates.js'
 import { translateShape } from './editor/interaction/shape-transforms.js'
-import { buildKamrailCircuitBundle } from './editor/layout/onewire-helpers.js'
+import {
+  buildKamrailCircuitBundle,
+  oneWireCableInstallationPath,
+  oneWirePhaseLabelText
+} from './editor/layout/onewire-helpers.js'
+import { buildOneWireTopology } from './editor/layout/onewire-topology.js'
 import {
   oneWireSymbolNodeInfo,
   oneWireSymbolRotationFor,
@@ -156,6 +161,7 @@ const KAMRAIL_HALF_LENGTH = 420
 const KAMRAIL_STROKE_WIDTH = 10
 const KAMRAIL_ATTACH_OFFSET = 20
 const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
+const ONEWIRE_ROW_SYMBOL_SCALE = 0.9
 const ONEWIRE_BRANCH_STROKE = '#000000'
 
 @customElement('cadle-app')
@@ -2247,11 +2253,14 @@ export class CadleApp extends LiteElement {
 
   #oneWireSymbolScale(path: string, kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
     if (kind === 'breaker') return oneWireSymbolScaleFor(path) ?? Math.max(0.4, inferSymbolScale(path))
-    if (/socket outlets\//i.test(path)) return 1
+    if (/socket outlets\//i.test(path)) return ONEWIRE_ROW_SYMBOL_SCALE
     // Node-normalized scale keeps every switch circle the same rendered size.
     const nodeScale = oneWireSymbolScaleFor(path)
-    if (nodeScale !== null) return nodeScale
-    return Math.max(0.55, inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER)
+    if (nodeScale !== null) return nodeScale * ONEWIRE_ROW_SYMBOL_SCALE
+    return Math.max(
+      0.5,
+      inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER * ONEWIRE_ROW_SYMBOL_SCALE
+    )
   }
 
   // Trikker-style cleanup for existing one-wire groups: symbols are centered on
@@ -2491,111 +2500,187 @@ export class CadleApp extends LiteElement {
 
     const previousGenerated = this.#document.shapes.filter((shape) => shape.groupId?.startsWith('onewire-'))
     const retainedShapes = this.#document.shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))
-    this.#document.shapes = [...retainedShapes]
-    const railStartX = 80
-    const railEndX = Math.max(500, this.#worldWidth - 80)
-    const usableWidth = Math.max(1, railEndX - railStartX)
-    const layoutPlan = this.#oneWireController.plan(
-      analysis.families.map((family) => ({
-        family,
-        circuitCount: analysis.groups.filter((group) => group.family === family).length
-      })),
-      usableWidth,
-      Math.max(320, this.#worldHeight - 160)
-    )
-    const visiblePlacements = layoutPlan.placements.filter((placement) => placement.pageIndex === pageIndex)
-    if (!visiblePlacements.length) {
-      return { generated: false, circuitCount: analysis.totalGroups, pageCount: layoutPlan.pageCount, message: 'No circuits are assigned to this one-wire page.' }
-    }
-    const rails = new Map<number, LineShape>()
-    for (const railIndex of new Set(visiblePlacements.map((placement) => placement.railIndex))) {
-      const railY = Math.max(220, this.#worldHeight - 180 - railIndex * 320)
-      const rail: LineShape = {
-        id: nextShapeId(), kind: 'line', start: { x: railStartX, y: railY }, end: { x: railEndX, y: railY },
-        stroke: '#111111', strokeWidth: KAMRAIL_STROKE_WIDTH,
-        groupId: `onewire-kamrail-${nextShapeId()}`,
-        generationKey: `board:main:rail:${railIndex}`,
-        sourceLink: { kind: 'board', id: 'main', role: `rail-${railIndex + 1}` }
-      }
-      rails.set(railIndex, rail)
-      this.#document.shapes.push(rail)
-    }
+    const previousShapes = this.#document.shapes
+    const previousSelectedId = this.#document.selectedId
+    const previousSelectedIds = this.#document.selectedIds
 
-    visiblePlacements.forEach((placement) => {
-      const family = placement.family
-      const rail = rails.get(placement.railIndex)
-      if (!rail) return
-      const x = rail.start.x + (usableWidth * (placement.slotIndex + 0.5)) / layoutPlan.slotsPerRail
-      const familyCurrent = Math.max(
-        ...analysis.groups
-          .filter((group) => group.family === family)
-          .map((group) => group.specification.breakerCurrentA)
+    try {
+      this.#document.shapes = [...retainedShapes]
+      const railWidth = Math.min(1200, Math.max(500, this.#worldWidth - 160))
+      const railStartX = (this.#worldWidth - railWidth) / 2
+      const railEndX = railStartX + railWidth
+      const usableWidth = Math.max(1, railEndX - railStartX)
+      const layoutPlan = this.#oneWireController.plan(
+        analysis.families.map((family) => ({
+          family,
+          circuitCount: analysis.groups.filter((group) => group.family === family).length
+        })),
+        usableWidth,
+        Math.max(320, this.#worldHeight - 160)
       )
-      const familyGroups = analysis.groups.filter((group) => group.family === family)
-      this.#addKamrailCircuitBundle(rail, x, {
-        amps: familyCurrent,
-        cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
-        cableConductors: Math.max(...familyGroups.map((group) => group.specification.cableConductors)),
-        cableType: familyGroups[0]?.specification.cableType ?? 'VOB',
-        cableInstallation: familyGroups[0]?.specification.cableInstallation ?? 'conduit-recessed',
-        breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
-        poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
-        phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N') ? 'three-phase' : familyGroups[0]?.specification.phaseConfiguration,
-        family,
-        autoIncludeFamily: true
-      })
-    })
+      const topology = this.#project?.oneWireTopology
+      const topologyPage = Boolean(topology) && pageIndex === 0
+      const circuitPageIndex = topology ? pageIndex - 1 : pageIndex
+      const totalPageCount = layoutPlan.pageCount + (topology ? 1 : 0)
+      const visiblePlacements = topologyPage
+        ? []
+        : layoutPlan.placements.filter((placement) => placement.pageIndex === circuitPageIndex)
+      if (!topologyPage && !visiblePlacements.length) {
+        this.#document.shapes = previousShapes
+        return { generated: false, circuitCount: analysis.totalGroups, pageCount: totalPageCount, message: 'No circuits are assigned to this one-wire page.' }
+      }
 
-    const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
-    const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
-    this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
+      const rails = new Map<number, LineShape>()
+      if (topologyPage && topology) {
+        const busWidth = Math.min(620, this.#worldWidth - 240)
+        const busY = this.#worldHeight * 0.46
+        const topologyBus: LineShape = {
+          id: nextShapeId(),
+          kind: 'line',
+          start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
+          end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
+          stroke: '#111111',
+          strokeWidth: 2.5,
+          groupId: `onewire-topology-${nextShapeId()}`,
+          generationKey: 'board:main:topology:bus',
+          sourceLink: { kind: 'board', id: 'main', role: 'topology-bus' }
+        }
+        this.#document.shapes.push(topologyBus)
+        this.#document.shapes.push(...buildOneWireTopology(topology, topologyBus, nextShapeId))
+      } else {
+        for (const railIndex of new Set(visiblePlacements.map((placement) => placement.railIndex))) {
+          const railY = Math.max(220, this.#worldHeight - 180 - railIndex * 320)
+          const rail: LineShape = {
+            id: nextShapeId(), kind: 'line', start: { x: railStartX, y: railY }, end: { x: railEndX, y: railY },
+            stroke: '#111111', strokeWidth: KAMRAIL_STROKE_WIDTH,
+            groupId: `onewire-kamrail-${nextShapeId()}`,
+            generationKey: `board:main:rail:${railIndex}`,
+            sourceLink: { kind: 'board', id: 'main', role: `rail-${railIndex + 1}` }
+          }
+          rails.set(railIndex, rail)
+          this.#document.shapes.push(rail)
+        }
+      }
 
-    this.#pushHistory()
-    this.#render()
-    return {
-      generated: true,
-      circuitCount: analysis.totalGroups,
-      pageCount: layoutPlan.pageCount
+      let generatedFamilies = 0
+      for (const placement of visiblePlacements) {
+        const family = placement.family
+        const rail = rails.get(placement.railIndex)
+        if (!rail) throw new Error(`Missing one-wire rail ${placement.railIndex}.`)
+        const x = rail.start.x + (usableWidth * (placement.slotIndex + 0.5)) / layoutPlan.slotsPerRail
+        const familyGroups = analysis.groups
+          .filter((group) => group.family === family)
+          .sort((a, b) => a.bindingId.localeCompare(b.bindingId, undefined, { numeric: true }))
+          .slice(placement.circuitStart, placement.circuitStart + placement.circuitCount)
+        const familyCurrent = Math.max(...familyGroups.map((group) => group.specification.breakerCurrentA))
+        const generated = this.#addKamrailCircuitBundle(rail, x, {
+          amps: familyCurrent,
+          cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
+          cableConductors: Math.max(...familyGroups.map((group) => group.specification.cableConductors)),
+          cableType: familyGroups[0]?.specification.cableType ?? 'VOB',
+          cableInstallation: familyGroups[0]?.specification.cableInstallation ?? 'conduit-recessed',
+          breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
+          poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
+          phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N') ? 'three-phase' : familyGroups[0]?.specification.phaseConfiguration,
+          family,
+          autoIncludeFamily: true,
+          bindingIds: familyGroups.map((group) => group.bindingId)
+        })
+        if (!generated) throw new Error(`Unable to generate one-wire family ${family}.`)
+        generatedFamilies += 1
+      }
+      if (generatedFamilies !== visiblePlacements.length) {
+        throw new Error('One-wire regeneration produced an incomplete result.')
+      }
+
+      const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
+      const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
+      this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
+
+      this.#pushHistory()
+      this.#render()
+      return {
+        generated: true,
+        circuitCount: analysis.totalGroups,
+        pageCount: totalPageCount
+      }
+    } catch (error) {
+      this.#document.shapes = previousShapes
+      this.#document.selectedId = previousSelectedId
+      this.#document.selectedIds = previousSelectedIds
+      this.#render()
+      console.error('One-wire regeneration failed; keeping the existing drawing.', error)
+      return {
+        generated: false,
+        circuitCount: analysis.totalGroups,
+        message: error instanceof Error ? error.message : 'One-wire regeneration failed.'
+      }
     }
   }
 
   #groundplanComponentsForFamily(
     family: string
-  ): Array<{ bindingId: string; kind: 'switch' | 'load'; sourceShapeId: string; sourcePath?: string; sourceName?: string; breakerCurrentA: number; cableSectionMm2: number; poles: number; breakerCurve?: string }> {
-    return this.analyzeBindings()
-      .groups.filter((group) => group.family === family)
-      .flatMap((group) =>
-        group.components
-          .filter(
-            (component): component is CircuitComponent & { role: 'switch' | 'load' | 'junction'; path: string } =>
-              ((component.role === 'switch' || component.role === 'load') && Boolean(component.path)) ||
-              (component.role === 'junction' &&
-                Boolean(component.path) &&
-                isDistributionBoardDevice(component.name, component.path))
-          )
-          .map((component) => ({
-            bindingId: group.bindingId,
-            kind: component.role === 'switch' ? 'switch' as const : 'load' as const,
-            sourceShapeId: component.shapeId,
-      breakerCurrentA: group.specification.breakerCurrentA,
-      cableSectionMm2: group.specification.cableSectionMm2,
-      cableConductors: group.specification.cableConductors,
-      cableType: group.specification.cableType,
-      cableInstallation: group.specification.cableInstallation,
-      poles: group.specification.poles,
-            breakerCurve: group.specification.breakerCurve,
-            sourcePath: component.path,
-            sourceName: component.name
-          }))
+  ): Array<{ bindingId: string; kind: 'switch' | 'load' | 'empty'; sourceShapeId?: string; sourcePath?: string; sourceName?: string; breakerCurrentA: number; cableSectionMm2: number; poles: number; breakerCurve?: string }> {
+    const entries: Array<{
+      bindingId: string
+      kind: 'switch' | 'load' | 'empty'
+      sourceShapeId?: string
+      sourcePath?: string
+      sourceName?: string
+      breakerCurrentA: number
+      cableSectionMm2: number
+      poles: number
+      breakerCurve?: string
+    }> = []
+    for (const group of this.analyzeBindings().groups.filter((candidate) => candidate.family === family)) {
+      const drawable = group.components.filter(
+        (component): component is CircuitComponent & { role: 'switch' | 'load' | 'protection' | 'junction'; path: string } =>
+          ((component.role === 'switch' ||
+            component.role === 'load' ||
+            component.role === 'protection') &&
+            Boolean(component.path)) ||
+          (component.role === 'junction' &&
+            Boolean(component.path) &&
+            isDistributionBoardDevice(component.name, component.path))
       )
+      if (drawable.length === 0) {
+        entries.push({
+          bindingId: group.bindingId,
+          kind: 'empty',
+          breakerCurrentA: group.specification.breakerCurrentA,
+          cableSectionMm2: group.specification.cableSectionMm2,
+          poles: group.specification.poles,
+          breakerCurve: group.specification.breakerCurve
+        })
+        continue
+      }
+      for (const component of drawable) {
+        entries.push({
+          bindingId: group.bindingId,
+          kind: component.role === 'switch' ? 'switch' : 'load',
+          sourceShapeId: component.shapeId,
+          breakerCurrentA: group.specification.breakerCurrentA,
+          cableSectionMm2: group.specification.cableSectionMm2,
+          poles: group.specification.poles,
+          breakerCurve: group.specification.breakerCurve,
+          sourcePath: component.path,
+          sourceName: component.name
+        })
+      }
+    }
+    return entries
   }
 
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; cableSectionMm2?: number; cableConductors?: number; cableType?: string; cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; family: string; autoIncludeFamily: boolean }
+    options: { amps: number; cableSectionMm2?: number; cableConductors?: number; cableType?: string; cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; family: string; autoIncludeFamily: boolean; bindingIds?: string[] }
   ): boolean {
-    const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
+    const includedBindings = options.bindingIds?.length ? new Set(options.bindingIds) : null
+    const familyComponents = options.autoIncludeFamily
+      ? this.#groundplanComponentsForFamily(options.family)
+          .filter((component) => !includedBindings || includedBindings.has(component.bindingId))
+      : []
     const result = buildKamrailCircuitBundle({
       rail,
       anchorX,
@@ -2605,8 +2690,7 @@ export class CadleApp extends LiteElement {
       oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
       oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
       symbolContentBounds,
-      branchStroke: ONEWIRE_BRANCH_STROKE,
-      kamrailAttachOffset: KAMRAIL_ATTACH_OFFSET
+      branchStroke: ONEWIRE_BRANCH_STROKE
     })
 
     if (!result) return false
@@ -2949,7 +3033,7 @@ export class CadleApp extends LiteElement {
   async #updateCircuitProperties(
     bindingId: string,
     update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>,
-    regenerateOneWire = true
+    updateOneWirePresentation = true
   ): Promise<void> {
     if (!this.#projectKey || !this.#project) return
     const circuitKey = bindingId.trim().toUpperCase()
@@ -2974,12 +3058,49 @@ export class CadleApp extends LiteElement {
     cadleShell.project = this.#project
     await setProjectData(this.#projectKey, this.#project)
     const currentPageType = this.#pageKey ? this.#project.pages[this.#pageKey]?.pageType : undefined
-    if (currentPageType !== 'onewire' || !regenerateOneWire) return
-    const oneWirePages = Object.entries(this.#project.pages)
-      .filter(([, page]) => page.pageType === 'onewire')
-      .sort(([, left], [, right]) => (left.order ?? 0) - (right.order ?? 0))
-    const pageIndex = Math.max(0, oneWirePages.findIndex(([key]) => key === this.#pageKey))
-    this.generateAutoOneWire(pageIndex)
+    if (currentPageType !== 'onewire' || !updateOneWirePresentation) return
+    this.#updateOneWireCircuitPresentation(circuitKey)
+  }
+
+  #updateOneWireCircuitPresentation(circuitKey: string): void {
+    const groups = this.analyzeBindings().groups.filter((group) => group.family === circuitKey)
+    const specification = groups[0]?.specification
+    if (!specification) return
+
+    const cableInstallation = specification.cableInstallation ?? 'conduit-recessed'
+    const labels: Record<string, string> = {
+      'breaker-poles': `${specification.poles}P`,
+      'breaker-current': `${specification.breakerCurve ?? 'C'}${specification.breakerCurrentA}A`,
+      'breaker-phase': oneWirePhaseLabelText(specification.phaseConfiguration),
+      'cable-section': `${specification.cableConductors}G${specification.cableSectionMm2} mm² ${specification.cableType.replace('-', ' ')}`
+    }
+    let changed = false
+
+    this.#document.shapes = this.#document.shapes.map((shape) => {
+      const link = shape.sourceLink
+      if (link?.kind !== 'board' || link.id !== circuitKey) return shape
+
+      if (shape.kind === 'text' && link.role && labels[link.role] !== undefined) {
+        const text = labels[link.role]
+        if (shape.text === text) return shape
+        changed = true
+        return { ...shape, text }
+      }
+
+      if (shape.kind === 'symbol' && link.role === 'cable-installation') {
+        const path = oneWireCableInstallationPath(cableInstallation)
+        const name = `Cable ${cableInstallation}`
+        if (shape.path === path && shape.name === name && shape.scale >= 3) return shape
+        changed = true
+        return { ...shape, path, name, scale: Math.max(3, shape.scale) }
+      }
+
+      return shape
+    })
+
+    if (!changed) return
+    this.#pushHistory()
+    this.#render()
   }
 
   #rubberBandTemplate() {

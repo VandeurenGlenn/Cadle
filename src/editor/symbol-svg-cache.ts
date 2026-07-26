@@ -1,3 +1,5 @@
+import { symbolTextFieldsFor } from './symbol-metadata.js'
+
 export type CachedSymbolSvg = {
   inner: string
   viewBox: string
@@ -102,7 +104,7 @@ const toVarValue = (prop: string, value: string): string => {
 const serializeStyle = (declarations: Map<string, string>): string =>
   [...declarations].map(([key, value]) => `${key}:${toVarValue(key, value)}`).join(';')
 
-const sanitizeSvg = (source: string): CachedSymbolSvg | null => {
+const sanitizeSvg = (source: string, path: string): CachedSymbolSvg | null => {
   if (typeof DOMParser === 'undefined') return null
   const parser = new DOMParser()
   const doc = parser.parseFromString(source, 'image/svg+xml')
@@ -162,6 +164,10 @@ const sanitizeSvg = (source: string): CachedSymbolSvg | null => {
   while (current) {
     inlineElementStyle(current)
     current = walker.nextNode() as Element | null
+  }
+
+  if (symbolTextFieldsFor(path).length) {
+    root.querySelectorAll('text, desc').forEach((node) => node.remove())
   }
 
   const viewBox = root.getAttribute('viewBox') || '0 0 100 100'
@@ -262,6 +268,14 @@ const collectTextFieldCandidates = (doc: Document): TextFieldCandidate[] => {
 }
 
 export const listEditableSymbolTextFields = (path: string): EditableSymbolTextField[] => {
+  const registered = symbolTextFieldsFor(path)
+  if (registered.length) {
+    return registered.map((field) => ({
+      key: field.key,
+      label: field.label,
+      value: field.defaultValue
+    }))
+  }
   const cached = getCachedSymbolSvg(path)
   if (!cached) return []
   const doc = symbolDocFromInner(cached.inner)
@@ -324,7 +338,7 @@ export const preloadSymbolSvg = async (path: string): Promise<void> => {
     }
 
     if (!source) return
-    const cached = sanitizeSvg(source)
+    const cached = sanitizeSvg(source, path)
     if (cached) symbolSvgCache.set(path, cached)
   } catch {
     // Ignore symbol fetch/parse failures; caller can fall back to image rendering.

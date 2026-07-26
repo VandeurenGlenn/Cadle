@@ -232,7 +232,10 @@ export async function ensureCustomCatalogLoaded(): Promise<void> {
 
   initializingPromise = (async () => {
     const persisted = await readPersistedSymbols()
-    symbolsCache = persisted
+    symbolsCache = persisted.filter((symbol) => symbol.name.trim().toLowerCase() !== 'spot')
+    if (symbolsCache.length !== persisted.length) {
+      await persistSymbols(symbolsCache)
+    }
 
     const persistedFolders = await readPersistedFolders()
     const persistedCategories = await readPersistedCategories()

@@ -59,10 +59,6 @@ export class ValidationReportModal extends LiteElement {
     this.dispatchEvent(new CustomEvent('focus-binding', { bubbles: true, composed: true, detail: { bindingId } }))
   }
 
-  #generateOneWire() {
-    this.dispatchEvent(new CustomEvent('generate-one-wire', { bubbles: true, composed: true }))
-  }
-
   render() {
     const report = this.report
     if (!report) return html``
@@ -156,12 +152,6 @@ export class ValidationReportModal extends LiteElement {
           </div>
           <div class="footer-actions">
             <button @click=${this.#close}>Done</button>
-            <button
-              class="primary"
-              ?disabled=${!report.valid}
-              @click=${this.#generateOneWire}>
-              Generate One-Wire
-            </button>
           </div>
         </div>
       </div>

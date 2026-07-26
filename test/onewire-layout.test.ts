@@ -3,6 +3,7 @@ import test from 'node:test'
 import { ONE_WIRE_PRESETS } from '../src/editor/constants.ts'
 import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.ts'
 import { buildKamrailCircuitBundle, buildOneWireBreakerSection } from '../src/editor/layout/onewire-helpers.ts'
+import { oneWireSymbolNodeInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 
 const idSequence = () => {
@@ -45,13 +46,12 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
       width: 24,
       height: 24
     }),
-    branchStroke: '#000000',
-    kamrailAttachOffset: 20
+    branchStroke: '#000000'
   })
 
   assert.deepEqual(
     result.shapes.map((shape) => shape.kind),
-    ['line', 'symbol', 'text', 'text', 'text', 'text', 'text', 'symbol']
+    ['symbol', 'text', 'text', 'text', 'text', 'text', 'symbol']
   )
   assert.ok(result.shapes.every((shape) => shape.bindingId === 'A1'))
   assert.equal(new Set(result.shapes.map((shape) => shape.groupId)).size, 1)
@@ -72,15 +72,17 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   const cableSection = result.shapes.find((shape) => shape.sourceLink?.role === 'cable-section')
   const cableInstallation = result.shapes.find((shape) => shape.sourceLink?.role === 'cable-installation')
   const phase = result.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')
-  assert.ok(cableSection?.kind === 'text' && cableSection.position.x > 400 && cableSection.position.y < 668)
-  assert.equal(cableSection?.kind === 'text' ? cableSection.scale : null, 0.8)
-  assert.ok(phase?.kind === 'text' && phase.position.x > 400 && phase.position.y <= 682)
-  assert.ok(cableSection?.kind === 'text' && result.breakerContentTopY > cableSection.position.y)
+  assert.ok(cableSection?.kind === 'text' && cableSection.position.x > 400)
+  assert.equal(cableSection?.kind === 'text' ? cableSection.scale : null, 0.65)
+  assert.equal(cableSection?.kind === 'text' ? cableSection.rotation : null, -90)
+  assert.ok(phase?.kind === 'text' && phase.position.x < 400 && phase.position.y < 700)
+  assert.ok(cableSection?.kind === 'text' && cableSection.position.y < 700)
   assert.equal(
     cableInstallation?.kind === 'symbol' ? cableInstallation.path : null,
     'symbols/Wires/Cable in conduit recessed in wall.svg'
   )
-  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.scale : null, 2)
+  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.scale : null, 3)
+  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.strokeWidth : null, 1)
 
   const configuredPhase = buildOneWireBreakerSection(
     700,
@@ -100,8 +102,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
         width: 24,
         height: 24
       }),
-      branchStroke: '#000000',
-      kamrailAttachOffset: 20
+      branchStroke: '#000000'
     },
     { phaseConfiguration: 'L1+N' }
   )
@@ -112,12 +113,16 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
     'L1+N'
   )
 
-  const connector = result.shapes[0]
-  assert.equal(connector.kind, 'line')
-  if (connector.kind === 'line') {
-    assert.deepEqual(connector.start, { x: 400, y: 680 })
-    assert.deepEqual(connector.end, { x: 400, y: 700 })
-  }
+  const placedBreaker = result.shapes.find(
+    (shape): shape is Extract<Shape, { kind: 'symbol' }> =>
+      shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker'
+  )
+  assert.ok(placedBreaker)
+  const breakerNode = oneWireSymbolNodeInfo(placedBreaker.path, placedBreaker.scale)
+  assert.ok(breakerNode)
+  assert.equal(placedBreaker.position.x + breakerNode.offset.x, 400)
+  assert.equal(placedBreaker.position.y + breakerNode.offset.y, 695)
+  assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'feed'))
 })
 
 test('reuses every ground-plan outlet symbol in a multi-outlet circuit', () => {
@@ -152,8 +157,7 @@ test('reuses every ground-plan outlet symbol in a multi-outlet circuit', () => {
       width: 24,
       height: 24
     }),
-    branchStroke: '#000000',
-    kamrailAttachOffset: 20
+    branchStroke: '#000000'
   })
 
   assert.ok(result)
@@ -166,7 +170,7 @@ test('reuses every ground-plan outlet symbol in a multi-outlet circuit', () => {
 
 test('keeps spotlight and lamp symbols distinct when collapsing repeated lights', () => {
   const lampPath = 'symbols/Consumption appliances/Lighting.svg'
-  const spotPath = 'symbols/Consumption appliances/Recessed spotlight.svg'
+  const spotPath = 'symbols/Consumption appliances/Spot.svg'
   const result = buildKamrailCircuitBundle({
     rail: {
       id: 'rail',
@@ -182,9 +186,9 @@ test('keeps spotlight and lamp symbols distinct when collapsing repeated lights'
       autoIncludeFamily: true
     },
     familyComponents: [
+      { bindingId: 'L1', kind: 'load', sourceShapeId: 'spot-1', sourcePath: spotPath, sourceName: 'Spot' },
       { bindingId: 'L1', kind: 'load', sourceShapeId: 'lamp-1', sourcePath: lampPath, sourceName: 'Lamp' },
-      { bindingId: 'L1', kind: 'load', sourceShapeId: 'lamp-2', sourcePath: lampPath, sourceName: 'Lamp' },
-      { bindingId: 'L1', kind: 'load', sourceShapeId: 'spot-1', sourcePath: spotPath, sourceName: 'Spot' }
+      { bindingId: 'L1', kind: 'load', sourceShapeId: 'lamp-2', sourcePath: lampPath, sourceName: 'Lamp' }
     ],
     nextShapeId: idSequence(),
     oneWireComponentSymbol: (kind) => ({
@@ -198,8 +202,7 @@ test('keeps spotlight and lamp symbols distinct when collapsing repeated lights'
       width: 24,
       height: 24
     }),
-    branchStroke: '#000000',
-    kamrailAttachOffset: 20
+    branchStroke: '#000000'
   })
 
   assert.ok(result)
@@ -207,5 +210,98 @@ test('keeps spotlight and lamp symbols distinct when collapsing repeated lights'
     (shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
   )
   assert.deepEqual(loads.map((shape) => shape.kind === 'symbol' ? shape.path : ''), [lampPath, spotPath])
+  const [lamp, spot] = loads
+  assert.ok(
+    lamp?.kind === 'symbol'
+      && spot?.kind === 'symbol'
+      && (spot.position.x - 12) - (lamp.position.x + 12) >= 8
+  )
   assert.ok(result.shapes.some((shape) => shape.kind === 'text' && shape.text === 'x2'))
+})
+
+test('draws a breaker row without inventing a load symbol', () => {
+  const result = buildKamrailCircuitBundle({
+    rail: {
+      id: 'rail',
+      kind: 'line',
+      start: { x: 80, y: 700 },
+      end: { x: 900, y: 700 }
+    },
+    anchorX: 400,
+    options: {
+      amps: 20,
+      cableSectionMm2: 2.5,
+      family: 'R',
+      autoIncludeFamily: true
+    },
+    familyComponents: [{ bindingId: 'R1', kind: 'empty' }],
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: (kind) => ({
+      name: kind === 'breaker' ? 'Automaat' : 'Fallback',
+      path: kind === 'breaker' ? 'symbols/One-wire/Custom breaker.svg' : 'symbols/Fallback.svg'
+    }),
+    oneWireSymbolScale: () => 1,
+    symbolContentBounds: (shape) => ({
+      x: shape.position.x - 12,
+      y: shape.position.y - 12,
+      width: 24,
+      height: 24
+    }),
+    branchStroke: '#000000'
+  })
+
+  assert.ok(result)
+  assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'number-label'))
+  assert.ok(!result.shapes.some(
+    (shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
+  ))
+})
+
+test('places a lone circuit device directly on the trunk without a numbered row', () => {
+  const result = buildKamrailCircuitBundle({
+    rail: {
+      id: 'rail',
+      kind: 'line',
+      start: { x: 80, y: 700 },
+      end: { x: 900, y: 700 }
+    },
+    anchorX: 400,
+    options: {
+      amps: 20,
+      cableSectionMm2: 2.5,
+      family: 'U',
+      autoIncludeFamily: true
+    },
+    familyComponents: [{
+      bindingId: 'U',
+      kind: 'load',
+      sourceShapeId: 'inverter',
+      sourcePath: 'symbols/Consumption appliances/PV inverter.svg',
+      sourceName: 'PV inverter'
+    }],
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: (kind) => ({
+      name: kind === 'breaker' ? 'Automaat' : 'Fallback',
+      path: kind === 'breaker' ? 'symbols/One-wire/Custom breaker.svg' : 'symbols/Fallback.svg'
+    }),
+    oneWireSymbolScale: () => 1,
+    symbolContentBounds: (shape) => ({
+      x: shape.position.x - 12,
+      y: shape.position.y - 12,
+      width: 24,
+      height: 24
+    }),
+    branchStroke: '#000000'
+  })
+
+  assert.ok(result)
+  const device = result.shapes.find(
+    (shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'inverter'
+  )
+  assert.ok(device?.kind === 'symbol')
+  assert.equal(device.position.x, 400)
+  assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'number-label'))
+  assert.ok(!result.shapes.some(
+    (shape) => shape.kind === 'line' && shape.start.y === shape.end.y && shape.bindingId === 'U'
+  ))
 })

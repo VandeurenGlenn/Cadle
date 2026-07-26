@@ -45,7 +45,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /Custom breaker\.svg$/i,
     spec: {
       viewBox: { width: 28.783, height: 28.8265 },
-      node: { x: 15.0236, y: 28.47 },
+      node: { x: 15.3836, y: 28.47 },
       cutRadius: 2.83465,
       oneWireScale: 3,
       rotation: 0
@@ -93,13 +93,23 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    // Spot symbol should sit inline on the branch and keep the wire continuous.
+    // Recessed spotlight should sit inline on the branch and keep the wire continuous.
     match: /consumption appliances\/recessed spotlight\.svg$/i,
     spec: {
       viewBox: { width: 13.2, height: 13.2 },
       node: { x: 2, y: 6.6 },
       cutRadius: null,
       oneWireScale: 0.82
+    }
+  },
+  {
+    // Circular spot with an X, matching its ground-plan representation.
+    match: /consumption appliances\/spot\.svg$/i,
+    spec: {
+      viewBox: { width: 16, height: 16 },
+      node: { x: 1, y: 8 },
+      cutRadius: null,
+      oneWireScale: 1
     }
   },
   {

@@ -1,5 +1,6 @@
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
+import { symbolTextLayer } from '../symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import type { PaperPresetConfig } from '../constants.js'
 import type { Project } from '../../types.js'
@@ -312,13 +313,14 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
       const symbolSvg = getCachedSymbolSvg(shape.path)
       if (symbolSvg) {
         const symbolInner = applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
+        const metadataText = symbolTextLayer(shape.path, shape.symbolTextOverrides)
         const symbolStyle =
           `${shape.fill ? `--symbol-fill:${escapeHtml(shape.fill)};` : ''}` +
           `${shape.stroke ? `--symbol-stroke:${escapeHtml(shape.stroke)};` : ''}` +
           `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}</svg>
+            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText}</svg>
           </g>
         `
       }

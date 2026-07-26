@@ -1,11 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="28.783" height="28.8265" viewBox="0 0 28.783 28.8265">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28.783 28.8265" data-cadle-symbol="1">
   <title>Cadle circuit breaker</title>
-  <g transform="translate(0.36,-0.36)">
-    <g transform="translate(5.29356,0)">
-      <path d="M1.76 11.03 3.28 10.28 1.53 6.72 0 7.47Z" fill="#000"/>
-      <path d="M9.73.48v5.67M9.73 28.83v-5.67l-4.2-8.4-4.02-8.04M8.7 13.15l-3.17 1.62-3.29 1.67M1.76 11.03l1.52-.75-1.75-3.56L0 7.47l1.76 3.56"
-        fill="none" stroke="#000" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
+  <g fill="none" stroke="#000" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.3836.12v5.67M15.3836 28.47V22.8l-4.2-8.4-4.02-8.04"/>
+    <path d="m14.3536 12.79-3.17 1.62-3.29 1.67"/>
+    <path d="m7.4136 10.67 1.52-.75-1.75-3.56-1.53.75Z" fill="#000"/>
   </g>
 </svg>

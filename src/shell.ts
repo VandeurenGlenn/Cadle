@@ -29,7 +29,7 @@ import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
-import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
+import { Project, type Projects, type UUID, type Catalog, type JsonValue, type OneWireTopologyPlan } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from './editor/circuit-analysis.js'
@@ -37,6 +37,8 @@ import { ensureOneWirePage } from './shell/page-operations.js'
 import { clonePageSchema } from './shell/page-schema.js'
 import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
 import { evaluateOneWirePreflight } from './shell/onewire-preflight.js'
+import { validateOneWireTopology } from './editor/onewire-topology-schema.js'
+import { storeOneWireTrainingExample } from './editor/onewire-training-data.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -193,6 +195,12 @@ export class AppShell extends LiteElement {
   @property({ type: Boolean })
   accessor projectDetailsDialogOpen = false
 
+  @property({ type: Boolean })
+  accessor oneWirePromptDialogOpen = false
+
+  @property({ type: Boolean })
+  accessor oneWireTrainingPanelOpen = false
+
   _freeDraw: boolean = false
   set freeDraw(value: boolean) {
     const next = !!value
@@ -290,7 +298,9 @@ export class AppShell extends LiteElement {
       import('./elements/modals/validation-report.js'),
       import('./elements/modals/template-library.js'),
       import('./elements/modals/project-details-dialog.js'),
-      import('./elements/panels/history-panel.js')
+      import('./elements/modals/onewire-prompt-dialog.js'),
+      import('./elements/panels/history-panel.js'),
+      import('./elements/panels/onewire-training-panel.js')
     ])
     return this.#nativeEditorModules
   }
@@ -375,6 +385,70 @@ export class AppShell extends LiteElement {
   openProjectDetailsDialog() {
     if (!this.projectKey || !this.project) return
     this.projectDetailsDialogOpen = true
+  }
+
+  openOneWirePromptDialog() {
+    if (!this.projectKey || !this.project) return
+    this.oneWirePromptDialogOpen = true
+  }
+
+  openOneWireTrainingData() {
+    this.oneWireTrainingPanelOpen = true
+  }
+
+  #applyOneWireTopology = async (detail: {
+    prompt: string
+    topology: OneWireTopologyPlan
+    parserTopology: OneWireTopologyPlan
+  }) => {
+    if (!this.projectKey || !this.project) return
+    const validation = validateOneWireTopology(detail.topology)
+    if (!validation.valid || !validation.value) {
+      globalThis.alert(`Ongeldige schema-opbouw: ${validation.errors.join(' ')}`)
+      return
+    }
+    this.project = {
+      ...this.project,
+      oneWirePrompt: detail.prompt,
+      oneWireTopology: validation.value
+    }
+    const mainDifferential = detail.topology.mainDifferential
+    if (mainDifferential) {
+      const profile = this.project.electricalProfile ?? {
+        standard: 'AREI' as const,
+        edition: 'Book 1 (current edition)',
+        distributor: '',
+        supplyConfiguration: '1x230V+N' as const,
+        supplyVoltageV: 230,
+        phaseConfiguration: 'single-phase' as const,
+        earthingSystem: 'unknown' as const,
+        defaultPoles: 2,
+        boards: [{ id: 'main', name: 'Main distribution board', rails: [{ id: 'rail-1', name: 'Rail 1' }] }]
+      }
+      const boards = profile.boards?.length
+        ? profile.boards.map((board, index) => index === 0
+            ? {
+                ...board,
+                mainDifferential: {
+                  id: board.mainDifferential?.id ?? 'main-differential',
+                  ratedCurrentA: mainDifferential.ratedCurrentA,
+                  sensitivityMa: mainDifferential.sensitivityMa,
+                  poles: board.mainDifferential?.poles ?? profile.defaultPoles,
+                  type: board.mainDifferential?.type ?? 'A'
+                }
+              }
+            : board)
+        : profile.boards
+      this.project.electricalProfile = { ...profile, boards }
+    }
+    await setProjectData(this.projectKey, this.project)
+    try {
+      await storeOneWireTrainingExample(detail.prompt, detail.parserTopology, validation.value)
+    } catch (error) {
+      console.warn('Unable to store local one-wire training example.', error)
+    }
+    this.oneWirePromptDialogOpen = false
+    await this.generateAutoOneWireSchema()
   }
 
   #mergeCatalogWithBoundSymbols(
@@ -933,15 +1007,19 @@ export class AppShell extends LiteElement {
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
 
-    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
-    if (nativeApp?.waitForPageReady) {
-      await nativeApp.waitForPageReady(key)
-      return
-    }
+    await this.#nativeAppForPage(key)
+  }
 
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-    })
+  async #nativeAppForPage(pageKey: string): Promise<NativeAppElement | null> {
+    // A route/page change may replace <cadle-app>. Re-query every frame instead
+    // of awaiting the editor instance that belonged to the previous page.
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+      if (!nativeApp?.waitForPageReady) continue
+      if (await nativeApp.waitForPageReady(pageKey)) return nativeApp
+    }
+    return null
   }
 
   async generateAutoOneWireSchema() {
@@ -977,16 +1055,16 @@ export class AppShell extends LiteElement {
     this.project = oneWirePage.project
 
     await this.loadPage(oneWirePage.pageKey)
-    const pageReady = await nativeApp?.waitForPageReady?.(oneWirePage.pageKey)
-    if (!pageReady) {
+    let activeApp = await this.#nativeAppForPage(oneWirePage.pageKey)
+    if (!activeApp) {
       globalThis.alert('The one-wire page did not finish loading. Please try again.')
       return
     }
-    const result = nativeApp?.generateAutoOneWire?.(0)
+    const result = activeApp.generateAutoOneWire?.(0)
     if (!result?.generated) globalThis.alert(result?.message ?? 'Unable to generate the one-wire diagram.')
     if (!result?.generated || !result.pageCount || result.pageCount <= 1) return
 
-    await nativeApp.flushPendingSave?.()
+    await activeApp.flushPendingSave?.()
     for (let pageIndex = 1; pageIndex < result.pageCount; pageIndex += 1) {
       const pageName = `One-wire diagram ${pageIndex + 1}`
       let overflowPageKey = Object.entries(this.project.pages).find(
@@ -1001,9 +1079,13 @@ export class AppShell extends LiteElement {
       }
       if (!overflowPageKey) continue
       await this.loadPage(overflowPageKey)
-      await nativeApp.waitForPageReady?.(overflowPageKey)
-      nativeApp.generateAutoOneWire?.(pageIndex)
-      await nativeApp.flushPendingSave?.()
+      activeApp = await this.#nativeAppForPage(overflowPageKey)
+      if (!activeApp) {
+        globalThis.alert(`The one-wire page “${pageName}” did not finish loading.`)
+        return
+      }
+      activeApp.generateAutoOneWire?.(pageIndex)
+      await activeApp.flushPendingSave?.()
     }
     this.project = await getProjectData(this.projectKey)
     await this.loadPage(oneWirePage.pageKey)
@@ -1130,11 +1212,8 @@ export class AppShell extends LiteElement {
         .report=${this.validationReportData}
         .projectName=${this.projectName ?? this.project?.name ?? ''}
         @close=${() => (this.validationReportOpen = false)}
-        @focus-binding=${(event: CustomEvent<{ bindingId: string }>) => this.#focusBindingGroup(event.detail.bindingId)}
-        @generate-one-wire=${async () => {
-          this.validationReportOpen = false
-          await this.generateAutoOneWireSchema()
-        }}></validation-report>
+        @focus-binding=${(event: CustomEvent<{ bindingId: string }>) => this.#focusBindingGroup(event.detail.bindingId)}>
+      </validation-report>
       <template-library
         .open=${this.templateLibraryOpen}
         .templates=${circuitTemplates.map(({ id, name, description, category, highlights }) => ({
@@ -1159,6 +1238,21 @@ export class AppShell extends LiteElement {
           this.projects = event.detail.projects
           this.projectDetailsDialogOpen = false
         }}></project-details-dialog>
+      <onewire-prompt-dialog
+        .open=${this.oneWirePromptDialogOpen}
+        .prompt=${this.project?.oneWirePrompt ?? ''}
+        @close=${() => (this.oneWirePromptDialogOpen = false)}
+        @apply-topology=${(event: CustomEvent<{
+          prompt: string
+          topology: OneWireTopologyPlan
+          parserTopology: OneWireTopologyPlan
+        }>) => {
+          void this.#applyOneWireTopology(event.detail)
+        }}></onewire-prompt-dialog>
+      <onewire-training-panel
+        .open=${this.oneWireTrainingPanelOpen}
+        @close=${() => (this.oneWireTrainingPanelOpen = false)}>
+      </onewire-training-panel>
       <history-panel
         .open=${this.historyPanelOpen}
         .entries=${this.historyEntries}

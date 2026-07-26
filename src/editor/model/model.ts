@@ -51,6 +51,11 @@ const copyGeneratedMetadata = (
   }
 }
 
+const currentSymbolPath = (path: string, name: string): string =>
+  /^data:image\/svg\+xml(?:;|,)/i.test(path) && name.trim().toLowerCase() === 'spot'
+    ? 'symbols/Consumption appliances/Spot.svg'
+    : path
+
 export const sanitizeShapes = (values: unknown[]): Shape[] => {
   const shapes: Shape[] = []
   for (const value of values) {
@@ -169,6 +174,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) text.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) text.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       copyGeneratedMetadata(raw, text)
+      if (text.sourceLink?.role === 'cable-section') text.rotation = -90
       shapes.push(text)
       continue
     }
@@ -179,12 +185,13 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       typeof raw.name === 'string' &&
       typeof raw.path === 'string'
     ) {
+      const path = currentSymbolPath(raw.path, raw.name)
       const symbol: SymbolShape = {
         id: raw.id,
         kind: 'symbol',
         position: clonePoint(raw.position),
-        name: raw.name,
-        path: raw.path,
+        name: path !== raw.path ? 'Spot' : raw.name,
+        path,
         scale: typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0 ? raw.scale : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
@@ -216,6 +223,10 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         symbol.catalogShapes = sanitizeShapes(raw.catalogShapes)
       }
       copyGeneratedMetadata(raw, symbol)
+      if (symbol.sourceLink?.role === 'cable-installation' && symbol.scale < 3) {
+        symbol.scale = 3
+      }
+      if (symbol.sourceLink?.role === 'cable-installation') symbol.strokeWidth = 1
       shapes.push(symbol)
       continue
     }
@@ -253,6 +264,23 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (isPoint(raw.bindingLabelOffset)) image.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       copyGeneratedMetadata(raw, image)
       shapes.push(image)
+    }
+  }
+  for (const shape of shapes) {
+    if (shape.kind !== 'text' || shape.sourceLink?.kind !== 'board' || shape.sourceLink.role !== 'cable-section') {
+      continue
+    }
+    const installation = shapes.find(
+      (candidate): candidate is SymbolShape =>
+        candidate.kind === 'symbol' &&
+        candidate.sourceLink?.kind === 'board' &&
+        candidate.sourceLink.id === shape.sourceLink?.id &&
+        candidate.sourceLink.role === 'cable-installation'
+    )
+    if (!installation) continue
+    shape.position = {
+      x: installation.position.x + 18,
+      y: installation.position.y + 30
     }
   }
   return shapes

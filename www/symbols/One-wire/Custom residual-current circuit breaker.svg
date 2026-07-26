@@ -1,15 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="38.5625" height="29.8893" viewBox="0 0 38.5625 29.8893">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38.5625 29.8893" data-cadle-symbol="1">
   <title>Cadle residual-current circuit breaker</title>
-  <g transform="translate(0.36,-0.36)">
-    <g transform="translate(5.29356,0)">
-      <path d="M1.76 12.09 3.28 11.34 1.53 7.78 0 8.53Z" fill="#000"/>
-      <path d="M9.73 1.54v5.67M9.73 29.89v-5.67l-4.2-8.39-4.02-8.05M8.7 14.22l-3.17 1.61-3.29 1.67M1.76 12.09l1.52-.75-1.75-3.56L0 8.53l1.76 3.56"
-        fill="none" stroke="#000" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
-    <g transform="translate(21.2598,-19.9198)">
-      <path d="M2.41 25.07 0 29.89h4.82Z" fill="none" stroke="#000" stroke-width=".24"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
+  <g fill="none" stroke="#000" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.3836 1.18v5.67M15.3836 29.53v-5.67l-4.2-8.39-4.02-8.05"/>
+    <path d="m14.3536 13.86-3.17 1.61-3.29 1.67"/>
+    <path d="m7.4136 11.73 1.52-.75-1.75-3.56-1.53.75Z" fill="#000"/>
+    <path d="m24.0298 4.7902-2.41 4.82h4.82Z"/>
   </g>
 </svg>

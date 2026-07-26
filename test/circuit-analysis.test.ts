@@ -61,6 +61,41 @@ test('keeps the original path for imported ground-plan images', () => {
   ])
 
   assert.equal(analysis.groups[0]?.components[0]?.path, sourcePath)
+  assert.equal(analysis.groups[0]?.specification.circuitType, 'sockets')
+  assert.equal(analysis.groups[0]?.specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[0]?.specification.cableSectionMm2, 2.5)
+})
+
+test('recovers legacy custom sockets that were stored with the neutral role', () => {
+  const outlet = symbol(
+    'legacy-outlet',
+    'H',
+    'Wall outlet with grounding',
+    'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg'
+  )
+  if (outlet.kind === 'symbol') {
+    outlet.electrical = {
+      role: 'neutral',
+      oneWireEligible: true,
+      circuitType: 'sockets'
+    }
+  }
+
+  const analysis = analyzeCircuits([outlet])
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.groups[0]?.loads, 1)
+  assert.equal(analysis.groups[0]?.specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[0]?.specification.cableSectionMm2, 2.5)
+})
+
+test('accepts a deliberately unloaded breaker circuit', () => {
+  const analysis = analyzeCircuits([
+    symbol('breaker', 'R1', 'Automaat', 'symbols/Protection devices/Automaat.svg')
+  ])
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.errorCount, 0)
+  assert.equal(analysis.groups[0]?.protection, 1)
+  assert.equal(analysis.groups[0]?.ready, true)
 })
 
 test('reports incomplete and unknown circuit symbols', () => {

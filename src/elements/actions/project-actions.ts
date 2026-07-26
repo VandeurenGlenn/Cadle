@@ -59,6 +59,11 @@ export class ProjectActions extends LiteElement {
         icon: 'download'
       },
       {
+        title: 'describe one-wire structure',
+        action: 'describe-one-wire',
+        icon: 'account_tree'
+      },
+      {
         title: 'generate one-wire schema',
         action: 'generate-one-wire',
         icon: 'output'
@@ -82,6 +87,11 @@ export class ProjectActions extends LiteElement {
         title: 'history panel',
         action: 'toggle-history-panel',
         icon: 'menu'
+      },
+      {
+        title: 'one-wire training data',
+        action: 'open-onewire-training-data',
+        icon: 'dataset'
       }
     ],
     draw: [
@@ -152,6 +162,9 @@ export class ProjectActions extends LiteElement {
       case 'generate-one-wire':
         cadleShell.generateAutoOneWireSchema()
         break
+      case 'describe-one-wire':
+        cadleShell.openOneWirePromptDialog()
+        break
       case 'upload':
         upload()
         break
@@ -166,6 +179,9 @@ export class ProjectActions extends LiteElement {
         break
       case 'toggle-history-panel':
         cadleShell.toggleHistoryPanel()
+        break
+      case 'open-onewire-training-data':
+        cadleShell.openOneWireTrainingData()
         break
       case 'draw-paper-a4-portrait':
         pubsub.publish('editor.controls.command', { paper: 'a4-portrait' })

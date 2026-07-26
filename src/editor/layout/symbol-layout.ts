@@ -1,6 +1,7 @@
 import { shapeBounds } from '../../editor/model/model.js'
 import type { Shape } from '../../editor/model/types.js'
 import { getCachedSymbolSvg } from '../symbol-svg-cache.js'
+import { symbolTextLayer } from '../symbol-metadata.js'
 
 export type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
 
@@ -61,7 +62,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
   host.setAttribute('viewBox', symbolSvg.viewBox)
   host.setAttribute('width', `${viewBox.width}`)
   host.setAttribute('height', `${viewBox.height}`)
-  host.innerHTML = symbolSvg.inner
+  host.innerHTML = `${symbolSvg.inner}${symbolTextLayer(path)}`
 
   let box: DOMRect | null = null
   try {

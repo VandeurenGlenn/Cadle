@@ -34,6 +34,23 @@ export type DifferentialProtection = {
   type?: 'AC' | 'A' | 'F' | 'B' | 'other'
 }
 
+export type OneWireTopologyPlan = {
+  version: 1
+  incomingCable?: {
+    conductors: number
+    sectionMm2: number
+    cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+  }
+  mainDifferential?: {
+    ratedCurrentA: number
+    sensitivityMa: number
+  }
+  residualBreaker: boolean
+  solar: boolean
+  consumers: boolean
+  solarPlacement?: 'parallel-after-main-differential'
+}
+
 export type ProjectCircuitSpecification = {
   circuitType?: 'lighting' | 'sockets' | 'motor' | 'mixed' | 'other'
   breakerCurrentA?: number
@@ -78,6 +95,8 @@ export type ProjectInput = {
   mainFuseA?: number
   electricalProfile?: ElectricalProjectProfile
   circuitSpecifications?: Record<string, ProjectCircuitSpecification>
+  oneWirePrompt?: string
+  oneWireTopology?: OneWireTopologyPlan
 }
 
 export interface Project extends ProjectInput {

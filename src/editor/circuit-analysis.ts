@@ -94,7 +94,13 @@ export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
   if (isEarthingDevice(shape.name, shape.path)) return 'neutral'
   if (isDistributionBoardDevice(shape.name, shape.path)) return 'junction'
   if (/inverter|omvormer|photovolta|\bpv\b|solar/i.test(`${shape.name} ${shape.path}`)) return 'load'
-  return shape.electrical?.role ?? inferElectricalRole(shape.name, shape.path)
+  const inferredRole = inferElectricalRole(shape.name, shape.path)
+  // Older/custom catalog entries can carry the legacy neutral/"Other" role.
+  // Do not let that stale fallback hide an otherwise recognisable socket,
+  // switch, load or protection device from one-wire generation.
+  return shape.electrical?.role && shape.electrical.role !== 'neutral'
+    ? shape.electrical.role
+    : inferredRole
 }
 
 const suggestedSpecification = (
@@ -181,7 +187,9 @@ export const analyzeCircuits = (
       circuitType:
         shape.kind === 'symbol'
           ? (shape.electrical?.circuitType ?? inferCircuitType(shape.name, shape.path))
-          : undefined
+          : shape.kind === 'image'
+            ? inferCircuitType(shape.name, shape.path)
+            : undefined
     }
     if (shape.kind === 'symbol' || shape.kind === 'image') component.path = shape.path
     const entries = grouped.get(binding.bindingId)
@@ -212,7 +220,7 @@ export const analyzeCircuits = (
         protection,
         junctions,
         neutral,
-        ready: loads > 0 || hasDistributionBoard,
+        ready: loads > 0 || protection > 0 || hasDistributionBoard,
         specification: suggestedSpecification(components, profile, explicitSpecification)
       }
     })
@@ -222,7 +230,7 @@ export const analyzeCircuits = (
     const hasDistributionBoard = group.components.some(
       (component) => component.path && isDistributionBoardDevice(component.name, component.path)
     )
-    if (group.loads === 0 && !hasDistributionBoard) {
+    if (group.loads === 0 && group.protection === 0 && !hasDistributionBoard) {
       issues.push({
         bindingId: group.bindingId,
         severity: 'error',

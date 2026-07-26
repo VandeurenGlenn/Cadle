@@ -183,10 +183,14 @@ export const buildOneWireRowSection = (
   const ROW_SYMBOL_MARGIN_X = 0
   const ROW_TOP_OFFSET_Y = 130
   const ROW_SPACING_Y = 50
+  const ROWS_PER_COLUMN = 14
+  const COLUMN_SPACING_X = 220
 
   const [bindingId, entries] = row
-  const rowY = railY - ROW_TOP_OFFSET_Y - rowIndex * ROW_SPACING_Y
-  const rowJunctionX = snapToGrid(startX)
+  const columnIndex = Math.floor(rowIndex / ROWS_PER_COLUMN)
+  const rowInColumn = rowIndex % ROWS_PER_COLUMN
+  const rowY = railY - ROW_TOP_OFFSET_Y - (ROWS_PER_COLUMN - 1 - rowInColumn) * ROW_SPACING_Y
+  const rowJunctionX = snapToGrid(startX + columnIndex * COLUMN_SPACING_X)
   const symbolBaseX = snapToGrid(rowJunctionX + 48)
   const rowGroupId = `onewire-${deps.nextShapeId()}`
 
@@ -432,21 +436,22 @@ export const buildKamrailCircuitBundle = (
   if (orderedRows.length > 0) {
     const ROW_TOP_OFFSET_Y = 130
     const ROW_SPACING_Y = 50
-    const trunkTopY = snapToGrid(railY - ROW_TOP_OFFSET_Y - (orderedRows.length - 1) * ROW_SPACING_Y)
-    const trunk: LineShape = {
-      id: deps.nextShapeId(),
-      kind: 'line',
-      start: { x: snapToGrid(startX), y: snapToGrid(breaker.breakerContentTopY) },
-      end: { x: snapToGrid(startX), y: trunkTopY },
-      stroke: deps.branchStroke,
-      strokeWidth: 1.25,
-      bindingId: options.family,
-      groupId: `onewire-${deps.nextShapeId()}`
+    const ROWS_PER_COLUMN = 14
+    const COLUMN_SPACING_X = 220
+    const columnCount = Math.ceil(orderedRows.length / ROWS_PER_COLUMN)
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const trunk: LineShape = {
+        id: deps.nextShapeId(), kind: 'line',
+        start: { x: snapToGrid(startX + columnIndex * COLUMN_SPACING_X), y: snapToGrid(breaker.breakerContentTopY) },
+        end: { x: snapToGrid(startX + columnIndex * COLUMN_SPACING_X), y: snapToGrid(railY - ROW_TOP_OFFSET_Y - (ROWS_PER_COLUMN - 1) * ROW_SPACING_Y) },
+        stroke: deps.branchStroke, strokeWidth: 1.25, bindingId: options.family,
+        groupId: `onewire-${deps.nextShapeId()}`
+      }
+      trunk.sourceLink = { kind: 'board', id: options.family, role: 'trunk' }
+      trunk.generationKey = `board:${options.family}:trunk:${columnIndex}`
+      shapes.push(trunk)
+      createdIds.push(trunk.id)
     }
-    trunk.sourceLink = { kind: 'board', id: options.family, role: 'trunk' }
-    trunk.generationKey = `board:${options.family}:trunk`
-    shapes.push(trunk)
-    createdIds.push(trunk.id)
   }
 
   for (const [rowIndex, row] of orderedRows.entries()) {

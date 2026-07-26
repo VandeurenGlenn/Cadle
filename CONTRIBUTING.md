@@ -27,7 +27,7 @@ output created only while validating a source change.
 
 - Put shape types, sanitization, and pure geometry in `src/editor/model/`.
 - Put editor controllers and use cases in `src/editor/`.
-- Keep persistence behind `src/api/` and `src/native-project-data.ts`.
+- Keep persistence behind `src/api/` and `src/data/`.
 - Keep custom elements focused on translating events and state into controller calls and rendered templates.
 - Add Node tests for pure logic under `test/`, named after the module they exercise.
 

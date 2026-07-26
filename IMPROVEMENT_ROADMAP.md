@@ -14,7 +14,7 @@ a generated but editable projection of that data.
 - `src/app.ts` is the native SVG editor and currently owns most drawing and interaction behavior.
 - `src/editor/model/` contains the canonical shape model, sanitization, geometry, and transforms.
 - `src/editor/` contains focused canvas helpers, export, one-wire layout, and circuit analysis.
-- Projects are persisted through `src/native-project-data.ts` using the canonical native shape types.
+- Editor documents are persisted through `src/data/project-document.ts` using the canonical editor model.
 - The symbol catalog supplies placement metadata; placed symbols retain normalized electrical metadata.
 
 Cadle no longer uses Fabric.js. References to a Fabric canvas or `src/fields/draw.ts` describe an obsolete version of

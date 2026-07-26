@@ -4,7 +4,7 @@ import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { repeat } from 'lit/directives/repeat.js'
 import type jsPDFType from 'jspdf'
 import styles from './app.css' with { type: 'css' }
-import { loadNativeState, saveNativeState, type NativeDocumentState } from './native-project-data.js'
+import { loadNativeState, saveNativeState, type NativeDocumentState } from './data/project-document.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
   DEFAULT_WORLD_HEIGHT,

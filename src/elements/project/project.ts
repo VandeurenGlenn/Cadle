@@ -5,7 +5,7 @@ import '@vandeurenglenn/lite-elements/drawer-item.js'
 import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
-import '../../contextmenu.js'
+import '../../ui/context-menu/context-menu.js'
 import { Project, type PageType, UUID } from '../../types.js'
 import { addPage, getProjectData, setProjectData } from '../../api/project.js'
 declare global {

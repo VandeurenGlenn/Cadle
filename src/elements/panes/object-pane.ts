@@ -437,7 +437,7 @@ export class ObjectPane extends LiteElement {
               </div>
               <div class="native-row">
                 <label><span class="native-label">Poles</span><input data-electrical-field="poles" class="native-input" type="number" min="1" step="1" .value=${String(this.#effectiveElectrical().poles ?? '')} @change=${(event: Event) => this.#updateElectrical('poles', (event.target as HTMLInputElement).value)} /></label>
-                <label><span class="native-label">Phase</span><select class="native-select" .value=${this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="single-phase">Single-phase</option><option value="three-phase">Three-phase</option></select></label>
+                <label><span class="native-label">Phase</span><select data-electrical-field="phaseConfiguration" class="native-select" .value=${this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="single-phase">Single-phase</option><option value="three-phase">Three-phase</option></select></label>
               </div>
               <div class="native-note">Values apply to this symbol and are used for its bound circuit.</div>
               <div class="native-row">

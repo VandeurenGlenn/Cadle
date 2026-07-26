@@ -1130,7 +1130,10 @@ export class AppShell extends LiteElement {
             : route === 'home'
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
-    return html`<main class="route-only">${routeContent}</main>`
+    return html`
+      <md-dialog></md-dialog>
+      <main class="route-only">${routeContent}</main>
+    `
   }
 
   render() {

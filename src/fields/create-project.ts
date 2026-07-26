@@ -110,9 +110,7 @@ export class CreateProjectField extends LiteElement {
             </section>
           </div>
           <div class="actions">
-            <md-filled-button @click=${this.#createProject}>
-              Create project
-            </md-filled-button>
+            <md-filled-button @click=${this.#createProject}>Create project</md-filled-button>
           </div>
         </div>
       </flex-container>

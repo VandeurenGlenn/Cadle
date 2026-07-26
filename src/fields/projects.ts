@@ -123,17 +123,17 @@ export class ProjectsField extends LiteElement {
   }
 
   #openPreviousProjectFromPrompt = async () => {
-    const shell = cadleShell as unknown as { openPreviousProjectFromPrompt?: () => Promise<void> | void }
+    const shell = globalThis.cadleShell as unknown as { openPreviousProjectFromPrompt?: () => Promise<void> | void }
     await shell.openPreviousProjectFromPrompt?.()
   }
 
   #dismissPreviousProjectPrompt = () => {
-    const shell = cadleShell as unknown as { dismissReopenPreviousProjectPrompt?: () => void }
+    const shell = globalThis.cadleShell as unknown as { dismissReopenPreviousProjectPrompt?: () => void }
     shell.dismissReopenPreviousProjectPrompt?.()
   }
 
   _loadProject(key: string, projectName: string) {
-    cadleShell.loadProject(key as unknown as UUID, projectName)
+    globalThis.cadleShell.loadProject(key as unknown as UUID, projectName)
   }
 
   _selectedProject() {
@@ -253,17 +253,19 @@ export class ProjectsField extends LiteElement {
     await renameProject(id, nextName)
     const projects = await getProjects()
     this.projects = projects
-    cadleShell.projects = projects
-    if (cadleShell.projectKey === (id as unknown as UUID) && cadleShell.project) {
-      cadleShell.project.name = nextName
-      cadleShell.projectName = nextName
+    const shell = globalThis.cadleShell
+    shell.projects = projects
+    if (shell.projectKey === (id as unknown as UUID) && shell.project) {
+      shell.project.name = nextName
+      shell.projectName = nextName
     }
     this._currentSelected = id
     this.contextmenu.open = false
   }
 
   async _delete(id: string) {
-    const deletingActiveProject = cadleShell.projectKey === (id as UUID)
+    const shell = globalThis.cadleShell
+    const deletingActiveProject = shell.projectKey === (id as UUID)
     await del(id)
     const projects: Projects = []
     for (const [key, value] of await getProjects()) {
@@ -272,17 +274,17 @@ export class ProjectsField extends LiteElement {
 
     const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
     this.projects = projects
-    cadleShell.projects = projects
+    shell.projects = projects
 
     if (deletingActiveProject) {
-      cadleShell.projectKey = '' as UUID
-      cadleShell.loadedPage = ''
-      cadleShell.projectName = ''
-      cadleShell.project = {} as Project
-      cadleShell.previousProjectKey = ''
-      cadleShell.previousPageKey = ''
-      cadleShell.previousProjectName = ''
-      cadleShell.showReopenPreviousProjectPrompt = false
+      shell.projectKey = '' as UUID
+      shell.loadedPage = ''
+      shell.projectName = ''
+      shell.project = {} as Project
+      shell.previousProjectKey = ''
+      shell.previousPageKey = ''
+      shell.previousProjectName = ''
+      shell.showReopenPreviousProjectPrompt = false
       localStorage.removeItem('cadle.lastOpenProjectKey')
       localStorage.removeItem('cadle.lastOpenPageKey')
       location.hash = '#!/projects'

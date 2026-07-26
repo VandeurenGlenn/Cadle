@@ -2848,7 +2848,7 @@ export class CadleApp extends LiteElement {
     }
     if (shape.sourceLink?.kind === 'board') {
       const familyMatches = analysis.groups.filter((group) => group.family === shape.sourceLink?.id)
-      if (familyMatches.length === 1) return familyMatches[0]
+      if (familyMatches.length) return familyMatches[0]
     }
     return null
   }
@@ -2883,8 +2883,14 @@ export class CadleApp extends LiteElement {
     update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>
   ): Promise<void> {
     if (!this.#projectKey || !this.#project) return
+    const targetBindings = new Set(
+      this.analyzeBindings().groups
+        .filter((group) => group.bindingId === bindingId || group.family === bindingId)
+        .map((group) => group.bindingId)
+    )
+    targetBindings.add(bindingId)
     const apply = (shape: Shape): Shape => {
-      if (shape.kind !== 'symbol' || shape.bindingId?.trim().toUpperCase() !== bindingId) return shape
+      if (shape.kind !== 'symbol' || !targetBindings.has(shape.bindingId?.trim().toUpperCase() ?? '')) return shape
       const electrical = { ...(shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path)) }
       for (const [key, value] of Object.entries(update)) {
         if (value === null || value === undefined) delete (electrical as Record<string, unknown>)[key]

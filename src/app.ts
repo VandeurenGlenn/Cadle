@@ -2922,6 +2922,27 @@ export class CadleApp extends LiteElement {
       .sort(([, left], [, right]) => (left.order ?? 0) - (right.order ?? 0))
     const pageIndex = Math.max(0, oneWirePages.findIndex(([key]) => key === this.#pageKey))
     this.generateAutoOneWire(pageIndex)
+
+    // Keep the generated breaker glyph in sync immediately with the value
+    // edited in the object pane. Its SVG text is stored as an override and is
+    // otherwise independent from the source circuit symbol fields.
+    const nextGroup = this.analyzeBindings().groups.find((group) => group.bindingId === bindingId || group.family === bindingId)
+    if (nextGroup) {
+      this.#document.shapes = this.#document.shapes.map((shape) => {
+        if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker') return shape
+        if (shape.sourceLink.kind !== 'board' || shape.sourceLink.id !== nextGroup.family) return shape
+        return {
+          ...shape,
+          symbolTextOverrides: {
+            ...(shape.symbolTextOverrides ?? {}),
+            'desc:nP': `${nextGroup.specification.poles}P`,
+            'desc:n': nextGroup.specification.phaseConfiguration === 'three-phase' ? '3N' : '1N',
+            'desc:20A': `${nextGroup.specification.breakerCurrentA}A`
+          }
+        }
+      })
+      this.#render()
+    }
   }
 
   #rubberBandTemplate() {

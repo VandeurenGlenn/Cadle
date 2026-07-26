@@ -19,7 +19,6 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
   { action: 'draw-line', icon: 'horizontal_rule', title: 'Draw line' },
-  { action: 'draw-onewire', icon: 'electrical_services', title: 'Draw one-wire schematic' },
   { action: 'draw-square', icon: 'square', title: 'Draw box' },
   { action: 'draw-circle', icon: 'radio_button_unchecked', title: 'Draw circle' },
   { action: 'draw-arc', icon: 'line_curve', title: 'Draw arc' },
@@ -94,7 +93,7 @@ export class CadleActions extends LiteElement {
   }
 
   #isToolActive(tool: DrawTool) {
-    if (tool.action === '') return !this.currentAction || this.currentAction === 'select'
+    if (tool.action === 'select') return !this.currentAction || this.currentAction === 'select'
     return this.currentAction === tool.action
   }
 

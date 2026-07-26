@@ -91,16 +91,10 @@ export class ProjectActions extends LiteElement {
       { title: 'A3 landscape', action: 'draw-paper-a3-landscape', icon: 'width' },
       { title: 'Margin +1 mm', action: 'draw-margin-inc', icon: 'swap-horiz' },
       { title: 'Margin -1 mm', action: 'draw-margin-dec', icon: 'swap-horiz' },
-      { title: 'Lighting preset', action: 'draw-onewire-lighting', icon: 'electrical_services' },
-      { title: 'Sockets preset', action: 'draw-onewire-sockets', icon: 'electrical_services' },
-      { title: 'Motor preset', action: 'draw-onewire-motor', icon: 'electrical_services' },
-      { title: 'Add breaker', action: 'draw-onewire-compose-breaker', icon: 'add' },
+      { title: 'Add breaker', action: 'draw-onewire-compose-breaker', icon: 'electric_bolt' },
       { title: 'Add switch', action: 'draw-onewire-compose-switch', icon: 'add' },
-      { title: 'Add kamrail', action: 'draw-onewire-compose-kamrail', icon: 'add' },
+      { title: 'Add kamrail', action: 'draw-onewire-compose-kamrail', icon: 'linear_scale' },
       { title: 'Add load', action: 'draw-onewire-compose-load', icon: 'add' },
-      { title: 'Next circuit', action: 'draw-onewire-next', icon: 'polyline' },
-      { title: 'New panel', action: 'draw-onewire-reset-panel', icon: 'layers' },
-      { title: 'Realign one-wire', action: 'draw-onewire-realign', icon: 'align_horizontal_left' },
       { title: 'Export JSON', action: 'draw-export-json', icon: 'download' },
       { title: 'Export PDF', action: 'draw-export-pdf', icon: 'save' },
       { title: 'Print', action: 'draw-print-svg', icon: 'save' },
@@ -191,15 +185,6 @@ export class ProjectActions extends LiteElement {
       case 'draw-margin-dec':
         pubsub.publish('editor.controls.command', { action: 'margin-dec' })
         break
-      case 'draw-onewire-lighting':
-        pubsub.publish('editor.controls.command', { onewirePreset: 'lighting' })
-        break
-      case 'draw-onewire-sockets':
-        pubsub.publish('editor.controls.command', { onewirePreset: 'sockets' })
-        break
-      case 'draw-onewire-motor':
-        pubsub.publish('editor.controls.command', { onewirePreset: 'motor' })
-        break
       case 'draw-onewire-compose-breaker':
         pubsub.publish('editor.controls.command', { onewireCompose: 'breaker' })
         break
@@ -211,15 +196,6 @@ export class ProjectActions extends LiteElement {
         break
       case 'draw-onewire-compose-load':
         pubsub.publish('editor.controls.command', { onewireCompose: 'load' })
-        break
-      case 'draw-onewire-next':
-        pubsub.publish('editor.controls.command', { action: 'onewire-next' })
-        break
-      case 'draw-onewire-reset-panel':
-        pubsub.publish('editor.controls.command', { action: 'onewire-reset-panel' })
-        break
-      case 'draw-onewire-realign':
-        pubsub.publish('editor.controls.command', { action: 'onewire-realign' })
         break
       case 'draw-export-json':
         pubsub.publish('editor.controls.command', { action: 'export-json' })

@@ -137,6 +137,7 @@ export const iconSetTemplate = html`
       <span name="radio_button_unchecked">@symbol-radio_button_unchecked</span>
       <span name="gesture">@symbol-gesture</span>
       <span name="line_curve">@symbol-line_curve</span>
+      <span name="power_input">@symbol-power_input</span>
     </template>
   </custom-icon-set>
 `

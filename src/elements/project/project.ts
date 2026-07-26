@@ -1,11 +1,10 @@
-import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query, listen } from '@vandeurenglenn/lite'
 import styles from './project.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/selector.js'
 import '@vandeurenglenn/lite-elements/drawer-item.js'
 import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
-import './../list/item.js'
 import '../../contextmenu.js'
 import { Project, type PageType, UUID } from '../../types.js'
 import { addPage, getProjectData, setProjectData } from '../../api/project.js'
@@ -37,27 +36,6 @@ export class ProjectElement extends LiteElement {
 
   @property({ type: String })
   accessor newPageType: PageType = 'groundplan'
-
-  #onKeydown = (event: KeyboardEvent) => { void this.#keydown(event) }
-  #onClick = (event: Event) => this.#onclick(event)
-  #onMenuSelected = (event: Event) => { void this.#contextMenuItemSelected(event as CustomEvent) }
-
-  firstRender(): void {
-    this.addEventListener('keydown', this.#onKeydown)
-    this.addEventListener('contextmenu', this.#showMenu)
-    this.shadowRoot?.addEventListener('click', this.#onClick)
-
-    const menu = this.shadowRoot?.querySelector('context-menu')
-    menu?.addEventListener('selected', this.#onMenuSelected)
-  }
-
-  disconnectedCallback(): void {
-    this.removeEventListener('keydown', this.#onKeydown)
-    this.removeEventListener('contextmenu', this.#showMenu)
-    this.shadowRoot?.removeEventListener('click', this.#onClick)
-    this.shadowRoot?.querySelector('context-menu')?.removeEventListener('selected', this.#onMenuSelected)
-    super.disconnectedCallback()
-  }
 
   onChange(name: string): void {
     if (name === 'loadedPage') {
@@ -112,7 +90,8 @@ export class ProjectElement extends LiteElement {
     }
   }
 
-  async #keydown(event: KeyboardEvent) {
+  @listen('keydown')
+  async onKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       this.addingPage = false
       const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
@@ -127,7 +106,8 @@ export class ProjectElement extends LiteElement {
     }
   }
 
-  #showMenu = (event: MouseEvent) => {
+  @listen('contextmenu')
+  onShowMenu(event: MouseEvent) {
     const paths = event.composedPath()
     const target = paths[0] as HTMLElement | undefined
     if (target?.localName === 'custom-drawer-item' || target?.localName === 'custom-selector') {
@@ -145,12 +125,14 @@ export class ProjectElement extends LiteElement {
     return this.hasAttribute('addingPage')
   }
 
-  #onclick(_event?: Event) {
+  @listen('click', { target: (host: ProjectElement) => host.shadowRoot })
+  onShadowClick() {
     const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
     if (menu?.open) menu.open = false
   }
 
-  async #contextMenuItemSelected(event: CustomEvent) {
+  @listen('selected', { target: 'context-menu' })
+  async onContextMenuItemSelected(event: CustomEvent) {
     const detail = event.detail
     const menu = this.shadowRoot?.querySelector('context-menu') as {
       currentTarget?: { dataset?: { project?: string } }

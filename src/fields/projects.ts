@@ -1,4 +1,4 @@
-import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, query, listen } from '@vandeurenglenn/lite'
 import styles from './projects.css' with { type: 'css' }
 import { Projects, type Project, type UUID } from './../types.js'
 import '@vandeurenglenn/flex-elements/column.js'
@@ -31,8 +31,12 @@ export class ProjectsField extends LiteElement {
   _currentSelected
   _transitionEnd?: () => void
   _reopenPromptFocusedButton: 'open' | 'dismiss' = 'open'
-  _onClick = (event: Event) => this._click(event)
   static styles = [styles]
+
+  @listen('click', { target: (host: ProjectsField) => host.shadowRoot })
+  onShadowClick(event: Event) {
+    this._click(event)
+  }
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
@@ -44,7 +48,6 @@ export class ProjectsField extends LiteElement {
     } finally {
       this.projectsLoaded = true
     }
-    this.shadowRoot?.addEventListener('click', this._onClick)
     const shell = globalThis.cadleShell as unknown as {
       showReopenPreviousProjectPrompt?: boolean
       previousProjectName?: string
@@ -56,7 +59,6 @@ export class ProjectsField extends LiteElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    this.shadowRoot?.removeEventListener('click', this._onClick)
     pubsub.unsubscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
   }
 

@@ -1,4 +1,4 @@
-import { LiteElement, html, property, customElement } from '@vandeurenglenn/lite'
+import { LiteElement, html, property, customElement, listen } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/it.js'
@@ -43,7 +43,6 @@ export class CadleActions extends LiteElement {
     pubsub.subscribe('shell.snap', this.#onSnap)
     pubsub.subscribe('shell.measurements', this.#onMeasurements)
     pubsub.subscribe('shell.action', this.#onAction)
-    window.addEventListener('hashchange', this.#onHashChange)
   }
 
   disconnectedCallback() {
@@ -51,7 +50,6 @@ export class CadleActions extends LiteElement {
     pubsub.unsubscribe('shell.snap', this.#onSnap)
     pubsub.unsubscribe('shell.measurements', this.#onMeasurements)
     pubsub.unsubscribe('shell.action', this.#onAction)
-    window.removeEventListener('hashchange', this.#onHashChange)
   }
 
   #onSnap = (value: boolean) => {
@@ -66,7 +64,8 @@ export class CadleActions extends LiteElement {
     this.currentAction = value ?? ''
   }
 
-  #onHashChange = () => {
+  @((listen as unknown as (event: string, options: { target: 'window' }) => any)('hashchange', { target: 'window' }))
+  onHashChange() {
     this.isNativeRoute = location.hash.includes('#!/editor/model')
   }
 

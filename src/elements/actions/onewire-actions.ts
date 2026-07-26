@@ -1,4 +1,4 @@
-import { LiteElement, html, property, customElement } from '@vandeurenglenn/lite'
+import { LiteElement, html, property, customElement, listen } from '@vandeurenglenn/lite'
 import '@material/web/icon/icon.js'
 import '@material/web/iconbutton/icon-button.js'
 import '@vandeurenglenn/lite-elements/icon.js'
@@ -45,14 +45,12 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
     pubsub.subscribe('editor.controls.state', this.#onStateChange)
     pubsub.subscribe('shell.action', this.#onActionChange)
-    window.addEventListener('hashchange', this.#onHashChange)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     pubsub.unsubscribe('editor.controls.state', this.#onStateChange)
     pubsub.unsubscribe('shell.action', this.#onActionChange)
-    window.removeEventListener('hashchange', this.#onHashChange)
   }
 
   #onStateChange = (state: Record<string, unknown>) => {
@@ -65,7 +63,8 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
-  #onHashChange = () => {
+  @((listen as unknown as (event: string, options: { target: 'window' }) => any)('hashchange', { target: 'window' }))
+  onHashChange() {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 

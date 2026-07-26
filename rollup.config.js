@@ -37,6 +37,7 @@ export default [
       copyStatic({
         targets: [
           { from: 'src/index.html', to: 'www/index.html' },
+          { from: 'src/assets', to: 'www/assets' },
           { from: 'src/themes', to: 'www/themes' }
         ]
       }),

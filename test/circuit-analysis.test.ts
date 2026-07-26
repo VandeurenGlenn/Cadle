@@ -45,6 +45,24 @@ test('groups floor-plan devices and ignores generated one-wire geometry', () => 
   assert.equal(analysis.groups[1].specification.cableSectionMm2, 2.5)
 })
 
+test('keeps the original path for imported ground-plan images', () => {
+  const sourcePath = 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg'
+  const analysis = analyzeCircuits([
+    {
+      id: 'outlet-image',
+      kind: 'image',
+      position: { x: 0, y: 0 },
+      width: 24,
+      height: 24,
+      bindingId: 'H',
+      name: 'Multiple grounded outlets',
+      path: sourcePath
+    }
+  ])
+
+  assert.equal(analysis.groups[0]?.components[0]?.path, sourcePath)
+})
+
 test('reports incomplete and unknown circuit symbols', () => {
   const analysis = analyzeCircuits([
     symbol('switch', 'A3', 'Switch', 'symbols/Switches/Switch general symbol.svg'),
@@ -63,7 +81,41 @@ test('reports malformed binding IDs instead of silently dropping devices', () =>
   ])
   assert.equal(analysis.totalGroups, 0)
   assert.equal(analysis.errorCount, 1)
-  assert.match(analysis.issues[0].message, /letters followed by a circuit number/)
+  assert.match(analysis.issues[0].message, /short circuit code/)
+})
+
+test('accepts short letter-only circuit codes used on Belgian plans', () => {
+  const analysis = analyzeCircuits([
+    symbol('load-o', 'O', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'),
+    symbol('load-alsb', 'alsb', 'Socket', 'symbols/Consumption appliances/Socket.svg')
+  ])
+
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.errorCount, 0)
+  assert.deepEqual(
+    analysis.groups.map(({ bindingId, family, number }) => ({ bindingId, family, number })),
+    [
+      { bindingId: 'ALSB', family: 'ALSB', number: null },
+      { bindingId: 'O', family: 'O', number: null }
+    ]
+  )
+})
+
+test('ignores earthing symbols and recognises boards and PV inverters', () => {
+  const analysis = analyzeCircuits([
+    symbol('earth', 'AB', 'Earthing', 'symbols/Earthing/Aarding.svg'),
+    symbol('sub-board', 'ALSB', 'Distribution board', 'symbols/Boards/Distribution board.svg'),
+    symbol('board-t', 'T', 'Verdeelbord', 'symbols/Boards/Verdeelbord.svg'),
+    symbol('pv', 'U', 'PV inverter', 'symbols/Consumption appliances/PV inverter.svg')
+  ])
+
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.errorCount, 0)
+  assert.equal(analysis.warningCount, 0)
+  assert.deepEqual(analysis.groups.map((group) => group.bindingId), ['ALSB', 'T', 'U'])
+  assert.equal(analysis.readyGroups, 3)
+  assert.equal(analysis.groups.find((group) => group.bindingId === 'ALSB')?.junctions, 1)
+  assert.equal(analysis.groups.find((group) => group.bindingId === 'U')?.loads, 1)
 })
 
 test('exports escaped BOM rows as CSV', () => {
@@ -75,7 +127,7 @@ test('exports escaped BOM rows as CSV', () => {
   assert.match(csv, /"Lamp, pendant"/)
 })
 
-test('prefers explicit electrical metadata and derives circuit specifications', () => {
+test('uses project-level circuit specifications without storing them on symbols', () => {
   const configured = {
     ...symbol('configured', 'D1', 'Custom appliance', 'symbols/Custom/device.svg'),
     electrical: {
@@ -83,19 +135,27 @@ test('prefers explicit electrical metadata and derives circuit specifications', 
       oneWireEligible: true,
       circuitType: 'motor' as const,
       ratedCurrentA: 25,
+      breakerCurrentA: 99,
+      cableSectionMm2: 99
+    }
+  }
+  const analysis = analyzeCircuits([configured], undefined, {
+    D: {
       breakerCurrentA: 32,
       cableSectionMm2: 4,
       poles: 4,
-      phaseConfiguration: 'three-phase' as const
+      phaseConfiguration: 'three-phase'
     }
-  }
-  const analysis = analyzeCircuits([configured])
+  })
 
   assert.equal(analysis.groups[0].loads, 1)
   assert.deepEqual(analysis.groups[0].specification, {
     circuitType: 'motor',
     breakerCurrentA: 32,
     cableSectionMm2: 4,
+    cableConductors: 5,
+    cableType: 'VOB',
+    cableInstallation: 'conduit-recessed',
     poles: 4,
     phaseConfiguration: 'three-phase',
     breakerCurve: 'C',
@@ -130,7 +190,10 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       breakerCurrentA: 25,
       poles: undefined,
       phaseConfiguration: undefined,
-      cableSectionMm2: 2.5,
+    cableSectionMm2: 2.5,
+    cableConductors: undefined,
+    cableType: undefined,
+    cableInstallation: undefined,
       breakerCurve: undefined,
       rcdSensitivityMa: undefined,
       rcdType: undefined,
@@ -223,7 +286,9 @@ test('keeps partially entered circuit specifications marked as suggested', () =>
     }
   }
 
-  const analysis = analyzeCircuits([partiallyConfigured])
+  const analysis = analyzeCircuits([partiallyConfigured], undefined, {
+    S: { breakerCurrentA: 20 }
+  })
 
   assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
   assert.equal(analysis.groups[0].specification.cableSectionMm2, 2.5)
@@ -234,7 +299,7 @@ test('keeps partially entered circuit specifications marked as suggested', () =>
   assert.equal(analysis.groups[0].specification.sources.cableSectionMm2, 'suggested')
 })
 
-test('rejects conflicting explicit circuit specifications', () => {
+test('ignores legacy one-wire values stored on ground-plan symbols', () => {
   const first = {
     ...symbol('first', 'A1', 'Socket 1', 'symbols/Socket outlets/socket.svg'),
     electrical: {
@@ -257,7 +322,8 @@ test('rejects conflicting explicit circuit specifications', () => {
   }
   const analysis = analyzeCircuits([first, second])
 
-  assert.equal(analysis.valid, false)
-  assert.equal(analysis.errorCount, 1)
-  assert.match(analysis.issues[0].message, /breaker current, cable section/)
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.errorCount, 0)
+  assert.equal(analysis.groups[0].specification.breakerCurrentA, 20)
+  assert.equal(analysis.groups[0].specification.cableSectionMm2, 2.5)
 })

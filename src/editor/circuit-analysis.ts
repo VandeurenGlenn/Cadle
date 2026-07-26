@@ -1,6 +1,12 @@
-import type { Shape, SymbolShape } from '../editor/model/types.js'
-import { inferCircuitType, inferElectricalRole, type ElectricalCircuitType } from '../editor/model/electrical.js'
-import type { ElectricalProjectProfile } from '../types.js'
+import type { Shape } from '../editor/model/types.js'
+import {
+  inferCircuitType,
+  inferElectricalRole,
+  isDistributionBoardDevice,
+  isEarthingDevice,
+  type ElectricalCircuitType
+} from '../editor/model/electrical.js'
+import type { ElectricalProjectProfile, ProjectCircuitSpecification } from '../types.js'
 import { circuitDefaults } from './circuit-defaults.js'
 
 export type CircuitComponentRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
@@ -9,6 +15,9 @@ export type CircuitSpecification = {
   circuitType: ElectricalCircuitType
   breakerCurrentA: number
   cableSectionMm2: number
+  cableConductors: number
+  cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+  cableInstallation: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
   poles: number
   phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
@@ -70,63 +79,68 @@ export type CircuitAnalysis = {
 
 const bindingParts = (value: string): { bindingId: string; family: string; number: number | null } | null => {
   const bindingId = value.trim().toUpperCase()
-  const match = /^([A-Z]+)(\d+)$/.exec(bindingId)
+  // Belgian plans commonly identify a circuit with a short letter code (A, O,
+  // ALSB) while point-level bindings may append a number (A1, O3). Both carry
+  // enough information to group and generate a one-wire circuit.
+  const match = /^([A-Z]{1,4})(\d+)?$/.exec(bindingId)
   if (!match) return null
-  return { bindingId, family: match[1], number: Number(match[2]) }
+  return { bindingId, family: match[1], number: match[2] ? Number(match[2]) : null }
 }
 
 export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
   if (shape.kind === 'door' || shape.kind === 'gate') return 'switch'
   if (shape.kind === 'image') return 'load'
   if (shape.kind !== 'symbol') return 'neutral'
+  if (isEarthingDevice(shape.name, shape.path)) return 'neutral'
+  if (isDistributionBoardDevice(shape.name, shape.path)) return 'junction'
+  if (/inverter|omvormer|photovolta|\bpv\b|solar/i.test(`${shape.name} ${shape.path}`)) return 'load'
   return shape.electrical?.role ?? inferElectricalRole(shape.name, shape.path)
 }
 
 const suggestedSpecification = (
   components: CircuitComponent[],
-  symbols: SymbolShape[],
-  profile?: ElectricalProjectProfile
+  profile?: ElectricalProjectProfile,
+  explicit: ProjectCircuitSpecification = {}
 ): CircuitSpecification => {
-  const explicitCurrent = symbols.map((shape) => shape.electrical?.breakerCurrentA).find((value) => value !== undefined)
-  const explicitSection = symbols.map((shape) => shape.electrical?.cableSectionMm2).find((value) => value !== undefined)
-  const explicitPoles = symbols.map((shape) => shape.electrical?.poles).find((value) => value !== undefined)
-  const explicitPhase = symbols.map((shape) => shape.electrical?.phaseConfiguration).find((value) => value !== undefined)
-  const explicitCurve = symbols.map((shape) => shape.electrical?.breakerCurve).find((value) => value !== undefined)
-  const explicitRcd = symbols.map((shape) => shape.electrical?.rcdSensitivityMa).find((value) => value !== undefined)
-  const explicitRcdType = symbols.map((shape) => shape.electrical?.rcdType).find((value) => value !== undefined)
-  const boardId = symbols.map((shape) => shape.electrical?.boardId).find((value) => value !== undefined)
-  const railId = symbols.map((shape) => shape.electrical?.railId).find((value) => value !== undefined)
-  const notes = symbols.map((shape) => shape.electrical?.notes).find((value) => value !== undefined)
   const loadComponents = components.filter((component) => component.role === 'load')
   const typeSources = loadComponents.length > 0 ? loadComponents : components
   const types = new Set(typeSources.map((component) => component.circuitType).filter(Boolean))
-  const circuitType: ElectricalCircuitType =
+  const inferredCircuitType: ElectricalCircuitType =
     types.size > 1 ? 'mixed' : (([...types][0] as ElectricalCircuitType | undefined) ?? 'other')
+  const circuitType = explicit.circuitType ?? inferredCircuitType
   const defaults = circuitDefaults(circuitType)
+  const phaseConfiguration = explicit.phaseConfiguration ?? profile?.phaseConfiguration ?? 'single-phase'
   return {
     circuitType,
-    breakerCurrentA: explicitCurrent ?? defaults.breakerCurrentA,
-    cableSectionMm2: explicitSection ?? defaults.cableSectionMm2,
-    poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' || (explicitPhase ?? profile?.phaseConfiguration) === 'L1+L2+L3+N' ? 4 : 2),
-    phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
-    breakerCurve: explicitCurve ?? defaults.breakerCurve,
-    ...(explicitRcd ? { rcdSensitivityMa: explicitRcd } : {}),
-    ...(explicitRcdType ? { rcdType: explicitRcdType } : {}),
-    ...(boardId ? { boardId } : {}),
-    ...(railId ? { railId } : {}),
-    ...(notes ? { notes } : {}),
+    breakerCurrentA: explicit.breakerCurrentA ?? defaults.breakerCurrentA,
+    cableSectionMm2: explicit.cableSectionMm2 ?? defaults.cableSectionMm2,
+    cableConductors:
+      explicit.cableConductors ??
+      (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N'
+        ? 5
+        : defaults.cableConductors),
+    cableType: explicit.cableType ?? defaults.cableType,
+    cableInstallation: explicit.cableInstallation ?? defaults.cableInstallation,
+    poles: explicit.poles ?? profile?.defaultPoles ?? (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 4 : 2),
+    phaseConfiguration,
+    breakerCurve: explicit.breakerCurve ?? defaults.breakerCurve,
+    ...(explicit.rcdSensitivityMa ? { rcdSensitivityMa: explicit.rcdSensitivityMa } : {}),
+    ...(explicit.rcdType ? { rcdType: explicit.rcdType } : {}),
+    ...(explicit.boardId ? { boardId: explicit.boardId } : {}),
+    ...(explicit.railId ? { railId: explicit.railId } : {}),
+    ...(explicit.notes ? { notes: explicit.notes } : {}),
     source:
-      explicitCurrent !== undefined &&
-      explicitSection !== undefined &&
-      explicitPoles !== undefined &&
-      explicitPhase !== undefined
+      explicit.breakerCurrentA !== undefined &&
+      explicit.cableSectionMm2 !== undefined &&
+      explicit.poles !== undefined &&
+      explicit.phaseConfiguration !== undefined
         ? 'explicit'
         : 'suggested',
     sources: {
-      breakerCurrentA: explicitCurrent !== undefined ? 'entered' : 'suggested',
-      cableSectionMm2: explicitSection !== undefined ? 'entered' : 'suggested',
-      poles: explicitPoles !== undefined ? 'entered' : profile ? 'project' : 'suggested',
-      phaseConfiguration: explicitPhase !== undefined ? 'entered' : profile ? 'project' : 'suggested'
+      breakerCurrentA: explicit.breakerCurrentA !== undefined ? 'entered' : 'suggested',
+      cableSectionMm2: explicit.cableSectionMm2 !== undefined ? 'entered' : 'suggested',
+      poles: explicit.poles !== undefined ? 'entered' : profile ? 'project' : 'suggested',
+      phaseConfiguration: explicit.phaseConfiguration !== undefined ? 'entered' : profile ? 'project' : 'suggested'
     }
   }
 }
@@ -136,29 +150,11 @@ const componentName = (shape: Shape): string => {
   return shape.kind
 }
 
-const conflictingSpecificationFields = (symbols: readonly SymbolShape[]): string[] => {
-  const fields: Array<[keyof NonNullable<SymbolShape['electrical']>, string]> = [
-    ['breakerCurrentA', 'breaker current'],
-    ['cableSectionMm2', 'cable section'],
-    ['poles', 'pole count'],
-    ['phaseConfiguration', 'phase configuration'],
-    ['breakerCurve', 'breaker curve'],
-    ['rcdSensitivityMa', 'RCD sensitivity'],
-    ['rcdType', 'RCD type'],
-    ['boardId', 'board assignment'],
-    ['railId', 'rail assignment']
-  ]
-  return fields
-    .filter(([field]) => {
-      const values = symbols
-        .map((shape) => shape.electrical?.[field])
-        .filter((value) => value !== undefined)
-      return new Set(values).size > 1
-    })
-    .map(([, label]) => label)
-}
-
-export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalProjectProfile): CircuitAnalysis => {
+export const analyzeCircuits = (
+  shapes: readonly Shape[],
+  profile?: ElectricalProjectProfile,
+  circuitSpecifications: Record<string, ProjectCircuitSpecification> = {}
+): CircuitAnalysis => {
   const grouped = new Map<string, CircuitComponent[]>()
   const issues: CircuitIssue[] = []
 
@@ -167,12 +163,13 @@ export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalPr
     if (!shape.bindingId) continue
     if (shape.kind !== 'symbol' && shape.kind !== 'image' && shape.kind !== 'door' && shape.kind !== 'gate') continue
     if (shape.kind === 'symbol' && shape.electrical?.oneWireEligible === false) continue
+    if (shape.kind === 'symbol' && isEarthingDevice(shape.name, shape.path)) continue
     const binding = bindingParts(shape.bindingId)
     if (!binding) {
       issues.push({
         bindingId: shape.bindingId.trim().toUpperCase(),
         severity: 'error',
-        message: 'Binding ID must contain letters followed by a circuit number, for example A1.'
+        message: 'Binding ID must be a short circuit code, optionally followed by a point number, for example A, ALSB or A1.'
       })
       continue
     }
@@ -186,7 +183,7 @@ export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalPr
           ? (shape.electrical?.circuitType ?? inferCircuitType(shape.name, shape.path))
           : undefined
     }
-    if (shape.kind === 'symbol') component.path = (shape as SymbolShape).path
+    if (shape.kind === 'symbol' || shape.kind === 'image') component.path = shape.path
     const entries = grouped.get(binding.bindingId)
     if (entries) entries.push(component)
     else grouped.set(binding.bindingId, [component])
@@ -200,18 +197,11 @@ export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalPr
       const protection = components.filter((entry) => entry.role === 'protection').length
       const junctions = components.filter((entry) => entry.role === 'junction').length
       const neutral = components.filter((entry) => entry.role === 'neutral').length
-      const symbols = shapes.filter(
-        (shape): shape is SymbolShape =>
-          shape.kind === 'symbol' && components.some((component) => component.shapeId === shape.id)
+      const hasDistributionBoard = components.some(
+        (component) => component.path && isDistributionBoardDevice(component.name, component.path)
       )
-      const conflicts = conflictingSpecificationFields(symbols)
-      if (conflicts.length) {
-        issues.push({
-          bindingId,
-          severity: 'error',
-          message: `Circuit has conflicting explicit ${conflicts.join(', ')} metadata.`
-        })
-      }
+      const explicitSpecification =
+        circuitSpecifications[first.family] ?? circuitSpecifications[bindingId] ?? {}
       return {
         bindingId,
         family: first.family,
@@ -222,14 +212,17 @@ export const analyzeCircuits = (shapes: readonly Shape[], profile?: ElectricalPr
         protection,
         junctions,
         neutral,
-        ready: loads > 0,
-        specification: suggestedSpecification(components, symbols, profile)
+        ready: loads > 0 || hasDistributionBoard,
+        specification: suggestedSpecification(components, profile, explicitSpecification)
       }
     })
     .sort((left, right) => left.family.localeCompare(right.family) || (left.number ?? 0) - (right.number ?? 0))
 
   for (const group of groups) {
-    if (group.loads === 0) {
+    const hasDistributionBoard = group.components.some(
+      (component) => component.path && isDistributionBoardDevice(component.name, component.path)
+    )
+    if (group.loads === 0 && !hasDistributionBoard) {
       issues.push({
         bindingId: group.bindingId,
         severity: 'error',

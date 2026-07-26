@@ -64,6 +64,7 @@ type NativeAppElement = HTMLElement & {
   undo?: () => void
   redo?: () => void
   exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
+  exportProjectPdf?: (filename?: string) => Promise<void>
   analyzeBindings?: () => CircuitAnalysis
   getBOMRows?: () => BomRow[]
   generateAutoOneWire?: (pageIndex?: number) => { generated: boolean; circuitCount: number; pageCount?: number; message?: string }
@@ -537,7 +538,11 @@ export class AppShell extends LiteElement {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return
 
     try {
-      await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), { scope: './' })
+      const registration = await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), {
+        scope: './',
+        updateViaCache: 'none'
+      })
+      await registration.update()
     } catch (error) {
       console.warn('Failed to register service worker', error)
     }
@@ -890,6 +895,12 @@ export class AppShell extends LiteElement {
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     if (!nativeApp?.exportA4PNG) throw new Error('Native draw export is unavailable')
     return nativeApp.exportA4PNG(orientation)
+  }
+
+  async exportProjectPdf(filename?: string): Promise<void> {
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    if (!nativeApp?.exportProjectPdf) throw new Error('Project PDF export is unavailable')
+    await nativeApp.exportProjectPdf(filename)
   }
 
   async toPNG() {

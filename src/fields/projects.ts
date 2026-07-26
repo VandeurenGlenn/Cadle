@@ -40,6 +40,9 @@ export class ProjectsField extends LiteElement {
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
+    // Projects render before the deferred shell on first load. Subscribe
+    // immediately so shell state emitted while project storage is loading is not lost.
+    pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
     try {
       this.projects = await getProjects()
     } catch (error) {
@@ -51,10 +54,11 @@ export class ProjectsField extends LiteElement {
     const shell = globalThis.cadleShell as unknown as {
       showReopenPreviousProjectPrompt?: boolean
       previousProjectName?: string
+    } | undefined
+    if (shell) {
+      this.showReopenPreviousProjectPrompt = Boolean(shell.showReopenPreviousProjectPrompt)
+      this.previousProjectName = String(shell.previousProjectName ?? '')
     }
-    this.showReopenPreviousProjectPrompt = Boolean(shell.showReopenPreviousProjectPrompt)
-    this.previousProjectName = String(shell.previousProjectName ?? '')
-    pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
   }
 
   disconnectedCallback(): void {

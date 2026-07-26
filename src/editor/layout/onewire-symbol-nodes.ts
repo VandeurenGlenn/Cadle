@@ -44,10 +44,20 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   {
     match: /Custom breaker\.svg$/i,
     spec: {
-      viewBox: { width: 24, height: 32 },
-      node: { x: 12, y: 31.2 },
-      cutRadius: 0,
-      oneWireScale: 2.25,
+      viewBox: { width: 28.783, height: 28.8265 },
+      node: { x: 15.0236, y: 28.47 },
+      cutRadius: 2.83465,
+      oneWireScale: 3,
+      rotation: 0
+    }
+  },
+  {
+    match: /Custom residual-current circuit breaker\.svg$/i,
+    spec: {
+      viewBox: { width: 38.5625, height: 29.8893 },
+      node: { x: 15.3836, y: 29.5293 },
+      cutRadius: 2.83465,
+      oneWireScale: 3,
       rotation: 0
     }
   },

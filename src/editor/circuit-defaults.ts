@@ -3,6 +3,9 @@ import type { ElectricalCircuitType } from '../editor/model/electrical.js'
 export type CircuitDefaults = {
   breakerCurrentA: number
   cableSectionMm2: number
+  cableConductors: number
+  cableType: 'VOB'
+  cableInstallation: 'conduit-recessed'
   poles: number
   phaseConfiguration: 'single-phase'
   breakerCurve: 'C'
@@ -15,6 +18,9 @@ export const circuitDefaults = (circuitType?: ElectricalCircuitType | string): C
   return {
     breakerCurrentA: higherLoad ? 20 : 16,
     cableSectionMm2: higherLoad ? 2.5 : 1.5,
+    cableConductors: 3,
+    cableType: 'VOB',
+    cableInstallation: 'conduit-recessed',
     poles: 2,
     phaseConfiguration: 'single-phase',
     breakerCurve: 'C',

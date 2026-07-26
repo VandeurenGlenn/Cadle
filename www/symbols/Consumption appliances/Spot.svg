@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"
+		width="0.161609in" height="0.161609in" viewBox="0 0 11.6358 11.6358" xml:space="preserve"
+		color-interpolation-filters="sRGB" class="st2">
+	<title>Spot</title>
+<style type="text/css">
+	<![CDATA[
+		.st1 {stroke:#000000;stroke-linecap:round;stroke-linejoin:round;stroke-width:0.25}
+		.st2 {fill:none;fill-rule:evenodd;font-size:12px;overflow:visible;stroke-linecap:square;stroke-miterlimit:3}
+	]]>
+	</style>
+
+
+	<g>
+	<line class="st1" style="fill:#000; stroke-width: 1px;" x1="273" y1="553" x2="287" y2="567"></line>
+	<line fill="#000000" style="stroke-width: 1px;" x1="273" y1="567" x2="287" y2="553"></line>
+	<ellipse style="stroke-width: 1px;" cx="280" cy="560" rx="10" ry="10" fill="transparent" stroke="#000000"></ellipse>
+    </g>
+</svg>

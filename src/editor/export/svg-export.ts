@@ -313,14 +313,12 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
       if (symbolSvg) {
         const symbolInner = applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         const symbolStyle =
-          `--symbol-fill:#000000;` +
-          `--symbol-stroke:#000000;` +
           `${shape.fill ? `--symbol-fill:${escapeHtml(shape.fill)};` : ''}` +
           `${shape.stroke ? `--symbol-stroke:${escapeHtml(shape.stroke)};` : ''}` +
           `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}"${symbolStyle ? ` style="${symbolStyle}"` : ''}>${symbolInner}</svg>
+            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}</svg>
           </g>
         `
       }

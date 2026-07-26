@@ -50,9 +50,10 @@ import type {
 import type { Project, UUID } from './types.js'
 import {
   electricalMetadataFromCatalog,
+  isDistributionBoardDevice,
   type ElectricalDeviceMetadata
 } from './editor/model/electrical.js'
-import { getProjectData, setProjectData } from './api/project.js'
+import { setProjectData } from './api/project.js'
 import pubsub from './pubsub.js'
 import { downloadTextFile } from './editor/export/downloads.js'
 import {
@@ -444,6 +445,9 @@ export class CadleApp extends LiteElement {
   }
 
   #openCatalogDialog = async (mode: CatalogDialogMode): Promise<boolean> => {
+    // Catalog SVGs must inline source symbol markup. Falling back to an <image>
+    // keeps the geometry but cannot carry per-instance fill/stroke overrides.
+    await this.#ensureSymbolMarkupReady()
     const draft = this.#catalogController.selectionDraft(this.#document.shapes, this.#selectedShapeIds())
     if (!draft) return false
 
@@ -620,15 +624,23 @@ export class CadleApp extends LiteElement {
     const selectedShape = this.#shapeById(this.#document.selectedId)
     const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
     if (payload.electrical && circuitGroup) {
-      const { role, circuitType, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
+      const { role, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
       if (Object.keys(circuitProperties).length > 0) {
-        this.#circuitUpdatePromise = this.#circuitUpdatePromise.then(() =>
-          this.#updateCircuitProperties(circuitGroup.bindingId, circuitProperties)
-        )
+        const circuitTarget =
+          selectedShape?.sourceLink?.kind === 'board'
+            ? selectedShape.sourceLink.id
+            : circuitGroup.bindingId
+        this.#circuitUpdatePromise = this.#circuitUpdatePromise
+          .catch((error) => {
+            console.error('Previous circuit update failed', error)
+          })
+          .then(() => this.#updateCircuitProperties(circuitTarget, circuitProperties))
+          .catch((error) => {
+            console.error('Failed to update circuit properties', error)
+          })
         return
       }
       void role
-      void circuitType
       void oneWireEligible
       void ratedCurrentA
     }
@@ -658,19 +670,7 @@ export class CadleApp extends LiteElement {
       this.#render()
       return
     }
-
-    const targets =
-      this.#document.selectedIds.size > 0
-        ? this.#document.selectedIds
-        : this.#document.selectedId
-          ? new Set([this.#document.selectedId])
-          : new Set<string>()
-    if (!targets.size) return
-    this.#document.shapes = this.#document.shapes.filter((shape) => !targets.has(shape.id))
-    this.#document.selectedId = null
-    this.#document.selectedIds = new Set()
-    this.#pushHistory()
-    this.#render()
+    this.#deleteNativeSelection()
   }
 
   #onNativeObjectFlipSide = () => {
@@ -1148,6 +1148,7 @@ export class CadleApp extends LiteElement {
     const tolerance = Math.max(6, 12 / this.#viewport.state.zoom)
     for (let index = this.#document.shapes.length - 1; index >= 0; index -= 1) {
       const shape = this.#document.shapes[index]
+      if (shape.kind === 'text' && shape.generationKey && shape.sourceLink) continue
       if (
         shape.kind === 'wall' ||
         shape.kind === 'line' ||
@@ -1733,11 +1734,50 @@ export class CadleApp extends LiteElement {
   #deleteNativeSelection(): boolean {
     const ids = new Set(this.#selectedShapeIds())
     if (!ids.size) return false
+    const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    const circuitTargets = new Set<string>()
+    if (currentPageType === 'onewire') {
+      for (const shape of this.#document.shapes) {
+        if (!ids.has(shape.id) || !shape.groupId?.startsWith('onewire-')) continue
+        if (shape.sourceLink?.kind === 'board' || shape.sourceLink?.kind === 'circuit') {
+          circuitTargets.add(shape.sourceLink.id)
+        }
+      }
+    }
     this.#document.shapes = this.#document.shapes.filter((shape) => !ids.has(shape.id))
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
     this.#pushHistory()
     this.#render()
+    if (circuitTargets.size) {
+      const clearedOneWireProperties: Partial<{
+        [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null
+      }> = {
+        breakerCurrentA: null,
+        cableSectionMm2: null,
+        cableConductors: null,
+        cableType: null,
+        cableInstallation: null,
+        poles: null,
+        phaseConfiguration: null,
+        breakerCurve: null,
+        rcdSensitivityMa: null,
+        rcdType: null,
+        boardId: null,
+        railId: null,
+        notes: null
+      }
+      for (const circuitTarget of circuitTargets) {
+        this.#circuitUpdatePromise = this.#circuitUpdatePromise
+          .catch((error) => {
+            console.error('Previous circuit update failed', error)
+          })
+          .then(() => this.#updateCircuitProperties(circuitTarget, clearedOneWireProperties, false))
+          .catch((error) => {
+            console.error('Failed to clear deleted one-wire circuit data', error)
+          })
+      }
+    }
     return true
   }
 
@@ -2193,7 +2233,7 @@ export class CadleApp extends LiteElement {
   }
 
   #oneWireComponentSymbol(kind: 'breaker' | 'switch' | 'kamrail' | 'load'): { name: string; path: string } {
-    if (kind === 'breaker') return { name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }
+    if (kind === 'breaker') return { name: 'Automaat', path: 'symbols/One-wire/Custom breaker.svg' }
     if (kind === 'switch') return { name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg' }
     if (kind === 'kamrail') return { name: 'Kamrail', path: 'symbols/Protection devices/Kamrail.svg' }
     if (this.#oneWirePreset === 'sockets') {
@@ -2206,7 +2246,7 @@ export class CadleApp extends LiteElement {
   }
 
   #oneWireSymbolScale(path: string, kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
-    if (kind === 'breaker') return Math.max(0.4, inferSymbolScale(path))
+    if (kind === 'breaker') return oneWireSymbolScaleFor(path) ?? Math.max(0.4, inferSymbolScale(path))
     if (/socket outlets\//i.test(path)) return 1
     // Node-normalized scale keeps every switch circle the same rendered size.
     const nodeScale = oneWireSymbolScaleFor(path)
@@ -2422,7 +2462,11 @@ export class CadleApp extends LiteElement {
   }
 
   analyzeBindings(): CircuitAnalysis {
-    return this.#oneWireController.analyze(this.#groundplanShapePool(), this.#project?.electricalProfile)
+    return this.#oneWireController.analyze(
+      this.#groundplanShapePool(),
+      this.#project?.electricalProfile,
+      this.#project?.circuitSpecifications
+    )
   }
 
   getBOMRows(): BomRow[] {
@@ -2491,6 +2535,9 @@ export class CadleApp extends LiteElement {
       this.#addKamrailCircuitBundle(rail, x, {
         amps: familyCurrent,
         cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
+        cableConductors: Math.max(...familyGroups.map((group) => group.specification.cableConductors)),
+        cableType: familyGroups[0]?.specification.cableType ?? 'VOB',
+        cableInstallation: familyGroups[0]?.specification.cableInstallation ?? 'conduit-recessed',
         breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
         poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
         phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N') ? 'three-phase' : familyGroups[0]?.specification.phaseConfiguration,
@@ -2520,16 +2567,22 @@ export class CadleApp extends LiteElement {
       .flatMap((group) =>
         group.components
           .filter(
-            (component): component is CircuitComponent & { role: 'switch' | 'load' } =>
-              component.role === 'switch' || component.role === 'load'
+            (component): component is CircuitComponent & { role: 'switch' | 'load' | 'junction'; path: string } =>
+              ((component.role === 'switch' || component.role === 'load') && Boolean(component.path)) ||
+              (component.role === 'junction' &&
+                Boolean(component.path) &&
+                isDistributionBoardDevice(component.name, component.path))
           )
           .map((component) => ({
             bindingId: group.bindingId,
-            kind: component.role,
+            kind: component.role === 'switch' ? 'switch' as const : 'load' as const,
             sourceShapeId: component.shapeId,
-            breakerCurrentA: group.specification.breakerCurrentA,
-            cableSectionMm2: group.specification.cableSectionMm2,
-            poles: group.specification.poles,
+      breakerCurrentA: group.specification.breakerCurrentA,
+      cableSectionMm2: group.specification.cableSectionMm2,
+      cableConductors: group.specification.cableConductors,
+      cableType: group.specification.cableType,
+      cableInstallation: group.specification.cableInstallation,
+      poles: group.specification.poles,
             breakerCurve: group.specification.breakerCurve,
             sourcePath: component.path,
             sourceName: component.name
@@ -2540,7 +2593,7 @@ export class CadleApp extends LiteElement {
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; cableSectionMm2?: number; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; family: string; autoIncludeFamily: boolean }
+    options: { amps: number; cableSectionMm2?: number; cableConductors?: number; cableType?: string; cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; family: string; autoIncludeFamily: boolean }
   ): boolean {
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
     const result = buildKamrailCircuitBundle({
@@ -2880,6 +2933,8 @@ export class CadleApp extends LiteElement {
       circuitType: group.specification.circuitType,
       breakerCurrentA: group.specification.breakerCurrentA,
       cableSectionMm2: group.specification.cableSectionMm2,
+      cableConductors: group.specification.cableConductors,
+      cableType: group.specification.cableType,
       poles: group.specification.poles,
       phaseConfiguration: group.specification.phaseConfiguration,
       breakerCurve: group.specification.breakerCurve ?? 'C',
@@ -2893,69 +2948,38 @@ export class CadleApp extends LiteElement {
 
   async #updateCircuitProperties(
     bindingId: string,
-    update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>
+    update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>,
+    regenerateOneWire = true
   ): Promise<void> {
     if (!this.#projectKey || !this.#project) return
-    const targetBindings = new Set(
-      this.analyzeBindings().groups
-        .filter((group) => group.bindingId === bindingId || group.family === bindingId)
-        .map((group) => group.bindingId)
-    )
-    targetBindings.add(bindingId)
-    const apply = (shape: Shape): Shape => {
-      if (shape.kind !== 'symbol' || !targetBindings.has(shape.bindingId?.trim().toUpperCase() ?? '')) return shape
-      const electrical = { ...(shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path)) }
-      for (const [key, value] of Object.entries(update)) {
-        if (value === null || value === undefined) delete (electrical as Record<string, unknown>)[key]
-        else (electrical as Record<string, unknown>)[key] = value
-      }
-      return { ...shape, electrical }
+    const circuitKey = bindingId.trim().toUpperCase()
+    if (!circuitKey) return
+    const specifications = {
+      ...(this.#project.circuitSpecifications ?? {})
     }
-
+    const specification = {
+      ...(specifications[circuitKey] ?? {})
+    } as Record<string, unknown>
+    for (const [key, value] of Object.entries(update)) {
+      if (key === 'role' || key === 'oneWireEligible' || key === 'ratedCurrentA') continue
+      if (value === null || value === undefined) delete specification[key]
+      else specification[key] = value
+    }
+    if (Object.keys(specification).length) {
+      specifications[circuitKey] = specification
+    } else {
+      delete specifications[circuitKey]
+    }
+    this.#project.circuitSpecifications = specifications
+    cadleShell.project = this.#project
+    await setProjectData(this.#projectKey, this.#project)
     const currentPageType = this.#pageKey ? this.#project.pages[this.#pageKey]?.pageType : undefined
-    if (currentPageType !== 'onewire') {
-      this.#document.shapes = this.#document.shapes.map(apply)
-      this.#pushHistory()
-      this.#render()
-      await this.flushPendingSave()
-    }
-
-    for (const pageKey of Object.keys(this.#project.pages) as UUID[]) {
-      if (this.#project.pages[pageKey]?.pageType === 'onewire') continue
-      if (pageKey === this.#pageKey) continue
-      const state = this.#nativeStateForPage(pageKey)
-      if (!state || !Array.isArray(state.shapes)) continue
-      const nextState = { ...state, shapes: sanitizeShapes(state.shapes).map(apply), selectedId: null } as NativeDocumentState
-      await saveNativeState(this.#projectKey, pageKey, nextState)
-    }
-    this.#project = await getProjectData(this.#projectKey)
-    if (currentPageType !== 'onewire') return
+    if (currentPageType !== 'onewire' || !regenerateOneWire) return
     const oneWirePages = Object.entries(this.#project.pages)
       .filter(([, page]) => page.pageType === 'onewire')
       .sort(([, left], [, right]) => (left.order ?? 0) - (right.order ?? 0))
     const pageIndex = Math.max(0, oneWirePages.findIndex(([key]) => key === this.#pageKey))
     this.generateAutoOneWire(pageIndex)
-
-    // Keep the generated breaker glyph in sync immediately with the value
-    // edited in the object pane. Its SVG text is stored as an override and is
-    // otherwise independent from the source circuit symbol fields.
-    const nextGroup = this.analyzeBindings().groups.find((group) => group.bindingId === bindingId || group.family === bindingId)
-    if (nextGroup) {
-      this.#document.shapes = this.#document.shapes.map((shape) => {
-        if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker') return shape
-        if (shape.sourceLink.kind !== 'board' || shape.sourceLink.id !== nextGroup.family) return shape
-        return {
-          ...shape,
-          symbolTextOverrides: {
-            ...(shape.symbolTextOverrides ?? {}),
-            'desc:nP': `${nextGroup.specification.poles}P`,
-            'desc:n': nextGroup.specification.phaseConfiguration === 'three-phase' || nextGroup.specification.phaseConfiguration === 'L1+L2+L3+N' ? '3N' : '1N',
-            'desc:20A': `${nextGroup.specification.breakerCurve ?? 'C'}${nextGroup.specification.breakerCurrentA}A`
-          }
-        }
-      })
-      this.#render()
-    }
   }
 
   #rubberBandTemplate() {
@@ -2997,16 +3021,19 @@ export class CadleApp extends LiteElement {
 
     const groupedSelection = this.#selectedGroupId()
     const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
-    const effectiveElectrical = selectedShape && circuitGroup
+    const isProtectionText = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
+    const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    const circuitPropertiesEditable = currentPageType === 'onewire' && Boolean(circuitGroup && isProtectionText)
+    const effectiveElectrical = selectedShape && circuitGroup && circuitPropertiesEditable
       ? this.#effectiveCircuitElectrical(selectedShape, circuitGroup)
       : undefined
-    const isProtectionText = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
     pubsub.publish(
       'editor.selection.changed',
       createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
         kindOverride: groupedSelection ? 'group' : undefined,
         bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : circuitGroup?.bindingId,
         electricalOverride: effectiveElectrical,
+        circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(circuitGroup && isProtectionText)
       })
     )
@@ -3169,12 +3196,12 @@ export class CadleApp extends LiteElement {
     if (this.#pendingCatalogSymbol?.path) symbolPaths.add(this.#pendingCatalogSymbol.path)
     const projectLogoUrl = this.#project?.logoUrl?.trim() ?? ''
     if (
-      isProjectLogoVisible(this.#project) &&
       projectLogoUrl &&
       /^(data:image\/svg\+xml|.*\.svg(?:$|[?#]))/i.test(projectLogoUrl)
     ) {
       symbolPaths.add(projectLogoUrl)
     }
+    if (/^DIMAC(?:\s|$)/i.test(this.#project?.company?.trim() ?? '')) symbolPaths.add('assets/dimac.svg')
     if (!symbolPaths.size) return
 
     await Promise.all([...symbolPaths].map((path) => preloadSymbolSvg(path)))
@@ -3188,12 +3215,12 @@ export class CadleApp extends LiteElement {
     if (this.#pendingCatalogSymbol?.path) symbolPaths.add(this.#pendingCatalogSymbol.path)
     const projectLogoUrl = this.#project?.logoUrl?.trim() ?? ''
     if (
-      isProjectLogoVisible(this.#project) &&
       projectLogoUrl &&
       /^(data:image\/svg\+xml|.*\.svg(?:$|[?#]))/i.test(projectLogoUrl)
     ) {
       symbolPaths.add(projectLogoUrl)
     }
+    if (/^DIMAC(?:\s|$)/i.test(this.#project?.company?.trim() ?? '')) symbolPaths.add('assets/dimac.svg')
 
     for (const path of symbolPaths) {
       if (getCachedSymbolSvg(path) || isSymbolSvgLoading(path)) continue
@@ -3205,9 +3232,9 @@ export class CadleApp extends LiteElement {
     return safeAreaRect(this.#paperMeta(), this.#printMargin, this.#worldWidth, this.#worldHeight)
   }
 
-  async #svgToPortraitPng(svgString: string): Promise<string> {
-    const widthPx = 2480
-    const heightPx = 3508
+  async #svgToLandscapePng(svgString: string): Promise<string> {
+    const widthPx = 3508
+    const heightPx = 2480
     // Use a data URL — blob URLs can fail silently in Electron renderer
     const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -3227,7 +3254,7 @@ export class CadleApp extends LiteElement {
     return canvas.toDataURL('image/png')
   }
 
-  async #exportPdf() {
+  async exportProjectPdf(filename = `cadle-${this.#paperPreset}.pdf`) {
     await this.#ensureSymbolMarkupReady()
     const { default: jsPDF } = await import('jspdf')
     const originalPageKey = this.#pageKey
@@ -3262,8 +3289,8 @@ export class CadleApp extends LiteElement {
     try {
       // ── Cover / intro page (AREI) ──────────────────────────────────────
       const introSvg = buildIntroPageSvg(this.#project)
-      const introDataUrl = await this.#svgToPortraitPng(introSvg)
-      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'portrait', compress: true })
+      const introDataUrl = await this.#svgToLandscapePng(introSvg)
+      pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', compress: true })
       const introPw = pdf.internal.pageSize.getWidth()
       const introPh = pdf.internal.pageSize.getHeight()
       pdf.setFillColor(255, 255, 255)
@@ -3324,7 +3351,7 @@ export class CadleApp extends LiteElement {
         pdf.addImage(exported.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, 'page-0', 'FAST')
       }
 
-      pdf.save(`cadle-${this.#paperPreset}.pdf`)
+      pdf.save(filename)
     } finally {
       this.#applyPersistedState(originalState)
       this.#pageKey = originalPageKey
@@ -3876,7 +3903,7 @@ export class CadleApp extends LiteElement {
         this.#download('cadle-drawing.json', this.#serialize(), 'application/json;charset=utf-8')
         return
       case 'export-pdf':
-        void this.#exportPdf().catch(() => window.alert('Unable to export PDF'))
+        void this.exportProjectPdf().catch(() => window.alert('Unable to export PDF'))
         return
       case 'print-svg':
         void this.#printSvg().catch(() => window.alert('Unable to print SVG'))
@@ -4107,13 +4134,37 @@ export class CadleApp extends LiteElement {
         const family = this.#normalizeBindingFamily(familyInput)
         if (!family) return
 
-        const ampsInput = window.prompt('Breaker amps (A)', '20')
-        if (ampsInput === null) return
-        const parsedAmps = Number(ampsInput.replace(',', '.'))
-        const amps = Number.isFinite(parsedAmps) && parsedAmps > 0 ? parsedAmps : 20
+        const familyGroups = this.analyzeBindings().groups.filter((group) => group.family === family)
+        const primarySpecification = familyGroups[0]?.specification
+        const amps = familyGroups.length
+          ? Math.max(...familyGroups.map((group) => group.specification.breakerCurrentA))
+          : 20
+        const cableSectionMm2 = familyGroups.length
+          ? Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2))
+          : 2.5
+        const cableConductors = familyGroups.length
+          ? Math.max(...familyGroups.map((group) => group.specification.cableConductors))
+          : 3
+        const poles = familyGroups.length
+          ? Math.max(...familyGroups.map((group) => group.specification.poles))
+          : this.#project?.electricalProfile?.defaultPoles ?? 2
+        const phaseConfiguration = familyGroups.some(
+          (group) =>
+            group.specification.phaseConfiguration === 'three-phase' ||
+            group.specification.phaseConfiguration === 'L1+L2+L3+N'
+        )
+          ? 'L1+L2+L3+N'
+          : primarySpecification?.phaseConfiguration ?? this.#project?.electricalProfile?.phaseConfiguration ?? 'L1+N'
 
         const created = this.#addKamrailCircuitBundle(clickedKamrail, rawPoint.x, {
           amps,
+          cableSectionMm2,
+          cableConductors,
+          cableType: primarySpecification?.cableType ?? 'VOB',
+          cableInstallation: primarySpecification?.cableInstallation ?? 'conduit-recessed',
+          breakerCurve: primarySpecification?.breakerCurve ?? 'C',
+          poles,
+          phaseConfiguration,
           family,
           autoIncludeFamily: true
         })
@@ -4125,6 +4176,11 @@ export class CadleApp extends LiteElement {
       }
 
       const electricalPoint = this.#snapToElectricalPoints(this.#snapPoint(rawPoint)).point
+      if (!clickedShape && this.#oneWireMode === 'preset' && this.#createKamrailAt(electricalPoint)) {
+        this.#pushHistory()
+        this.#render()
+        return
+      }
       if (this.#oneWireComposeKind === 'kamrail' && this.#createKamrailAt(electricalPoint)) {
         this.#pushHistory()
         this.#render()

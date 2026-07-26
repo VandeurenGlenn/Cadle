@@ -150,6 +150,10 @@ export const buildProjectTitleBlockMarkup = (
   originY = 0
 ): string => {
   const cornerMargin = PROJECT_TITLE_BLOCK_MARGIN * layoutScale
+  const pageTitle = displayValue(pageName)
+  const pageTitleWidth = Math.max(190, [...toPrintUpper(pageTitle)].length * 22 * 0.68 + 24)
+  const availablePageWidth = Math.max(190, worldWidth / layoutScale - 2 * PROJECT_TITLE_BLOCK_MARGIN)
+  const pageSectionWidth = Math.min(pageTitleWidth, availablePageWidth)
   const logoBounds = {
     x: originX + cornerMargin,
     y: originY + cornerMargin,
@@ -157,15 +161,14 @@ export const buildProjectTitleBlockMarkup = (
     height: 64 * layoutScale
   }
   const pageBounds = {
-    width: 190 * layoutScale,
+    width: pageSectionWidth * layoutScale,
     height: 64 * layoutScale,
-    x: originX + Math.max(0, worldWidth - cornerMargin - 190 * layoutScale),
+    x: originX + Math.max(0, worldWidth - cornerMargin - pageSectionWidth * layoutScale),
     y: originY + cornerMargin
   }
 
   const { rows, missingRequiredFields } = getProjectTitleBlockData(project, pageName)
   const pageIndicator = pageNumberLabel(project, currentPageKey, pageName)
-  const pageTitle = displayValue(pageName)
   const bounds = getProjectTitleBlockBounds(worldWidth, worldHeight, layoutScale, originX, originY)
   const innerX = bounds.x + 16 * layoutScale
   const warningY = bounds.y + 18 * layoutScale

@@ -95,7 +95,7 @@ const parseStyleSheet = (css: string): Map<string, Map<string, string>> => {
 const toVarValue = (prop: string, value: string): string => {
   if (prop === 'fill') return value === 'none' ? value : `var(--symbol-fill, ${value})`
   if (prop === 'stroke') return value === 'none' ? value : `var(--symbol-stroke, ${value})`
-  if (prop === 'stroke-width') return `var(--symbol-stroke-width, 0.65)`
+  if (prop === 'stroke-width') return `var(--symbol-stroke-width, ${value})`
   return value
 }
 

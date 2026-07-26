@@ -34,6 +34,23 @@ export type DifferentialProtection = {
   type?: 'AC' | 'A' | 'F' | 'B' | 'other'
 }
 
+export type ProjectCircuitSpecification = {
+  circuitType?: 'lighting' | 'sockets' | 'motor' | 'mixed' | 'other'
+  breakerCurrentA?: number
+  cableSectionMm2?: number
+  cableConductors?: number
+  cableType?: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+  cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
+  poles?: number
+  phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  breakerCurve?: 'B' | 'C' | 'D' | 'other'
+  rcdSensitivityMa?: number
+  rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
+  boardId?: string
+  railId?: string
+  notes?: string
+}
+
 export type ProjectInput = {
   name: string
   logoUrl?: string
@@ -60,6 +77,7 @@ export type ProjectInput = {
   eanCode?: string
   mainFuseA?: number
   electricalProfile?: ElectricalProjectProfile
+  circuitSpecifications?: Record<string, ProjectCircuitSpecification>
 }
 
 export interface Project extends ProjectInput {

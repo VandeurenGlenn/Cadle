@@ -29,3 +29,28 @@ test('builds a normalized catalog SVG without mutating source shapes', () => {
 test('returns null when the selection has no matching shapes', () => {
   assert.equal(buildCatalogSelectionDraft([], ['missing']), null)
 })
+
+test('preserves custom colors and stroke widths in catalog geometry', () => {
+  const draft = buildCatalogSelectionDraft(
+    [
+      {
+        id: 'colored-circle',
+        kind: 'rect',
+        variant: 'circle',
+        start: { x: 20, y: 30 },
+        end: { x: 50, y: 60 },
+        fill: '#ffcc33',
+        stroke: '#2455cc',
+        strokeWidth: 3
+      }
+    ],
+    ['colored-circle']
+  )
+
+  assert.match(draft?.svgMarkup ?? '', /fill="#ffcc33"/)
+  assert.match(draft?.svgMarkup ?? '', /stroke="#2455cc"/)
+  assert.match(draft?.svgMarkup ?? '', /stroke-width: 3px/)
+  assert.equal(draft?.shapes[0]?.fill, '#ffcc33')
+  assert.equal(draft?.shapes[0]?.stroke, '#2455cc')
+  assert.equal(draft?.shapes[0]?.strokeWidth, 3)
+})

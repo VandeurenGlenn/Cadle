@@ -2,7 +2,6 @@ import type { Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
 import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
-import { circuitDefaults } from '../circuit-defaults.js'
 
 export type NativeSelectionSymbolTextField = {
   key: string
@@ -17,6 +16,7 @@ export type NativeSelectionShapePayload = {
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
   electrical?: ElectricalDeviceMetadata
+  circuitPropertiesEditable?: boolean
   bindingId?: string
   bindingLabelOffset?: { x: number; y: number }
   name?: string
@@ -73,6 +73,7 @@ export const createNativeSelectionChangedPayload = (
     kindOverride?: string
     bindingIdOverride?: string
     electricalOverride?: ElectricalDeviceMetadata
+    circuitPropertiesEditable?: boolean
     hideSymbolTextFields?: boolean
   }
 ): NativeSelectionChangedPayload => {
@@ -97,18 +98,16 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.path = selectedShape.path
     const sourceElectrical = options?.electricalOverride ?? selectedShape.electrical ?? electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
     if (sourceElectrical.oneWireEligible || selectedShape.bindingId) {
-      const defaults = circuitDefaults(sourceElectrical.circuitType)
-      shapePayload.electrical = {
-        ...sourceElectrical,
-        breakerCurrentA: sourceElectrical.breakerCurrentA ?? defaults.breakerCurrentA,
-        cableSectionMm2: sourceElectrical.cableSectionMm2 ?? defaults.cableSectionMm2,
-        poles: sourceElectrical.poles ?? defaults.poles,
-        phaseConfiguration: sourceElectrical.phaseConfiguration ?? defaults.phaseConfiguration,
-        breakerCurve: sourceElectrical.breakerCurve ?? defaults.breakerCurve,
-        boardId: sourceElectrical.boardId ?? defaults.boardId,
-        railId: sourceElectrical.railId ?? defaults.railId
-      }
+      shapePayload.electrical = options?.circuitPropertiesEditable
+        ? { ...sourceElectrical }
+        : {
+            role: sourceElectrical.role,
+            oneWireEligible: sourceElectrical.oneWireEligible,
+            circuitType: sourceElectrical.circuitType,
+            ratedCurrentA: sourceElectrical.ratedCurrentA
+          }
     }
+    shapePayload.circuitPropertiesEditable = options?.circuitPropertiesEditable === true
     const isProtectionSymbol = /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
     const editableFields = options?.hideSymbolTextFields || isProtectionSymbol ? [] : listEditableSymbolTextFields(selectedShape.path)
     if (editableFields.length) {

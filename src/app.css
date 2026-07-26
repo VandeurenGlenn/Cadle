@@ -485,6 +485,11 @@
     sans-serif;
 }
 
+.onewire-generated-label {
+  pointer-events: none;
+  user-select: none;
+}
+
 .shape-symbol {
   opacity: 0.96;
 }

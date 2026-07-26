@@ -1,7 +1,7 @@
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
-import { applySymbolTextOverrides, getCachedSymbolSvg, resolveSymbolHref } from './symbol-svg-cache.js'
+import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 
 type OpticalInsets = { left: number; right: number; top: number; bottom: number }
@@ -101,15 +101,21 @@ const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) => {
   const x = shape.position.x - size / 2
   const y = shape.position.y - size / 2
   const fullBox = { x, y, width: size, height: size }
-  if (shape.rotation || shape.flipX || shape.flipY) return fullBox
+  const expandBreakerLabel = (bounds: typeof fullBox) => {
+    if (!/automaat|breaker/i.test(`${shape.name} ${shape.path}`)) return bounds
+    const label = shape.symbolTextOverrides?.['desc:20A'] ?? ''
+    const extraRight = Math.max(0, label.length - 3) * 7 * Math.max(0.4, shape.scale)
+    return extraRight > 0 ? { ...bounds, width: bounds.width + extraRight } : bounds
+  }
+  if (shape.rotation || shape.flipX || shape.flipY) return expandBreakerLabel(fullBox)
   const insets = symbolOpticalInsets(shape.path)
-  if (!insets) return fullBox
-  return {
+  if (!insets) return expandBreakerLabel(fullBox)
+  return expandBreakerLabel({
     x: x + size * insets.left,
     y: y + size * insets.top,
     width: Math.max(1, size * (1 - insets.left - insets.right)),
     height: Math.max(1, size * (1 - insets.top - insets.bottom))
-  }
+  })
 }
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
@@ -161,7 +167,9 @@ const rectTransform = (
 
 export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') => {
   const selectedAttr = selected ? 'true' : 'false'
-  const shapeClass = `shape shape-${shape.kind} ${extraClass}`
+  const generatedLabelClass =
+    shape.kind === 'text' && shape.generationKey && shape.sourceLink ? 'onewire-generated-label' : ''
+  const shapeClass = `shape shape-${shape.kind} ${generatedLabelClass} ${extraClass}`
   const isDraft = extraClass.includes('draft')
   const strokeWidthStyle =
     'strokeWidth' in shape && typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;` : nothing
@@ -333,8 +341,6 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         ? applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         : ''
       const symbolStyle =
-        `--symbol-fill:#000000;` +
-        `--symbol-stroke:#000000;` +
         `${shape.fill ? `--symbol-fill:${shape.fill};` : ''}` +
         `${shape.stroke ? `--symbol-stroke:${shape.stroke};` : ''}` +
         `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
@@ -342,8 +348,8 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} style=${symbolStyle || nothing}>${unsafeSVG(symbolInner)}</svg>`
-              : svg`<image href=${resolveSymbolHref(shape.path)} x=${x} y=${y} width=${size} height=${size}></image>`
+              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}</svg>`
+              : nothing
           }
         </g>
       `

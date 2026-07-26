@@ -100,15 +100,21 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
   const x = shape.position.x - size / 2
   const y = shape.position.y - size / 2
   const fullBox = { x, y, width: size, height: size }
-  if (shape.rotation || shape.flipX || shape.flipY) return fullBox
+  const expandBreakerLabel = (bounds: typeof fullBox) => {
+    if (!/automaat|breaker/i.test(`${shape.name} ${shape.path}`)) return bounds
+    const label = shape.symbolTextOverrides?.['desc:20A'] ?? ''
+    const extraRight = Math.max(0, label.length - 3) * 7 * Math.max(0.4, shape.scale)
+    return extraRight > 0 ? { ...bounds, width: bounds.width + extraRight } : bounds
+  }
+  if (shape.rotation || shape.flipX || shape.flipY) return expandBreakerLabel(fullBox)
   const insets = symbolOpticalInsets(shape.path)
-  if (!insets) return fullBox
-  return {
+  if (!insets) return expandBreakerLabel(fullBox)
+  return expandBreakerLabel({
     x: x + size * insets.left,
     y: y + size * insets.top,
     width: Math.max(1, size * (1 - insets.left - insets.right)),
     height: Math.max(1, size * (1 - insets.top - insets.bottom))
-  }
+  })
 }
 
 export const bindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: number; y: number } => {

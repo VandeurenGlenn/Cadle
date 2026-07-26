@@ -31,11 +31,15 @@ export type SelectionShape = {
   x?: number
   y?: number
   bindingLabelOffset?: { x: number; y: number }
+  circuitPropertiesEditable?: boolean
   electrical?: {
     role?: string
     circuitType?: string
     breakerCurrentA?: number
     cableSectionMm2?: number
+    cableConductors?: number
+    cableType?: string
+    cableInstallation?: string
     poles?: number
     phaseConfiguration?: string
     breakerCurve?: string
@@ -106,6 +110,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       fontFamily: typeof shape.fontFamily === 'string' ? shape.fontFamily : '',
       letterSpacing: finiteNumber(shape.letterSpacing),
       bindingLabelSide: inferBindingLabelSide(shape.bindingLabelOffset ?? null),
+      circuitPropertiesEditable: shape.circuitPropertiesEditable === true,
       electrical: shape.electrical && typeof shape.electrical === 'object' ? { ...shape.electrical } : null
     }
   }

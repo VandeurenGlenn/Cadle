@@ -190,6 +190,8 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
       if (raw.flipX === true) symbol.flipX = true
       if (raw.flipY === true) symbol.flipY = true
+      if (typeof raw.fill === 'string' && raw.fill) symbol.fill = raw.fill
+      if (typeof raw.stroke === 'string' && raw.stroke) symbol.stroke = raw.stroke
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
         symbol.strokeWidth = Math.max(0.5, raw.strokeWidth)
       }
@@ -202,8 +204,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
             (entry): entry is [string, string] =>
               typeof entry[0] === 'string' &&
               Boolean(entry[0].trim()) &&
-              typeof entry[1] === 'string' &&
-              Boolean(entry[1].trim())
+              typeof entry[1] === 'string'
           )
           .map(([key, text]) => [key.trim(), text] as const)
         if (entries.length) symbol.symbolTextOverrides = Object.fromEntries(entries)

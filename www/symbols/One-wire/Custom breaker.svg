@@ -1,24 +1,11 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32" fill="none" stroke="#000" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round">
-  <title>Custom breaker</title>
-
-  <line x1="12" y1="0.8" x2="12" y2="4"/>
-  <rect x="6" y="4" width="12" height="24" rx="1.4"/>
-  <line x1="12" y1="28" x2="12" y2="31.2"/>
-
-  <line x1="8.2" y1="9" x2="15.8" y2="21"/>
-  <line x1="9.3" y1="13.8" x2="14.2" y2="11"/>
-
-  <g>
-    <desc>nP</desc>
-    <text x="1.2" y="13.2" font-size="3.6" fill="#000" stroke="none">nP</text>
-  </g>
-  <g>
-    <desc>n</desc>
-    <text x="3.0" y="22.2" font-size="3.6" fill="#000" stroke="none">n</text>
-  </g>
-  <g>
-    <desc>20A</desc>
-    <text x="15.2" y="22.2" font-size="3.6" fill="#000" stroke="none">20A</text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="28.783" height="28.8265" viewBox="0 0 28.783 28.8265">
+  <title>Cadle circuit breaker</title>
+  <g transform="translate(0.36,-0.36)">
+    <g transform="translate(5.29356,0)">
+      <path d="M1.76 11.03 3.28 10.28 1.53 6.72 0 7.47Z" fill="#000"/>
+      <path d="M9.73.48v5.67M9.73 28.83v-5.67l-4.2-8.4-4.02-8.04M8.7 13.15l-3.17 1.62-3.29 1.67M1.76 11.03l1.52-.75-1.75-3.56L0 7.47l1.76 3.56"
+        fill="none" stroke="#000" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
   </g>
 </svg>

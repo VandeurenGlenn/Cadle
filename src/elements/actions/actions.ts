@@ -136,6 +136,7 @@ export class CadleActions extends LiteElement {
         `
       )}
       <flex-it></flex-it>
+      <!--
       <button
         class="tool"
         title="Snap to grid"
@@ -144,6 +145,7 @@ export class CadleActions extends LiteElement {
         @click=${this.#toggleSnap}>
         <custom-icon icon=${this.snap ? 'grid_on' : 'grid_off'}></custom-icon>
       </button>
+        -->
       <button
         class="tool"
         title="Toggle measurements"

@@ -6,6 +6,9 @@ test('uses Belgian residential defaults for lighting circuits', () => {
   assert.deepEqual(circuitDefaults('lighting'), {
     breakerCurrentA: 16,
     cableSectionMm2: 1.5,
+    cableConductors: 3,
+    cableType: 'VOB',
+    cableInstallation: 'conduit-recessed',
     poles: 2,
     phaseConfiguration: 'single-phase',
     breakerCurve: 'C',

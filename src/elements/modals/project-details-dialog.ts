@@ -33,7 +33,7 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor distributor = ''
   @property({ type: String }) accessor supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other' = '1x230V+N'
   @property({ type: Number }) accessor supplyVoltageV = 230
-  @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' = 'single-phase'
+  @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N' = 'single-phase'
   @property({ type: String }) accessor earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown' = 'unknown'
   @property({ type: Number }) accessor defaultPoles = 2
   @property({ type: String }) accessor boardName = 'Main distribution board'

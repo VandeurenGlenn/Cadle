@@ -1,6 +1,12 @@
 export type ElectricalRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 export type ElectricalCircuitType = 'lighting' | 'sockets' | 'motor' | 'mixed' | 'other'
-export type ElectricalPhaseConfiguration = 'single-phase' | 'three-phase'
+export type ElectricalPhaseConfiguration =
+  | 'single-phase'
+  | 'three-phase'
+  | 'L1+N'
+  | 'L2+N'
+  | 'L3+N'
+  | 'L1+L2+L3+N'
 
 export type ElectricalDeviceMetadata = {
   role: ElectricalRole
@@ -69,7 +75,10 @@ export const electricalMetadataFromCatalog = (
       ? candidateType
       : inferCircuitType(name, path)
   const phaseConfiguration =
-    explicit.phaseConfiguration === 'three-phase' ? 'three-phase' : explicit.phaseConfiguration === 'single-phase' ? 'single-phase' : undefined
+    typeof explicit.phaseConfiguration === 'string' &&
+    ['single-phase', 'three-phase', 'L1+N', 'L2+N', 'L3+N', 'L1+L2+L3+N'].includes(explicit.phaseConfiguration)
+      ? explicit.phaseConfiguration as ElectricalPhaseConfiguration
+      : undefined
 
   return {
     role,
@@ -118,8 +127,9 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
     breakerCurrentA: finitePositive(raw.breakerCurrentA),
     poles: finitePositive(raw.poles),
     phaseConfiguration:
-      raw.phaseConfiguration === 'single-phase' || raw.phaseConfiguration === 'three-phase'
-        ? raw.phaseConfiguration
+      typeof raw.phaseConfiguration === 'string' &&
+      ['single-phase', 'three-phase', 'L1+N', 'L2+N', 'L3+N', 'L1+L2+L3+N'].includes(raw.phaseConfiguration)
+        ? raw.phaseConfiguration as ElectricalPhaseConfiguration
         : undefined,
     cableSectionMm2: finitePositive(raw.cableSectionMm2),
     breakerCurve: raw.breakerCurve === 'B' || raw.breakerCurve === 'C' || raw.breakerCurve === 'D' || raw.breakerCurve === 'other' ? raw.breakerCurve : undefined,

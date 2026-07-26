@@ -2488,7 +2488,7 @@ export class CadleApp extends LiteElement {
         cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
         breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
         poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
-        phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase') ? 'three-phase' : 'single-phase',
+        phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N') ? 'three-phase' : familyGroups[0]?.specification.phaseConfiguration,
         family,
         autoIncludeFamily: true
       })
@@ -2535,7 +2535,7 @@ export class CadleApp extends LiteElement {
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; cableSectionMm2?: number; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase'; family: string; autoIncludeFamily: boolean }
+    options: { amps: number; cableSectionMm2?: number; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; family: string; autoIncludeFamily: boolean }
   ): boolean {
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
     const result = buildKamrailCircuitBundle({
@@ -2937,7 +2937,7 @@ export class CadleApp extends LiteElement {
           symbolTextOverrides: {
             ...(shape.symbolTextOverrides ?? {}),
             'desc:nP': `${nextGroup.specification.poles}P`,
-            'desc:n': nextGroup.specification.phaseConfiguration === 'three-phase' ? '3N' : '1N',
+            'desc:n': nextGroup.specification.phaseConfiguration === 'three-phase' || nextGroup.specification.phaseConfiguration === 'L1+L2+L3+N' ? '3N' : '1N',
             'desc:20A': `${nextGroup.specification.breakerCurve ?? 'C'}${nextGroup.specification.breakerCurrentA}A`
           }
         }

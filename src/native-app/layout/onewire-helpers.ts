@@ -27,7 +27,7 @@ type OneWireBundleOptions = {
   amps: number
   cableSectionMm2?: number
   poles?: number
-  phaseConfiguration?: 'single-phase' | 'three-phase'
+  phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   breakerCurve?: string
   family: string
   autoIncludeFamily: boolean
@@ -131,7 +131,7 @@ export const buildOneWireBreakerSection = (
   }
   symbol.symbolTextOverrides = {
     'desc:nP': `${specification?.poles ?? 2}P`,
-    'desc:n': specification?.phaseConfiguration === 'three-phase' ? '3N' : '1N',
+    'desc:n': specification?.phaseConfiguration === 'three-phase' || specification?.phaseConfiguration === 'L1+L2+L3+N' ? '3N' : '1N',
     'desc:20A': `${specification?.breakerCurve ?? 'C'}${specification?.amps ?? 20}A`
   }
 

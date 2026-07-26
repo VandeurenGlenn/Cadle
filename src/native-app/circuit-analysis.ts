@@ -10,7 +10,7 @@ export type CircuitSpecification = {
   breakerCurrentA: number
   cableSectionMm2: number
   poles: number
-  phaseConfiguration: 'single-phase' | 'three-phase'
+  phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
   rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
@@ -107,7 +107,7 @@ const suggestedSpecification = (
     circuitType,
     breakerCurrentA: explicitCurrent ?? defaults.breakerCurrentA,
     cableSectionMm2: explicitSection ?? defaults.cableSectionMm2,
-    poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' ? 4 : 2),
+    poles: explicitPoles ?? profile?.defaultPoles ?? ((explicitPhase ?? profile?.phaseConfiguration) === 'three-phase' || (explicitPhase ?? profile?.phaseConfiguration) === 'L1+L2+L3+N' ? 4 : 2),
     phaseConfiguration: explicitPhase ?? profile?.phaseConfiguration ?? 'single-phase',
     breakerCurve: explicitCurve ?? defaults.breakerCurve,
     ...(explicitRcd ? { rcdSensitivityMa: explicitRcd } : {}),

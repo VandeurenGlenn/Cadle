@@ -11,7 +11,7 @@ export type ElectricalProjectProfile = {
   distributor: string
   supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other'
   supplyVoltageV: number
-  phaseConfiguration: 'single-phase' | 'three-phase'
+  phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown'
   defaultPoles: number
   boards?: ElectricalBoard[]

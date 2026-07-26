@@ -17,7 +17,7 @@ type ValidationGroup = {
     breakerCurrentA: number
     cableSectionMm2: number
     poles: number
-    phaseConfiguration: 'single-phase' | 'three-phase'
+    phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
     breakerCurve?: string
     rcdSensitivityMa?: number
     rcdType?: string

@@ -769,6 +769,19 @@ export class CadleApp extends LiteElement {
 
   async #restore() {
     const loaded = await loadNativeState()
+    if (!loaded) {
+      this.#projectKey = '' as UUID
+      this.#pageKey = '' as UUID
+      this.#project = {} as Project
+      const shell = globalThis as unknown as { cadleShell?: { project?: Project | null; projectName?: string } }
+      if (shell.cadleShell) {
+        shell.cadleShell.project = null as unknown as Project
+        shell.cadleShell.projectName = ''
+      }
+      this.#resetPageState()
+      return
+    }
+
     this.#projectKey = loaded.projectKey
     this.#pageKey = loaded.pageKey
     const shell = globalThis as unknown as { cadleShell?: { project?: Project | null } }
@@ -2472,6 +2485,7 @@ export class CadleApp extends LiteElement {
       const familyGroups = analysis.groups.filter((group) => group.family === family)
       this.#addKamrailCircuitBundle(rail, x, {
         amps: familyCurrent,
+        cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
         poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
         phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase') ? 'three-phase' : 'single-phase',
         family,
@@ -2520,7 +2534,7 @@ export class CadleApp extends LiteElement {
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase'; family: string; autoIncludeFamily: boolean }
+    options: { amps: number; cableSectionMm2?: number; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase'; family: string; autoIncludeFamily: boolean }
   ): boolean {
     const familyComponents = options.autoIncludeFamily ? this.#groundplanComponentsForFamily(options.family) : []
     const result = buildKamrailCircuitBundle({

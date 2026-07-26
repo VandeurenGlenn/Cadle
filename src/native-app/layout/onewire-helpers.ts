@@ -25,6 +25,7 @@ type OneWireCatalogComponent = {
 
 type OneWireBundleOptions = {
   amps: number
+  cableSectionMm2?: number
   poles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase'
   breakerCurve?: string
@@ -104,7 +105,7 @@ export const buildOneWireBreakerSection = (
   bindingId: string,
   familyLabel: string,
   deps: OneWireBuilderDeps,
-  specification?: Pick<OneWireBundleOptions, 'amps' | 'poles' | 'phaseConfiguration'>
+  specification?: Pick<OneWireBundleOptions, 'amps' | 'poles' | 'phaseConfiguration' | 'cableSectionMm2'>
 ): { shapes: Shape[]; ids: string[]; breakerContentTopY: number } => {
   const x = snapToGrid(startX)
   const component = deps.oneWireComponentSymbol('breaker')
@@ -157,10 +158,16 @@ export const buildOneWireBreakerSection = (
     groupId
   }
 
+  const specificationLabel: TextShape = {
+    id: deps.nextShapeId(), kind: 'text', position: { x: x - 35, y: railY + 48 },
+    text: `C${specification?.amps ?? 20} · ${specification?.poles ?? 2}P · ${specification?.cableSectionMm2 ?? 1.5} mm²`,
+    fill: '#000000', stroke: 'none', scale: 0.55, bindingId, groupId
+  }
+
   const breakerContentTopY = deps.symbolContentBounds(symbol).y
   return {
-    shapes: [connector, symbol, label],
-    ids: [connector.id, symbol.id, label.id],
+    shapes: [connector, symbol, label, specificationLabel],
+    ids: [connector.id, symbol.id, label.id, specificationLabel.id],
     breakerContentTopY
   }
 }
@@ -344,11 +351,14 @@ export const buildOneWireRowSection = (
   const shapes: Shape[] = []
   const ids: string[] = []
 
-  // The feeder/trunk is drawn once at the breaker. Repeating a wire segment
-  // for every device row makes the diagram look like each load has its own
-  // breaker section and adds visual noise to the one-wire view.
-  void wireSegments
-  void wireEndX
+  for (const segment of wireSegments) {
+    const wire: LineShape = {
+      id: deps.nextShapeId(), kind: 'line', start: { x: segment.from, y: rowY }, end: { x: segment.to, y: rowY },
+      stroke: deps.branchStroke, strokeWidth: 1.25, bindingId, groupId: rowGroupId
+    }
+    shapes.push(wire)
+    ids.push(wire.id)
+  }
 
   const bindingNumberMatch = /^([A-Z]+)(\d+)$/.exec(bindingId)
   const rowNumber = bindingNumberMatch ? Number(bindingNumberMatch[2]) : rowIndex + 1
@@ -368,20 +378,6 @@ export const buildOneWireRowSection = (
   rowNumberLabel.generationKey = `circuit:${bindingId}:number-label`
   shapes.push(rowNumberLabel)
   ids.push(rowNumberLabel.id)
-
-  const specification = entries[0]
-  if (specification?.breakerCurrentA || specification?.cableSectionMm2) {
-    const curve = specification.breakerCurve ?? 'C'
-    const specificationLabel: TextShape = {
-      id: deps.nextShapeId(), kind: 'text', position: { x: rowJunctionX - 25, y: rowY + 22 },
-      text: `${curve}${specification.breakerCurrentA ?? 16} · ${specification.poles ?? 2}P · ${specification.cableSectionMm2 ?? 1.5} mm²`,
-      fill: '#000000', scale: 0.55, bindingId, groupId: rowGroupId,
-      sourceLink: { kind: 'circuit', id: bindingId, role: 'specification-label' },
-      generationKey: `circuit:${bindingId}:specification-label`
-    }
-    shapes.push(specificationLabel)
-    ids.push(specificationLabel.id)
-  }
 
   if (lampCount > 1) {
     const countLabel: TextShape = {

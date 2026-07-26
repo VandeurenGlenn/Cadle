@@ -38,13 +38,25 @@ export class ProjectElement extends LiteElement {
   @property({ type: String })
   accessor newPageType: PageType = 'groundplan'
 
+  #onKeydown = (event: KeyboardEvent) => { void this.#keydown(event) }
+  #onClick = (event: Event) => this.#onclick(event)
+  #onMenuSelected = (event: Event) => { void this.#contextMenuItemSelected(event as CustomEvent) }
+
   firstRender(): void {
-    this.addEventListener('keydown', this.#keydown.bind(this))
+    this.addEventListener('keydown', this.#onKeydown)
     this.addEventListener('contextmenu', this.#showMenu)
-    this.shadowRoot?.addEventListener('click', this.#onclick.bind(this))
+    this.shadowRoot?.addEventListener('click', this.#onClick)
 
     const menu = this.shadowRoot?.querySelector('context-menu')
-    menu?.addEventListener('selected', this.#contextMenuItemSelected.bind(this) as EventListener)
+    menu?.addEventListener('selected', this.#onMenuSelected)
+  }
+
+  disconnectedCallback(): void {
+    this.removeEventListener('keydown', this.#onKeydown)
+    this.removeEventListener('contextmenu', this.#showMenu)
+    this.shadowRoot?.removeEventListener('click', this.#onClick)
+    this.shadowRoot?.querySelector('context-menu')?.removeEventListener('selected', this.#onMenuSelected)
+    super.disconnectedCallback()
   }
 
   onChange(name: string): void {
@@ -133,7 +145,7 @@ export class ProjectElement extends LiteElement {
     return this.hasAttribute('addingPage')
   }
 
-  #onclick() {
+  #onclick(_event?: Event) {
     const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
     if (menu?.open) menu.open = false
   }

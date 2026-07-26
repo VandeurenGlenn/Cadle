@@ -189,9 +189,7 @@ export const buildOneWireRowSection = (
   const [bindingId, entries] = row
   const columnIndex = Math.floor(rowIndex / ROWS_PER_COLUMN)
   const rowInColumn = rowIndex % ROWS_PER_COLUMN
-  // Fill each column from the top down. Overflow columns therefore begin at
-  // the same top edge instead of appearing as a low, floating continuation.
-  const rowY = railY - ROW_TOP_OFFSET_Y - (ROWS_PER_COLUMN - 1 - rowInColumn) * ROW_SPACING_Y
+  const rowY = railY - ROW_TOP_OFFSET_Y - rowInColumn * ROW_SPACING_Y
   const rowJunctionX = snapToGrid(startX + columnIndex * COLUMN_SPACING_X)
   const symbolBaseX = snapToGrid(rowJunctionX + 48)
   const rowGroupId = `onewire-${deps.nextShapeId()}`
@@ -442,10 +440,11 @@ export const buildKamrailCircuitBundle = (
     const COLUMN_SPACING_X = 220
     const columnCount = Math.ceil(orderedRows.length / ROWS_PER_COLUMN)
     for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const rowsInColumn = Math.min(ROWS_PER_COLUMN, orderedRows.length - columnIndex * ROWS_PER_COLUMN)
       const trunk: LineShape = {
         id: deps.nextShapeId(), kind: 'line',
         start: { x: snapToGrid(startX + columnIndex * COLUMN_SPACING_X), y: snapToGrid(breaker.breakerContentTopY) },
-        end: { x: snapToGrid(startX + columnIndex * COLUMN_SPACING_X), y: snapToGrid(railY - ROW_TOP_OFFSET_Y - (ROWS_PER_COLUMN - 1) * ROW_SPACING_Y) },
+        end: { x: snapToGrid(startX + columnIndex * COLUMN_SPACING_X), y: snapToGrid(railY - ROW_TOP_OFFSET_Y - (rowsInColumn - 1) * ROW_SPACING_Y) },
         stroke: deps.branchStroke, strokeWidth: 1.25, bindingId: options.family,
         groupId: `onewire-${deps.nextShapeId()}`
       }

@@ -12,7 +12,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     await page.locator(`md-outlined-text-field[label="${label}"] input`).fill(value)
   }
   await page.getByRole('button', { name: 'Create project' }).click()
-  await expect(page).toHaveURL(/#!\/native-draw/)
+  await expect(page).toHaveURL(/#!\/editor/model/)
 
   const drawer = page.locator('app-shell .left-rail')
   const drawerToggle = page.getByRole('button', { name: 'Open project menu' })
@@ -98,7 +98,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     (await page.evaluate(() => typeof customElements.get('cadle-app')?.prototype?.toSVG === 'function'))
   ).toBe(true)
   if (await reopenProject.isVisible()) await reopenProject.click()
-  await expect(page).toHaveURL(/#!\/native-draw/)
+  await expect(page).toHaveURL(/#!\/editor/model/)
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => typeof element.toSVG)).toBe('function')
   const exportedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect(exportedSvg).toContain('<svg')

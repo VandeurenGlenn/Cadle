@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { analyzeCircuits, bomRowsToCsv, circuitBomRows } from '../src/native-app/circuit-analysis.ts'
-import type { Shape } from '../src/native-draw/types.ts'
-import { electricalMetadataFromCatalog } from '../src/native-draw/electrical.ts'
+import { analyzeCircuits, bomRowsToCsv, circuitBomRows } from '../src/editor/circuit-analysis.ts'
+import type { Shape } from '../src/editor/model/types.ts'
+import { electricalMetadataFromCatalog } from '../src/editor/model/electrical.ts'
 
 const symbol = (id: string, bindingId: string, name: string, path: string): Shape => ({
   id,

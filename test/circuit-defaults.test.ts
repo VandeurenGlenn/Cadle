@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { circuitDefaults } from '../src/native-app/circuit-defaults.js'
+import { circuitDefaults } from '../src/editor/circuit-defaults.js'
 
 test('uses Belgian residential defaults for lighting circuits', () => {
   assert.deepEqual(circuitDefaults('lighting'), {

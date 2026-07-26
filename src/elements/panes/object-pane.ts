@@ -5,7 +5,7 @@ import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../..
 import type { PanelLabelRow } from '../../helpers/panel-labels.js'
 import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SelectionShapeElectrical, type SymbolTextField } from './object-pane/selection-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
-import { circuitDefaults } from '../../native-app/circuit-defaults.js'
+import { circuitDefaults } from '../../editor/circuit-defaults.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -95,13 +95,13 @@ export class ObjectPane extends LiteElement {
 
   connectedCallback(): void {
     super.connectedCallback()
-    pubsub.subscribe('native.selection.changed', this.#onNativeSelectionChanged)
+    pubsub.subscribe('editor.selection.changed', this.#onNativeSelectionChanged)
     pubsub.subscribe('native.binding.focus-input', this.#focusBindingInput)
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    pubsub.unsubscribe('native.selection.changed', this.#onNativeSelectionChanged)
+    pubsub.unsubscribe('editor.selection.changed', this.#onNativeSelectionChanged)
     pubsub.unsubscribe('native.binding.focus-input', this.#focusBindingInput)
     this.#cancelBindingSave()
   }
@@ -192,7 +192,7 @@ export class ObjectPane extends LiteElement {
 
   #setBindingLabelSide = (side: BindingLabelSide) => {
     this._nativeBindingLabelSide = side
-    pubsub.publish('native.object.update', { bindingLabelSide: side })
+    pubsub.publish('editor.object.update', { bindingLabelSide: side })
   }
 
   #bindingSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -217,7 +217,7 @@ export class ObjectPane extends LiteElement {
   #saveNativeBinding = () => {
     this.#cancelBindingSave()
     if (this._selectionCount === 0) return
-    pubsub.publish('native.object.update', {
+    pubsub.publish('editor.object.update', {
       bindingId: this._nativeBindingId
     })
   }
@@ -227,13 +227,13 @@ export class ObjectPane extends LiteElement {
     const value = Number(input?.value ?? 0)
     if (!Number.isFinite(value)) return
     this._nativeRotation = ((value % 360) + 360) % 360
-    pubsub.publish('native.object.update', { rotation: this._nativeRotation })
+    pubsub.publish('editor.object.update', { rotation: this._nativeRotation })
   }
 
   #rotateBy = (delta: number) => {
     const next = ((((this._nativeRotation ?? 0) + delta) % 360) + 360) % 360
     this._nativeRotation = next
-    pubsub.publish('native.object.update', { rotation: next })
+    pubsub.publish('editor.object.update', { rotation: next })
   }
 
   #onScaleInput = (event: Event) => {
@@ -242,13 +242,13 @@ export class ObjectPane extends LiteElement {
     if (!Number.isFinite(raw)) return
     const next = Math.max(0.1, Math.min(20, raw))
     this._nativeScale = next
-    pubsub.publish('native.object.update', { scale: next })
+    pubsub.publish('editor.object.update', { scale: next })
   }
 
   #onTextInput = (event: Event) => {
     const input = event.target as HTMLInputElement | null
     this._nativeText = input?.value ?? ''
-    pubsub.publish('native.object.update', { text: this._nativeText })
+    pubsub.publish('editor.object.update', { text: this._nativeText })
   }
 
   #onSymbolTextInput = (key: string, value: string) => {
@@ -260,41 +260,41 @@ export class ObjectPane extends LiteElement {
         .map((field) => [field.key, field.value] as const)
         .filter((entry) => typeof entry[0] === 'string' && Boolean(entry[0]) && typeof entry[1] === 'string')
     )
-    pubsub.publish('native.object.update', { symbolTextOverrides })
+    pubsub.publish('editor.object.update', { symbolTextOverrides })
   }
 
   #toggleFlipX = () => {
     const next = !(this._nativeFlipX === true)
     this._nativeFlipX = next
-    pubsub.publish('native.object.update', { flipX: next })
+    pubsub.publish('editor.object.update', { flipX: next })
   }
 
   #toggleFlipY = () => {
     const next = !(this._nativeFlipY === true)
     this._nativeFlipY = next
-    pubsub.publish('native.object.update', { flipY: next })
+    pubsub.publish('editor.object.update', { flipY: next })
   }
 
   #onFillChange = (event: Event) => {
     const input = event.target as HTMLInputElement | null
     this._nativeFill = input?.value ?? ''
-    pubsub.publish('native.object.update', { fill: this._nativeFill })
+    pubsub.publish('editor.object.update', { fill: this._nativeFill })
   }
 
   #clearFill = () => {
     this._nativeFill = ''
-    pubsub.publish('native.object.update', { fill: '' })
+    pubsub.publish('editor.object.update', { fill: '' })
   }
 
   #onStrokeChange = (event: Event) => {
     const input = event.target as HTMLInputElement | null
     this._nativeStroke = input?.value ?? ''
-    pubsub.publish('native.object.update', { stroke: this._nativeStroke })
+    pubsub.publish('editor.object.update', { stroke: this._nativeStroke })
   }
 
   #clearStroke = () => {
     this._nativeStroke = ''
-    pubsub.publish('native.object.update', { stroke: '' })
+    pubsub.publish('editor.object.update', { stroke: '' })
   }
 
   #onStrokeWidthInput = (event: Event) => {
@@ -303,7 +303,7 @@ export class ObjectPane extends LiteElement {
     if (!Number.isFinite(raw)) return
     const next = Math.max(0.5, Math.min(40, raw))
     this._nativeStrokeWidth = next
-    pubsub.publish('native.object.update', { strokeWidth: next })
+    pubsub.publish('editor.object.update', { strokeWidth: next })
   }
 
   #onXInput = (event: Event) => {
@@ -311,7 +311,7 @@ export class ObjectPane extends LiteElement {
     const raw = Number(input?.value ?? 0)
     if (!Number.isFinite(raw)) return
     this._nativeX = raw
-    pubsub.publish('native.object.update', { x: raw })
+    pubsub.publish('editor.object.update', { x: raw })
   }
 
   #onYInput = (event: Event) => {
@@ -319,13 +319,13 @@ export class ObjectPane extends LiteElement {
     const raw = Number(input?.value ?? 0)
     if (!Number.isFinite(raw)) return
     this._nativeY = raw
-    pubsub.publish('native.object.update', { y: raw })
+    pubsub.publish('editor.object.update', { y: raw })
   }
 
   #onFontFamilyInput = (event: Event) => {
     const input = event.target as HTMLInputElement | null
     this._nativeFontFamily = input?.value ?? ''
-    pubsub.publish('native.object.update', { fontFamily: this._nativeFontFamily })
+    pubsub.publish('editor.object.update', { fontFamily: this._nativeFontFamily })
   }
 
   #onLetterSpacingInput = (event: Event) => {
@@ -333,7 +333,7 @@ export class ObjectPane extends LiteElement {
     const raw = Number(input?.value ?? 0)
     if (!Number.isFinite(raw)) return
     this._nativeLetterSpacing = raw
-    pubsub.publish('native.object.update', { letterSpacing: raw })
+    pubsub.publish('editor.object.update', { letterSpacing: raw })
   }
 
   #updateElectrical = (field: keyof SelectionShapeElectrical, value: string) => {
@@ -341,7 +341,7 @@ export class ObjectPane extends LiteElement {
     const parsed = numericFields.has(field) ? (value.trim() ? Number(value) : null) : value || null
     if (typeof parsed === 'number' && (!Number.isFinite(parsed) || parsed <= 0)) return
     this._nativeElectrical = { ...(this._nativeElectrical ?? {}), [field]: parsed ?? undefined }
-    pubsub.publish('native.object.update', { electrical: { [field]: parsed } })
+    pubsub.publish('editor.object.update', { electrical: { [field]: parsed } })
   }
 
   #effectiveElectrical = (): SelectionShapeElectrical => {
@@ -361,12 +361,12 @@ export class ObjectPane extends LiteElement {
 
   #flipNativeShape = () => {
     if (!this._nativeCanFlip) return
-    pubsub.publish('native.object.flip-side', {})
+    pubsub.publish('editor.object.flip-side', {})
   }
 
   #deleteNativeSelection = () => {
     if (this._selectionCount === 0) return
-    pubsub.publish('native.object.delete', {})
+    pubsub.publish('editor.object.delete', {})
   }
 
   #renderNativeSelection() {
@@ -591,7 +591,7 @@ export class ObjectPane extends LiteElement {
                       select.value = this._nativeFontFamily
                     } else {
                       this._nativeFontFamily = value
-                      pubsub.publish('native.object.update', { fontFamily: value })
+                      pubsub.publish('editor.object.update', { fontFamily: value })
                     }
                   }}>
                   <option value="">—</option>

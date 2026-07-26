@@ -39,7 +39,7 @@ export class CadleActions extends LiteElement {
     this.snap = !sh?.freeDraw
     this.measurements = !!sh?.showMeasurements
     this.currentAction = sh?.action ?? ''
-    this.isNativeRoute = location.hash.includes('#!/native-draw')
+    this.isNativeRoute = location.hash.includes('#!/editor/model')
     pubsub.subscribe('shell.snap', this.#onSnap)
     pubsub.subscribe('shell.measurements', this.#onMeasurements)
     pubsub.subscribe('shell.action', this.#onAction)
@@ -67,7 +67,7 @@ export class CadleActions extends LiteElement {
   }
 
   #onHashChange = () => {
-    this.isNativeRoute = location.hash.includes('#!/native-draw')
+    this.isNativeRoute = location.hash.includes('#!/editor/model')
   }
 
   drawText = () => {

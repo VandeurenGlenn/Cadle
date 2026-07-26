@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { updateSelectionProperties } from '../src/native-app/interaction/selection-properties.ts'
-import type { Shape } from '../src/native-draw/types.ts'
+import { updateSelectionProperties } from '../src/editor/interaction/selection-properties.ts'
+import type { Shape } from '../src/editor/model/types.ts'
 
 const symbol = (id: string): Shape => ({
   id,

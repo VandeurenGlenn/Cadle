@@ -17,7 +17,7 @@ import {
   PAPER_PRESETS,
   nextOneWireBindingId,
   type OneWirePreset
-} from './native-app/constants.js'
+} from './editor/constants.js'
 import {
   getNativeHotkeyAction,
   isEditableKeyboardEvent,
@@ -32,7 +32,7 @@ import {
   samePoint,
   sanitizeShapes,
   shapeBounds
-} from './native-draw/model.js'
+} from './editor/model/model.js'
 import { parseHash } from './shell/routing.js'
 import type {
   DraftShape,
@@ -46,26 +46,26 @@ import type {
   SymbolShape,
   TextShape,
   Tool
-} from './native-draw/types.js'
+} from './editor/model/types.js'
 import type { Project, UUID } from './types.js'
 import {
   electricalMetadataFromCatalog,
   type ElectricalDeviceMetadata
-} from './native-draw/electrical.js'
+} from './editor/model/electrical.js'
 import { getProjectData, setProjectData } from './api/project.js'
 import pubsub from './pubsub.js'
-import { downloadTextFile } from './native-app/export/downloads.js'
+import { downloadTextFile } from './editor/export/downloads.js'
 import {
   buildSvgDocument,
   safeAreaRect
-} from './native-app/export/svg-export.js'
+} from './editor/export/svg-export.js'
 import {
   buildProjectTitleBlockMarkup,
   getProjectLogoBounds,
   isProjectLogoVisible,
   PROJECT_LOGO_SHAPE_ID
-} from './native-app/layout/project-title-block.js'
-import { buildIntroPageSvg } from './native-app/intro-page.js'
+} from './editor/layout/project-title-block.js'
+import { buildIntroPageSvg } from './editor/intro-page.js'
 import {
   bindingLabelsTemplate,
   measurementTemplate,
@@ -75,23 +75,23 @@ import {
   shapeTemplate,
   wallChainPreviewTemplate,
   wallMaskTemplate
-} from './native-app/svg-templates.js'
-import { translateShape } from './native-app/interaction/shape-transforms.js'
-import { buildKamrailCircuitBundle } from './native-app/layout/onewire-helpers.js'
-import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './native-app/layout/onewire-symbol-nodes.js'
-import { nextPanFromPointer } from './native-app/interaction/pointer-pan.js'
-import { canCommitDraft, resolvePointerUpPhase } from './native-app/interaction/pointer-up.js'
+} from './editor/svg-templates.js'
+import { translateShape } from './editor/interaction/shape-transforms.js'
+import { buildKamrailCircuitBundle } from './editor/layout/onewire-helpers.js'
+import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './editor/layout/onewire-symbol-nodes.js'
+import { nextPanFromPointer } from './editor/interaction/pointer-pan.js'
+import { canCommitDraft, resolvePointerUpPhase } from './editor/interaction/pointer-up.js'
 import {
   resolveSelectPointerDownState,
   resolveOneWirePointerDown,
   resolveWallPointerDown
-} from './native-app/interaction/pointer-down.js'
-import { applyDragMove, updateDraftShapeEnd, updateWallChainPreview } from './native-app/interaction/pointer-move.js'
-import { resolveNativeEscapeAction } from './native-app/interaction/keyboard.js'
-import { createDraftShape, createSymbolShape, createTextShape } from './native-app/interaction/pointer-down-builders.js'
-import { createNativeSelectionChangedPayload } from './native-app/interaction/selection-payload.js'
-import { transformShapeForSelection, type SelectionTransformAction } from './native-app/interaction/selection-transforms.js'
-import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './native-app/symbol-svg-cache.js'
+} from './editor/interaction/pointer-down.js'
+import { applyDragMove, updateDraftShapeEnd, updateWallChainPreview } from './editor/interaction/pointer-move.js'
+import { resolveNativeEscapeAction } from './editor/interaction/keyboard.js'
+import { createDraftShape, createSymbolShape, createTextShape } from './editor/interaction/pointer-down-builders.js'
+import { createNativeSelectionChangedPayload } from './editor/interaction/selection-payload.js'
+import { transformShapeForSelection, type SelectionTransformAction } from './editor/interaction/selection-transforms.js'
+import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './editor/symbol-svg-cache.js'
 import { isEscape } from './controllers/keyboard/commands/escape.js'
 import { isPanKeyDown, isPanKeyUp } from './controllers/keyboard/commands/pan.js'
 import {
@@ -108,19 +108,19 @@ import {
   type CircuitComponent,
   type CircuitGroup,
   type BomRow
-} from './native-app/circuit-analysis.js'
-import { ViewportController } from './native-app/controllers/viewport-controller.js'
-import { ToolController } from './native-app/controllers/tool-controller.js'
-import { CanvasDocumentController } from './native-app/controllers/canvas-document-controller.js'
-import { OneWireController } from './native-app/controllers/onewire-controller.js'
-import { CatalogController } from './native-app/controllers/catalog-controller.js'
+} from './editor/circuit-analysis.js'
+import { ViewportController } from './editor/controllers/viewport-controller.js'
+import { ToolController } from './editor/controllers/tool-controller.js'
+import { CanvasDocumentController } from './editor/controllers/canvas-document-controller.js'
+import { OneWireController } from './editor/controllers/onewire-controller.js'
+import { CatalogController } from './editor/controllers/catalog-controller.js'
 import {
   symbolContentBounds
-} from './native-app/layout/symbol-layout.js'
+} from './editor/layout/symbol-layout.js'
 import {
   updateSelectionProperties,
   type SelectionPropertyUpdate
-} from './native-app/interaction/selection-properties.js'
+} from './editor/interaction/selection-properties.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
 type CatalogDialogMode = 'add' | 'replace'
@@ -250,10 +250,10 @@ export class CadleApp extends LiteElement {
     pubsub.subscribe('shell.action', this.#onShellAction)
     pubsub.subscribe('shell.snap', this.#onShellSnap)
     pubsub.subscribe('native.catalog.pick', this.#onNativeCatalogPick)
-    pubsub.subscribe('native.object.update', this.#onNativeObjectUpdate)
-    pubsub.subscribe('native.object.delete', this.#onNativeObjectDelete)
-    pubsub.subscribe('native.object.flip-side', this.#onNativeObjectFlipSide)
-    pubsub.subscribe('native.controls.command', this.#onNativeControlsCommand)
+    pubsub.subscribe('editor.object.update', this.#onNativeObjectUpdate)
+    pubsub.subscribe('editor.object.delete', this.#onNativeObjectDelete)
+    pubsub.subscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
+    pubsub.subscribe('editor.controls.command', this.#onNativeControlsCommand)
     pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
     this.#startInitialize()
   }
@@ -271,10 +271,10 @@ export class CadleApp extends LiteElement {
     pubsub.unsubscribe('shell.action', this.#onShellAction)
     pubsub.unsubscribe('shell.snap', this.#onShellSnap)
     pubsub.unsubscribe('native.catalog.pick', this.#onNativeCatalogPick)
-    pubsub.unsubscribe('native.object.update', this.#onNativeObjectUpdate)
-    pubsub.unsubscribe('native.object.delete', this.#onNativeObjectDelete)
-    pubsub.unsubscribe('native.object.flip-side', this.#onNativeObjectFlipSide)
-    pubsub.unsubscribe('native.controls.command', this.#onNativeControlsCommand)
+    pubsub.unsubscribe('editor.object.update', this.#onNativeObjectUpdate)
+    pubsub.unsubscribe('editor.object.delete', this.#onNativeObjectDelete)
+    pubsub.unsubscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
+    pubsub.unsubscribe('editor.controls.command', this.#onNativeControlsCommand)
   }
 
   undo() {
@@ -799,7 +799,7 @@ export class CadleApp extends LiteElement {
   #onHashChange = () => {
     if (!this.#connected) return
     const { route } = parseHash(window.location.hash)
-    if (route !== 'native-draw') return
+    if (route !== 'editor/model') return
     this.#startInitialize()
   }
 
@@ -2967,7 +2967,7 @@ export class CadleApp extends LiteElement {
           ? this.#project.logoScale
           : 1
       const logoColor = this.#project?.logoColor?.trim() ?? ''
-      pubsub.publish('native.selection.changed', {
+      pubsub.publish('editor.selection.changed', {
         selectionCount: 1,
         shape: {
           id: PROJECT_LOGO_SHAPE_ID,
@@ -2991,7 +2991,7 @@ export class CadleApp extends LiteElement {
       : undefined
     const isProtectionText = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
     pubsub.publish(
-      'native.selection.changed',
+      'editor.selection.changed',
       createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
         kindOverride: groupedSelection ? 'group' : undefined,
         bindingIdOverride: groupedSelection ? this.#selectedGroupBindingId() : circuitGroup?.bindingId,
@@ -3781,7 +3781,7 @@ export class CadleApp extends LiteElement {
   }
 
   #publishNativeControlsState() {
-    pubsub.publish('native.controls.state', {
+    pubsub.publish('editor.controls.state', {
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
       oneWirePreset: this.#oneWirePreset,

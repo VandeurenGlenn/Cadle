@@ -1,5 +1,5 @@
-import { bomRowsToCsv, type BomRow } from '../native-app/circuit-analysis.js'
-import { downloadTextFile } from '../native-app/export/downloads.js'
+import { bomRowsToCsv, type BomRow } from '../editor/circuit-analysis.js'
+import { downloadTextFile } from '../editor/export/downloads.js'
 
 export const safeExportName = (name: string): string =>
   (name || 'cadle-project').replace(/[^a-z0-9_-]+/gi, '-')

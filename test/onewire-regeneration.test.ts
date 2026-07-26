@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { reconcileGeneratedOneWire } from '../src/native-app/layout/onewire-regeneration.ts'
-import type { Shape } from '../src/native-draw/types.ts'
+import { reconcileGeneratedOneWire } from '../src/editor/layout/onewire-regeneration.ts'
+import type { Shape } from '../src/editor/model/types.ts'
 
 const generatedSymbol = (id: string, key: string, x: number): Shape => ({
   id,

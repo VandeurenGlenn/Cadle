@@ -42,15 +42,15 @@ export class OneWireActions extends LiteElement {
   firstRender(): void {
     // The element can be lazy-loaded after the initial hashchange already
     // happened, so initialize visibility from the current route as well.
-    this.isVisible = location.hash.includes('#!/native-draw')
-    pubsub.subscribe('native.controls.state', this.#onStateChange)
+    this.isVisible = location.hash.includes('#!/editor/model')
+    pubsub.subscribe('editor.controls.state', this.#onStateChange)
     pubsub.subscribe('shell.action', this.#onActionChange)
     window.addEventListener('hashchange', this.#onHashChange)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
-    pubsub.unsubscribe('native.controls.state', this.#onStateChange)
+    pubsub.unsubscribe('editor.controls.state', this.#onStateChange)
     pubsub.unsubscribe('shell.action', this.#onActionChange)
     window.removeEventListener('hashchange', this.#onHashChange)
   }
@@ -61,45 +61,45 @@ export class OneWireActions extends LiteElement {
   }
 
   #onActionChange = (_action: string) => {
-    // Show one-wire actions when in native-draw mode
-    this.isVisible = location.hash.includes('#!/native-draw')
+    // Show one-wire actions when in editor/model mode
+    this.isVisible = location.hash.includes('#!/editor/model')
   }
 
   #onHashChange = () => {
-    this.isVisible = location.hash.includes('#!/native-draw')
+    this.isVisible = location.hash.includes('#!/editor/model')
   }
 
   #handleAction = (action: string) => {
     switch (action) {
       case 'draw-onewire-lighting':
-        pubsub.publish('native.controls.command', { onewirePreset: 'lighting' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'lighting' })
         break
       case 'draw-onewire-sockets':
-        pubsub.publish('native.controls.command', { onewirePreset: 'sockets' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'sockets' })
         break
       case 'draw-onewire-motor':
-        pubsub.publish('native.controls.command', { onewirePreset: 'motor' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'motor' })
         break
       case 'draw-onewire-compose-breaker':
-        pubsub.publish('native.controls.command', { onewireCompose: 'breaker' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'breaker' })
         break
       case 'draw-onewire-compose-switch':
-        pubsub.publish('native.controls.command', { onewireCompose: 'switch' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'switch' })
         break
       case 'draw-onewire-compose-kamrail':
-        pubsub.publish('native.controls.command', { onewireCompose: 'kamrail' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'kamrail' })
         break
       case 'draw-onewire-compose-load':
-        pubsub.publish('native.controls.command', { onewireCompose: 'load' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'load' })
         break
       case 'draw-onewire-next':
-        pubsub.publish('native.controls.command', { action: 'onewire-next' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-next' })
         break
       case 'draw-onewire-reset-panel':
-        pubsub.publish('native.controls.command', { action: 'onewire-reset-panel' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-reset-panel' })
         break
       case 'draw-onewire-realign':
-        pubsub.publish('native.controls.command', { action: 'onewire-realign' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-realign' })
         break
     }
   }

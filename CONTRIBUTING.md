@@ -25,8 +25,8 @@ output created only while validating a source change.
 
 ## Where code belongs
 
-- Put shape types, sanitization, and pure geometry in `src/native-draw/`.
-- Put editor controllers and use cases in `src/native-app/`.
+- Put shape types, sanitization, and pure geometry in `src/editor/model/`.
+- Put editor controllers and use cases in `src/editor/`.
 - Keep persistence behind `src/api/` and `src/native-project-data.ts`.
 - Keep custom elements focused on translating events and state into controller calls and rendered templates.
 - Add Node tests for pure logic under `test/`, named after the module they exercise.

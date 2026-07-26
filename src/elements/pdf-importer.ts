@@ -8,7 +8,7 @@ import './header.js'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { Project, UUID } from '../types.js'
 import type { NativeDocumentState } from '../native-project-data.js'
-import type { ImageShape } from '../native-draw/types.js'
+import type { ImageShape } from '../editor/model/types.js'
 import pubsub from '../pubsub.js'
 async function getPdfjsLib() {
   console.log('pdfjsLib', pdfjsLib)

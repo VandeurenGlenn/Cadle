@@ -174,67 +174,67 @@ export class ProjectActions extends LiteElement {
         cadleShell.toggleHistoryPanel()
         break
       case 'draw-paper-a4-portrait':
-        pubsub.publish('native.controls.command', { paper: 'a4-portrait' })
+        pubsub.publish('editor.controls.command', { paper: 'a4-portrait' })
         break
       case 'draw-paper-a4-landscape':
-        pubsub.publish('native.controls.command', { paper: 'a4-landscape' })
+        pubsub.publish('editor.controls.command', { paper: 'a4-landscape' })
         break
       case 'draw-paper-a3-portrait':
-        pubsub.publish('native.controls.command', { paper: 'a3-portrait' })
+        pubsub.publish('editor.controls.command', { paper: 'a3-portrait' })
         break
       case 'draw-paper-a3-landscape':
-        pubsub.publish('native.controls.command', { paper: 'a3-landscape' })
+        pubsub.publish('editor.controls.command', { paper: 'a3-landscape' })
         break
       case 'draw-margin-inc':
-        pubsub.publish('native.controls.command', { action: 'margin-inc' })
+        pubsub.publish('editor.controls.command', { action: 'margin-inc' })
         break
       case 'draw-margin-dec':
-        pubsub.publish('native.controls.command', { action: 'margin-dec' })
+        pubsub.publish('editor.controls.command', { action: 'margin-dec' })
         break
       case 'draw-onewire-lighting':
-        pubsub.publish('native.controls.command', { onewirePreset: 'lighting' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'lighting' })
         break
       case 'draw-onewire-sockets':
-        pubsub.publish('native.controls.command', { onewirePreset: 'sockets' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'sockets' })
         break
       case 'draw-onewire-motor':
-        pubsub.publish('native.controls.command', { onewirePreset: 'motor' })
+        pubsub.publish('editor.controls.command', { onewirePreset: 'motor' })
         break
       case 'draw-onewire-compose-breaker':
-        pubsub.publish('native.controls.command', { onewireCompose: 'breaker' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'breaker' })
         break
       case 'draw-onewire-compose-switch':
-        pubsub.publish('native.controls.command', { onewireCompose: 'switch' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'switch' })
         break
       case 'draw-onewire-compose-kamrail':
-        pubsub.publish('native.controls.command', { onewireCompose: 'kamrail' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'kamrail' })
         break
       case 'draw-onewire-compose-load':
-        pubsub.publish('native.controls.command', { onewireCompose: 'load' })
+        pubsub.publish('editor.controls.command', { onewireCompose: 'load' })
         break
       case 'draw-onewire-next':
-        pubsub.publish('native.controls.command', { action: 'onewire-next' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-next' })
         break
       case 'draw-onewire-reset-panel':
-        pubsub.publish('native.controls.command', { action: 'onewire-reset-panel' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-reset-panel' })
         break
       case 'draw-onewire-realign':
-        pubsub.publish('native.controls.command', { action: 'onewire-realign' })
+        pubsub.publish('editor.controls.command', { action: 'onewire-realign' })
         break
       case 'draw-export-json':
-        pubsub.publish('native.controls.command', { action: 'export-json' })
+        pubsub.publish('editor.controls.command', { action: 'export-json' })
         break
       case 'draw-export-pdf':
-        pubsub.publish('native.controls.command', { action: 'export-pdf' })
+        pubsub.publish('editor.controls.command', { action: 'export-pdf' })
         break
       case 'draw-print-svg':
-        pubsub.publish('native.controls.command', { action: 'print-svg' })
+        pubsub.publish('editor.controls.command', { action: 'print-svg' })
         break
       case 'draw-import-json':
-        pubsub.publish('native.controls.command', { action: 'import-json' })
+        pubsub.publish('editor.controls.command', { action: 'import-json' })
         break
       case 'draw-clear':
-        pubsub.publish('native.controls.command', { action: 'clear' })
+        pubsub.publish('editor.controls.command', { action: 'clear' })
         break
       case 'create':
         location.hash = '#!/create-project'

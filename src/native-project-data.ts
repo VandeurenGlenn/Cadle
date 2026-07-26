@@ -1,9 +1,9 @@
 import type { Project, UUID } from './types.js'
 import { getProjectData, projectDataStore, projectStore, setProjectData } from './api/project.js'
 import { parseHash } from './shell/routing.js'
-import { asNativeState, type NativeDocumentState } from './native-draw/document-state.js'
+import { asNativeState, type NativeDocumentState } from './editor/model/document-state.js'
 
-export { asNativeState, type NativeDocumentState } from './native-draw/document-state.js'
+export { asNativeState, type NativeDocumentState } from './editor/model/document-state.js'
 
 type NativeSchemaObject = {
   kind: 'cadle-native-svg-document'

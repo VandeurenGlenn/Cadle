@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildCatalogSelectionDraft } from '../src/native-app/layout/catalog-selection.ts'
-import type { Shape } from '../src/native-draw/types.ts'
+import { buildCatalogSelectionDraft } from '../src/editor/layout/catalog-selection.ts'
+import type { Shape } from '../src/editor/model/types.ts'
 
 test('builds a normalized catalog SVG without mutating source shapes', () => {
   const source: Shape[] = [

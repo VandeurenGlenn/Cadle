@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeElectricalProfile } from '../src/native-app/electrical-profile.ts'
+import { normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
 
 test('keeps distributor and Belgian supply configuration in the project profile', () => {
   const profile = normalizeElectricalProfile({

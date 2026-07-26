@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ViewportController } from '../src/native-app/controllers/viewport-controller.ts'
+import { ViewportController } from '../src/editor/controllers/viewport-controller.ts'
 
 test('converts screen coordinates to world coordinates', () => {
   const viewport = new ViewportController()

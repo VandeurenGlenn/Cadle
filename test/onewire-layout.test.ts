@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ONE_WIRE_PRESETS } from '../src/native-app/constants.ts'
-import { buildOneWireCircuit } from '../src/native-app/layout/onewire-builder.ts'
-import { buildOneWireBreakerSection } from '../src/native-app/layout/onewire-helpers.ts'
+import { ONE_WIRE_PRESETS } from '../src/editor/constants.ts'
+import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.ts'
+import { buildOneWireBreakerSection } from '../src/editor/layout/onewire-helpers.ts'
 
 const idSequence = () => {
   let value = 0
@@ -50,13 +50,13 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
 
   assert.deepEqual(
     result.shapes.map((shape) => shape.kind),
-    ['line', 'symbol', 'text']
+    ['line', 'symbol', 'text', 'text']
   )
   assert.ok(result.shapes.every((shape) => shape.bindingId === 'A1'))
   assert.equal(new Set(result.shapes.map((shape) => shape.groupId)).size, 1)
   const breaker = result.shapes.find((shape) => shape.kind === 'symbol')
   assert.deepEqual(breaker?.kind === 'symbol' ? breaker.symbolTextOverrides : null, {
-    'desc:nP': '2P', 'desc:n': '1N', 'desc:20A': '20A'
+    'desc:nP': '2P', 'desc:n': '1N', 'desc:20A': 'C20A'
   })
 
   const connector = result.shapes[0]

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { asNativeState } from '../src/native-draw/document-state.ts'
+import { asNativeState } from '../src/editor/model/document-state.ts'
 
 test('ignores persisted selection ids so restored documents start unselected', () => {
   const state = asNativeState({

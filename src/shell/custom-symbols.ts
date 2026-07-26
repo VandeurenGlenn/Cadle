@@ -1,7 +1,7 @@
 import type { Catalog, JsonValue } from './../types.js'
 import { customCatalogStore } from '../api/catalog.js'
-import { sanitizeShapes } from '../native-draw/model.js'
-import type { Shape } from '../native-draw/types.js'
+import { sanitizeShapes } from '../editor/model/model.js'
+import type { Shape } from '../editor/model/types.js'
 /**
  * User-imported SVG symbols are persisted to @leofcoin/storage and merged
  * into the live catalog as catalog sections grouped by folder/category.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DocumentHistory } from '../src/native-app/controllers/document-history.ts'
-import type { Snapshot } from '../src/native-draw/types.ts'
+import { DocumentHistory } from '../src/editor/controllers/document-history.ts'
+import type { Snapshot } from '../src/editor/model/types.ts'
 
 const snapshot = (id: string): Snapshot => ({
   shapes: [

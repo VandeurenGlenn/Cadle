@@ -69,7 +69,7 @@ export const create = async (project: ProjectInput, pageName: string) => {
   cadleShell.project = (await getProjectData(uuid as UUID)) as Project
   cadleShell.projectKey = uuid as UUID
   await cadleShell.loadPage(pageUuid)
-  location.hash = `#!/native-draw?project=${uuid}&page=${pageUuid}`
+  location.hash = `#!/editor/model?project=${uuid}&page=${pageUuid}`
   return
 }
 

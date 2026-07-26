@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { planOneWireLayout } from '../src/native-app/layout/onewire-layout-plan.ts'
+import { planOneWireLayout } from '../src/editor/layout/onewire-layout-plan.ts'
 
 test('moves wide circuit families to another rail before they collide', () => {
   const plan = planOneWireLayout(

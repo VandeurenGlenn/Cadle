@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bindingLabelOffset, parseSvgViewBox } from '../src/native-app/layout/symbol-layout.ts'
-import type { Shape } from '../src/native-draw/types.ts'
+import { bindingLabelOffset, parseSvgViewBox } from '../src/editor/layout/symbol-layout.ts'
+import type { Shape } from '../src/editor/model/types.ts'
 
 test('parses valid SVG view boxes and rejects invalid dimensions', () => {
   assert.deepEqual(parseSvgViewBox('0 0 24 36'), { minX: 0, minY: 0, width: 24, height: 36 })

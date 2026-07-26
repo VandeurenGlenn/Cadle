@@ -8,7 +8,7 @@ test('paints the Projects entry point without JavaScript', async ({ page }) => {
 })
 
 test('first load without an open project shows Projects instead of an empty editor', async ({ page }) => {
-  await page.goto('/#!/native-draw')
+  await page.goto('/#!/editor/model')
 
   await expect(page).toHaveURL(/#!\/projects$/)
   await expect(page.locator('projects-field .header h1')).toBeVisible()

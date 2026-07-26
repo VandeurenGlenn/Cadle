@@ -12,8 +12,8 @@ a generated but editable projection of that data.
 
 - `src/shell.ts` owns projects, pages, menus, dialogs, export entry points, and navigation.
 - `src/app.ts` is the native SVG editor and currently owns most drawing and interaction behavior.
-- `src/native-draw/` contains the canonical shape model, sanitization, geometry, and transforms.
-- `src/native-app/` contains focused canvas helpers, export, one-wire layout, and circuit analysis.
+- `src/editor/model/` contains the canonical shape model, sanitization, geometry, and transforms.
+- `src/editor/` contains focused canvas helpers, export, one-wire layout, and circuit analysis.
 - Projects are persisted through `src/native-project-data.ts` using the canonical native shape types.
 - The symbol catalog supplies placement metadata; placed symbols retain normalized electrical metadata.
 

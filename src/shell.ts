@@ -32,7 +32,7 @@ import { Color } from './symbols/default-options.js'
 import { Project, type Projects, type UUID, type Catalog, type JsonValue } from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
-import { type BomRow, type CircuitAnalysis } from './native-app/circuit-analysis.js'
+import { type BomRow, type CircuitAnalysis } from './editor/circuit-analysis.js'
 import { ensureOneWirePage } from './shell/page-operations.js'
 import { clonePageSchema } from './shell/page-schema.js'
 import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
@@ -303,7 +303,7 @@ export class AppShell extends LiteElement {
 
   #captureReloadResumeFromHash() {
     const { route, params } = parseHash(location.hash)
-    const isNativeRoute = route === 'native-draw' || route === 'draw' || route === 'save'
+    const isNativeRoute = route === 'editor/model' || route === 'draw' || route === 'save'
     const resumeProject = params?.project || localStorage.getItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE) || ''
     const resumePage = params?.page || localStorage.getItem(AppShell.LAST_OPEN_PAGE_KEY_STORAGE) || ''
     if (!isNativeRoute || !resumeProject) return
@@ -594,7 +594,7 @@ export class AppShell extends LiteElement {
     // spend that work looking at an editor without an open project.
     this.#captureReloadResumeFromHash()
     const initialRoute = parseHash(location.hash).route
-    if (!initialRoute || ((initialRoute === 'native-draw' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
+    if (!initialRoute || ((initialRoute === 'editor/model' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
       location.hash = '#!/projects'
     }
     await this.#onhashchange()
@@ -672,15 +672,15 @@ export class AppShell extends LiteElement {
 
   #onhashchange = async () => {
     const { route, params } = parseHash(location.hash)
-    const validRoutes = new Set(['home', 'native-draw', 'projects', 'add-page', 'create-project', 'settings'])
-    const fallbackRoute = this.project?.pages ? 'native-draw' : 'projects'
+    const validRoutes = new Set(['home', 'editor/model', 'projects', 'add-page', 'create-project', 'settings'])
+    const fallbackRoute = this.project?.pages ? 'editor/model' : 'projects'
     const nextRoute =
-      route === 'draw' || route === 'save' ? 'native-draw' : validRoutes.has(route) ? route : fallbackRoute
+      route === 'draw' || route === 'save' ? 'editor/model' : validRoutes.has(route) ? route : fallbackRoute
     this.#closeMobileDrawer()
-    if (nextRoute === 'native-draw') await this.#ensureNativeEditorLoaded()
+    if (nextRoute === 'editor/model') await this.#ensureNativeEditorLoaded()
     this.activeRoute = nextRoute
     await this.rendered
-    if (nextRoute !== 'native-draw' && !customElements.get(`${nextRoute}-field`)) {
+    if (nextRoute !== 'editor/model' && !customElements.get(`${nextRoute}-field`)) {
       try {
         await import(`./${nextRoute}.js`)
       } catch (error) {
@@ -711,9 +711,9 @@ export class AppShell extends LiteElement {
 
   #nativeDrawHash() {
     if (this.projectKey && this.loadedPage) {
-      return `#!/native-draw?project=${this.projectKey}&page=${this.loadedPage}`
+      return `#!/editor/model?project=${this.projectKey}&page=${this.loadedPage}`
     }
-    return '#!/native-draw'
+    return '#!/editor/model'
   }
 
   #dialogAction = async (event: Event) => {
@@ -922,7 +922,7 @@ export class AppShell extends LiteElement {
       localStorage.setItem(AppShell.LAST_OPEN_PAGE_KEY_STORAGE, key)
     }
 
-    location.hash = `#!/native-draw?project=${this.projectKey}&page=${key}`
+    location.hash = `#!/editor/model?project=${this.projectKey}&page=${key}`
     this.projectDirty = false
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
@@ -1115,7 +1115,7 @@ export class AppShell extends LiteElement {
   }
 
   render() {
-    if (this.activeRoute !== 'native-draw') return this.#lightweightRouteTemplate()
+    if (this.activeRoute !== 'editor/model') return this.#lightweightRouteTemplate()
 
     return html`
       <md-dialog></md-dialog>
@@ -1248,7 +1248,7 @@ export class AppShell extends LiteElement {
             </div>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
-              <cadle-app data-route="native-draw"></cadle-app>
+              <cadle-app data-route="editor/model"></cadle-app>
               <projects-field data-route="projects"></projects-field>
               <add-page-field data-route="add-page"></add-page-field>
               <create-project-field data-route="create-project"></create-project-field>

@@ -2,7 +2,7 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './project-details-dialog.css' with { type: 'css' }
 import type { Project, Projects, UUID } from '../../types.js'
 import { getProjectData, getProjects, set, setProjectData } from '../../api/project.js'
-import { normalizeElectricalProfile } from '../../native-app/electrical-profile.js'
+import { normalizeElectricalProfile } from '../../editor/electrical-profile.js'
 
 type ProjectDetailsSavedDetail = {
   project: Project

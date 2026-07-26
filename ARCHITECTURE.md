@@ -8,12 +8,12 @@ domain modules below instead of increasing the responsibilities of `app.ts` or `
 - `src/app.ts` — `<cadle-app>` composition root for the SVG editor. It connects controllers to rendering, persistence,
   and browser events; its public custom-element API must remain stable.
 - `src/shell.ts` — application shell and project/page orchestration.
-- `src/native-draw/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
+- `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
-- `src/native-app/controllers/` — stateful editor controllers for history, tools, and the viewport.
-- `src/native-app/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
-- `src/native-app/layout/` — catalog, symbol, title-block, and one-wire layout generation.
-- `src/native-app/export/` — SVG/PDF/download concerns. Shared editor policies remain directly in `src/native-app/`.
+- `src/editor/controllers/` — stateful editor controllers for history, tools, and the viewport.
+- `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
+- `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
+- `src/editor/export/` — SVG/PDF/download concerns. Shared editor policies remain directly in `src/editor/`.
 - `src/api/` — persistence gateways for projects and catalogs.
 - `src/elements/`, `src/fields/` — custom elements grouped by UI role. Complex panes keep models and configuration in
   a same-named subfolder (for example, `elements/panes/object-pane/`).
@@ -25,9 +25,9 @@ domain modules below instead of increasing the responsibilities of `app.ts` or `
 ```text
 UI elements / app / shell
           ↓
-controllers and use cases (`native-app`)
+controllers and use cases (`editor`)
           ↓
-shape and electrical domain (`native-draw`)
+shape and electrical domain (`editor/model`)
           ↓
            types
 ```

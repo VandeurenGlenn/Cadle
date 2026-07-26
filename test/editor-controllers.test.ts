@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CanvasDocumentController } from '../src/native-app/controllers/canvas-document-controller.ts'
-import { OneWireController } from '../src/native-app/controllers/onewire-controller.ts'
-import { CatalogController } from '../src/native-app/controllers/catalog-controller.ts'
-import type { Shape } from '../src/native-draw/types.ts'
+import { CanvasDocumentController } from '../src/editor/controllers/canvas-document-controller.ts'
+import { OneWireController } from '../src/editor/controllers/onewire-controller.ts'
+import { CatalogController } from '../src/editor/controllers/catalog-controller.ts'
+import type { Shape } from '../src/editor/model/types.ts'
 
 const shape = (id: string): Shape => ({ id, kind: 'text', position: { x: 0, y: 0 }, text: id })
 

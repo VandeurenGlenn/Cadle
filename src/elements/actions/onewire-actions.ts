@@ -63,7 +63,7 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
-  @((listen as unknown as (event: string, options: { target: 'window' }) => any)('hashchange', { target: 'window' }))
+  @listen('hashchange', { target: 'window' })
   onHashChange() {
     this.isVisible = location.hash.includes('#!/editor/model')
   }

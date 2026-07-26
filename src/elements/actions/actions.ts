@@ -64,7 +64,7 @@ export class CadleActions extends LiteElement {
     this.currentAction = value ?? ''
   }
 
-  @((listen as unknown as (event: string, options: { target: 'window' }) => any)('hashchange', { target: 'window' }))
+  @listen('hashchange', { target: 'window' })
   onHashChange() {
     this.isNativeRoute = location.hash.includes('#!/editor/model')
   }

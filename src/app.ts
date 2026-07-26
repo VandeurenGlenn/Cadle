@@ -2603,6 +2603,20 @@ export class CadleApp extends LiteElement {
     const railAnchor = this.#nearestKamrail(point)
     if (!railAnchor) return false
 
+    // Keep room for another breaker/device at either end of a manually drawn
+    // busbar. Extend the existing rail before placing a component when the
+    // snapped point is too close to an endpoint.
+    const rail = railAnchor.rail
+    const minX = Math.min(rail.start.x, rail.end.x)
+    const maxX = Math.max(rail.start.x, rail.end.x)
+    const edgeClearance = 64
+    const extension = 160
+    if (railAnchor.point.x - minX < edgeClearance) {
+      rail.start = { ...rail.start, x: Math.max(0, minX - extension) }
+    } else if (maxX - railAnchor.point.x < edgeClearance) {
+      rail.end = { ...rail.end, x: Math.min(this.#worldWidth, maxX + extension) }
+    }
+
     const component = this.#oneWireComponentSymbol(this.#oneWireComposeKind)
     const scale = this.#oneWireSymbolScale(component.path, this.#oneWireComposeKind)
     const placeBelowRail = false

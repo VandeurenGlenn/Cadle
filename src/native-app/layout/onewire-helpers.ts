@@ -182,7 +182,7 @@ export const buildOneWireRowSection = (
   const ROW_NUMBER_OFFSET_X = -25
   const ROW_SYMBOL_MARGIN_X = 0
   const ROW_TOP_OFFSET_Y = 130
-  const ROW_SPACING_Y = 40
+  const ROW_SPACING_Y = 50
 
   const [bindingId, entries] = row
   const rowY = railY - ROW_TOP_OFFSET_Y - rowIndex * ROW_SPACING_Y

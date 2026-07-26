@@ -344,20 +344,11 @@ export const buildOneWireRowSection = (
   const shapes: Shape[] = []
   const ids: string[] = []
 
-  for (const segment of wireSegments) {
-    const wire: LineShape = {
-      id: deps.nextShapeId(),
-      kind: 'line',
-      start: { x: segment.from, y: rowY },
-      end: { x: segment.to, y: rowY },
-      stroke: deps.branchStroke,
-      strokeWidth: 1.25,
-      bindingId,
-      groupId: rowGroupId
-    }
-    shapes.push(wire)
-    ids.push(wire.id)
-  }
+  // The feeder/trunk is drawn once at the breaker. Repeating a wire segment
+  // for every device row makes the diagram look like each load has its own
+  // breaker section and adds visual noise to the one-wire view.
+  void wireSegments
+  void wireEndX
 
   const bindingNumberMatch = /^([A-Z]+)(\d+)$/.exec(bindingId)
   const rowNumber = bindingNumberMatch ? Number(bindingNumberMatch[2]) : rowIndex + 1

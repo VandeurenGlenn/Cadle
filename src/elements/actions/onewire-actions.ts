@@ -29,10 +29,10 @@ export class OneWireActions extends LiteElement {
   #actions: OneWireAction[] = [
     { action: 'draw-onewire-lighting', icon: 'lightbulb', title: 'Lighting preset', label: 'Lighting' },
     { action: 'draw-onewire-sockets', icon: 'outlet', title: 'Sockets preset', label: 'Sockets' },
-    { action: 'draw-onewire-motor', icon: 'electric_bolt', title: 'Motor preset', label: 'Motor' },
+    { action: 'draw-onewire-motor', icon: 'settings', title: 'Motor preset', label: 'Motor' },
     { action: 'draw-onewire-compose-breaker', icon: 'toggle_on', title: 'Add breaker', label: 'Breaker' },
-    { action: 'draw-onewire-compose-switch', icon: 'switch_left', title: 'Add switch', label: 'Switch' },
-    { action: 'draw-onewire-compose-kamrail', icon: 'linear_scale', title: 'Add kamrail', label: 'KamRail' },
+    { action: 'draw-onewire-compose-switch', icon: 'toggle_off', title: 'Add switch', label: 'Switch' },
+    { action: 'draw-onewire-compose-kamrail', icon: 'view_week', title: 'Add kamrail', label: 'KamRail' },
     { action: 'draw-onewire-compose-load', icon: 'power', title: 'Add load', label: 'Load' },
     { action: 'draw-onewire-next', icon: 'skip_next', title: 'Next circuit', label: 'Next' },
     { action: 'draw-onewire-reset-panel', icon: 'dashboard', title: 'New panel', label: 'Panel' },

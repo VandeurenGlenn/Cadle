@@ -2203,6 +2203,7 @@ export class CadleApp extends LiteElement {
 
   #oneWireSymbolScale(path: string, kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
     if (kind === 'breaker') return Math.max(0.4, inferSymbolScale(path))
+    if (/socket outlets\//i.test(path)) return 1
     // Node-normalized scale keeps every switch circle the same rendered size.
     const nodeScale = oneWireSymbolScaleFor(path)
     if (nodeScale !== null) return nodeScale

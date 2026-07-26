@@ -283,7 +283,8 @@ export const buildOneWireRowSection = (
   const rowSymbols: SymbolShape[] = rowSymbolSpecs.map((spec, symbolIndex) => {
     const slot: Point = { x: slotXs[symbolIndex] ?? symbolBaseX, y: rowY }
     const isLighting = /lighting|lamp|fluorescent/i.test(spec.component.path)
-    const isHeavyLighting = /fluorescent|wall light/i.test(`${spec.component.path} ${spec.component.name}`)
+    const isFluorescent = /fluorescent/i.test(`${spec.component.path} ${spec.component.name}`)
+    const isWallLight = /wall light/i.test(`${spec.component.path} ${spec.component.name}`)
     const symbol: SymbolShape = {
       id: deps.nextShapeId(),
       kind: 'symbol',
@@ -291,7 +292,7 @@ export const buildOneWireRowSection = (
       name: spec.component.name,
       path: spec.component.path,
       scale: spec.scale,
-      strokeWidth: isHeavyLighting ? 1 : isLighting ? 0.5 : 0.65,
+      strokeWidth: isFluorescent ? 1 : isWallLight ? 0.65 : isLighting ? 0.5 : 0.65,
       bindingId,
       groupId: rowGroupId
     }

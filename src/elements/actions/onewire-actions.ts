@@ -40,6 +40,9 @@ export class OneWireActions extends LiteElement {
   ]
 
   firstRender(): void {
+    // The element can be lazy-loaded after the initial hashchange already
+    // happened, so initialize visibility from the current route as well.
+    this.isVisible = location.hash.includes('#!/native-draw')
     pubsub.subscribe('native.controls.state', this.#onStateChange)
     pubsub.subscribe('shell.action', this.#onActionChange)
     window.addEventListener('hashchange', this.#onHashChange)

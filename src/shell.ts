@@ -1,4 +1,4 @@
-import { LiteElement, html, property, customElement, query } from '@vandeurenglenn/lite'
+import { LiteElement, html, property, customElement, query, listen } from '@vandeurenglenn/lite'
 import { shellStyles } from './shell/styles.js'
 import { parseHash } from './shell/routing.js'
 import { PresenceController } from './shell/presence.js'
@@ -334,7 +334,8 @@ export class AppShell extends LiteElement {
     this.mobileDrawerOpen = false
   }
 
-  #onWindowKeydown = (event: KeyboardEvent) => {
+  @listen('keydown', { target: 'window' })
+  onWindowKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && this.mobileDrawerOpen) this.#closeMobileDrawer()
   }
 
@@ -406,12 +407,14 @@ export class AppShell extends LiteElement {
     this.catalog = this.#mergeCatalogWithBoundSymbols([])
   }
 
-  #updateHistoryEntries = (event: Event) => {
+  @listen('canvas-history-updated')
+  onHistoryEntriesUpdated(event: Event) {
     const customEvent = event as CustomEvent<{ entries?: Array<{ id: string; label: string; timestamp: number }> }>
     this.historyEntries = customEvent.detail?.entries ?? []
   }
 
-  #onCanvasHistoryUpdated = () => {
+  @listen('canvas-history-updated')
+  onCanvasHistoryUpdated() {
     if (!this.project || !this.projectKey || !this.loadedPage) return
     this.projectDirty = true
     pubsub.publish('project.modified', { projectKey: this.projectKey, pageKey: this.loadedPage })
@@ -514,7 +517,8 @@ export class AppShell extends LiteElement {
     location.hash = this.#nativeDrawHash()
   }
 
-  #onBindingLookupUpdated = (event: Event) => {
+  @listen('binding-lookup-updated')
+  onBindingLookupUpdated(event: Event) {
     const customEvent = event as CustomEvent<{
       symbols?: Catalog[number]['symbols']
       groupSymbols?: Catalog[number]['symbols']
@@ -524,7 +528,8 @@ export class AppShell extends LiteElement {
     this.catalog = this.#mergeCatalogWithBoundSymbols(symbols, groupSymbols)
   }
 
-  #onCatalogStructureUpdated = () => {
+  @listen('catalog-structure-updated')
+  onCatalogStructureUpdated() {
     this.#refreshBoundOneLineCatalog()
   }
 
@@ -622,19 +627,6 @@ export class AppShell extends LiteElement {
         projectName: this.previousProjectName
       })
     }
-    this.addListener('drop', this.#drop.bind(this))
-    this.addListener('dragover', this.#dragover.bind(this))
-    this.addListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
-    this.addListener('catalog-structure-updated', this.#onCatalogStructureUpdated as EventListener)
-    this.addListener('canvas-history-updated', this.#updateHistoryEntries as EventListener)
-    this.addListener('canvas-history-updated', this.#onCanvasHistoryUpdated as EventListener)
-    this.addListener('presence-pointer', ((event: CustomEvent<{ x: number; y: number }>) => {
-      this.#broadcastPresence({ x: event.detail.x, y: event.detail.y })
-    }) as EventListener)
-    this.addListener('presence-pointer-leave', (() => {
-      this.#broadcastPresence(undefined, true)
-    }) as EventListener)
-    window.addEventListener('keydown', this.#onWindowKeydown)
     // this.addEventListener('mousedown', () => {
     //   const target = this.shadowRoot.querySelector('[open]')
     //   if (target) target.open = false
@@ -647,16 +639,17 @@ export class AppShell extends LiteElement {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
     this.dialog?.removeEventListener('close', this.#dialogAction)
-    window.removeEventListener('keydown', this.#onWindowKeydown)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
 
-  #dragover(event: DragEvent) {
+  @listen('dragover')
+  onDragOver(event: DragEvent) {
     event.preventDefault()
     this.setAttribute('show-drop', '')
   }
 
-  #drop(event: DragEvent) {
+  @listen('drop')
+  onDrop(event: DragEvent) {
     event.preventDefault()
     const files = [...(event.dataTransfer?.files ?? [])]
     const svgFiles = files.filter((file) => file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg'))
@@ -667,6 +660,16 @@ export class AppShell extends LiteElement {
     svgFiles.forEach((file) => {
       void this.importCustomSymbolFile(file)
     })
+  }
+
+  @listen('presence-pointer')
+  onPresencePointer(event: CustomEvent<{ x: number; y: number }>) {
+    this.#broadcastPresence({ x: event.detail.x, y: event.detail.y })
+  }
+
+  @listen('presence-pointer-leave')
+  onPresencePointerLeave() {
+    this.#broadcastPresence(undefined, true)
   }
 
   #onhashchange = async () => {

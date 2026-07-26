@@ -105,7 +105,7 @@ export const buildOneWireBreakerSection = (
   bindingId: string,
   familyLabel: string,
   deps: OneWireBuilderDeps,
-  specification?: Pick<OneWireBundleOptions, 'amps' | 'poles' | 'phaseConfiguration' | 'cableSectionMm2'>
+  specification?: Pick<OneWireBundleOptions, 'amps' | 'poles' | 'phaseConfiguration' | 'cableSectionMm2' | 'breakerCurve'>
 ): { shapes: Shape[]; ids: string[]; breakerContentTopY: number } => {
   const x = snapToGrid(startX)
   const component = deps.oneWireComponentSymbol('breaker')
@@ -132,7 +132,7 @@ export const buildOneWireBreakerSection = (
   symbol.symbolTextOverrides = {
     'desc:nP': `${specification?.poles ?? 2}P`,
     'desc:n': specification?.phaseConfiguration === 'three-phase' ? '3N' : '1N',
-    'desc:20A': `${specification?.amps ?? 20}A`
+    'desc:20A': `${specification?.breakerCurve ?? 'C'}${specification?.amps ?? 20}A`
   }
 
   const connector: LineShape = {

@@ -78,7 +78,11 @@ import {
 } from './editor/svg-templates.js'
 import { translateShape } from './editor/interaction/shape-transforms.js'
 import { buildKamrailCircuitBundle } from './editor/layout/onewire-helpers.js'
-import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from './editor/layout/onewire-symbol-nodes.js'
+import {
+  oneWireSymbolNodeInfo,
+  oneWireSymbolRotationFor,
+  oneWireSymbolScaleFor
+} from './editor/layout/onewire-symbol-nodes.js'
 import { nextPanFromPointer } from './editor/interaction/pointer-pan.js'
 import { canCommitDraft, resolvePointerUpPhase } from './editor/interaction/pointer-up.js'
 import {
@@ -2716,7 +2720,7 @@ export class CadleApp extends LiteElement {
     const attachAnchor = hostAnchors.find((a) => a.side === side) ?? hostAnchors[0]
     const attachPoint = attachAnchor?.point ?? anchor.point
 
-    const center: Point =
+    const targetNode: Point =
       side === 'top'
         ? { x: attachPoint.x, y: attachPoint.y - (half + gap) }
         : side === 'bottom'
@@ -2727,26 +2731,33 @@ export class CadleApp extends LiteElement {
 
     const bindingId = anchor.hostSymbol.bindingId ?? this.#oneWireBindingId
     const groupId = anchor.hostSymbol.groupId ?? `onewire-${nextShapeId()}`
+    const node = oneWireSymbolNodeInfo(component.path, scale)
+    const rotation = oneWireSymbolRotationFor(component.path)
     const newSymbol: SymbolShape = {
       id: nextShapeId(),
       kind: 'symbol',
-      position: center,
+      position: node
+        ? { x: targetNode.x - node.offset.x, y: targetNode.y - node.offset.y }
+        : targetNode,
       name: component.name,
       path: component.path,
       scale,
+      bindingId,
       groupId
     }
+    if (typeof rotation === 'number') newSymbol.rotation = rotation
+    newSymbol.sourceLink = { kind: 'circuit', id: bindingId, role: this.#oneWireComposeKind }
 
-    // Wire runs from the host's visible edge to the new symbol's visible edge.
-    const contentBounds = symbolContentBounds(newSymbol)
+    // Wire stops at the new symbol's electrical node cut radius.
+    const cutHalfWidth = node?.cutHalfWidth
     const connectorEnd: Point =
       side === 'top'
-        ? { x: attachPoint.x, y: contentBounds.y + contentBounds.height }
+        ? { x: targetNode.x, y: cutHalfWidth === null ? targetNode.y : targetNode.y + (cutHalfWidth ?? 0) }
         : side === 'bottom'
-          ? { x: attachPoint.x, y: contentBounds.y }
+          ? { x: targetNode.x, y: cutHalfWidth === null ? targetNode.y : targetNode.y - (cutHalfWidth ?? 0) }
           : side === 'left'
-            ? { x: contentBounds.x + contentBounds.width, y: attachPoint.y }
-            : { x: contentBounds.x, y: attachPoint.y }
+            ? { x: cutHalfWidth === null ? targetNode.x : targetNode.x + (cutHalfWidth ?? 0), y: targetNode.y }
+            : { x: cutHalfWidth === null ? targetNode.x : targetNode.x - (cutHalfWidth ?? 0), y: targetNode.y }
     const connector: LineShape = {
       id: nextShapeId(),
       kind: 'line',

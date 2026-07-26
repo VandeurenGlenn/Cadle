@@ -622,16 +622,16 @@ export class AppShell extends LiteElement {
         projectName: this.previousProjectName
       })
     }
-    this.addEventListener('drop', this.#drop.bind(this))
-    this.addEventListener('dragover', this.#dragover.bind(this))
-    this.addEventListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
-    this.addEventListener('catalog-structure-updated', this.#onCatalogStructureUpdated as EventListener)
-    this.addEventListener('canvas-history-updated', this.#updateHistoryEntries as EventListener)
-    this.addEventListener('canvas-history-updated', this.#onCanvasHistoryUpdated as EventListener)
-    this.addEventListener('presence-pointer', ((event: CustomEvent<{ x: number; y: number }>) => {
+    this.addListener('drop', this.#drop.bind(this))
+    this.addListener('dragover', this.#dragover.bind(this))
+    this.addListener('binding-lookup-updated', this.#onBindingLookupUpdated as EventListener)
+    this.addListener('catalog-structure-updated', this.#onCatalogStructureUpdated as EventListener)
+    this.addListener('canvas-history-updated', this.#updateHistoryEntries as EventListener)
+    this.addListener('canvas-history-updated', this.#onCanvasHistoryUpdated as EventListener)
+    this.addListener('presence-pointer', ((event: CustomEvent<{ x: number; y: number }>) => {
       this.#broadcastPresence({ x: event.detail.x, y: event.detail.y })
     }) as EventListener)
-    this.addEventListener('presence-pointer-leave', (() => {
+    this.addListener('presence-pointer-leave', (() => {
       this.#broadcastPresence(undefined, true)
     }) as EventListener)
     window.addEventListener('keydown', this.#onWindowKeydown)
@@ -640,13 +640,13 @@ export class AppShell extends LiteElement {
     //   if (target) target.open = false
     // })
     // No updateComplete in Lite; rely on property updates
-    console.log(this.dialog)
     this.dialog?.addEventListener('close', this.#dialogAction)
   }
 
   disconnectedCallback(): void {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
+    this.dialog?.removeEventListener('close', this.#dialogAction)
     window.removeEventListener('keydown', this.#onWindowKeydown)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
@@ -661,7 +661,6 @@ export class AppShell extends LiteElement {
     const files = [...(event.dataTransfer?.files ?? [])]
     const svgFiles = files.filter((file) => file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg'))
     if (svgFiles.length === 0) {
-      console.log(event)
       return
     }
 
@@ -716,15 +715,11 @@ export class AppShell extends LiteElement {
     return '#!/editor/model'
   }
 
-  #dialogAction = async (event: Event) => {
-    console.log(event.returnValue)
-    console.log(event)
-    console.log(event.returnValue)
+  #dialogAction = async () => {
     const dialog = this.dialog
     if (!dialog) return
     const action: dialogAction = dialog.returnValue as dialogAction
     const projectKey = dialog.dataset?.key
-    console.log(action)
     if (action === 'confirm-input') {
       const textField = dialog.querySelector('md-filled-text-field') as unknown as HTMLInputElement | null
       const value = textField?.value ?? ''
@@ -914,9 +909,6 @@ export class AppShell extends LiteElement {
 
   async loadPage(key: string) {
     this.loadedPage = key
-    const page = this.project.pages[key]
-    console.log({ page, key })
-
     if (this.projectKey) {
       localStorage.setItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE, this.projectKey)
       localStorage.setItem(AppShell.LAST_OPEN_PAGE_KEY_STORAGE, key)

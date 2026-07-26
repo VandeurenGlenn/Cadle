@@ -11,7 +11,6 @@ import type { NativeDocumentState } from '../native-project-data.js'
 import type { ImageShape } from '../editor/model/types.js'
 import pubsub from '../pubsub.js'
 async function getPdfjsLib() {
-  console.log('pdfjsLib', pdfjsLib)
   // Set up worker with a data URL approach that doesn't require external fetch
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
     // Use worker from node_modules if available

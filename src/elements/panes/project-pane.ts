@@ -27,8 +27,7 @@ export class ProjectPane extends LiteElement {
 
   static styles = [styles]
 
-  _dragstart(e: DragEvent) {
-    console.log(e)
+  _dragstart() {
   }
 
   render() {

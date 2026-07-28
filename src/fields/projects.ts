@@ -352,7 +352,7 @@ export class ProjectsField extends LiteElement {
           @click=${(event: Event) => this._onContextActionClick(event, 'edit')}>
           <span>projectgegevens</span>
           <custom-icon
-            icon="edit_note"
+            icon="edit"
             slot="end"></custom-icon>
         </custom-list-item>
         <custom-list-item

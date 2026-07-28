@@ -19,9 +19,9 @@
   width: min(760px, calc(100vw - var(--cadle-space-7)));
   max-height: min(86vh, 980px);
   overflow: auto;
-  border-radius: var(--cadle-radius-lg);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: color-mix(in srgb, var(--md-sys-color-surface) 96%, var(--md-sys-color-primary-container));
+  border-radius: var(--cadle-panel-radius);
+  border: var(--cadle-panel-border);
+  background: var(--cadle-panel-bg);
   color: var(--md-sys-color-on-surface);
   box-shadow: var(--cadle-elevation-4);
 }
@@ -32,7 +32,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 20px;
+  padding: var(--cadle-space-4) var(--cadle-space-5);
 }
 
 .header {
@@ -54,7 +54,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--cadle-space-2);
-  padding: 18px 20px;
+  padding: var(--cadle-space-4) var(--cadle-space-5);
 }
 
 .form-section {
@@ -80,6 +80,7 @@
 
 .form-grid input,
 .form-grid select {
+  min-height: var(--cadle-control-height);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--cadle-radius-sm);
   padding: 8px 10px;
@@ -189,8 +190,9 @@ button {
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  border-radius: 12px;
-  padding: 10px 14px;
+  min-height: var(--cadle-control-height);
+  border-radius: var(--cadle-radius-sm);
+  padding: 0 14px;
   font: inherit;
   font-weight: 600;
   cursor: pointer;

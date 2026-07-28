@@ -102,7 +102,7 @@ export class PeernetProjectShare extends EventTarget {
       {
         network: NETWORK,
         networkVersion: NETWORK_VERSION,
-        version: '1.0.0',
+        version: '0.1.1',
         stars: [STAR],
         storePrefix: 'cadle-share',
         root: '.cadle/share',

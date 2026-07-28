@@ -5,6 +5,9 @@
   overflow: auto;
   padding: clamp(16px, 4vw, 48px);
   box-sizing: border-box;
+  background:
+    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent), transparent 32%),
+    var(--md-sys-color-background);
 }
 flex-container {
   width: 100%;
@@ -18,7 +21,7 @@ flex-container {
   border-radius: var(--cadle-radius-lg);
   border: 1px solid var(--md-sys-color-outline-variant);
   background: color-mix(in srgb, var(--md-sys-color-surface) 94%, var(--md-sys-color-primary) 6%);
-  box-shadow: var(--cadle-elevation-3);
+  box-shadow: var(--cadle-elevation-2);
   padding: var(--cadle-space-6);
   box-sizing: border-box;
 }
@@ -44,7 +47,7 @@ flex-container {
   border-radius: var(--cadle-radius-md);
   padding: var(--cadle-space-4);
   box-sizing: border-box;
-  background: var(--md-sys-color-surface-container);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container) 92%, transparent);
   transition: border-color var(--cadle-motion-fast), background-color var(--cadle-motion-fast);
 }
 .block:focus-within {
@@ -76,7 +79,7 @@ flex-container {
 }
 .select-field select {
   width: 100%;
-  height: 52px;
+  height: var(--cadle-control-height);
   padding: 0 12px;
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--cadle-radius-sm);
@@ -99,7 +102,7 @@ flex-container {
 }
 md-outlined-text-field {
   width: 100%;
-  height: 52px;
+  height: var(--cadle-control-height);
   margin-bottom: var(--cadle-space-3);
   --md-outlined-text-field-focus-outline-color: var(--md-sys-color-primary);
   --md-outlined-text-field-caret-color: var(--md-sys-color-primary);

@@ -58,7 +58,7 @@ export class ProjectShareDialog extends LiteElement {
       peernetProjectShare.addEventListener('decline', this.#declineSend)
       peernetProjectShare.addEventListener('project', this.#receiveProject)
       this.#updatePeers()
-      this.status = this.peers.length ? '' : 'Nog geen andere Cadle-apparaten gevonden.'
+      this.status = ''
     } catch (error) {
       console.error('Unable to start Cadle peer sharing', error)
       this.status = 'P2P delen kon niet worden gestart. Gebruik de systeemdeelknop als alternatief.'
@@ -77,7 +77,6 @@ export class ProjectShareDialog extends LiteElement {
 
   #updatePeers = () => {
     this.peers = peernetProjectShare.peers
-    if (this.peers.length && this.status.startsWith('Nog geen')) this.status = ''
   }
 
   #receiveOffer = (event: Event) => {
@@ -162,17 +161,34 @@ export class ProjectShareDialog extends LiteElement {
     return html`
       <section class="panel" role="dialog" aria-modal="true" aria-labelledby="project-share-title">
         <header>
-          <div>
+          <div class="hero-mark" aria-hidden="true">
+            <span class="hero-node node-left"></span>
+            <span class="hero-node node-right"></span>
+            <span class="hero-path"></span>
+          </div>
+          <div class="heading-copy">
+            <span class="eyebrow">P2P · zonder cloudupload</span>
             <h3 id="project-share-title">Delen met Cadle</h3>
-            <p>Stuur het geopende project rechtstreeks naar een ander Cadle-apparaat.</p>
+            <p>Kies een apparaat en stuur je project rechtstreeks door.</p>
           </div>
           <custom-button type="text" label="Sluiten" @click=${this.#close}></custom-button>
         </header>
         <main>
+          <section class="project-summary" aria-label="Project dat wordt gedeeld">
+            <span class="project-glyph" aria-hidden="true"></span>
+            <span>
+              <small>Geselecteerd project</small>
+              <strong>${this.project?.name || 'Cadle project'}</strong>
+            </span>
+            <span class="ready-badge"><i></i>Klaar om te delen</span>
+          </section>
           ${this.incomingOffer ? html`
             <section class="offer">
-              <strong>${this.incomingOffer.senderName} wil “${this.incomingOffer.projectName}” delen</strong>
-              <span>${Math.max(1, Math.ceil(this.incomingOffer.byteLength / 1024))} kB · importeren na bevestiging</span>
+              <span class="offer-symbol" aria-hidden="true">↓</span>
+              <span class="offer-copy">
+                <strong>${this.incomingOffer.senderName} wil “${this.incomingOffer.projectName}” delen</strong>
+                <small>${Math.max(1, Math.ceil(this.incomingOffer.byteLength / 1024))} kB · alleen importeren na jouw bevestiging</small>
+              </span>
               <div class="offer-actions">
                 <custom-button type="text" label="Weigeren" @click=${() => this.#answerOffer(false)}></custom-button>
                 <custom-button type="filled" label="Ontvangen" @click=${() => this.#answerOffer(true)}></custom-button>
@@ -183,21 +199,23 @@ export class ProjectShareDialog extends LiteElement {
             ${this.peers.length ? this.peers.map((peer) => html`
               <button class="device" type="button" @click=${() => this.#send(peer)}>
                 <span class="device-icon">${peer.name.slice(0, 1).toUpperCase()}</span>
-                <span><strong>${peer.name}</strong><small>Cadle apparaat</small></span>
-                <span class="send-label">Stuur</span>
+                <span class="device-copy"><strong>${peer.name}</strong><small>Beschikbaar via Cadle</small></span>
+                <span class="send-label">Stuur <b aria-hidden="true">→</b></span>
               </button>
             `) : html`
               <div class="empty">
-                <span class="pulse"></span>
-                <strong>Zoeken naar Cadle-apparaten</strong>
-                <span>Open Delen met Cadle ook op het ontvangende apparaat.</span>
+                <span class="radar" aria-hidden="true"><i></i></span>
+                <div>
+                  <strong>Op zoek naar apparaten…</strong>
+                  <span>Open deze deelweergave ook op het ontvangende apparaat.</span>
+                </div>
               </div>
             `}
           </section>
           ${this.status ? html`<p class="status" role="status">${this.status}</p>` : ''}
         </main>
         <footer>
-          <span>De overdracht gebeurt P2P en moet door de ontvanger worden bevestigd.</span>
+          <span class="privacy-note"><i aria-hidden="true"></i>De ontvanger moet iedere overdracht bevestigen.</span>
           <custom-button type="outlined" label="Delen via systeem" @click=${this.#nativeShare}></custom-button>
         </footer>
       </section>

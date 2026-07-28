@@ -6,11 +6,7 @@
   width: 100%;
   pointer-events: auto;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container)) 0%,
-    var(--md-sys-color-surface-container) 48%
-  );
+  background: var(--md-sys-color-surface-container);
   border-left: 1px solid var(--md-sys-color-outline-variant);
 }
 
@@ -62,7 +58,7 @@ section {
   max-width: 260px;
   background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container-high));
   border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-outline-variant));
-  border-radius: var(--cadle-radius-lg);
+  border-radius: var(--cadle-panel-radius);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--md-sys-color-shadow) 5%, transparent);
 }
 
@@ -195,7 +191,8 @@ custom-button:active {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--cadle-radius-md);
+  min-height: var(--cadle-control-height);
+  border-radius: var(--cadle-radius-sm);
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium);
@@ -211,7 +208,8 @@ custom-button:active {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--cadle-radius-md);
+  min-height: var(--cadle-control-height);
+  border-radius: var(--cadle-radius-sm);
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium);

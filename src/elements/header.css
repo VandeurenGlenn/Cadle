@@ -4,10 +4,12 @@
   justify-content: space-between;
   min-height: var(--cadle-header-height);
   height: var(--cadle-header-height);
-  padding: 0 var(--cadle-space-4);
+  padding: 0 var(--cadle-space-3);
   box-sizing: border-box;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container) 94%, transparent);
+  box-shadow: var(--cadle-glass-highlight);
+  backdrop-filter: blur(16px) saturate(1.1);
   gap: var(--cadle-space-3);
   position: sticky;
   top: 0;

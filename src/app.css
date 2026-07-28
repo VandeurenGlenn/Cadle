@@ -29,7 +29,7 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: white;
+  background: var(--cadle-canvas-surface);
   overflow: hidden;
 }
 
@@ -43,10 +43,10 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: var(--cadle-radius-md);
   border: 1px solid var(--cadle-outline);
   background: #ffffff;
-  box-shadow: 0 18px 60px rgba(72, 53, 38, 0.12);
+  box-shadow: var(--cadle-elevation-2);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   backface-visibility: hidden;
@@ -95,7 +95,7 @@
   gap: 4px;
   min-width: 168px;
   padding: 6px;
-  border-radius: 12px;
+  border-radius: var(--cadle-radius-md);
   border: 1px solid var(--cadle-outline);
   background: color-mix(in srgb, var(--cadle-surface-strong) 92%, white);
   box-shadow: 0 14px 36px rgba(72, 53, 38, 0.18);
@@ -144,7 +144,7 @@
   display: grid;
   gap: 10px;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: var(--cadle-panel-radius);
   border: 1px solid var(--cadle-outline);
   background: color-mix(in srgb, var(--cadle-surface-strong) 95%, white);
   box-shadow: 0 18px 40px rgba(72, 53, 38, 0.26);
@@ -163,7 +163,7 @@
 
 .catalog-dialog input,
 .catalog-dialog select {
-  min-height: 32px;
+  min-height: var(--cadle-control-height);
   border-radius: 8px;
   border: 1px solid var(--cadle-outline);
   background: rgba(255, 255, 255, 0.9);
@@ -210,7 +210,7 @@
   overflow-y: auto;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: 14px;
+  border-radius: var(--cadle-panel-radius);
   border: 1px solid color-mix(in srgb, var(--cadle-outline) 68%, transparent);
   background: linear-gradient(
     180deg,

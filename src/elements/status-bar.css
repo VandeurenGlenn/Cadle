@@ -11,10 +11,10 @@
   align-items: center;
   gap: var(--cadle-space-2);
   height: 100%;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface-container-high));
+  background: var(--md-sys-color-surface-container);
   border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 50%, transparent);
   box-sizing: border-box;
-  padding: 0 var(--cadle-space-3);
+  padding: 0 var(--cadle-space-4);
 }
 .item {
   display: inline-flex;

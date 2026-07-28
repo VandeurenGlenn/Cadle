@@ -244,7 +244,7 @@
 .welcome-bubble {
   padding: 18px 20px;
   border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
-  border-radius: 18px;
+  border-radius: var(--cadle-panel-radius);
   color: var(--md-sys-color-on-surface-variant);
   background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface-container));
   box-shadow: var(--cadle-elevation-1);
@@ -270,8 +270,8 @@ flex-container {
   overflow-y: auto;
   background: color-mix(in srgb, var(--md-sys-color-surface-container) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 82%, transparent);
-  border-radius: 24px;
-  box-shadow: var(--cadle-elevation-3);
+  border-radius: var(--cadle-panel-radius);
+  box-shadow: var(--cadle-elevation-2);
   padding: clamp(22px, 3vw, 34px);
   box-sizing: border-box;
   backdrop-filter: blur(22px);
@@ -384,7 +384,7 @@ flex-container custom-list-item span {
   line-height: 1.2;
 }
 flex-container custom-list-item:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  background: var(--cadle-hover-bg);
   border-color: var(--md-sys-color-outline-variant);
 }
 flex-container custom-list-item:focus-visible {
@@ -405,7 +405,7 @@ custom-icon-button {
   gap: 12px;
   padding: 14px 18px;
   border: 1px dashed color-mix(in srgb, var(--md-sys-color-primary) 34%, var(--md-sys-color-outline-variant));
-  border-radius: 16px;
+  border-radius: var(--cadle-radius-md);
   color: var(--md-sys-color-on-surface-variant);
   background: color-mix(in srgb, var(--md-sys-color-tertiary) 6%, transparent);
 }

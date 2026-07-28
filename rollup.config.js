@@ -8,6 +8,21 @@ import copyPdfWorker from './rollup/copy-pdf-worker.js'
 import copyStatic from './rollup/copy-static.js'
 import { cssModules } from 'rollup-plugin-css-modules'
 
+const browserBuiltins = () => ({
+  name: 'cadle-browser-builtins',
+  async resolveId(source, importer, options) {
+    const replacements = {
+      crypto: 'crypto-browserify',
+      stream: 'stream-browserify',
+      events: 'events'
+    }
+    if (source === 'fs/promises') return new URL('./src/shims/fs-promises.ts', import.meta.url).pathname
+    const replacement = replacements[source]
+    if (!replacement) return null
+    return this.resolve(replacement, importer, { ...options, skipSelf: true })
+  }
+})
+
 // Hand-authored assets (src/index.html, src/themes/**) are copied into www/
 // at build start by copyStatic. The bundled JS is emitted alongside them.
 
@@ -45,6 +60,7 @@ export default [
         placeholderPrefix: 'symbol'
       }),
       json(),
+      browserBuiltins(),
       nodeResolve({ browser: true, preferBuiltins: false }),
       commonjs(),
       typescript()

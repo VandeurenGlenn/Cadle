@@ -109,6 +109,7 @@ md-outlined-text-field:last-of-type {
 }
 .actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   margin-top: var(--cadle-space-5);
   padding-top: var(--cadle-space-4);
@@ -116,11 +117,24 @@ md-outlined-text-field:last-of-type {
   align-items: center;
   gap: var(--cadle-space-3);
 }
+.required-note {
+  margin-right: auto;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+.form-error {
+  margin: var(--cadle-space-4) 0 0;
+  padding: var(--cadle-space-3);
+  border: 1px solid var(--md-sys-color-error);
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-error-container);
+  background: var(--md-sys-color-error-container);
+  font-size: 14px;
+}
 md-filled-button {
   --md-filled-button-container-color: var(--md-sys-color-primary);
   --md-filled-button-label-text-color: var(--md-sys-color-on-primary);
 }
-md-outlined-button,
 md-filled-button {
   min-width: 140px;
   font-weight: 600;

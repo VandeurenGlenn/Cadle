@@ -14,6 +14,14 @@ export class SearchElement extends LiteElement {
   @query('input') accessor _inputEl!: HTMLInputElement
   static styles = [styles]
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    if (this.#timeout) {
+      clearTimeout(this.#timeout)
+      this.#timeout = undefined
+    }
+  }
+
   #input = () => {
     if (this.#timeout) clearTimeout(this.#timeout)
     this.#timeout = setTimeout(() => {

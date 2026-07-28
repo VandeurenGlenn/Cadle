@@ -71,6 +71,10 @@ export class StatusBar extends LiteElement {
     pubsub.unsubscribe('shell.snap', this.#onSnap)
     pubsub.unsubscribe('project.saved', this.#onProjectSaved)
     pubsub.unsubscribe('project.modified', this.#onProjectModified)
+    if (this.#saveIndicatorTimer) {
+      window.clearTimeout(this.#saveIndicatorTimer)
+      this.#saveIndicatorTimer = undefined
+    }
   }
 
   #onProjectSaved = () => {

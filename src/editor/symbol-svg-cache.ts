@@ -1,4 +1,5 @@
 import { symbolTextFieldsFor } from './symbol-metadata.js'
+import { getBoundedCache, setBoundedCache } from '../helpers/bounded-cache.js'
 
 export type CachedSymbolSvg = {
   inner: string
@@ -13,6 +14,7 @@ export type EditableSymbolTextField = {
 
 const symbolSvgCache = new Map<string, CachedSymbolSvg>()
 const symbolSvgLoading = new Set<string>()
+const MAX_SYMBOL_CACHE_ENTRIES = 256
 
 const isDataSvg = (path: string) => /^data:image\/svg\+xml/i.test(path)
 
@@ -178,7 +180,8 @@ const sanitizeSvg = (source: string, path: string): CachedSymbolSvg | null => {
   return { inner, viewBox }
 }
 
-export const getCachedSymbolSvg = (path: string): CachedSymbolSvg | null => symbolSvgCache.get(path) ?? null
+export const getCachedSymbolSvg = (path: string): CachedSymbolSvg | null =>
+  getBoundedCache(symbolSvgCache, path) ?? null
 
 export const isSymbolSvgLoading = (path: string): boolean => symbolSvgLoading.has(path)
 
@@ -339,7 +342,7 @@ export const preloadSymbolSvg = async (path: string): Promise<void> => {
 
     if (!source) return
     const cached = sanitizeSvg(source, path)
-    if (cached) symbolSvgCache.set(path, cached)
+    if (cached) setBoundedCache(symbolSvgCache, path, cached, MAX_SYMBOL_CACHE_ENTRIES)
   } catch {
     // Ignore symbol fetch/parse failures; caller can fall back to image rendering.
   } finally {

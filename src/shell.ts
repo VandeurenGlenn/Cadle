@@ -201,6 +201,9 @@ export class AppShell extends LiteElement {
   @property({ type: Boolean })
   accessor oneWireTrainingPanelOpen = false
 
+  @property({ type: Boolean })
+  accessor projectShareDialogOpen = false
+
   _freeDraw: boolean = false
   set freeDraw(value: boolean) {
     const next = !!value
@@ -299,6 +302,7 @@ export class AppShell extends LiteElement {
       import('./elements/modals/template-library.js'),
       import('./elements/modals/project-details-dialog.js'),
       import('./elements/modals/onewire-prompt-dialog.js'),
+      import('./elements/modals/project-share-dialog.js'),
       import('./elements/panels/history-panel.js'),
       import('./elements/panels/onewire-training-panel.js')
     ])
@@ -385,6 +389,11 @@ export class AppShell extends LiteElement {
   openProjectDetailsDialog() {
     if (!this.projectKey || !this.project) return
     this.projectDetailsDialogOpen = true
+  }
+
+  openProjectShareDialog() {
+    if (!this.projectKey || !this.project) return
+    this.projectShareDialogOpen = true
   }
 
   openOneWirePromptDialog() {
@@ -525,7 +534,7 @@ export class AppShell extends LiteElement {
     input.addEventListener('change', async () => {
       const file = input.files?.[0]
       if (file) await this.importCustomSymbolFile(file)
-    })
+    }, { once: true })
     input.click()
   }
 
@@ -683,40 +692,29 @@ export class AppShell extends LiteElement {
     }
     await this.#onhashchange()
 
-    // for (const key of keys) {
-    //   projects.push(typeof key === 'string' ? key : decoder.decode(key))
-    // }
     void this.#registerServiceWorker()
     void this.#preloadCatalogAfterInitialPaint()
 
-    // No requestUpdate in Lite; rely on reactive property
-    // addEventListener('beforeprint', this.#beforePrint)
-    // addEventListener('afterprint', this.#afterPrint)
-    // No updateComplete in Lite; rely on property updates
     // Presence is same-browser until an authenticated, maintained remote
     // transport is configured explicitly.
     if ('BroadcastChannel' in globalThis) {
       this._presence.connect()
     }
 
-    onhashchange = this.#onhashchange.bind(this)
+    window.addEventListener('hashchange', this.#onhashchange)
     if (this.showReopenPreviousProjectPrompt) {
       pubsub.publish('shell.reopen-previous-project-prompt', {
         open: true,
         projectName: this.previousProjectName
       })
     }
-    // this.addEventListener('mousedown', () => {
-    //   const target = this.shadowRoot.querySelector('[open]')
-    //   if (target) target.open = false
-    // })
-    // No updateComplete in Lite; rely on property updates
     this.dialog?.addEventListener('close', this.#dialogAction)
   }
 
   disconnectedCallback(): void {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
+    window.removeEventListener('hashchange', this.#onhashchange)
     this.dialog?.removeEventListener('close', this.#dialogAction)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
@@ -1117,10 +1115,6 @@ export class AppShell extends LiteElement {
     nativeApp?.redo?.()
   }
 
-  importShare = () => {
-    // if (this.projects)
-  }
-
   showShortcuts = async () => {
     if (!customElements.get('keyboard-shortcuts')) await import('./screens/keyboard-shortcuts.js')
     const shortcuts = this.shadowRoot?.querySelector('keyboard-shortcuts') as KeyboardShortcutsElement | null
@@ -1140,8 +1134,10 @@ export class AppShell extends LiteElement {
           this.actions.fill = color
           this._currentColor = color
           resolve(color)
+        } else {
+          reject(new DOMException('Color selection cancelled', 'AbortError'))
         }
-      })
+      }, { once: true })
       pickerDialog.open = true
       picker.click()
     })
@@ -1238,6 +1234,14 @@ export class AppShell extends LiteElement {
           this.projects = event.detail.projects
           this.projectDetailsDialogOpen = false
         }}></project-details-dialog>
+      <project-share-dialog
+        .open=${this.projectShareDialogOpen}
+        .project=${this.project}
+        .projectKey=${this.projectKey}
+        @close=${() => (this.projectShareDialogOpen = false)}
+        @project-received=${async () => {
+          this.projects = await getProjects()
+        }}></project-share-dialog>
       <onewire-prompt-dialog
         .open=${this.oneWirePromptDialogOpen}
         .prompt=${this.project?.oneWirePrompt ?? ''}

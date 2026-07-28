@@ -64,6 +64,11 @@ export class ProjectsField extends LiteElement {
   disconnectedCallback(): void {
     super.disconnectedCallback()
     pubsub.unsubscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
+    const dropdown = this.shadowRoot?.querySelector('custom-dropdown') as CustomDropdown | null
+    if (this._transitionEnd) {
+      dropdown?.removeEventListener('transitionend', this._transitionEnd)
+      this._transitionEnd = undefined
+    }
   }
 
   _actionTarget(event: Event): HTMLElement | null {

@@ -1,11 +1,7 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './create-project.css' with { type: 'css' }
 import '@material/web/button/filled-button.js'
-import '@material/web/button/outlined-button.js'
 import '@material/web/textfield/outlined-text-field.js'
-import '@material/web/field/outlined-field.js'
-import '@vandeurenglenn/flex-elements/it.js'
-import '@vandeurenglenn/flex-elements/row.js'
 import { create } from '../api/project.js'
 import { ProjectInput } from '../types.js'
 import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
@@ -16,6 +12,8 @@ export class CreateProjectField extends LiteElement {
   @property({ type: String }) accessor installerLastName = ''
   @property({ type: String }) accessor installerCompany = ''
   @property({ type: String }) accessor installerBtw = ''
+  @property({ type: String }) accessor formError = ''
+  @property({ type: Boolean }) accessor creating = false
 
   static styles = [styles]
 
@@ -39,6 +37,8 @@ export class CreateProjectField extends LiteElement {
   }
 
   #createProject = async () => {
+    if (this.creating) return
+    this.formError = ''
     const projectName = this.#fieldValue('Project name')
     const pageName = this.#fieldValue('Page name')
     const customerName = this.#fieldValue('Customer name')
@@ -66,7 +66,12 @@ export class CreateProjectField extends LiteElement {
     const earthingSystem = this.#selectValue('earthingSystem') as 'TT' | 'TN' | 'IT' | 'unknown'
     const mainRcdType = this.#selectValue('mainRcdType') as 'AC' | 'A' | 'F' | 'B' | 'other'
     if (!projectName || !pageName) {
-      globalThis.alert('Enter a project name and first page name before creating the project.')
+      this.formError = 'Project name and first page name are required.'
+      return
+    }
+    const normalizedEan = eanCode.replace(/\s+/g, '')
+    if (normalizedEan && !/^\d{18}$/.test(normalizedEan)) {
+      this.formError = 'The EAN code must contain exactly 18 digits.'
       return
     }
     const supplyVoltageV = supplyConfiguration === '3x400V+N' ? 400 : 230
@@ -89,7 +94,7 @@ export class CreateProjectField extends LiteElement {
         postalCode,
         city
       },
-      eanCode: eanCode || undefined,
+      eanCode: normalizedEan || undefined,
       mainFuseA: mainFuseA > 0 ? mainFuseA : undefined,
       electricalProfile: normalizeElectricalProfile({
         standard: 'AREI',
@@ -114,13 +119,25 @@ export class CreateProjectField extends LiteElement {
         }]
       })
     }
-    await saveInstallerProfile({
-      name: installerName,
-      lastname: installerLastName,
-      company: installerCompany,
-      btw: installerBtw
-    })
-    await create(project, pageName)
+    this.creating = true
+    try {
+      try {
+        await saveInstallerProfile({
+          name: installerName,
+          lastname: installerLastName,
+          company: installerCompany,
+          btw: installerBtw
+        })
+      } catch (error) {
+        console.warn('Project will be created without updating the reusable installer profile.', error)
+      }
+      await create(project, pageName)
+    } catch (error) {
+      console.error('Unable to create project', error)
+      this.formError = 'The project could not be created. Please try again.'
+    } finally {
+      this.creating = false
+    }
   }
 
   render() {
@@ -133,9 +150,11 @@ export class CreateProjectField extends LiteElement {
             <section class="block">
               <h4>Project</h4>
               <md-outlined-text-field
-                label="Project name"></md-outlined-text-field>
+                label="Project name"
+                required></md-outlined-text-field>
               <md-outlined-text-field
-                label="Page name"></md-outlined-text-field>
+                label="Page name"
+                required></md-outlined-text-field>
             </section>
             <section class="block">
               <h4>Customer</h4>
@@ -204,8 +223,14 @@ export class CreateProjectField extends LiteElement {
               </div>
             </section>
           </div>
+          ${this.formError
+            ? html`<p class="form-error" role="alert">${this.formError}</p>`
+            : ''}
           <div class="actions">
-            <md-filled-button @click=${this.#createProject}>Create project</md-filled-button>
+            <span class="required-note">* Required fields</span>
+            <md-filled-button
+              ?disabled=${this.creating}
+              @click=${this.#createProject}>${this.creating ? 'Creating…' : 'Create project'}</md-filled-button>
           </div>
         </div>
       </flex-container>

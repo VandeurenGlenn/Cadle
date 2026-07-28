@@ -92,7 +92,6 @@ export const addPage = async (uuid: UUID, pageName: string, schema, pageType: Pa
 
 export const save = async () => {
   await cadleShell.savePage()
-  console.log(cadleShell.project)
   await setProjectData(cadleShell.projectKey, cadleShell.project)
   if (cadleShell.project.uuid) {
     // If needed, save project metadata separately here.
@@ -100,18 +99,24 @@ export const save = async () => {
 }
 
 export const share = () => {
-  const project = JSON.stringify({
-    name: cadleShell.projectName,
-    project: cadleShell.project
-  })
-  const data = {
-    title: cadleShell.projectName,
-    url: `https://vandeurenglenn.github.io/Cadle?import=${new TextEncoder().encode(project).join(',')}`
+  cadleShell.openProjectShareDialog()
+}
+
+export const importProjectPayload = async (payload: Project & { projectKey?: string }) => {
+  const projectKey = payload.projectKey
+  if (!projectKey || !payload.name || !payload.pages || typeof payload.pages !== 'object') {
+    throw new Error('Invalid Cadle project payload')
   }
-
-  console.log(`https://vandeurenglenn.github.io/Cadle?import=${new TextEncoder().encode(project).join(',')}`)
-
-  navigator.share(data)
+  const project = { ...payload }
+  delete project.projectKey
+  if (await projectDataStore.has(projectKey)) {
+    const overwrite = confirm(`“${project.name}” bestaat al. Wil je het overschrijven?`)
+    if (!overwrite) return false
+  }
+  await projectDataStore.put(projectKey, JSON.stringify(project))
+  await projectStore.put(projectKey, project.name)
+  cadleShell.projects = await getProjects()
+  return true
 }
 
 export const upload = async () => {
@@ -121,30 +126,24 @@ export const upload = async () => {
     const fr = new FileReader()
 
     fr.onload = async (e) => {
-      console.log(e.target.result)
-      console.log(e)
-
       const payload = e.target?.result
       if (typeof payload !== 'string') return
-      const result = JSON.parse(payload)
-      console.log(result)
-      const projectKey = result.projectKey
-      delete result.projectKey
-      if (await projectDataStore.has(projectKey)) {
-        if (confirm('Project already exists, do you want to overwrite it?')) {
-          await projectDataStore.put(projectKey, JSON.stringify(result))
-          await projectStore.put(projectKey, result.name)
-          cadleShell.projects = await getProjects()
-        }
-      } else {
-        await projectDataStore.put(projectKey, JSON.stringify(result))
-        await projectStore.put(projectKey, result.name)
-        cadleShell.projects = await getProjects()
+      let result: Project & { projectKey?: string }
+      try {
+        result = JSON.parse(payload) as Project & { projectKey?: string }
+      } catch {
+        globalThis.alert('This file is not a valid Cadle project.')
+        return
       }
+      if (!result.projectKey || !result.name || !result.pages || typeof result.pages !== 'object') {
+        globalThis.alert('This Cadle project is incomplete or damaged.')
+        return
+      }
+      await importProjectPayload(result)
     }
 
     fr.readAsText(input.files[0])
-  })
+  }, { once: true })
   input.click()
 }
 
@@ -194,7 +193,7 @@ export const importPlan = async () => {
       dialog.close()
       dialog.remove()
       cadleShell.projects = await getProjects()
-      console.log(`Successfully imported ${event.detail.pagesImported} page(s)`)
+      void event.detail.pagesImported
     }
 
     // Handle import cancellation
@@ -203,8 +202,8 @@ export const importPlan = async () => {
       dialog.remove()
     }
 
-    importer.addEventListener('import-complete', handleImportComplete)
-    importer.addEventListener('import-cancel', handleImportCancel)
+    importer.addEventListener('import-complete', handleImportComplete, { once: true })
+    importer.addEventListener('import-cancel', handleImportCancel, { once: true })
 
     dialog.appendChild(importer)
     document.body.appendChild(dialog)
@@ -213,6 +212,6 @@ export const importPlan = async () => {
     // Load PDF into importer
     const typedImporter = importer as PDFImporter
     await typedImporter.loadPDF(file)
-  })
+  }, { once: true })
   input.click()
 }

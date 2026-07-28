@@ -59,10 +59,23 @@ export class PresenceController {
   connect(transport: MultiUserTransport = new BroadcastChannelTransport('cadle-presence')): void {
     if (this.transport) return
     this.transport = transport
-    void transport.connect().then(() => {
-      this.unsubscribe = transport.onMessage(this.#handleMessage)
-    })
-    this.timer = window.setInterval(() => this.onSync(), SWEEP_INTERVAL_MS)
+    void transport.connect()
+      .then(() => {
+        if (this.transport !== transport) {
+          void transport.disconnect()
+          return
+        }
+        this.unsubscribe = transport.onMessage(this.#handleMessage)
+      })
+      .catch(() => {
+        if (this.transport !== transport) return
+        this.transport = undefined
+        if (this.timer) {
+          clearInterval(this.timer)
+          this.timer = undefined
+        }
+      })
+    this.timer = window.setInterval(this.#sweepStaleCursors, SWEEP_INTERVAL_MS)
   }
 
   disconnect(): void {
@@ -105,6 +118,18 @@ export class PresenceController {
     return [...this.remote.values()].filter(
       (cursor) => cursor.projectKey === projectKey && cursor.pageKey === pageKey && now - cursor.updatedAt < STALE_MS
     )
+  }
+
+  #sweepStaleCursors = () => {
+    if (this.remote.size === 0) return
+    const cutoff = Date.now() - STALE_MS
+    let changed = false
+    for (const [id, cursor] of this.remote) {
+      if (cursor.updatedAt >= cutoff) continue
+      this.remote.delete(id)
+      changed = true
+    }
+    if (changed) this.onSync()
   }
 
   #handleMessage = (message: MultiUserMessage) => {

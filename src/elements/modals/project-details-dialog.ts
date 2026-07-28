@@ -402,12 +402,16 @@ export class ProjectDetailsDialog extends LiteElement {
 
     await setProjectData(this.projectKey, nextProject)
     await set(this.projectKey, nextProject.name)
-    await saveInstallerProfile({
-      name: installer.first,
-      lastname: installer.last,
-      company: nextProject.company,
-      btw: nextProject.installer.btw ?? ''
-    })
+    try {
+      await saveInstallerProfile({
+        name: installer.first,
+        lastname: installer.last,
+        company: nextProject.company,
+        btw: nextProject.installer.btw ?? ''
+      })
+    } catch (error) {
+      console.warn('Project was saved, but the reusable installer profile could not be updated.', error)
+    }
 
     const savedProject = await getProjectData(this.projectKey)
     const projects = await getProjects()

@@ -4,10 +4,12 @@ import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextLayer } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
+import { getBoundedCache, setBoundedCache } from '../helpers/bounded-cache.js'
 
 type OpticalInsets = { left: number; right: number; top: number; bottom: number }
 
 const symbolOpticalInsetsCache = new Map<string, OpticalInsets | null>()
+const MAX_OPTICAL_INSET_CACHE_ENTRIES = 256
 const symbolMeasurementHostId = 'cadle-symbol-measurement-host'
 
 const getSymbolMeasurementHost = (): SVGSVGElement | null => {
@@ -41,19 +43,19 @@ const parseViewBox = (viewBox: string): { minX: number; minY: number; width: num
 }
 
 const symbolOpticalInsets = (path: string): OpticalInsets | null => {
-  const cached = symbolOpticalInsetsCache.get(path)
+  const cached = getBoundedCache(symbolOpticalInsetsCache, path)
   if (cached !== undefined) return cached
 
   const symbolSvg = getCachedSymbolSvg(path)
   if (!symbolSvg) {
-    symbolOpticalInsetsCache.set(path, null)
+    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
     return null
   }
 
   const viewBox = parseViewBox(symbolSvg.viewBox)
   const host = getSymbolMeasurementHost()
   if (!viewBox || !host) {
-    symbolOpticalInsetsCache.set(path, null)
+    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
     return null
   }
 
@@ -82,7 +84,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
   else host.setAttribute('height', previousHeight)
 
   if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) {
-    symbolOpticalInsetsCache.set(path, null)
+    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
     return null
   }
 
@@ -91,7 +93,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
   const top = Math.max(0, Math.min(0.49, (box.y - viewBox.minY) / viewBox.height))
   const bottom = Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height))
   const insets = { left, right, top, bottom }
-  symbolOpticalInsetsCache.set(path, insets)
+  setBoundedCache(symbolOpticalInsetsCache, path, insets, MAX_OPTICAL_INSET_CACHE_ENTRIES)
   return insets
 }
 

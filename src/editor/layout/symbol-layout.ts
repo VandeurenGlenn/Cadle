@@ -2,12 +2,14 @@ import { shapeBounds } from '../../editor/model/model.js'
 import type { Shape } from '../../editor/model/types.js'
 import { getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextLayer } from '../symbol-metadata.js'
+import { getBoundedCache, setBoundedCache } from '../../helpers/bounded-cache.js'
 
 export type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
 
 type OpticalInsets = { left: number; right: number; top: number; bottom: number }
 
 const opticalInsetsCache = new Map<string, OpticalInsets | null>()
+const MAX_OPTICAL_INSET_CACHE_ENTRIES = 256
 const measurementHostId = 'cadle-symbol-measurement-host'
 
 export const parseSvgViewBox = (
@@ -42,14 +44,14 @@ const measurementHost = (): SVGSVGElement | null => {
 }
 
 const symbolOpticalInsets = (path: string): OpticalInsets | null => {
-  const cached = opticalInsetsCache.get(path)
+  const cached = getBoundedCache(opticalInsetsCache, path)
   if (cached !== undefined) return cached
 
   const symbolSvg = getCachedSymbolSvg(path)
   const viewBox = symbolSvg ? parseSvgViewBox(symbolSvg.viewBox) : null
   const host = measurementHost()
   if (!symbolSvg || !viewBox || !host) {
-    opticalInsetsCache.set(path, null)
+    setBoundedCache(opticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
     return null
   }
 
@@ -82,7 +84,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
   }
 
   if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) {
-    opticalInsetsCache.set(path, null)
+    setBoundedCache(opticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
     return null
   }
 
@@ -92,7 +94,7 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
     top: Math.max(0, Math.min(0.49, (box.y - viewBox.minY) / viewBox.height)),
     bottom: Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height))
   }
-  opticalInsetsCache.set(path, insets)
+  setBoundedCache(opticalInsetsCache, path, insets, MAX_OPTICAL_INSET_CACHE_ENTRIES)
   return insets
 }
 

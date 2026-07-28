@@ -23,6 +23,7 @@ export type OneWireSourceLink = {
 type GeneratedShapeMetadata = {
   generationKey?: string
   sourceLink?: OneWireSourceLink
+  hidden?: boolean
 }
 
 export type LineShape = GeneratedShapeMetadata & {
@@ -75,6 +76,7 @@ export type TextShape = GeneratedShapeMetadata & {
   flipY?: boolean
   fontFamily?: string
   letterSpacing?: number
+  textAnchor?: 'start' | 'middle' | 'end'
   bindingId?: string
   groupId?: string
   bindingLabelOffset?: { x: number; y: number }

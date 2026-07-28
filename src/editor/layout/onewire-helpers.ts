@@ -1,4 +1,5 @@
 import { GRID_SIZE } from '../constants.js'
+import { phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 import { oneWireSymbolNodeInfo, oneWireSymbolRotationFor } from './onewire-symbol-nodes.js'
 import type { LineShape, Point, Shape, SymbolShape, TextShape } from '../../editor/model/types.js'
 
@@ -35,13 +36,18 @@ type OneWireBundleOptions = {
   amps: number
   cableSectionMm2?: number
   cableConductors?: number
+  hasProtectiveConductor?: boolean
   cableType?: string
   cableInstallation?: OneWireCableInstallation
+  showCableInstallation?: boolean
   poles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  showPhaseLabel?: boolean
   breakerCurve?: string
   family: string
   autoIncludeFamily: boolean
+  omitBreaker?: boolean
+  hideFamilyLabel?: boolean
 }
 
 type OneWireResolvedComponent = {
@@ -95,9 +101,7 @@ const ONE_WIRE_FIRST_ROW_OFFSET_Y = 180
 const ONE_WIRE_ROW_SPACING_Y = 40
 
 export const oneWirePhaseLabelText = (phase: OneWireBundleOptions['phaseConfiguration'] | undefined): string => {
-  if (phase === 'three-phase') return '3N'
-  if (phase === 'single-phase' || !phase) return '1N'
-  return phase
+  return phaseConfigurationLabel(phase)
 }
 
 const ONE_WIRE_CABLE_INSTALLATION_PATHS: Record<OneWireCableInstallation, string> = {
@@ -111,6 +115,31 @@ const ONE_WIRE_CABLE_INSTALLATION_PATHS: Record<OneWireCableInstallation, string
 
 export const oneWireCableInstallationPath = (installation: OneWireCableInstallation): string =>
   ONE_WIRE_CABLE_INSTALLATION_PATHS[installation]
+
+export const oneWireCableLabelText = (cable: {
+  conductors?: number
+  sectionMm2?: number
+  hasProtectiveConductor?: boolean
+  cableType?: string
+}): string => {
+  const hasProtectiveConductor =
+    cable.hasProtectiveConductor ?? cable.conductors !== 4
+  const conductorMarker = hasProtectiveConductor ? 'G' : 'X'
+  const cableType = cable.cableType?.trim()
+  const cableTypeLabel = cableType && cableType !== 'none' ? ` ${cableType.replace('-', ' ')}` : ''
+  return `${cable.conductors ?? 3}${conductorMarker}${cable.sectionMm2 ?? 1.5} mm²${cableTypeLabel}`
+}
+
+export const oneWireProtectionSymbolPath = (name: string, path: string): string => {
+  const searchable = `${name} ${path}`
+  if (/residual|differential|differentieel|rcd/i.test(searchable)) {
+    return 'symbols/Protection devices/Residual-current circuit breaker.svg'
+  }
+  if (/automaat|breaker/i.test(searchable)) {
+    return 'symbols/Protection devices/Automaat.svg'
+  }
+  return path
+}
 
 const resolveOrderedRows = (components: OneWireResolvedComponent[]): Array<[string, OneWireResolvedComponent[]]> => {
   const rows = new Map<string, OneWireResolvedComponent[]>()
@@ -143,10 +172,13 @@ export const buildOneWireBreakerSection = (
     | 'amps'
     | 'poles'
     | 'phaseConfiguration'
+    | 'showPhaseLabel'
     | 'cableSectionMm2'
     | 'cableConductors'
+    | 'hasProtectiveConductor'
     | 'cableType'
     | 'cableInstallation'
+    | 'showCableInstallation'
     | 'breakerCurve'
   >,
   railStrokeWidth = 10
@@ -174,20 +206,27 @@ export const buildOneWireBreakerSection = (
     path: component.path,
     scale,
     strokeWidth: 0.5,
+    symbolTextOverrides: {
+      poles: '',
+      phase: '',
+      'rated-current': ''
+    },
     bindingId,
     groupId
   }
-  const label: TextShape = {
-    id: deps.nextShapeId(),
-    kind: 'text',
-    position: { x: x - 4, y: railY + 24 },
-    text: familyLabel,
-    scale: 0.7,
-    fill: '#000000',
-    stroke: 'none',
-    bindingId,
-    groupId
-  }
+  const label: TextShape | null = familyLabel.trim()
+    ? {
+        id: deps.nextShapeId(),
+        kind: 'text',
+        position: { x: x - 4, y: railY + 24 },
+        text: familyLabel,
+        scale: 0.7,
+        fill: '#000000',
+        stroke: 'none',
+        bindingId,
+        groupId
+      }
+    : null
 
   const breakerBounds = deps.symbolContentBounds(symbol)
   const polesLabel: TextShape = {
@@ -216,10 +255,13 @@ export const buildOneWireBreakerSection = (
     id: deps.nextShapeId(),
     kind: 'text',
     position: {
-      x: x - 33,
+      x: x - 13,
       y: Math.min(breakerBounds.y + breakerBounds.height + 8, railY - 12)
     },
-    text: oneWirePhaseLabelText(specification?.phaseConfiguration),
+    text: shouldShowPhaseLabel(specification?.poles, specification?.showPhaseLabel)
+      ? oneWirePhaseLabelText(specification?.phaseConfiguration)
+      : '',
+    textAnchor: 'end',
     fill: '#000000',
     stroke: 'none',
     scale: 0.65,
@@ -230,7 +272,12 @@ export const buildOneWireBreakerSection = (
     id: deps.nextShapeId(),
     kind: 'text',
     position: { x: x + 18, y: breakerBounds.y + 16 },
-    text: `${specification?.cableConductors ?? 3}G${specification?.cableSectionMm2 ?? 1.5} mm² ${(specification?.cableType ?? 'VOB').replace('-', ' ')}`,
+    text: oneWireCableLabelText({
+      conductors: specification?.cableConductors,
+      sectionMm2: specification?.cableSectionMm2,
+      hasProtectiveConductor: specification?.hasProtectiveConductor,
+      cableType: specification?.cableType
+    }),
     fill: '#000000',
     stroke: 'none',
     scale: 0.65,
@@ -247,6 +294,7 @@ export const buildOneWireBreakerSection = (
     path: oneWireCableInstallationPath(cableInstallation),
     scale: 3,
     strokeWidth: 1,
+    hidden: specification?.showCableInstallation === false,
     bindingId,
     groupId,
     symbolTextOverrides: {
@@ -257,7 +305,7 @@ export const buildOneWireBreakerSection = (
 
   const linkedShapes: Array<[Shape, string]> = [
     [symbol, 'breaker'],
-    [label, 'label'],
+    ...(label ? [[label, 'label'] as [Shape, string]] : []),
     [polesLabel, 'breaker-poles'],
     [currentLabel, 'breaker-current'],
     [phaseLabel, 'breaker-phase'],
@@ -265,8 +313,8 @@ export const buildOneWireBreakerSection = (
     [cableInstallationSymbol, 'cable-installation']
   ]
   for (const [shape, role] of linkedShapes) {
-    shape.sourceLink = { kind: 'board', id: familyLabel, role }
-    shape.generationKey = `board:${familyLabel}:${role}`
+    shape.sourceLink = { kind: 'board', id: bindingId, role }
+    shape.generationKey = `board:${bindingId}:${role}`
   }
 
   const breakerContentTopY = breakerBounds.y
@@ -285,7 +333,7 @@ export const buildOneWireRowSection = (
   deps: OneWireBuilderDeps,
   compactSingleCircuit = false
 ): { shapes: Shape[]; ids: string[] } => {
-  const ROW_NUMBER_OFFSET_X = -25
+  const ROW_NUMBER_OFFSET_X = -20
   const ROW_SYMBOL_MARGIN_X = 0
   const SPOT_LEADING_MARGIN_X = 10
   const [bindingId, entries] = row
@@ -356,7 +404,11 @@ export const buildOneWireRowSection = (
     const component = { name: entry.sourceName ?? fallback.name, path: entry.sourcePath ?? fallback.path }
     const scale = deps.oneWireSymbolScale(component.path, entry.kind)
     const node = oneWireSymbolNodeInfo(component.path, scale)
-    const rotation = oneWireSymbolRotationFor(component.path)
+    const inlineRotation = oneWireSymbolRotationFor(component.path)
+    const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
+    const rotation = placeDirectlyOnTrunk && isSocket
+      ? (inlineRotation ?? 0) - 90
+      : inlineRotation
     const probeSlotX = 0
     const probe: SymbolShape = {
       id: deps.nextShapeId(),
@@ -535,6 +587,30 @@ export const buildOneWireRowSection = (
     ids.push(symbol.id)
   }
 
+  if (compactSingleCircuit && drawableEntryCount > 1) {
+    const rotatePointOntoTrunk = (point: Point): Point => ({
+      x: rowJunctionX + (point.y - rowY),
+      y: rowY - (point.x - rowJunctionX)
+    })
+    for (const shape of shapes) {
+      if (shape.kind === 'line') {
+        shape.start = rotatePointOntoTrunk(shape.start)
+        shape.end = rotatePointOntoTrunk(shape.end)
+        continue
+      }
+      if (shape.kind === 'symbol') {
+        shape.position = rotatePointOntoTrunk(shape.position)
+        shape.rotation = (shape.rotation ?? 0) - 90
+        continue
+      }
+      if (shape.kind === 'text') {
+        shape.position = rotatePointOntoTrunk(shape.position)
+        // Multiplicity labels remain readable horizontally beside the stack.
+        shape.position.x += 8
+      }
+    }
+  }
+
   return { shapes, ids }
 }
 
@@ -560,17 +636,21 @@ export const buildKamrailCircuitBundle = (
   const createdIds: string[] = []
   const shapes: Shape[] = []
 
-  const breaker = buildOneWireBreakerSection(
-    railY,
-    startX,
-    options.family,
-    options.family,
-    deps,
-    options,
-    rail.strokeWidth ?? 10
-  )
-  shapes.push(...breaker.shapes)
-  createdIds.push(...breaker.ids)
+  let trunkStartY = railY - (rail.strokeWidth ?? 10) / 2
+  if (!options.omitBreaker) {
+    const breaker = buildOneWireBreakerSection(
+      railY,
+      startX,
+      options.family,
+      options.hideFamilyLabel ? '' : options.family,
+      deps,
+      options,
+      rail.strokeWidth ?? 10
+    )
+    shapes.push(...breaker.shapes)
+    createdIds.push(...breaker.ids)
+    trunkStartY = breaker.breakerContentTopY
+  }
 
   if (drawableRows.length > 0) {
     const trunkTopY = snapToGrid(
@@ -579,7 +659,7 @@ export const buildKamrailCircuitBundle = (
     const trunk: LineShape = {
       id: deps.nextShapeId(),
       kind: 'line',
-      start: { x: snapToGrid(startX), y: snapToGrid(breaker.breakerContentTopY) },
+      start: { x: snapToGrid(startX), y: snapToGrid(trunkStartY) },
       end: { x: snapToGrid(startX), y: trunkTopY },
       stroke: deps.branchStroke,
       strokeWidth: 1.25,
@@ -609,6 +689,8 @@ export const buildKamrailCircuitBundle = (
   return {
     shapes,
     createdIds,
-    selectedId: createdIds[1] ?? createdIds[0] ?? null
+    // Breaker sections always put their protection symbol first. Selecting it
+    // keeps the object pane editable instead of focusing a generated label.
+    selectedId: createdIds[0] ?? null
   }
 }

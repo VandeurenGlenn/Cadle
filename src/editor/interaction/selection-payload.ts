@@ -30,6 +30,7 @@ export type NativeSelectionShapePayload = {
   stroke?: string
   canSetStrokeWidth?: boolean
   strokeWidth?: number
+  busbarLength?: number
   fontFamily?: string
   letterSpacing?: number
   x?: number
@@ -173,6 +174,12 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.canSetStrokeWidth = true
     shapePayload.strokeWidth =
       typeof selectedShape.strokeWidth === 'number' ? selectedShape.strokeWidth : defaultStrokeWidth
+  }
+  if (selectedShape.kind === 'line' && selectedShape.groupId?.startsWith('onewire-kamrail-')) {
+    shapePayload.busbarLength = Math.hypot(
+      selectedShape.end.x - selectedShape.start.x,
+      selectedShape.end.y - selectedShape.start.y
+    )
   }
   if (selectedShape.kind === 'text') {
     if ('fontFamily' in selectedShape && typeof selectedShape.fontFamily === 'string') {

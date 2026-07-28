@@ -1,0 +1,118 @@
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 10014;
+  display: grid;
+  place-items: center;
+  padding: var(--cadle-space-4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+:host([open]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--cadle-scrim);
+}
+
+.panel {
+  position: relative;
+  display: grid;
+  width: min(760px, calc(100vw - var(--cadle-space-6)));
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-lg);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--cadle-elevation-5);
+}
+
+header,
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cadle-space-3);
+  padding: 18px 20px;
+}
+
+header {
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+header h3,
+header p {
+  margin: 0;
+}
+
+header p {
+  margin-top: var(--cadle-space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
+main {
+  display: grid;
+  gap: var(--cadle-space-2);
+  padding: 20px;
+}
+
+.canvas-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--cadle-radius-md);
+  background:
+    linear-gradient(to bottom, transparent calc(72% - 1px), color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent) 72%, transparent calc(72% + 1px)),
+    color-mix(in srgb, var(--md-sys-color-surface) 94%, white);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: clamp(190px, 31vw, 280px);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.hint {
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
+footer {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.secondary-actions,
+.primary-actions {
+  display: flex;
+  gap: var(--cadle-space-2);
+}
+
+@media (max-width: 620px) {
+  :host {
+    padding: var(--cadle-space-2);
+  }
+
+  .panel {
+    width: calc(100vw - var(--cadle-space-4));
+  }
+
+  header,
+  footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .secondary-actions,
+  .primary-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

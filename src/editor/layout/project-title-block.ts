@@ -93,7 +93,7 @@ export const getProjectTitleBlockData = (project: Project | null, _pageName: str
 
 export const getProjectTitleBlockBounds = (
   worldWidth: number,
-  worldHeight: number,
+  _worldHeight: number,
   layoutScale = 1,
   originX = 0,
   originY = 0
@@ -103,7 +103,7 @@ export const getProjectTitleBlockBounds = (
   const scaledMargin = PROJECT_TITLE_BLOCK_MARGIN * layoutScale
   return {
     x: originX + Math.max(0, worldWidth - scaledWidth - scaledMargin),
-    y: originY + Math.max(0, worldHeight - scaledHeight - scaledMargin),
+    y: originY + scaledMargin,
     width: scaledWidth,
     height: scaledHeight
   }
@@ -154,6 +154,7 @@ export const buildProjectTitleBlockMarkup = (
   const pageTitleWidth = Math.max(190, [...toPrintUpper(pageTitle)].length * 22 * 0.68 + 24)
   const availablePageWidth = Math.max(190, worldWidth / layoutScale - 2 * PROJECT_TITLE_BLOCK_MARGIN)
   const pageSectionWidth = Math.min(pageTitleWidth, availablePageWidth)
+  const bounds = getProjectTitleBlockBounds(worldWidth, worldHeight, layoutScale, originX, originY)
   const logoBounds = {
     x: originX + cornerMargin,
     y: originY + cornerMargin,
@@ -164,12 +165,11 @@ export const buildProjectTitleBlockMarkup = (
     width: pageSectionWidth * layoutScale,
     height: 64 * layoutScale,
     x: originX + Math.max(0, worldWidth - cornerMargin - pageSectionWidth * layoutScale),
-    y: originY + cornerMargin
+    y: bounds.y + bounds.height + 12 * layoutScale
   }
 
   const { rows, missingRequiredFields } = getProjectTitleBlockData(project, pageName)
   const pageIndicator = pageNumberLabel(project, currentPageKey, pageName)
-  const bounds = getProjectTitleBlockBounds(worldWidth, worldHeight, layoutScale, originX, originY)
   const innerX = bounds.x + 16 * layoutScale
   const warningY = bounds.y + 18 * layoutScale
   const top = bounds.y + 40 * layoutScale
@@ -210,12 +210,12 @@ export const buildProjectTitleBlockMarkup = (
 
   if (!isProjectLogoVisible(project)) {
     return `
-      ${pageMarkup}
       <g class="project-title-block" data-project-title-block="true">
         <rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" rx="${7 * layoutScale}" ry="${7 * layoutScale}" fill="none" stroke="#3f352d" stroke-width="${1.4 * layoutScale}"/>
         ${warningMarkup}
         ${rowsMarkup}
       </g>
+      ${pageMarkup}
     `.trim()
   }
 
@@ -242,11 +242,11 @@ export const buildProjectTitleBlockMarkup = (
 
   return `
     ${logoMarkup}
-    ${pageMarkup}
     <g class="project-title-block" data-project-title-block="true">
       <rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" rx="${7 * layoutScale}" ry="${7 * layoutScale}" fill="none" stroke="#3f352d" stroke-width="${1.4 * layoutScale}"/>
       ${warningMarkup}
       ${rowsMarkup}
     </g>
+    ${pageMarkup}
   `.trim()
 }

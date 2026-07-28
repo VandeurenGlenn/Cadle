@@ -109,11 +109,7 @@ const SYMBOL_METADATA: Record<string, SymbolMetadataDefinition> = {
       { key: 'phase', legacyKeys: ['desc:n'], label: 'Phase', defaultValue: 'n', x: 8.8267, y: 28.07, fontSize: 6 },
       { key: 'rated-current', legacyKeys: ['desc:40A'], label: 'Rated current', defaultValue: '40A', x: 16.9427, y: 23.818, fontSize: 6 },
       { key: 'residual-current', legacyKeys: ['desc:300mA'], label: 'Residual current', defaultValue: '300mA', x: 16.9427, y: 16.8731, fontSize: 6 },
-      { key: 'device-type', legacyKeys: ['desc:I'], label: 'Device type', defaultValue: 'I', x: 27.2891, y: 9.7762, fontSize: 10, fontFamily: 'Times New Roman' }
-    ]
-  },
-  'symbols/one-wire/custom residual-current circuit breaker.svg': {
-    textFields: [
+      { key: 'rcd-type', label: 'RCD type', defaultValue: '', x: 16.9427, y: 31.2, fontSize: 5 },
       { key: 'device-type', legacyKeys: ['desc:I'], label: 'Device type', defaultValue: 'I', x: 27.2891, y: 9.7762, fontSize: 10, fontFamily: 'Times New Roman' }
     ]
   },

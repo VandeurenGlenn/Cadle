@@ -1,8 +1,11 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './project-details-dialog.css' with { type: 'css' }
+import './signature-pad-dialog.js'
+import type { SignatureRole, SignatureSavedDetail } from './signature-pad-dialog.js'
 import type { Project, Projects, UUID } from '../../types.js'
 import { getProjectData, getProjects, set, setProjectData } from '../../api/project.js'
 import { normalizeElectricalProfile } from '../../editor/electrical-profile.js'
+import { saveInstallerProfile } from '../../api/installer-profile.js'
 
 type ProjectDetailsSavedDetail = {
   project: Project
@@ -29,6 +32,10 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor logoUrl = ''
   @property({ type: String }) accessor logoColor = ''
   @property({ type: Number }) accessor logoScale = 1
+  @property({ type: String }) accessor installerSignatureUrl = ''
+  @property({ type: String }) accessor customerSignatureUrl = ''
+  @property({ type: Boolean }) accessor signaturePadOpen = false
+  @property({ type: String }) accessor signaturePadRole: SignatureRole = 'installer'
   @property({ type: String }) accessor electricalEdition = ''
   @property({ type: String }) accessor distributor = ''
   @property({ type: String }) accessor supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other' = '1x230V+N'
@@ -59,6 +66,8 @@ export class ProjectDetailsDialog extends LiteElement {
       typeof this.project?.logoScale === 'number' && Number.isFinite(this.project.logoScale)
         ? Math.max(0.4, Math.min(2.5, this.project.logoScale))
         : 1
+    this.installerSignatureUrl = this.project?.installerSignatureUrl?.trim() ?? ''
+    this.customerSignatureUrl = this.project?.customerSignatureUrl?.trim() ?? ''
     this.customer = [this.project?.customer?.name ?? '', this.project?.customer?.lastname ?? '']
       .map((value) => value.trim())
       .filter(Boolean)
@@ -220,6 +229,102 @@ export class ProjectDetailsDialog extends LiteElement {
     this.logoUrl = ''
   }
 
+  #blobToDataUrl = (blob: Blob): Promise<string> =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error('Unable to encode signature image'))
+      reader.onload = () => {
+        if (typeof reader.result === 'string') resolve(reader.result)
+        else reject(new Error('Unsupported signature image payload'))
+      }
+      reader.readAsDataURL(blob)
+    })
+
+  #optimizedSignatureDataUrl = async (file: File): Promise<string> => {
+    const acceptedTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+    if (!acceptedTypes.has(file.type)) throw new Error('Use a PNG, JPEG or WebP image.')
+    if (file.size > 12 * 1024 * 1024) throw new Error('The signature image must be smaller than 12 MB.')
+
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+    image.decoding = 'async'
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error('Unable to decode signature image'))
+        image.src = objectUrl
+      })
+
+      const sourceWidth = image.naturalWidth
+      const sourceHeight = image.naturalHeight
+      if (sourceWidth <= 0 || sourceHeight <= 0) throw new Error('The signature image has no visible dimensions.')
+      const scale = Math.min(1, 1600 / sourceWidth, 600 / sourceHeight)
+      const width = Math.max(1, Math.round(sourceWidth * scale))
+      const height = Math.max(1, Math.round(sourceHeight * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Canvas is unavailable.')
+      context.drawImage(image, 0, 0, width, height)
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) => result ? resolve(result) : reject(new Error('Unable to optimize signature image')),
+          'image/png'
+        )
+      })
+      canvas.width = 1
+      canvas.height = 1
+      return await this.#blobToDataUrl(blob)
+    } finally {
+      image.src = ''
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  #onSignatureFilePicked = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    const role = input?.dataset.signature
+    if (!file || (role !== 'installer' && role !== 'customer')) return
+    try {
+      const dataUrl = await this.#optimizedSignatureDataUrl(file)
+      if (role === 'installer') this.installerSignatureUrl = dataUrl
+      else this.customerSignatureUrl = dataUrl
+    } catch (error) {
+      globalThis.alert(error instanceof Error ? error.message : 'Unable to add signature image.')
+    } finally {
+      if (input) input.value = ''
+    }
+  }
+
+  #clearSignature = (role: 'installer' | 'customer') => {
+    if (role === 'installer') this.installerSignatureUrl = ''
+    else this.customerSignatureUrl = ''
+  }
+
+  #openSignaturePad = (role: SignatureRole) => {
+    this.signaturePadRole = role
+    this.signaturePadOpen = true
+  }
+
+  #closeSignaturePad = () => {
+    this.signaturePadOpen = false
+  }
+
+  #useDrawnSignature = (event: CustomEvent<SignatureSavedDetail>) => {
+    const { role, dataUrl } = event.detail
+    if (role === 'installer') this.installerSignatureUrl = dataUrl
+    else this.customerSignatureUrl = dataUrl
+    this.signaturePadOpen = false
+  }
+
+  #openSignatureFilePicker = (role: SignatureRole) => {
+    this.shadowRoot
+      ?.querySelector<HTMLInputElement>(`input[data-signature="${role}"]`)
+      ?.click()
+  }
+
   #onLogoColorPick = (event: Event) => {
     const target = event.currentTarget as HTMLInputElement | null
     this.logoColor = target?.value?.trim() ?? ''
@@ -260,6 +365,8 @@ export class ProjectDetailsDialog extends LiteElement {
     nextProject.logoUrl = logo.length > 0 ? logo : undefined
     nextProject.logoColor = logoColor.length > 0 ? logoColor : undefined
     nextProject.logoScale = Math.max(0.4, Math.min(2.5, this.logoScale))
+    nextProject.installerSignatureUrl = this.installerSignatureUrl.trim() || undefined
+    nextProject.customerSignatureUrl = this.customerSignatureUrl.trim() || undefined
     nextProject.customer.name = customerName
     nextProject.customer.lastname = customerLastName
     nextProject.installer.name = installer.first
@@ -295,6 +402,12 @@ export class ProjectDetailsDialog extends LiteElement {
 
     await setProjectData(this.projectKey, nextProject)
     await set(this.projectKey, nextProject.name)
+    await saveInstallerProfile({
+      name: installer.first,
+      lastname: installer.last,
+      company: nextProject.company,
+      btw: nextProject.installer.btw ?? ''
+    })
 
     const savedProject = await getProjectData(this.projectKey)
     const projects = await getProjects()
@@ -454,6 +567,64 @@ export class ProjectDetailsDialog extends LiteElement {
               placeholder="40" />
           </label>
           <div class="form-section">
+            <strong>Handtekeningen</strong>
+            <span>Teken ze hier of upload een afbeelding. Ze worden automatisch op de inleiding geplaatst.</span>
+          </div>
+          <div class="signature-grid">
+            <div class="signature-card">
+              <strong>Installateur</strong>
+              <div class="signature-preview">
+                ${this.installerSignatureUrl
+                  ? html`<img src=${this.installerSignatureUrl} alt="Handtekening installateur" />`
+                  : html`<span>Geen handtekening toegevoegd</span>`}
+              </div>
+              <input
+                class="signature-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                data-signature="installer"
+                @change=${this.#onSignatureFilePicked} />
+              <div class="signature-card-actions">
+                <button type="button" class="primary" @click=${() => this.#openSignaturePad('installer')}>
+                  ${this.installerSignatureUrl ? 'Opnieuw tekenen' : 'Tekenen'}
+                </button>
+                <button type="button" @click=${() => this.#openSignatureFilePicker('installer')}>Uploaden</button>
+                <button
+                  type="button"
+                  ?disabled=${!this.installerSignatureUrl}
+                  @click=${() => this.#clearSignature('installer')}>
+                  Verwijderen
+                </button>
+              </div>
+            </div>
+            <div class="signature-card">
+              <strong>Eigenaar</strong>
+              <div class="signature-preview">
+                ${this.customerSignatureUrl
+                  ? html`<img src=${this.customerSignatureUrl} alt="Handtekening eigenaar" />`
+                  : html`<span>Geen handtekening toegevoegd</span>`}
+              </div>
+              <input
+                class="signature-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                data-signature="customer"
+                @change=${this.#onSignatureFilePicked} />
+              <div class="signature-card-actions">
+                <button type="button" class="primary" @click=${() => this.#openSignaturePad('customer')}>
+                  ${this.customerSignatureUrl ? 'Opnieuw tekenen' : 'Tekenen'}
+                </button>
+                <button type="button" @click=${() => this.#openSignatureFilePicker('customer')}>Uploaden</button>
+                <button
+                  type="button"
+                  ?disabled=${!this.customerSignatureUrl}
+                  @click=${() => this.#clearSignature('customer')}>
+                  Verwijderen
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="form-section">
             <strong>Elektrisch profiel</strong>
             <span>AREI-georiënteerde projectdefaults; controleer de actuele uitgave en installatiegegevens.</span>
           </div>
@@ -517,6 +688,11 @@ export class ProjectDetailsDialog extends LiteElement {
           </button>
         </div>
       </div>
+      <signature-pad-dialog
+        ?open=${this.signaturePadOpen}
+        .signatureRole=${this.signaturePadRole}
+        @close=${this.#closeSignaturePad}
+        @signature-saved=${this.#useDrawnSignature}></signature-pad-dialog>
     `
   }
 }

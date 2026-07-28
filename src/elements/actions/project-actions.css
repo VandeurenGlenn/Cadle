@@ -17,9 +17,6 @@ custom-button {
   min-width: 56px;
   padding: 0 var(--cadle-space-3);
 }
-custom-button:hover {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
-}
 custom-button:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
@@ -36,7 +33,9 @@ custom-dropdown {
   isolation: isolate;
   min-width: 248px;
   max-width: 320px;
-  overflow: hidden;
+  max-height: min(78vh, 620px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background-color: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -94,6 +93,32 @@ custom-list-item {
 }
 custom-list-item:last-of-type {
   border-bottom: none;
+}
+.submenu-toggle {
+  font-weight: 650;
+}
+.submenu-toggle[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 42%, var(--md-sys-color-surface-container-high));
+  color: var(--md-sys-color-on-primary-container);
+}
+.submenu-chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+  line-height: 1;
+  transition: transform var(--cadle-motion-fast);
+}
+.submenu-chevron.expanded {
+  transform: rotate(90deg);
+}
+.submenu-item {
+  min-height: 36px;
+  padding-left: var(--cadle-space-7);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container) 72%, var(--md-sys-color-surface-container-high));
+  font-size: var(--md-sys-typescale-label-medium-font-size);
+  border-bottom-color: color-mix(in srgb, var(--cadle-glass-border) 58%, transparent);
 }
 custom-list-item:hover,
 custom-list-item:focus-visible {

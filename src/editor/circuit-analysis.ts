@@ -7,7 +7,7 @@ import {
   type ElectricalCircuitType
 } from '../editor/model/electrical.js'
 import type { ElectricalProjectProfile, ProjectCircuitSpecification } from '../types.js'
-import { circuitDefaults } from './circuit-defaults.js'
+import { circuitDefaults, defaultHasProtectiveConductor } from './circuit-defaults.js'
 
 export type CircuitComponentRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 
@@ -16,10 +16,13 @@ export type CircuitSpecification = {
   breakerCurrentA: number
   cableSectionMm2: number
   cableConductors: number
-  cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+  hasProtectiveConductor: boolean
+  cableType: 'none' | 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   cableInstallation: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
+  showCableInstallation: boolean
   poles: number
   phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  showPhaseLabel: boolean
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
   rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
@@ -116,19 +119,24 @@ const suggestedSpecification = (
   const circuitType = explicit.circuitType ?? inferredCircuitType
   const defaults = circuitDefaults(circuitType)
   const phaseConfiguration = explicit.phaseConfiguration ?? profile?.phaseConfiguration ?? 'single-phase'
+  const cableConductors =
+    explicit.cableConductors ??
+    (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N'
+      ? 5
+      : defaults.cableConductors)
   return {
     circuitType,
     breakerCurrentA: explicit.breakerCurrentA ?? defaults.breakerCurrentA,
     cableSectionMm2: explicit.cableSectionMm2 ?? defaults.cableSectionMm2,
-    cableConductors:
-      explicit.cableConductors ??
-      (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N'
-        ? 5
-        : defaults.cableConductors),
+    cableConductors,
+    hasProtectiveConductor:
+      explicit.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
     cableType: explicit.cableType ?? defaults.cableType,
     cableInstallation: explicit.cableInstallation ?? defaults.cableInstallation,
+    showCableInstallation: explicit.showCableInstallation ?? true,
     poles: explicit.poles ?? profile?.defaultPoles ?? (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 4 : 2),
     phaseConfiguration,
+    showPhaseLabel: explicit.showPhaseLabel ?? true,
     breakerCurve: explicit.breakerCurve ?? defaults.breakerCurve,
     ...(explicit.rcdSensitivityMa ? { rcdSensitivityMa: explicit.rcdSensitivityMa } : {}),
     ...(explicit.rcdType ? { rcdType: explicit.rcdType } : {}),

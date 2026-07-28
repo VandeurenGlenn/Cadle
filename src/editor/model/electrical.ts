@@ -7,7 +7,7 @@ export type ElectricalPhaseConfiguration =
   | 'L2+N'
   | 'L3+N'
   | 'L1+L2+L3+N'
-export type ElectricalCableType = 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+export type ElectricalCableType = 'none' | 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
 export type ElectricalCableInstallation =
   | 'conduit'
   | 'conduit-recessed'
@@ -24,16 +24,39 @@ export type ElectricalDeviceMetadata = {
   breakerCurrentA?: number
   poles?: number
   phaseConfiguration?: ElectricalPhaseConfiguration
+  showPhaseLabel?: boolean
   cableSectionMm2?: number
   cableConductors?: number
+  hasProtectiveConductor?: boolean
   cableType?: ElectricalCableType
   cableInstallation?: ElectricalCableInstallation
+  showCableInstallation?: boolean
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
   rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
   boardId?: string
   railId?: string
   notes?: string
+}
+
+export const phaseConfigurationLabel = (
+  phase: ElectricalPhaseConfiguration | undefined
+): string => {
+  if (phase === 'three-phase') return '3N'
+  if (phase === 'L2+N') return 'L2N'
+  if (phase === 'L3+N') return 'L3N'
+  if (phase === 'L1+L2+L3+N') return 'L1L2L3N'
+  return 'L1N'
+}
+
+export const shouldShowPhaseLabel = (
+  _poles: number | undefined,
+  showPhaseLabel: boolean | undefined
+): boolean => showPhaseLabel !== false
+
+export const rcdTypeLabel = (type: ElectricalDeviceMetadata['rcdType']): string => {
+  if (!type) return ''
+  return `Type ${type === 'other' ? 'Other' : type}`
 }
 
 const finitePositive = (value: unknown): number | undefined =>
@@ -120,9 +143,14 @@ export const electricalMetadataFromCatalog = (
     breakerCurrentA: finitePositive(explicit.breakerCurrentA),
     poles: finitePositive(explicit.poles),
     phaseConfiguration,
+    showPhaseLabel:
+      typeof explicit.showPhaseLabel === 'boolean' ? explicit.showPhaseLabel : undefined,
     cableSectionMm2: finitePositive(explicit.cableSectionMm2),
     cableConductors: finitePositive(explicit.cableConductors),
+    hasProtectiveConductor:
+      typeof explicit.hasProtectiveConductor === 'boolean' ? explicit.hasProtectiveConductor : undefined,
     cableType:
+      explicit.cableType === 'none' ||
       explicit.cableType === 'VOB' ||
       explicit.cableType === 'XVB' ||
       explicit.cableType === 'XVB-Cca' ||
@@ -141,6 +169,8 @@ export const electricalMetadataFromCatalog = (
       explicit.cableInstallation === 'underground'
         ? explicit.cableInstallation
         : undefined,
+    showCableInstallation:
+      typeof explicit.showCableInstallation === 'boolean' ? explicit.showCableInstallation : undefined,
     breakerCurve:
       explicit.breakerCurve === 'B' || explicit.breakerCurve === 'C' || explicit.breakerCurve === 'D' || explicit.breakerCurve === 'other'
         ? explicit.breakerCurve
@@ -183,9 +213,14 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
       ['single-phase', 'three-phase', 'L1+N', 'L2+N', 'L3+N', 'L1+L2+L3+N'].includes(raw.phaseConfiguration)
         ? raw.phaseConfiguration as ElectricalPhaseConfiguration
         : undefined,
+    showPhaseLabel:
+      typeof raw.showPhaseLabel === 'boolean' ? raw.showPhaseLabel : undefined,
     cableSectionMm2: finitePositive(raw.cableSectionMm2),
     cableConductors: finitePositive(raw.cableConductors),
+    hasProtectiveConductor:
+      typeof raw.hasProtectiveConductor === 'boolean' ? raw.hasProtectiveConductor : undefined,
     cableType:
+      raw.cableType === 'none' ||
       raw.cableType === 'VOB' ||
       raw.cableType === 'XVB' ||
       raw.cableType === 'XVB-Cca' ||
@@ -204,6 +239,8 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
       raw.cableInstallation === 'underground'
         ? raw.cableInstallation
         : undefined,
+    showCableInstallation:
+      typeof raw.showCableInstallation === 'boolean' ? raw.showCableInstallation : undefined,
     breakerCurve: raw.breakerCurve === 'B' || raw.breakerCurve === 'C' || raw.breakerCurve === 'D' || raw.breakerCurve === 'other' ? raw.breakerCurve : undefined,
     rcdSensitivityMa: finitePositive(raw.rcdSensitivityMa),
     rcdType: raw.rcdType === 'AC' || raw.rcdType === 'A' || raw.rcdType === 'F' || raw.rcdType === 'B' || raw.rcdType === 'other' ? raw.rcdType : undefined,

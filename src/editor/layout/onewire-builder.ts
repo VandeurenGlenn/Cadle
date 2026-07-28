@@ -40,7 +40,7 @@ const createSymbol = (
   groupId
 })
 
-const RESIDENTIAL_BREAKER_SYMBOL_PATH = 'symbols/One-wire/Custom breaker.svg'
+const RESIDENTIAL_BREAKER_SYMBOL_PATH = 'symbols/Protection devices/Automaat.svg'
 const RESIDENTIAL_SWITCH_SYMBOL_PATH = 'symbols/Switches/Switch general symbol.svg'
 
 const loadSymbolPathForPreset = (preset: OneWirePresetConfig): string => {

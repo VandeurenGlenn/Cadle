@@ -26,6 +26,7 @@ export type SelectionShape = {
   stroke?: string
   canSetStrokeWidth?: boolean
   strokeWidth?: number
+  busbarLength?: number
   fontFamily?: string
   letterSpacing?: number
   x?: number
@@ -38,10 +39,13 @@ export type SelectionShape = {
     breakerCurrentA?: number
     cableSectionMm2?: number
     cableConductors?: number
+    hasProtectiveConductor?: boolean
     cableType?: string
     cableInstallation?: string
+    showCableInstallation?: boolean
     poles?: number
     phaseConfiguration?: string
+    showPhaseLabel?: boolean
     breakerCurve?: string
     rcdSensitivityMa?: number
     rcdType?: string
@@ -105,6 +109,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       stroke: typeof shape.stroke === 'string' ? shape.stroke : '',
       canSetStrokeWidth: shape.canSetStrokeWidth === true,
       strokeWidth: finiteNumber(shape.strokeWidth),
+      busbarLength: finiteNumber(shape.busbarLength),
       x: finiteNumber(shape.x),
       y: finiteNumber(shape.y),
       fontFamily: typeof shape.fontFamily === 'string' ? shape.fontFamily : '',

@@ -35,11 +35,28 @@ test('escapes metadata-backed symbol labels', () => {
 })
 
 test('renders the RCD device type as a serif letter instead of geometry', () => {
-  const layer = symbolTextLayer('symbols/One-wire/Custom residual-current circuit breaker.svg')
+  const layer = symbolTextLayer('symbols/Protection devices/Residual-current circuit breaker.svg', {
+    poles: '',
+    phase: '',
+    'rated-current': '',
+    'residual-current': ''
+  })
   assert.match(layer, /font-family:Times New Roman/)
   assert.match(layer, />I</)
 })
 
+test('renders the selected RCD classification separately from the serif I marker', () => {
+  const layer = symbolTextLayer('symbols/Protection devices/Residual-current circuit breaker.svg', {
+    poles: '',
+    phase: '',
+    'rated-current': '',
+    'residual-current': '',
+    'rcd-type': 'Type A'
+  })
+  assert.match(layer, />Type A</)
+  assert.match(layer, /font-family:Times New Roman[^>]*>I</)
+})
+
 test('registers every SVG with metadata-backed visible text', () => {
-  assert.equal(registeredSymbolMetadataPaths().length, 17)
+  assert.equal(registeredSymbolMetadataPaths().length, 16)
 })

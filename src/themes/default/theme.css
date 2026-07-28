@@ -149,7 +149,7 @@
 
   /* Chrome height — single source for header height. Components consume via
      `var(--cadle-header-height)`. */
-  --cadle-header-height: 56px;
+  --cadle-header-height: 44px;
 
   /* Layout column / row sizes. Single source for the shell grid template
      so rails and status-bar agree on geometry. */

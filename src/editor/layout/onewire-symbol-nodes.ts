@@ -52,12 +52,14 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    match: /Custom residual-current circuit breaker\.svg$/i,
+    match: /(?:Custom )?Residual-current circuit breaker\.svg$/i,
     spec: {
       viewBox: { width: 38.5625, height: 29.8893 },
       node: { x: 15.3836, y: 29.5293 },
       cutRadius: 2.83465,
-      oneWireScale: 3,
+      // Its wide viewBox otherwise makes the visible breaker body shorter
+      // than the square custom automaat at the same numerical scale.
+      oneWireScale: 4,
       rotation: 0
     }
   },
@@ -155,7 +157,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 28.783, height: 28.8265 },
       node: { x: 15.0236, y: 28.47 },
       cutRadius: 2.83465,
-      oneWireScale: 1
+      oneWireScale: 3
     }
   },
   {

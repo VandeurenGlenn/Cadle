@@ -2,7 +2,7 @@ import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
 
 const KWH_PATH = 'symbols/Consumption appliances/kWh meter.svg'
-const RCD_PATH = 'symbols/One-wire/Custom residual-current circuit breaker.svg'
+const RCD_PATH = 'symbols/Protection devices/Residual-current circuit breaker.svg'
 const INVERTER_PATH = 'symbols/Photovoltaic devices (≠AREI)/Inverter.svg'
 const EARTH_PATH = 'symbols/Protection devices/Earth electrode.svg'
 
@@ -47,7 +47,17 @@ export const buildOneWireTopology = (
       name,
       path,
       scale,
-      strokeWidth: 0.65
+      strokeWidth: 0.65,
+      ...(path === RCD_PATH
+        ? {
+            symbolTextOverrides: {
+              poles: '',
+              phase: '',
+              'rated-current': '',
+              'residual-current': ''
+            }
+          }
+        : {})
     }, role)
   const text = (
     role: string,
@@ -69,7 +79,7 @@ export const buildOneWireTopology = (
     }, role)
 
   shapes.push(symbol('meter', 'kWh meter', KWH_PATH, mainX, meterY, 2.5))
-  shapes.push(symbol('main-differential', 'Main differential', RCD_PATH, mainX, protectionY, 2.35))
+  shapes.push(symbol('main-differential', 'Main differential', RCD_PATH, mainX, protectionY, 4))
   shapes.push(line('incoming', mainX, meterY - 31, mainX, protectionY + 35))
   shapes.push(line('main-to-rail', mainX, protectionY - 35, mainX, railY))
 

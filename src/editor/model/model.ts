@@ -34,9 +34,10 @@ export const isPoint = (value: unknown): value is Point => {
 }
 
 const copyGeneratedMetadata = (
-  source: { generationKey?: unknown; sourceLink?: unknown },
+  source: { generationKey?: unknown; sourceLink?: unknown; hidden?: unknown },
   target: Shape
 ): void => {
+  if (source.hidden === true) target.hidden = true
   if (typeof source.generationKey === 'string' && source.generationKey.trim()) {
     target.generationKey = source.generationKey.trim()
   }
@@ -51,10 +52,17 @@ const copyGeneratedMetadata = (
   }
 }
 
-const currentSymbolPath = (path: string, name: string): string =>
-  /^data:image\/svg\+xml(?:;|,)/i.test(path) && name.trim().toLowerCase() === 'spot'
+const currentSymbolPath = (path: string, name: string): string => {
+  if (/symbols\/one-wire\/custom breaker\.svg$/i.test(path)) {
+    return 'symbols/Protection devices/Automaat.svg'
+  }
+  if (/symbols\/one-wire\/custom residual-current circuit breaker\.svg$/i.test(path)) {
+    return 'symbols/Protection devices/Residual-current circuit breaker.svg'
+  }
+  return /^data:image\/svg\+xml(?:;|,)/i.test(path) && name.trim().toLowerCase() === 'spot'
     ? 'symbols/Consumption appliances/Spot.svg'
     : path
+}
 
 export const sanitizeShapes = (values: unknown[]): Shape[] => {
   const shapes: Shape[] = []
@@ -79,6 +87,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
+      textAnchor?: unknown
       flipX?: unknown
       flipY?: unknown
       wallId?: unknown
@@ -88,6 +97,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       catalogShapes?: unknown
       generationKey?: unknown
       sourceLink?: unknown
+      hidden?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue
@@ -168,6 +178,9 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
         text.strokeWidth = Math.max(0.5, raw.strokeWidth)
       }
+      if (raw.textAnchor === 'start' || raw.textAnchor === 'middle' || raw.textAnchor === 'end') {
+        text.textAnchor = raw.textAnchor
+      }
       if (raw.flipX === true) text.flipX = true
       if (raw.flipY === true) text.flipY = true
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) text.bindingId = raw.bindingId.trim().toUpperCase()
@@ -223,6 +236,20 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         symbol.catalogShapes = sanitizeShapes(raw.catalogShapes)
       }
       copyGeneratedMetadata(raw, symbol)
+      if (
+        symbol.sourceLink?.role === 'breaker' &&
+        /protection devices\/(?:automaat|residual-current circuit breaker)\.svg$/i.test(symbol.path)
+      ) {
+        symbol.symbolTextOverrides = {
+          ...(symbol.symbolTextOverrides ?? {}),
+          poles: '',
+          phase: '',
+          'rated-current': '',
+          ...(symbol.path.toLowerCase().includes('residual-current')
+            ? { 'residual-current': '', 'rcd-type': '' }
+            : {})
+        }
+      }
       if (symbol.sourceLink?.role === 'cable-installation' && symbol.scale < 3) {
         symbol.scale = 3
       }
@@ -346,6 +373,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') text.strokeWidth = shape.strokeWidth
+      if (shape.textAnchor) text.textAnchor = shape.textAnchor
       if (shape.flipX) text.flipX = true
       if (shape.flipY) text.flipY = true
       if (shape.bindingId) text.bindingId = shape.bindingId
@@ -462,6 +490,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') text.strokeWidth = shape.strokeWidth
+      if (shape.textAnchor) text.textAnchor = shape.textAnchor
       if (shape.flipX) text.flipX = true
       if (shape.flipY) text.flipY = true
       if (shape.bindingId) text.bindingId = shape.bindingId
@@ -587,7 +616,12 @@ export const shapeBounds = (shape: Shape) => {
       const scale = shape.scale ?? 1
       const textWidth = Math.max(36, shape.text.length * 9 * scale)
       const textHeight = 28 * scale
-      return { x: shape.position.x, y: shape.position.y - textHeight, width: textWidth, height: textHeight }
+      const x = shape.textAnchor === 'end'
+        ? shape.position.x - textWidth
+        : shape.textAnchor === 'middle'
+          ? shape.position.x - textWidth / 2
+          : shape.position.x
+      return { x, y: shape.position.y - textHeight, width: textWidth, height: textHeight }
     }
     case 'symbol': {
       const size = 24 * Math.max(0.4, shape.scale)

@@ -2,7 +2,15 @@ import { cloneShape, shapeBounds } from '../../editor/model/model.js'
 import type { Point, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
-import type { ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
+import { GRID_SIZE } from '../constants.js'
+import {
+  phaseConfigurationLabel,
+  rcdTypeLabel,
+  shouldShowPhaseLabel,
+  type ElectricalDeviceMetadata
+} from '../../editor/model/electrical.js'
+
+const phaseLabel = phaseConfigurationLabel
 
 export type SelectionPropertyUpdate = {
   text?: string
@@ -16,6 +24,7 @@ export type SelectionPropertyUpdate = {
   fill?: string
   stroke?: string
   strokeWidth?: number
+  busbarLength?: number
   fontFamily?: string
   letterSpacing?: number
   x?: number
@@ -143,6 +152,25 @@ const applyProperties = (
     else delete updated.stroke
   }
   if (typeof payload.strokeWidth === 'number') updated.strokeWidth = Math.max(0.5, Math.min(40, payload.strokeWidth))
+  if (
+    typeof payload.busbarLength === 'number' &&
+    updated.kind === 'line' &&
+    updated.groupId?.startsWith('onewire-kamrail-')
+  ) {
+    const dx = updated.end.x - updated.start.x
+    const dy = updated.end.y - updated.start.y
+    const currentLength = Math.hypot(dx, dy)
+    if (currentLength > 0) {
+      const nextLength = Math.max(GRID_SIZE * 4, Math.round(payload.busbarLength / GRID_SIZE) * GRID_SIZE)
+      const half = nextLength / 2
+      const centerX = (updated.start.x + updated.end.x) / 2
+      const centerY = (updated.start.y + updated.end.y) / 2
+      const ux = dx / currentLength
+      const uy = dy / currentLength
+      updated.start = { x: centerX - ux * half, y: centerY - uy * half }
+      updated.end = { x: centerX + ux * half, y: centerY + uy * half }
+    }
+  }
   if (typeof payload.text === 'string' && updated.kind === 'text') updated.text = payload.text
   if (typeof payload.fontFamily === 'string' && updated.kind === 'text') {
     if (payload.fontFamily) updated.fontFamily = payload.fontFamily
@@ -165,6 +193,27 @@ const applyProperties = (
       else (electrical as Record<string, unknown>)[key] = value
     }
     updated.electrical = electrical
+    if (/automaat|breaker|protection devices/i.test(`${updated.name} ${updated.path}`)) {
+      const isResidualBreaker = /residual-current|differential|differentieel|\brcd\b/i.test(`${updated.name} ${updated.path}`)
+      updated.symbolTextOverrides = {
+        ...(updated.symbolTextOverrides ?? {}),
+        ...(typeof electrical.poles === 'number' ? { poles: `${electrical.poles}P` } : {}),
+        ...(shouldShowPhaseLabel(electrical.poles, electrical.showPhaseLabel) && electrical.phaseConfiguration
+            ? { phase: phaseLabel(electrical.phaseConfiguration) }
+            : { phase: '' }),
+        ...(typeof electrical.breakerCurrentA === 'number'
+          ? { 'rated-current': `${electrical.breakerCurrentA}A` }
+          : {}),
+        ...(isResidualBreaker
+          ? {
+              'residual-current': typeof electrical.rcdSensitivityMa === 'number'
+                ? `${electrical.rcdSensitivityMa}mA`
+                : '',
+              'rcd-type': rcdTypeLabel(electrical.rcdType)
+            }
+          : {})
+      }
+    }
   }
 
   if (typeof payload.x !== 'number' && typeof payload.y !== 'number') return updated

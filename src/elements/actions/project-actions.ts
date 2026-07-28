@@ -12,88 +12,17 @@ import { download, share, upload, importPlan } from '../../api/project.js'
 import { map } from '@vandeurenglenn/lite/map.js'
 import { render } from 'lit-html'
 import pubsub from '../../pubsub.js'
+import {
+  PROJECT_MENU_GROUPS,
+  PROJECT_MENU_PRIMARY_ACTIONS,
+  type ProjectMenuGroupId
+} from './project-menu.js'
 @customElement('project-actions')
 export class ProjectActions extends LiteElement {
   lastAction: string = ''
   #menuZIndex = 12040
+  #expandedFileGroup: ProjectMenuGroupId | '' = ''
   actions = {
-    file: [
-      {
-        title: 'import plan',
-        action: 'import-pdf',
-        icon: 'upload_file'
-      },
-      {
-        title: 'create project',
-        action: 'create',
-        icon: 'create_new_folder'
-      },
-      {
-        title: 'upload project',
-        action: 'upload',
-        icon: 'upload_file'
-      },
-      {
-        title: 'download project',
-        action: 'download',
-        icon: 'download'
-      },
-      {
-        title: 'new from template',
-        action: 'new-from-template',
-        icon: 'create_new_folder'
-      },
-      {
-        title: 'import custom symbol',
-        action: 'import-custom-symbol',
-        icon: 'upload_file'
-      },
-      {
-        title: 'validate bindings',
-        action: 'validate-bindings',
-        icon: 'check'
-      },
-      {
-        title: 'export BOM',
-        action: 'export-bom',
-        icon: 'download'
-      },
-      {
-        title: 'describe one-wire structure',
-        action: 'describe-one-wire',
-        icon: 'account_tree'
-      },
-      {
-        title: 'generate one-wire schema',
-        action: 'generate-one-wire',
-        icon: 'output'
-      },
-      {
-        title: 'open project',
-        action: 'open',
-        icon: 'folder_open'
-      },
-      {
-        title: 'share project',
-        action: 'share',
-        icon: 'share'
-      },
-      {
-        title: 'edit project details',
-        action: 'edit-project-details',
-        icon: 'edit'
-      },
-      {
-        title: 'history panel',
-        action: 'toggle-history-panel',
-        icon: 'menu'
-      },
-      {
-        title: 'one-wire training data',
-        action: 'open-onewire-training-data',
-        icon: 'dataset'
-      }
-    ],
     draw: [
       { title: 'A4 portrait', action: 'draw-paper-a4-portrait', icon: 'height' },
       { title: 'A4 landscape', action: 'draw-paper-a4-landscape', icon: 'width' },
@@ -105,10 +34,6 @@ export class ProjectActions extends LiteElement {
       { title: 'Add switch', action: 'draw-onewire-compose-switch', icon: 'add' },
       { title: 'Add kamrail', action: 'draw-onewire-compose-kamrail', icon: 'linear_scale' },
       { title: 'Add load', action: 'draw-onewire-compose-load', icon: 'add' },
-      { title: 'Export JSON', action: 'draw-export-json', icon: 'download' },
-      { title: 'Export PDF', action: 'draw-export-pdf', icon: 'save' },
-      { title: 'Print', action: 'draw-print-svg', icon: 'save' },
-      { title: 'Import JSON', action: 'draw-import-json', icon: 'upload_file' },
       { title: 'Clear drawing', action: 'draw-clear', icon: 'delete' }
     ],
     help: [
@@ -131,6 +56,7 @@ export class ProjectActions extends LiteElement {
     this.dropdown.style.top = `${bottom}px`
     this.dropdown.style.zIndex = String(this.#menuZIndex)
     if (kind === 'file') {
+      this.#expandedFileGroup = ''
       render(this._fileDropDownTemplate(), this.dropdown)
     } else if (kind === 'draw') {
       render(this._drawDropDownTemplate(), this.dropdown)
@@ -158,6 +84,12 @@ export class ProjectActions extends LiteElement {
         break
       case 'export-bom':
         cadleShell.generateBOM()
+        break
+      case 'export-json':
+      case 'export-pdf':
+      case 'print-svg':
+      case 'import-json':
+        pubsub.publish('editor.controls.command', { action })
         break
       case 'generate-one-wire':
         cadleShell.generateAutoOneWireSchema()
@@ -213,18 +145,6 @@ export class ProjectActions extends LiteElement {
       case 'draw-onewire-compose-load':
         pubsub.publish('editor.controls.command', { onewireCompose: 'load' })
         break
-      case 'draw-export-json':
-        pubsub.publish('editor.controls.command', { action: 'export-json' })
-        break
-      case 'draw-export-pdf':
-        pubsub.publish('editor.controls.command', { action: 'export-pdf' })
-        break
-      case 'draw-print-svg':
-        pubsub.publish('editor.controls.command', { action: 'print-svg' })
-        break
-      case 'draw-import-json':
-        pubsub.publish('editor.controls.command', { action: 'import-json' })
-        break
       case 'draw-clear':
         pubsub.publish('editor.controls.command', { action: 'clear' })
         break
@@ -265,24 +185,77 @@ export class ProjectActions extends LiteElement {
     this.lastAction = ''
   }
 
+  #onFileGroupClick = (event: Event) => {
+    event.stopPropagation()
+    const target = event.currentTarget as HTMLElement | null
+    const group = target?.dataset.group as ProjectMenuGroupId | undefined
+    if (!group) return
+    this.#expandedFileGroup = this.#expandedFileGroup === group ? '' : group
+    render(this._fileDropDownTemplate(), this.dropdown)
+  }
+
+  #fileGroupIcon(group: ProjectMenuGroupId) {
+    switch (group) {
+      case 'new':
+        return html`<custom-icon slot="start" icon="create_new_folder"></custom-icon>`
+      case 'import':
+        return html`<custom-icon slot="start" icon="upload_file"></custom-icon>`
+      case 'export':
+        return html`<custom-icon slot="start" icon="download"></custom-icon>`
+      case 'onewire':
+        return html`<custom-icon slot="start" icon="output"></custom-icon>`
+      case 'tools':
+        return html`<custom-icon slot="start" icon="edit"></custom-icon>`
+    }
+  }
+
   _fileDropDownTemplate() {
     return html`
-      <custom-menu>
+      <custom-menu class="file-menu">
         ${map(
-          this.actions.file,
-          (action, i) => html`
+          PROJECT_MENU_PRIMARY_ACTIONS,
+          (action) => html`
             <custom-list-item
+              class="primary-menu-item"
               title=${action.title}
               data-action=${action.action}
               @click=${this.#onMenuItemClick}
-              tabindex=${i + 1}>
-              <custom-icon
-                slot="start"
-                .icon=${action.icon}></custom-icon>
+              tabindex="0">
+              <custom-icon slot="start" .icon=${action.icon}></custom-icon>
               <span>${action.title}</span>
             </custom-list-item>
           `
         )}
+        ${PROJECT_MENU_GROUPS.map((group) => {
+          const expanded = this.#expandedFileGroup === group.id
+          return html`
+            <custom-list-item
+              class="submenu-toggle"
+              title=${group.title}
+              data-group=${group.id}
+              role="menuitem"
+              aria-expanded=${String(expanded)}
+              @click=${this.#onFileGroupClick}
+              tabindex="0">
+              ${this.#fileGroupIcon(group.id)}
+              <span>${group.title}</span>
+              <span slot="end" class="submenu-chevron ${expanded ? 'expanded' : ''}" aria-hidden="true">›</span>
+            </custom-list-item>
+            ${expanded
+              ? group.items.map((action) => html`
+                  <custom-list-item
+                    class="submenu-item"
+                    title=${action.title}
+                    data-action=${action.action}
+                    @click=${this.#onMenuItemClick}
+                    tabindex="0">
+                    <custom-icon slot="start" .icon=${action.icon}></custom-icon>
+                    <span>${action.title}</span>
+                  </custom-list-item>
+                `)
+              : ''}
+          `
+        })}
       </custom-menu>
     `
   }
@@ -322,12 +295,8 @@ export class ProjectActions extends LiteElement {
         items: this.actions.draw.filter((entry) => entry.action.startsWith('draw-onewire'))
       },
       {
-        label: 'Export',
-        items: this.actions.draw.filter((entry) =>
-          ['draw-export-json', 'draw-export-pdf', 'draw-print-svg', 'draw-import-json', 'draw-clear'].includes(
-            entry.action
-          )
-        )
+        label: 'Drawing',
+        items: this.actions.draw.filter((entry) => entry.action === 'draw-clear')
       }
     ]
     let tabindex = 1

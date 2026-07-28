@@ -129,10 +129,10 @@ export const shellStyles = css`
     position: relative;
     display: flex;
     align-items: center;
-    gap: var(--cadle-space-3);
+    gap: var(--cadle-space-2);
     height: var(--cadle-header-height);
     min-height: var(--cadle-header-height);
-    padding: 0 var(--cadle-space-3);
+    padding: 0 var(--cadle-space-2);
     background: var(--cadle-glass-bg-strong);
     backdrop-filter: blur(var(--cadle-glass-blur));
     -webkit-backdrop-filter: blur(var(--cadle-glass-blur));

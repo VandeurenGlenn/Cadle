@@ -9,6 +9,7 @@ test('normalizes object pane selection data at the event boundary', () => {
       id: 'symbol-1',
       kind: 'symbol',
       scale: Number.NaN,
+      busbarLength: 840,
       bindingLabelOffset: { x: -12, y: 2 },
       symbolTextFields: [{ key: 'label', label: 'Label', value: 'Q1' }]
     }
@@ -16,6 +17,7 @@ test('normalizes object pane selection data at the event boundary', () => {
 
   assert.equal(selection.shape?.label, 'Symbol')
   assert.equal(selection.shape?.scale, null)
+  assert.equal(selection.shape?.busbarLength, 840)
   assert.equal(selection.shape?.bindingLabelSide, 'left')
   assert.deepEqual(selection.shape?.symbolTextFields, [{ key: 'label', label: 'Label', value: 'Q1' }])
 })

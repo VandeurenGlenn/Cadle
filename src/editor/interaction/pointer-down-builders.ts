@@ -12,6 +12,8 @@ type SymbolStyleDefaults = {
   flipY?: unknown
 }
 
+export const DEFAULT_DRAW_STROKE_WIDTH = 1
+
 const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefaults => {
   const metadata = symbol.metadata
   if (!metadata || typeof metadata !== 'object') return {}
@@ -69,11 +71,13 @@ export const createDraftShape = (
         kind: 'rect',
         start: point,
         end: point,
-        variant: tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : rectVariant
+        variant: tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : rectVariant,
+        strokeWidth: DEFAULT_DRAW_STROKE_WIDTH
       }
     : {
         id,
         kind: tool === 'door' ? 'door' : tool === 'window' ? 'window' : tool === 'gate' ? 'gate' : 'line',
         start: point,
-        end: point
+        end: point,
+        ...(tool === 'line' ? { strokeWidth: DEFAULT_DRAW_STROKE_WIDTH } : {})
       }

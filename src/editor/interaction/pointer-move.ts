@@ -1,4 +1,5 @@
 import { dragEndpointSnapDelta, translateShape } from './shape-transforms.js'
+import { oneWireSymbolNodeInfo } from '../layout/onewire-symbol-nodes.js'
 import type { DraftShape, DragState, Point, Shape } from '../../editor/model/types.js'
 
 export const updateSymbolPreviewPoint = (
@@ -68,6 +69,27 @@ export const applyDragMove = (
   const dy = point.y - pointerStart.y
   const movedShapes = drag.initial.map((initialShape) => translateShape(initialShape, dx, dy))
   const snapDelta = dragEndpointSnapDelta(movedShapes, new Set(drag.ids), allShapes)
-  if (!snapDelta) return movedShapes
-  return movedShapes.map((shape) => translateShape(shape, snapDelta.x, snapDelta.y))
+  if (snapDelta) return movedShapes.map((shape) => translateShape(shape, snapDelta.x, snapDelta.y))
+
+  const electricalSymbol = movedShapes.find((shape) => {
+    if (shape.kind !== 'symbol') return false
+    return (
+      /protection devices|automaat|breaker|differential|differentieel|\brcd\b/i.test(`${shape.name} ${shape.path}`) &&
+      oneWireSymbolNodeInfo(shape.path, shape.scale) !== null
+    )
+  })
+  if (electricalSymbol?.kind !== 'symbol') return movedShapes
+  const node = oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale)
+  if (!node) return movedShapes
+  const anchor = {
+    x: electricalSymbol.position.x + node.offset.x,
+    y: electricalSymbol.position.y + node.offset.y
+  }
+  const snappedAnchor = snapPoint(anchor)
+  const nodeDelta = {
+    x: snappedAnchor.x - anchor.x,
+    y: snappedAnchor.y - anchor.y
+  }
+  if (Math.abs(nodeDelta.x) < 1e-9 && Math.abs(nodeDelta.y) < 1e-9) return movedShapes
+  return movedShapes.map((shape) => translateShape(shape, nodeDelta.x, nodeDelta.y))
 }

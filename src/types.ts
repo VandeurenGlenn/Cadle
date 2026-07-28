@@ -56,10 +56,13 @@ export type ProjectCircuitSpecification = {
   breakerCurrentA?: number
   cableSectionMm2?: number
   cableConductors?: number
-  cableType?: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
+  hasProtectiveConductor?: boolean
+  cableType?: 'none' | 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
+  showCableInstallation?: boolean
   poles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  showPhaseLabel?: boolean
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
   rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
@@ -75,6 +78,8 @@ export type ProjectInput = {
   logoScale?: number
   logoX?: number
   logoY?: number
+  installerSignatureUrl?: string
+  customerSignatureUrl?: string
   customer: {
     name: string
     lastname: string

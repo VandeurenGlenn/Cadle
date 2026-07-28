@@ -167,6 +167,7 @@ const rectTransform = (
 }
 
 export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') => {
+  if (shape.hidden) return nothing
   const selectedAttr = selected ? 'true' : 'false'
   const generatedLabelClass =
     shape.kind === 'text' && shape.generationKey && shape.sourceLink ? 'onewire-generated-label' : ''
@@ -330,6 +331,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
           style=${`font-size: ${18 * (shape.scale ?? 1)}px; ${textStrokeWidthStyle}`}
           fill=${shape.fill ?? 'var(--cadle-ink)'}
           stroke=${shape.stroke ?? nothing}
+          text-anchor=${shape.textAnchor ?? 'start'}
           x=${shape.position.x}
           y=${shape.position.y}>${shape.text}</text>
       `

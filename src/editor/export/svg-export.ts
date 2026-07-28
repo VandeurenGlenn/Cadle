@@ -153,6 +153,7 @@ export const selectedOutlineMarkup = (shape: Shape | null): string => {
 }
 
 export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): string => {
+  if (shape.hidden) return ''
   const selectedAttr = selected ? 'true' : 'false'
   switch (shape.kind) {
     case 'wall':
@@ -303,6 +304,7 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
             ${shapeTransform(shape)}
             style="${textStyle}"
             ${textFillAttr}${textStrokeAttr}
+            text-anchor="${shape.textAnchor ?? 'start'}"
             x="${shape.position.x}"
             y="${shape.position.y}">${escapeHtml(shape.text)}</text>
         `

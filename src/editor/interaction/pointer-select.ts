@@ -22,6 +22,30 @@ const shapeById = (shapes: Shape[], id: string | null): Shape | null => {
   return shapes.find((shape) => shape.id === id) ?? null
 }
 
+export const dragIdsForSelectedShape = (
+  shapes: Shape[],
+  shapeId: string,
+  selectedIds: ReadonlySet<string>
+): string[] => {
+  const shape = shapeById(shapes, shapeId)
+  const isOneWireBreaker =
+    shape?.kind === 'symbol' &&
+    shape.groupId?.startsWith('onewire-') &&
+    (shape.sourceLink?.role === 'breaker' || /automaat|breaker/i.test(`${shape.name} ${shape.path}`))
+  if (!isOneWireBreaker || !shape.groupId) return [...selectedIds]
+
+  const ids = new Set(selectedIds)
+  for (const candidate of shapes) {
+    if (candidate.groupId === shape.groupId) ids.add(candidate.id)
+  }
+  return [...ids]
+}
+
+export const shouldSelectExistingOneWireShape = (
+  shape: Shape | null,
+  isKamrail: boolean
+): boolean => shape !== null && !isKamrail
+
 export const resolveSelectPointerDown = (
   input: ResolveSelectPointerDownInput
 ): ResolveSelectPointerDownResult => {

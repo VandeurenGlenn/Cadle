@@ -5,7 +5,8 @@ import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../..
 import type { PanelLabelRow } from '../../helpers/panel-labels.js'
 import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SelectionShapeElectrical, type SymbolTextField } from './object-pane/selection-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
-import { circuitDefaults } from '../../editor/circuit-defaults.js'
+import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
+import { GRID_SIZE } from '../../editor/constants.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -69,6 +70,9 @@ export class ObjectPane extends LiteElement {
 
   @property({ type: Boolean, attribute: false })
   private accessor _nativeCanSetStrokeWidth = false
+
+  @property({ type: Number, attribute: false })
+  private accessor _nativeBusbarLength: number | null = null
 
   @property({ type: Number, attribute: false })
   private accessor _nativeX: number | null = null
@@ -142,6 +146,7 @@ export class ObjectPane extends LiteElement {
       this._nativeStroke = ''
       this._nativeCanSetStrokeWidth = false
       this._nativeStrokeWidth = null
+      this._nativeBusbarLength = null
       this._nativeX = null
       this._nativeY = null
       this._nativeFontFamily = ''
@@ -170,6 +175,7 @@ export class ObjectPane extends LiteElement {
     this._nativeStroke = shape.stroke
     this._nativeCanSetStrokeWidth = shape.canSetStrokeWidth
     this._nativeStrokeWidth = shape.strokeWidth
+    this._nativeBusbarLength = shape.busbarLength
     this._nativeX = shape.x
     this._nativeY = shape.y
     this._nativeFontFamily = shape.fontFamily
@@ -179,15 +185,20 @@ export class ObjectPane extends LiteElement {
     if (shape.kind === 'symbol') {
       const electrical = shape.electrical ?? {}
       const defaults = circuitDefaults(electrical.circuitType)
+      const cableConductors = electrical.cableConductors ?? defaults.cableConductors
       this._nativeElectrical = {
         ...electrical,
         breakerCurrentA: electrical.breakerCurrentA ?? defaults.breakerCurrentA,
         cableSectionMm2: electrical.cableSectionMm2 ?? defaults.cableSectionMm2,
-        cableConductors: electrical.cableConductors ?? defaults.cableConductors,
+        cableConductors,
+        hasProtectiveConductor:
+          electrical.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
         cableType: electrical.cableType ?? defaults.cableType,
         cableInstallation: electrical.cableInstallation ?? defaults.cableInstallation,
+        showCableInstallation: electrical.showCableInstallation ?? true,
         poles: electrical.poles ?? defaults.poles,
         phaseConfiguration: electrical.phaseConfiguration ?? defaults.phaseConfiguration,
+        showPhaseLabel: electrical.showPhaseLabel ?? true,
         breakerCurve: electrical.breakerCurve ?? defaults.breakerCurve,
         boardId: electrical.boardId ?? defaults.boardId,
         railId: electrical.railId ?? defaults.railId
@@ -314,6 +325,24 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.update', { strokeWidth: next })
   }
 
+  #setBusbarLengthInBlocks = (blocks: number) => {
+    if (!Number.isFinite(blocks)) return
+    const snappedBlocks = Math.max(4, Math.min(500, Math.round(blocks)))
+    const length = snappedBlocks * GRID_SIZE
+    this._nativeBusbarLength = length
+    pubsub.publish('editor.object.update', { busbarLength: length })
+  }
+
+  #onBusbarLengthInput = (event: Event) => {
+    const input = event.target as HTMLInputElement | null
+    this.#setBusbarLengthInBlocks(Number(input?.value ?? 0))
+  }
+
+  #adjustBusbarLength = (deltaBlocks: number) => {
+    const currentBlocks = (this._nativeBusbarLength ?? GRID_SIZE * 4) / GRID_SIZE
+    this.#setBusbarLengthInBlocks(currentBlocks + deltaBlocks)
+  }
+
   #onXInput = (event: Event) => {
     const input = event.target as HTMLInputElement | null
     const raw = Number(input?.value ?? 0)
@@ -346,24 +375,78 @@ export class ObjectPane extends LiteElement {
 
   #updateElectrical = (field: keyof SelectionShapeElectrical, value: string) => {
     const numericFields = new Set(['breakerCurrentA', 'cableSectionMm2', 'cableConductors', 'poles', 'rcdSensitivityMa'])
-    const parsed = numericFields.has(field) ? (value.trim() ? Number(value) : null) : value || null
+    const parsed = field === 'hasProtectiveConductor'
+      ? (value === '' ? null : value === 'true')
+      : numericFields.has(field)
+        ? (value.trim() ? Number(value) : null)
+        : value || null
     if (typeof parsed === 'number' && (!Number.isFinite(parsed) || parsed <= 0)) return
+    if (field === 'cableConductors' && typeof parsed === 'number') {
+      const hasProtectiveConductor = defaultHasProtectiveConductor(parsed)
+      this._nativeElectrical = {
+        ...(this._nativeElectrical ?? {}),
+        cableConductors: parsed,
+        hasProtectiveConductor
+      }
+      pubsub.publish('editor.object.update', {
+        electrical: { cableConductors: parsed, hasProtectiveConductor }
+      })
+      return
+    }
     this._nativeElectrical = { ...(this._nativeElectrical ?? {}), [field]: parsed ?? undefined }
     pubsub.publish('editor.object.update', { electrical: { [field]: parsed } })
+  }
+
+  #updatePhaseConfiguration = (value: string) => {
+    if (value === 'none') {
+      this._nativeElectrical = { ...(this._nativeElectrical ?? {}), showPhaseLabel: false }
+      pubsub.publish('editor.object.update', { electrical: { showPhaseLabel: false } })
+      return
+    }
+    const phaseConfiguration = value || null
+    this._nativeElectrical = {
+      ...(this._nativeElectrical ?? {}),
+      showPhaseLabel: true,
+      ...(phaseConfiguration ? { phaseConfiguration } : {})
+    }
+    pubsub.publish('editor.object.update', {
+      electrical: { showPhaseLabel: true, phaseConfiguration }
+    })
+  }
+
+  #updateCableInstallation = (value: string) => {
+    if (value === 'none') {
+      this._nativeElectrical = { ...(this._nativeElectrical ?? {}), showCableInstallation: false }
+      pubsub.publish('editor.object.update', { electrical: { showCableInstallation: false } })
+      return
+    }
+    this._nativeElectrical = {
+      ...(this._nativeElectrical ?? {}),
+      showCableInstallation: true,
+      cableInstallation: value
+    }
+    pubsub.publish('editor.object.update', {
+      electrical: { showCableInstallation: true, cableInstallation: value }
+    })
   }
 
   #effectiveElectrical = (): SelectionShapeElectrical => {
     const electrical = this._nativeElectrical ?? {}
     const defaults = circuitDefaults(electrical.circuitType)
+    const cableConductors = electrical.cableConductors ?? defaults.cableConductors
     return {
       ...electrical,
       breakerCurrentA: electrical.breakerCurrentA ?? defaults.breakerCurrentA,
       cableSectionMm2: electrical.cableSectionMm2 ?? defaults.cableSectionMm2,
-      cableConductors: electrical.cableConductors ?? defaults.cableConductors,
+      cableConductors,
+      hasProtectiveConductor:
+        electrical.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
       cableType: electrical.cableType ?? defaults.cableType,
       cableInstallation: electrical.cableInstallation ?? defaults.cableInstallation,
+      showCableInstallation: electrical.showCableInstallation ?? true,
       poles: electrical.poles ?? defaults.poles,
       phaseConfiguration: electrical.phaseConfiguration ?? defaults.phaseConfiguration,
+      showPhaseLabel: electrical.showPhaseLabel ?? true,
       breakerCurve: electrical.breakerCurve ?? defaults.breakerCurve,
       boardId: electrical.boardId ?? defaults.boardId,
       railId: electrical.railId ?? defaults.railId
@@ -456,10 +539,16 @@ export class ObjectPane extends LiteElement {
               </div>
               <div class="native-row">
                 <label><span class="native-label">Conductors</span><input data-electrical-field="cableConductors" class="native-input" type="number" min="1" step="1" .value=${String(this.#effectiveElectrical().cableConductors ?? '')} @input=${(event: Event) => this.#updateElectrical('cableConductors', (event.target as HTMLInputElement).value)} /></label>
-                <label><span class="native-label">Cable type</span><select data-electrical-field="cableType" class="native-select" .value=${this.#effectiveElectrical().cableType ?? ''} @change=${(event: Event) => this.#updateElectrical('cableType', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="VOB">VOB</option><option value="XVB">XVB</option><option value="XVB-Cca">XVB Cca</option><option value="XGB">XGB</option><option value="XGB-Cca">XGB Cca</option><option value="EXVB">EXVB</option><option value="other">Other</option></select></label>
+                <label><span class="native-label">Cable type</span><select data-electrical-field="cableType" class="native-select" .value=${this.#effectiveElectrical().cableType ?? ''} @change=${(event: Event) => this.#updateElectrical('cableType', (event.target as HTMLSelectElement).value)}><option value="none">Not set</option><option value="VOB">VOB</option><option value="XVB">XVB</option><option value="XVB-Cca">XVB Cca</option><option value="XGB">XGB</option><option value="XGB-Cca">XGB Cca</option><option value="EXVB">EXVB</option><option value="other">Other</option></select></label>
               </div>
+              <label class="native-label">Protective conductor</label>
+              <select data-electrical-field="hasProtectiveConductor" class="native-select" .value=${String(this.#effectiveElectrical().hasProtectiveConductor ?? true)} @change=${(event: Event) => this.#updateElectrical('hasProtectiveConductor', (event.target as HTMLSelectElement).value)}>
+                <option value="true">With yellow/green conductor (G)</option>
+                <option value="false">Without yellow/green conductor (X)</option>
+              </select>
               <label class="native-label">Installation method</label>
-              <select data-electrical-field="cableInstallation" class="native-select" .value=${this.#effectiveElectrical().cableInstallation ?? ''} @change=${(event: Event) => this.#updateElectrical('cableInstallation', (event.target as HTMLSelectElement).value)}>
+              <select data-electrical-field="cableInstallation" class="native-select" .value=${this.#effectiveElectrical().showCableInstallation === false ? 'none' : this.#effectiveElectrical().cableInstallation ?? ''} @change=${(event: Event) => this.#updateCableInstallation((event.target as HTMLSelectElement).value)}>
+                <option value="none">None</option>
                 <option value="conduit-recessed">In conduit, recessed in wall</option>
                 <option value="conduit">In conduit</option>
                 <option value="without-conduit">Without conduit</option>
@@ -469,7 +558,7 @@ export class ObjectPane extends LiteElement {
               </select>
               <div class="native-row">
                 <label><span class="native-label">Poles</span><input data-electrical-field="poles" class="native-input" type="number" min="1" step="1" .value=${String(this.#effectiveElectrical().poles ?? '')} @input=${(event: Event) => this.#updateElectrical('poles', (event.target as HTMLInputElement).value)} /></label>
-                <label><span class="native-label">Phase / conductors</span><select data-electrical-field="phaseConfiguration" class="native-select" .value=${this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updateElectrical('phaseConfiguration', (event.target as HTMLSelectElement).value)}><option value="">Project default</option><option value="L1+N">L1 + N</option><option value="L2+N">L2 + N</option><option value="L3+N">L3 + N</option><option value="L1+L2+L3+N">L1 + L2 + L3 + N</option></select></label>
+                <label><span class="native-label">Phase</span><select data-electrical-field="phaseConfiguration" class="native-select" .value=${this.#effectiveElectrical().showPhaseLabel === false ? 'none' : this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updatePhaseConfiguration((event.target as HTMLSelectElement).value)}><option value="none">None</option><option value="">Project default</option><option value="L1+N">L1N</option><option value="L2+N">L2N</option><option value="L3+N">L3N</option><option value="L1+L2+L3+N">L1L2L3N</option></select></label>
               </div>
               <div class="native-note">Values apply to this circuit and are stored with the project.</div>
               ${isResidualBreaker ? '' : html`<div class="native-row">
@@ -546,6 +635,36 @@ export class ObjectPane extends LiteElement {
                   step="1"
                   .value=${String(Math.round(this._nativeY))}
                   @change=${this.#onYInput} />
+              </div>
+            `
+          : ''}
+        ${this._nativeBusbarLength !== null
+          ? html`
+              <label class="native-label">Busbar length</label>
+              <div class="native-row">
+                <button
+                  type="button"
+                  class="native-btn-icon"
+                  title="Shorten by one grid block"
+                  @click=${() => this.#adjustBusbarLength(-1)}>
+                  −
+                </button>
+                <input
+                  type="number"
+                  class="native-input native-input-sm"
+                  min="4"
+                  max="500"
+                  step="1"
+                  .value=${String(Math.round(this._nativeBusbarLength / GRID_SIZE))}
+                  @change=${this.#onBusbarLengthInput} />
+                <span class="native-unit">blocks</span>
+                <button
+                  type="button"
+                  class="native-btn-icon"
+                  title="Extend by one grid block"
+                  @click=${() => this.#adjustBusbarLength(1)}>
+                  +
+                </button>
               </div>
             `
           : ''}

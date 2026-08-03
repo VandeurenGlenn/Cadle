@@ -28,7 +28,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@leofcoin/peernet": "^1.2.21",
+    "@leofcoin/peernet": "^1.2.25",
     "@leofcoin/storage": "^3.5.38",
     "@material/web": "^2.5.0",
     "@vandeurenglenn/custom-elements": "^0.1.22",

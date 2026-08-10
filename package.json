@@ -38,7 +38,7 @@
     "crypto-browserify": "^3.12.1",
     "events": "^3.3.0",
     "jspdf": "^4.2.1",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.2.108",
     "process": "^0.11.10",
     "stream-browserify": "^3.0.0"
   },

@@ -28,7 +28,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@leofcoin/peernet": "^1.2.21",
+    "@leofcoin/peernet": "^1.2.27",
     "@leofcoin/storage": "^3.5.38",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/nld": "^1.0.0",

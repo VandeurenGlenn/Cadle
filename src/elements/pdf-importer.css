@@ -181,9 +181,22 @@
       }
       .loading {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 12px;
         height: 100%;
+      }
+      .loading progress { width: min(320px, 80vw); }
+      .loading button,
+      .ocr-progress button {
+        padding: 7px 10px;
+        border: 1px solid currentColor;
+        border-radius: 7px;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
       }
       .error {
         color: var(--md-sys-color-error);
@@ -279,6 +292,8 @@
         border-width: 2px;
         flex: 0 0 auto;
       }
+      .ocr-progress > span:nth-child(2) { flex: 1; }
+      .ocr-progress progress { width: min(220px, 28vw); }
       .review-panel {
         display: grid;
         gap: 10px;

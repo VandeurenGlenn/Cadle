@@ -12,11 +12,11 @@ const browserBuiltins = () => ({
   name: 'cadle-browser-builtins',
   async resolveId(source, importer, options) {
     const replacements = {
-      crypto: 'crypto-browserify',
       stream: 'stream-browserify',
       events: 'events'
     }
     if (source === 'fs/promises') return new URL('./src/shims/fs-promises.ts', import.meta.url).pathname
+    if (source === 'crypto') return new URL('./src/shims/crypto.ts', import.meta.url).pathname
     const replacement = replacements[source]
     if (!replacement) return null
     return this.resolve(replacement, importer, { ...options, skipSelf: true })

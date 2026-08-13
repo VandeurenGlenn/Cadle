@@ -15,7 +15,7 @@ const createProject = async (page: import('@playwright/test').Page, name: string
   await expect(page).toHaveURL(/#!\/editor\/model/)
 }
 
-const openPdfImporter = async (page: import('@playwright/test').Page, name: string, buffer: Buffer) => {
+const choosePdf = async (page: import('@playwright/test').Page, name: string, buffer: Buffer) => {
   await page.locator('project-actions custom-button[label="File"]').click()
   await page.locator('project-actions custom-list-item[data-group="import"]').click()
   const chooserPromise = page.waitForEvent('filechooser')
@@ -24,6 +24,11 @@ const openPdfImporter = async (page: import('@playwright/test').Page, name: stri
   await chooser.setFiles({ name, mimeType: 'application/pdf', buffer })
   const importer = page.locator('pdf-importer')
   await expect(importer).toBeVisible()
+  return importer
+}
+
+const openPdfImporter = async (page: import('@playwright/test').Page, name: string, buffer: Buffer) => {
+  const importer = await choosePdf(page, name, buffer)
   await expect(importer.locator('.page-item')).toHaveCount(1)
   return importer
 }
@@ -41,12 +46,24 @@ test('imports a real vector PDF as reviewed editable Cadle objects', async ({ pa
   const pdfBuffer = Buffer.from(source.output('arraybuffer'))
 
   const importer = await openPdfImporter(page, 'legacy-house.pdf', pdfBuffer)
+  const initialMemory = await importer.evaluate((element: any) => ({
+    retainedCanvas: Boolean(element.pages[0]?.canvas),
+    previewPixels: element.pages[0]?.width * element.pages[0]?.height
+  }))
+  expect(initialMemory.retainedCanvas).toBe(false)
+  expect(initialMemory.previewPixels).toBeLessThanOrEqual(240_000)
   const primaryAction = importer.locator('cadle-header custom-button').last()
   await expect(primaryAction).toContainText('Analyze 1 Page')
   await primaryAction.click()
   await expect(importer.getByText('Review before creating')).toBeVisible()
   await expect(importer.getByText('Original', { exact: true })).toBeVisible()
   await expect(importer.getByText('Cadle conversion review', { exact: true })).toBeVisible()
+  const reviewedMemory = await importer.evaluate((element: any) => ({
+    retainedCanvas: Boolean(element.pages[0]?.canvas),
+    retainedProcessedCanvas: Boolean(element.pages[0]?.analysis?.processedCanvas),
+    previewPixels: element.pages[0]?.width * element.pages[0]?.height
+  }))
+  expect(reviewedMemory).toEqual({ retainedCanvas: false, retainedProcessedCanvas: false, previewPixels: initialMemory.previewPixels })
   await expect(primaryAction).toContainText('Create 1 Page')
   await primaryAction.click()
   await expect(importer).toHaveCount(0)
@@ -119,4 +136,53 @@ test('straightens a raster PDF and creates a reviewed door bound to its wall', a
   expect(wall).toBeTruthy()
   expect(door).toBeTruthy()
   expect(door.wallId).toBe(wall.id)
+})
+
+test('rejects PDFs above the safe page limit before rendering previews', async ({ page }) => {
+  test.setTimeout(90_000)
+  await createProject(page, 'E2E PDF limits')
+  const source = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
+  for (let index = 1; index < 101; index += 1) source.addPage()
+  const importer = await choosePdf(page, 'too-many-pages.pdf', Buffer.from(source.output('arraybuffer')))
+  await expect(importer.getByRole('alert')).toContainText('more than 100 pages')
+  await expect(importer.locator('.page-item')).toHaveCount(0)
+})
+
+test('cancels a multi-page analysis without closing the importer', async ({ page }) => {
+  test.setTimeout(90_000)
+  await createProject(page, 'E2E PDF cancellation')
+  const raster = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1000
+    canvas.height = 1400
+    const context = canvas.getContext('2d')!
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.strokeStyle = 'black'
+    context.lineWidth = 8
+    for (let y = 100; y < 1300; y += 80) {
+      context.beginPath()
+      context.moveTo(80, y)
+      context.lineTo(920, y)
+      context.stroke()
+    }
+    return canvas.toDataURL('image/png')
+  })
+  const source = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
+  for (let index = 0; index < 8; index += 1) {
+    if (index) source.addPage()
+    source.addImage(raster, 'PNG', 0, 0, 595, 842)
+  }
+  const importer = await choosePdf(page, 'cancel-analysis.pdf', Buffer.from(source.output('arraybuffer')))
+  await expect(importer.locator('.page-item')).toHaveCount(8)
+  await importer.locator('label.scan-ocr input').uncheck()
+  await importer.locator('label.scan-symbols input').uncheck()
+  const primaryAction = importer.locator('cadle-header custom-button').last()
+  await primaryAction.click()
+  const cancel = importer.getByRole('button', { name: 'Cancel operation' })
+  await expect(cancel).toBeVisible()
+  await cancel.click()
+  await expect(cancel).toHaveCount(0)
+  await expect(importer).toBeVisible()
+  await expect(primaryAction).toContainText('Analyze 8 Pages')
 })

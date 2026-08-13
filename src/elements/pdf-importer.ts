@@ -30,6 +30,14 @@ import { detectPdfScanCanvasSymbols } from '../editor/pdf-scan-symbols.js'
 import { detectPdfScanOpenings } from '../editor/pdf-scan-openings.js'
 import { preparePdfScanCanvas, type PdfScanQuality } from '../editor/pdf-scan-preprocess.js'
 import {
+  PDF_THUMBNAIL_DIMENSION,
+  PDF_THUMBNAIL_PIXELS,
+  PdfImportCancelledError,
+  pdfImportFileError,
+  pdfImportPageCountError,
+  releasePdfCanvas
+} from '../editor/pdf-import-limits.js'
+import {
   applyPdfImportCorrections,
   confirmPdfReviewSuggestions,
   pdfReviewCounts,
@@ -54,7 +62,6 @@ async function getPdfjsLib() {
 
 interface PDFPage {
   pageNumber: number
-  canvas?: HTMLCanvasElement
   previewImage?: string
   selected: boolean
   width: number
@@ -74,7 +81,6 @@ interface PDFPageAnalysis {
   usedRasterGeometry: boolean
   rasterSymbols: number
   scanQuality?: PdfScanQuality
-  processedCanvas?: HTMLCanvasElement
   processedPreviewImage?: string
 }
 
@@ -93,11 +99,13 @@ interface PdfPageProxy {
   }): {
     promise: Promise<void>
   }
+  cleanup?(): void
 }
 
 interface PdfDocumentProxy {
   numPages: number
   getPage(pageNumber: number): Promise<PdfPageProxy>
+  destroy?(): Promise<void>
 }
 declare global {
   interface HTMLElementTagNameMap {
@@ -108,6 +116,8 @@ declare global {
 export class PDFImporter extends LiteElement {
   #sourceFileName = 'Old plan.pdf'
   #correctionStorageKey = 'cadle.pdf-import-corrections.v1'
+  #operationId = 0
+  #activeCanvas?: HTMLCanvasElement
   @property({ type: Object })
   accessor pdfDocument: PdfDocumentProxy | null = null
 
@@ -148,6 +158,12 @@ export class PDFImporter extends LiteElement {
   accessor ocrStatus = ''
 
   @property({ type: Number })
+  accessor operationProgress = 0
+
+  @property({ type: Number })
+  accessor operationTotal = 0
+
+  @property({ type: Number })
   accessor activeReviewPage = 0
 
   @property({ type: Number })
@@ -158,29 +174,103 @@ export class PDFImporter extends LiteElement {
 
   static styles = [styles]
 
+  private beginOperation(): number {
+    this.#operationId += 1
+    return this.#operationId
+  }
+
+  private assertOperation(operationId: number): void {
+    if (operationId !== this.#operationId) throw new PdfImportCancelledError()
+  }
+
+  private releaseActiveCanvas(): void {
+    releasePdfCanvas(this.#activeCanvas)
+    this.#activeCanvas = undefined
+  }
+
+  private async renderPageCanvas(
+    pageData: Pick<PDFPage, 'pageNumber' | 'pdfWidth' | 'pdfHeight'>,
+    preferredScale = 1.5,
+    maximumPixels = 3_000_000,
+    maximumDimension = 2400
+  ): Promise<HTMLCanvasElement> {
+    if (!this.pdfDocument) throw new Error('The PDF document is no longer available.')
+    const page = await this.pdfDocument.getPage(pageData.pageNumber)
+    const scale = pdfPreviewRenderScale(pageData.pdfWidth, pageData.pdfHeight, preferredScale, maximumPixels, maximumDimension)
+    const viewport = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.floor(viewport.width))
+    canvas.height = Math.max(1, Math.floor(viewport.height))
+    this.#activeCanvas = canvas
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas rendering is unavailable.')
+    await page.render({ canvasContext: context, viewport, canvas }).promise
+    page.cleanup?.()
+    return canvas
+  }
+
+  private thumbnailDataUrl(canvas: HTMLCanvasElement): string {
+    const scale = pdfPreviewRenderScale(
+      canvas.width,
+      canvas.height,
+      1,
+      PDF_THUMBNAIL_PIXELS,
+      PDF_THUMBNAIL_DIMENSION
+    )
+    if (scale >= 1) return canvas.toDataURL('image/png')
+    const thumbnail = document.createElement('canvas')
+    thumbnail.width = Math.max(1, Math.floor(canvas.width * scale))
+    thumbnail.height = Math.max(1, Math.floor(canvas.height * scale))
+    const context = thumbnail.getContext('2d')
+    if (!context) throw new Error('Canvas rendering is unavailable.')
+    context.drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height)
+    const result = thumbnail.toDataURL('image/png')
+    releasePdfCanvas(thumbnail)
+    return result
+  }
+
   async loadPDF(file: File): Promise<void> {
+    const operationId = this.beginOperation()
     try {
+      const fileError = pdfImportFileError(file.size)
+      if (fileError) throw new Error(fileError)
       this.#sourceFileName = file.name
       this.isLoading = true
       this.error = null
+      this.ocrStatus = 'Opening PDF…'
       const pdfjs = await getPdfjsLib()
       const arrayBuffer = await file.arrayBuffer()
+      this.assertOperation(operationId)
       this.pdfDocument = (await pdfjs.getDocument({ data: arrayBuffer }).promise) as unknown as PdfDocumentProxy
-      await this.renderPages()
+      const pageError = pdfImportPageCountError(this.pdfDocument.numPages)
+      if (pageError) throw new Error(pageError)
+      this.operationTotal = this.pdfDocument.numPages
+      await this.renderPages(operationId)
     } catch (err) {
-      this.error = `Failed to load PDF: ${err instanceof Error ? err.message : String(err)}`
-      console.error(err)
+      if (operationId === this.#operationId && !(err instanceof PdfImportCancelledError)) {
+        this.error = `Failed to load PDF: ${err instanceof Error ? err.message : String(err)}`
+        console.error(err)
+      }
+      await this.pdfDocument?.destroy?.()
+      this.pdfDocument = null
+      this.pages = []
     } finally {
+      this.releaseActiveCanvas()
+      this.ocrStatus = ''
+      this.operationProgress = 0
+      this.operationTotal = 0
       this.isLoading = false
     }
   }
 
-  private async renderPages(): Promise<void> {
+  private async renderPages(operationId: number): Promise<void> {
+    if (!this.pdfDocument) return
     const pages: PDFPage[] = []
     for (let i = 1; i <= this.pdfDocument.numPages; i++) {
+      this.assertOperation(operationId)
+      this.ocrStatus = `Preparing page ${i} of ${this.pdfDocument.numPages}…`
       const page = await this.pdfDocument.getPage(i)
       const pdfViewport = page.getViewport({ scale: 1 })
-      const viewport = page.getViewport({ scale: pdfPreviewRenderScale(pdfViewport.width, pdfViewport.height) })
       const vector = await extractPdfVectorPage(
         page,
         pdfViewport.transform,
@@ -188,18 +278,26 @@ export class PDFImporter extends LiteElement {
         pdfViewport.height,
         pdfjsLib.OPS
       )
-      // Create canvas for PDF rendering
+      this.assertOperation(operationId)
+      const thumbnailScale = pdfPreviewRenderScale(
+        pdfViewport.width,
+        pdfViewport.height,
+        1,
+        PDF_THUMBNAIL_PIXELS,
+        PDF_THUMBNAIL_DIMENSION
+      )
+      const viewport = page.getViewport({ scale: thumbnailScale })
       const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.floor(viewport.width))
+      canvas.height = Math.max(1, Math.floor(viewport.height))
+      this.#activeCanvas = canvas
       const context = canvas.getContext('2d')
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-      // Render page to canvas
-      await page.render({ canvasContext: context!, viewport, canvas }).promise
-      // Convert canvas to image for preview
+      if (!context) throw new Error('Canvas rendering is unavailable.')
+      await page.render({ canvasContext: context, viewport, canvas }).promise
+      this.assertOperation(operationId)
       const previewImage = canvas.toDataURL('image/png')
       pages.push({
         pageNumber: i,
-        canvas,
         previewImage,
         selected: true, // Select all pages by default
         width: viewport.width,
@@ -208,9 +306,11 @@ export class PDFImporter extends LiteElement {
         pdfHeight: pdfViewport.height,
         vector
       })
+      page.cleanup?.()
+      this.releaseActiveCanvas()
+      this.pages = [...pages]
+      this.operationProgress = i
     }
-
-    this.pages = pages
   }
 
   private togglePageSelection(pageNumber: number): void {
@@ -285,24 +385,36 @@ export class PDFImporter extends LiteElement {
   private async analyzeSelectedPages(): Promise<void> {
     const selectedPages = this.pages.filter((page) => page.selected)
     if (!selectedPages.length) return
+    const operationId = this.beginOperation()
     let ocrSession: PdfScanOcrSession | null = null
     try {
       this.isLoading = true
       this.error = null
-      const needsOcr = this.scanOcr && selectedPages.some((page) => page.vector.texts.length === 0 && page.canvas)
+      this.operationProgress = 0
+      this.operationTotal = selectedPages.length
+      const needsOcr = this.scanOcr && selectedPages.some((page) => page.vector.texts.length === 0)
       if (needsOcr) {
         this.ocrStatus = 'Starting local text recognition…'
         ocrSession = await createPdfScanOcrSession((status, progress) => {
-          this.ocrStatus = `${status} · ${Math.round(progress * 100)}%`
+          if (operationId === this.#operationId) this.ocrStatus = `${status} · ${Math.round(progress * 100)}%`
         })
+        this.assertOperation(operationId)
       }
       const corrections = this.readCorrections()
-      for (const page of selectedPages) {
+      for (const [pageIndex, page] of selectedPages.entries()) {
+        this.assertOperation(operationId)
+        this.ocrStatus = `Rendering page ${pageIndex + 1} of ${selectedPages.length}…`
+        const sourceCanvas = await this.renderPageCanvas(page)
+        this.assertOperation(operationId)
         const rasterPage = page.vector.lines.length === 0 && page.vector.texts.length === 0
-        const prepared = rasterPage && page.canvas && this.enhanceScan
-          ? preparePdfScanCanvas(page.canvas)
-          : { canvas: page.canvas, quality: undefined }
+        const prepared = rasterPage && this.enhanceScan
+          ? preparePdfScanCanvas(sourceCanvas)
+          : { canvas: sourceCanvas, quality: undefined }
         const analysisCanvas = prepared.canvas
+        if (analysisCanvas !== sourceCanvas) {
+          this.releaseActiveCanvas()
+          this.#activeCanvas = analysisCanvas
+        }
         let sourceVector: PdfVectorPage = {
           ...page.vector,
           lines: page.vector.lines.map((line) => ({ ...line })),
@@ -322,10 +434,12 @@ export class PDFImporter extends LiteElement {
           const openings = detectPdfScanOpenings(detailed, lines, { width: page.pdfWidth, height: page.pdfHeight })
           sourceVector = { ...sourceVector, lines: [...lines, ...openings] }
           usedRasterGeometry = lines.length > 0
+          this.assertOperation(operationId)
         }
         if (ocrSession && analysisCanvas && sourceVector.texts.length === 0) {
           this.ocrStatus = `Recognizing text on page ${page.pageNumber} of ${selectedPages.length}…`
           const recognized = await ocrSession.recognize(analysisCanvas, { width: page.pdfWidth, height: page.pdfHeight })
+          this.assertOperation(operationId)
           sourceVector = { ...sourceVector, texts: recognized.texts.map((text) => ({ ...text, originalText: text.text })) }
           usedOcr = true
         }
@@ -339,6 +453,7 @@ export class PDFImporter extends LiteElement {
             .map((text) => ({ ...text, originalText: text.text }))
           sourceVector = { ...sourceVector, texts: [...sourceVector.texts, ...detected] }
           rasterSymbols = detected.length
+          this.assertOperation(operationId)
         }
         sourceVector = applyPdfImportCorrections(sourceVector, corrections)
         const conversion = convertPdfVectorPageToCadle(sourceVector, { x: 0, y: 0, width: page.pdfWidth, height: page.pdfHeight })
@@ -356,17 +471,26 @@ export class PDFImporter extends LiteElement {
           rasterSymbols,
           scanQuality: prepared.quality,
           ...(rasterPage && analysisCanvas
-            ? { processedCanvas: analysisCanvas, processedPreviewImage: analysisCanvas.toDataURL('image/png') }
+            ? { processedPreviewImage: this.thumbnailDataUrl(analysisCanvas) }
             : {})
         }
+        releasePdfCanvas(analysisCanvas)
+        this.releaseActiveCanvas()
+        this.pages = [...this.pages]
+        this.operationProgress = pageIndex + 1
       }
       this.pages = [...this.pages]
       this.activeReviewPage = selectedPages[0]?.pageNumber ?? 0
     } catch (err) {
-      this.error = `Failed to analyze PDF: ${err instanceof Error ? err.message : String(err)}`
+      if (operationId === this.#operationId && !(err instanceof PdfImportCancelledError)) {
+        this.error = `Failed to analyze PDF: ${err instanceof Error ? err.message : String(err)}`
+      }
     } finally {
       await ocrSession?.terminate()
+      this.releaseActiveCanvas()
       this.ocrStatus = ''
+      this.operationProgress = 0
+      this.operationTotal = 0
       this.isLoading = false
     }
   }
@@ -460,22 +584,38 @@ export class PDFImporter extends LiteElement {
       return
     }
     const originalProjectPages = this.project ? { ...(this.project.pages ?? {}) } : null
+    const operationId = this.beginOperation()
     try {
       this.isLoading = true
+      this.operationProgress = 0
+      this.operationTotal = selectedPages.length
       const { setProjectData } = await import('../api/project.js')
       if (!this.project) throw new Error('No project is currently loaded')
       const existingPageCount = Object.keys(this.project.pages ?? {}).length
       const importedPageKeys: UUID[] = []
       const summaries: PdfConversionSummary[] = []
       for (const [importIndex, pageData] of selectedPages.entries()) {
+        this.assertOperation(operationId)
+        this.ocrStatus = `Creating page ${importIndex + 1} of ${selectedPages.length}…`
         const pageName = importedPlanPageName(
           this.#sourceFileName,
           pageData.pageNumber,
           selectedPages.length
         )
         const pageUuid = crypto.randomUUID() as UUID
-        const dataUrl = (this.importMode === 'convert' ? pageData.analysis?.processedCanvas : undefined)?.toDataURL('image/png')
-          ?? pageData.canvas?.toDataURL('image/png')
+        const sourceCanvas = await this.renderPageCanvas(pageData)
+        this.assertOperation(operationId)
+        let importCanvas = sourceCanvas
+        if (this.importMode === 'convert' && pageData.analysis?.processedPreviewImage) {
+          importCanvas = preparePdfScanCanvas(sourceCanvas).canvas
+          if (importCanvas !== sourceCanvas) {
+            this.releaseActiveCanvas()
+            this.#activeCanvas = importCanvas
+          }
+        }
+        const dataUrl = importCanvas.toDataURL('image/png')
+        releasePdfCanvas(importCanvas)
+        this.releaseActiveCanvas()
         if (!dataUrl) continue
         const paperPreset = paperPresetForPdfPage(pageData.pdfWidth, pageData.pdfHeight)
         const fitted = fitPdfPageToPaper(pageData.width, pageData.height, paperPreset, 10)
@@ -526,8 +666,11 @@ export class PDFImporter extends LiteElement {
           order: existingPageCount + importIndex
         }
         importedPageKeys.push(pageUuid)
+        this.operationProgress = importIndex + 1
       }
 
+      this.assertOperation(operationId)
+      this.ocrStatus = 'Saving imported pages…'
       await setProjectData(this.projectKey, this.project)
       if (this.importMode === 'convert') this.persistReviewedCorrections(selectedPages)
       pubsub.publish('project-updated', { projectKey: this.projectKey })
@@ -542,16 +685,42 @@ export class PDFImporter extends LiteElement {
       }))
     } catch (err) {
       if (this.project && originalProjectPages) this.project.pages = originalProjectPages
-      this.error = `Failed to import pages: ${err instanceof Error ? err.message : String(err)}`
-      console.error(err)
+      if (operationId === this.#operationId && !(err instanceof PdfImportCancelledError)) {
+        this.error = `Failed to import pages: ${err instanceof Error ? err.message : String(err)}`
+        console.error(err)
+      }
     } finally {
+      this.releaseActiveCanvas()
       this.ocrStatus = ''
+      this.operationProgress = 0
+      this.operationTotal = 0
       this.isLoading = false
     }
   }
 
+  private cancelCurrentOperation(): void {
+    this.#operationId += 1
+    this.ocrStatus = 'Cancelling…'
+    this.releaseActiveCanvas()
+  }
+
+  private releaseDocumentResources(): void {
+    this.cancelCurrentOperation()
+    for (const page of this.pages) {
+      page.previewImage = undefined
+      if (page.analysis) page.analysis.processedPreviewImage = undefined
+    }
+    void this.pdfDocument?.destroy?.()
+    this.pdfDocument = null
+  }
+
   private handleCancel(): void {
+    this.releaseDocumentResources()
     this.dispatchEvent(new CustomEvent('import-cancel'))
+  }
+
+  disconnectedCallback(): void {
+    this.releaseDocumentResources()
   }
 
   private focusReviewControl(id: string): void {
@@ -749,6 +918,11 @@ export class PDFImporter extends LiteElement {
         <div class="container">
           <div class="loading">
             <span class="progress" role="progressbar" aria-label="Loading PDF"></span>
+            <span>${this.ocrStatus || 'Opening PDF…'}</span>
+            ${this.operationTotal
+              ? html`<progress max=${String(this.operationTotal)} value=${String(this.operationProgress)}></progress>`
+              : ''}
+            <button type="button" @click=${() => this.handleCancel()}>Cancel import</button>
           </div>
         </div>
       `
@@ -844,7 +1018,19 @@ export class PDFImporter extends LiteElement {
               </div>`
             : ''}
         </div>
-        ${this.ocrStatus ? html`<div class="ocr-progress" role="status" aria-live="polite"><span class="progress" aria-hidden="true"></span><span>${this.ocrStatus}</span></div>` : ''}
+        ${this.ocrStatus ? html`<div class="ocr-progress" role="status" aria-live="polite">
+          <span class="progress" aria-hidden="true"></span>
+          <span>${this.ocrStatus}</span>
+          ${this.operationTotal
+            ? html`<progress max=${String(this.operationTotal)} value=${String(this.operationProgress)} aria-label="PDF operation progress"></progress>`
+            : ''}
+          ${this.isLoading && this.ocrStatus !== 'Saving imported pages…'
+            ? html`<button type="button" @click=${() => {
+                if (this.pages.length < (this.pdfDocument?.numPages ?? 0)) this.handleCancel()
+                else this.cancelCurrentOperation()
+              }}>Cancel operation</button>`
+            : ''}
+        </div>` : ''}
         ${this.pages.length > 0
           ? html`
               <div class="select-all-section">

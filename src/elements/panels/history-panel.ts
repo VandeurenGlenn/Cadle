@@ -2,9 +2,16 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './history-panel.css' with { type: 'css' }
 @customElement('history-panel')
 export class HistoryPanel extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ type: Array }) accessor entries: Array<{ id: string; label: string; timestamp: number }> = []
   static styles = [styles]
+
+  onChange(property: string) {
+    if (property !== 'open') return
+
+    this.toggleAttribute('data-open', this.open)
+    this.setAttribute('aria-hidden', String(!this.open))
+  }
 
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
@@ -15,6 +22,8 @@ export class HistoryPanel extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
+
     return html`
       <div class="panel">
         <div class="header">

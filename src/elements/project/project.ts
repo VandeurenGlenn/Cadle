@@ -240,11 +240,16 @@ export class ProjectElement extends LiteElement {
           .value=${this.newPageType}
           @change=${(event: Event) => {
             const target = event.currentTarget as HTMLSelectElement | null
-            const value = target?.value === 'onewire' ? 'onewire' : 'groundplan'
+            const value = target?.value === 'onewire'
+              ? 'onewire'
+              : target?.value === 'circuit-schedule'
+                ? 'circuit-schedule'
+                : 'groundplan'
             this.newPageType = value
           }}>
           <option value="groundplan">Groundplan</option>
           <option value="onewire">One-wire</option>
+          <option value="circuit-schedule">Circuit overview</option>
         </select>
         <custom-icon-button
           class="add-page"

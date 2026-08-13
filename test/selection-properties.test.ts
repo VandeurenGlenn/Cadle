@@ -35,6 +35,34 @@ test('keeps a grouped binding id only on the primary shape', () => {
   assert.equal(updated?.[1].bindingId, undefined)
 })
 
+test('numbers a shared binding id across a multi-selection', () => {
+  const updated = updateSelectionProperties(
+    [symbol('one'), symbol('two'), symbol('three')],
+    { bindingId: ' a ' },
+    {
+      selectedIds: new Set(['one', 'two', 'three']),
+      selectedId: 'one',
+      groupedSelection: false
+    }
+  )
+
+  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['A1', 'A2', 'A3'])
+})
+
+test('continues numbering when a multi-selection binding includes a starting number', () => {
+  const updated = updateSelectionProperties(
+    [symbol('one'), symbol('two')],
+    { bindingId: 'B4' },
+    {
+      selectedIds: new Set(['one', 'two']),
+      selectedId: 'one',
+      groupedSelection: false
+    }
+  )
+
+  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['B4', 'B5'])
+})
+
 test('moves a selected shape by its visual center', () => {
   const updated = updateSelectionProperties([symbol('one')], { x: 50, y: 60 }, {
     selectedIds: new Set(['one']),
@@ -107,7 +135,7 @@ test('updates visible protection labels together with standalone electrical prop
 
   assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides : null, {
     poles: '2P',
-    phase: 'L2N',
+    phase: 'L2-N',
     'rated-current': '25A'
   })
   assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.hasProtectiveConductor, false)
@@ -133,7 +161,7 @@ test('updates visible protection labels together with standalone electrical prop
       groupedSelection: false
     }
   )
-  assert.equal(fourPole?.[0].kind === 'symbol' ? fourPole[0].symbolTextOverrides?.phase : null, 'L1L2L3N')
+  assert.equal(fourPole?.[0].kind === 'symbol' ? fourPole[0].symbolTextOverrides?.phase : null, '')
 })
 
 test('renders RCD sensitivity and classification without replacing the serif I marker', () => {
@@ -148,7 +176,15 @@ test('renders RCD sensitivity and classification without replacing the serif I m
   }
   const updated = updateSelectionProperties(
     [residualBreaker],
-    { electrical: { rcdSensitivityMa: 30, rcdType: 'A' } },
+    {
+      electrical: {
+        rcdSensitivityMa: 30,
+        rcdType: 'A',
+        poles: 4,
+        phaseConfiguration: 'L1+L2+L3+N',
+        showPhaseLabel: true
+      }
+    },
     {
       selectedIds: new Set(['rcd']),
       selectedId: 'rcd',
@@ -158,5 +194,7 @@ test('renders RCD sensitivity and classification without replacing the serif I m
 
   assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.['residual-current'] : null, '30mA')
   assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.['rcd-type'] : null, 'Type A')
+  assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.poles : null, '4P')
+  assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.phase : null, '')
   assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.['device-type'] : undefined, undefined)
 })

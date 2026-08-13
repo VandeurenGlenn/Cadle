@@ -204,6 +204,21 @@ custom-button:active {
   box-shadow: var(--cadle-focus-ring);
 }
 
+.room-name-input {
+  color: #111111;
+  background: #ffffff;
+  border-color: #777777;
+  caret-color: #111111;
+}
+
+.room-name-input::placeholder {
+  color: #6b6b6b;
+}
+
+.room-name-input:focus {
+  border-color: var(--md-sys-color-primary);
+}
+
 .native-select {
   width: 100%;
   box-sizing: border-box;

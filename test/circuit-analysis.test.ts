@@ -162,6 +162,72 @@ test('exports escaped BOM rows as CSV', () => {
   assert.match(csv, /"Lamp, pendant"/)
 })
 
+test('appends category and exact material totals to the BOM', () => {
+  const analysis = analyzeCircuits([
+    symbol('switch-1', 'A1', 'Switch', 'symbols/Switches/Switch general symbol.svg'),
+    symbol('light-1', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'),
+    symbol('light-2', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg'),
+    symbol('socket-1', 'B1', 'Wall outlet', 'symbols/Socket outlets/Electrical wall outlet.svg'),
+    symbol('socket-2', 'B1', 'Wall outlet', 'symbols/Socket outlets/Electrical wall outlet.svg')
+  ])
+  const rows = circuitBomRows(analysis)
+  const csv = bomRowsToCsv(rows)
+
+  assert.equal(rows.reduce((sum, row) => sum + row.switches, 0), 1)
+  assert.equal(rows.reduce((sum, row) => sum + row.sockets, 0), 2)
+  assert.equal(rows.reduce((sum, row) => sum + row.lightingPoints, 0), 2)
+  assert.equal(rows.reduce((sum, row) => sum + row.protections, 0), 2)
+  assert.match(csv, /CATEGORY TOTALS,Quantity/)
+  assert.match(csv, /Schakelaars,1/)
+  assert.match(csv, /Stopcontacten,2/)
+  assert.match(csv, /Lichtpunten,2/)
+  assert.match(csv, /Beveiligingen,2/)
+  assert.match(csv, /MATERIAL TOTALS,Quantity/)
+  assert.match(csv, /Niko · Wall outlet,2/)
+  assert.match(csv, /Schneider Electric · Automaat C20A 2P,1/)
+  assert.match(csv, /PRODUCT SELECTIONS,Required quantity,Status,References/)
+  assert.match(csv, /Niko · Wall outlet,2,candidates,170-33100 \/ 170-33105/)
+})
+
+test('exports an exact verified product reference selected in Object Settings', () => {
+  const outlet = symbol(
+    'socket',
+    'B1',
+    'Wall outlet',
+    'symbols/Socket outlets/Electrical wall outlet.svg'
+  )
+  if (outlet.kind === 'symbol') {
+    outlet.electrical = {
+      role: 'load',
+      oneWireEligible: true,
+      circuitType: 'sockets',
+      manufacturer: 'Niko',
+      productSeries: 'Niko Rocker / Toggle',
+      productReference: '170-33105'
+    }
+  }
+
+  const analysis = analyzeCircuits([outlet], undefined, {
+    B: {
+      manufacturer: 'Schneider Electric',
+      productSeries: 'Resi9',
+      productReference: 'R9F64216',
+      breakerCurrentA: 16,
+      breakerCurve: 'C',
+      poles: 2,
+      phaseConfiguration: 'single-phase'
+    }
+  })
+  const csv = bomRowsToCsv(circuitBomRows(analysis))
+
+  assert.equal(analysis.groups[0].components[0].productReference, '170-33105')
+  assert.equal(analysis.groups[0].specification.productReference, 'R9F64216')
+  assert.match(csv, /Niko · Wall outlet · ref\. 170-33105/)
+  assert.match(csv, /Schneider Electric · Automaat C16A 2P · ref\. R9F64216/)
+  assert.match(csv, /Niko · Wall outlet,1,exact,170-33105/)
+  assert.match(csv, /Schneider Electric · Automaat C16A 2P,1,exact,R9F64216/)
+})
+
 test('uses project-level circuit specifications without storing them on symbols', () => {
   const configured = {
     ...symbol('configured', 'D1', 'Custom appliance', 'symbols/Custom/device.svg'),
@@ -196,6 +262,8 @@ test('uses project-level circuit specifications without storing them on symbols'
     showCableInstallation: true,
     poles: 4,
     phaseConfiguration: 'three-phase',
+    manufacturer: 'Schneider Electric',
+    neutralPosition: 'left',
     showPhaseLabel: true,
     breakerCurve: 'C',
     source: 'explicit',
@@ -227,8 +295,12 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       oneWireEligible: true,
       ratedCurrentA: 20,
       breakerCurrentA: 25,
-      poles: undefined,
-      phaseConfiguration: undefined,
+    poles: undefined,
+    phaseConfiguration: undefined,
+      manufacturer: 'Niko',
+      neutralPosition: undefined,
+      productSeries: undefined,
+      productReference: undefined,
       showPhaseLabel: undefined,
       cableSectionMm2: 2.5,
       cableConductors: undefined,

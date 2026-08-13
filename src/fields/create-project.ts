@@ -1,7 +1,6 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './create-project.css' with { type: 'css' }
-import '@material/web/button/filled-button.js'
-import '@material/web/textfield/outlined-text-field.js'
+import '@vandeurenglenn/lite-elements/button.js'
 import { create } from '../api/project.js'
 import { ProjectInput } from '../types.js'
 import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
@@ -27,9 +26,22 @@ export class CreateProjectField extends LiteElement {
   }
 
   #fieldValue(label: string): string {
-    const field = this.shadowRoot?.querySelector(`[label="${label}"]`) as HTMLElement & { value?: string }
-    const nativeInput = field?.shadowRoot?.querySelector('input') as HTMLInputElement | null
-    return (nativeInput?.value ?? field?.value ?? '').trim()
+    const field = [...(this.shadowRoot?.querySelectorAll<HTMLInputElement>('input[data-field]') ?? [])]
+      .find((input) => input.dataset.field === label)
+    return (field?.value ?? '').trim()
+  }
+
+  #textField(label: string, value = '', type: 'text' | 'number' = 'text', required = false) {
+    return html`
+      <label class="input-field">
+        <span>${label}${required ? ' *' : ''}</span>
+        <input
+          data-field=${label}
+          type=${type}
+          .value=${value}
+          ?required=${required} />
+      </label>
+    `
   }
 
   #selectValue(name: string): string {
@@ -149,54 +161,36 @@ export class CreateProjectField extends LiteElement {
           <div class="sections">
             <section class="block">
               <h4>Project</h4>
-              <md-outlined-text-field
-                label="Project name"
-                required></md-outlined-text-field>
-              <md-outlined-text-field
-                label="Page name"
-                required></md-outlined-text-field>
+              ${this.#textField('Project name', '', 'text', true)}
+              ${this.#textField('Page name', '', 'text', true)}
             </section>
             <section class="block">
               <h4>Customer</h4>
-              <md-outlined-text-field
-                label="Customer name"></md-outlined-text-field>
-              <md-outlined-text-field
-                label="Customer last name"></md-outlined-text-field>
+              ${this.#textField('Customer name')}
+              ${this.#textField('Customer last name')}
             </section>
             <section class="block">
               <h4>Installer</h4>
-              <md-outlined-text-field
-                label="Name"
-                .value=${this.installerName}></md-outlined-text-field>
-              <md-outlined-text-field
-                label="Last name"
-                .value=${this.installerLastName}></md-outlined-text-field>
-              <md-outlined-text-field
-                label="Company"
-                .value=${this.installerCompany}></md-outlined-text-field>
-              <md-outlined-text-field
-                label="VAT / company number"
-                .value=${this.installerBtw}></md-outlined-text-field>
+              ${this.#textField('Name', this.installerName)}
+              ${this.#textField('Last name', this.installerLastName)}
+              ${this.#textField('Company', this.installerCompany)}
+              ${this.#textField('VAT / company number', this.installerBtw)}
             </section>
             <section class="block">
               <h4>Address</h4>
-              <md-outlined-text-field
-                label="Street"></md-outlined-text-field>
+              ${this.#textField('Street')}
               <div class="address-row">
-                <md-outlined-text-field
-                  label="House number"></md-outlined-text-field>
-                <md-outlined-text-field
-                  label="Postal code"></md-outlined-text-field>
+                ${this.#textField('House number')}
+                ${this.#textField('Postal code')}
               </div>
-              <md-outlined-text-field
-                label="City"></md-outlined-text-field>
+              ${this.#textField('City')}
             </section>
             <section class="block block-wide">
               <h4>Technical installation details</h4>
               <div class="field-grid">
-                <md-outlined-text-field label="EAN code"></md-outlined-text-field>
-                <md-outlined-text-field label="Main fuse (A)" type="number"></md-outlined-text-field>
-                <md-outlined-text-field label="Distributor" value="Fluvius"></md-outlined-text-field>
+                ${this.#textField('EAN code')}
+                ${this.#textField('Main fuse (A)', '', 'number')}
+                ${this.#textField('Distributor', 'Fluvius')}
                 <label class="select-field"><span>Supply</span><select name="supplyConfiguration">
                   <option value="1x230V+N">1 × 230 V (L + N)</option>
                   <option value="3x230V">3 × 230 V</option>
@@ -212,10 +206,10 @@ export class CreateProjectField extends LiteElement {
             <section class="block block-wide">
               <h4>Main board and differential protection</h4>
               <div class="field-grid">
-                <md-outlined-text-field label="Distribution board" value="Main distribution board"></md-outlined-text-field>
-                <md-outlined-text-field label="Main RCD current (A)" type="number" value="40"></md-outlined-text-field>
-                <md-outlined-text-field label="Main RCD sensitivity (mA)" type="number" value="300"></md-outlined-text-field>
-                <md-outlined-text-field label="Main RCD poles" type="number" value="4"></md-outlined-text-field>
+                ${this.#textField('Distribution board', 'Main distribution board')}
+                ${this.#textField('Main RCD current (A)', '40', 'number')}
+                ${this.#textField('Main RCD sensitivity (mA)', '300', 'number')}
+                ${this.#textField('Main RCD poles', '4', 'number')}
                 <label class="select-field"><span>RCD type</span><select name="mainRcdType">
                   <option value="AC">AC</option><option value="A" selected>A</option>
                   <option value="F">F</option><option value="B">B</option><option value="other">Other</option>
@@ -228,9 +222,13 @@ export class CreateProjectField extends LiteElement {
             : ''}
           <div class="actions">
             <span class="required-note">* Required fields</span>
-            <md-filled-button
-              ?disabled=${this.creating}
-              @click=${this.#createProject}>${this.creating ? 'Creating…' : 'Create project'}</md-filled-button>
+            <custom-button
+              type="filled"
+              .label=${this.creating ? 'Creating…' : 'Create project'}
+              aria-disabled=${String(this.creating)}
+              @click=${() => {
+                if (!this.creating) void this.#createProject()
+              }}></custom-button>
           </div>
         </div>
       </flex-container>

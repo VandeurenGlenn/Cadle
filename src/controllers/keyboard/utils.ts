@@ -8,7 +8,7 @@ const isEditableElement = (element: HTMLElement): boolean => {
   if (element.isContentEditable) return true
   if (element.getAttribute('role') === 'textbox') return true
   if (element.localName.endsWith('-text-field')) return true
-  return Boolean(element.closest('md-outlined-text-field, md-filled-text-field, md-outlined-select, md-filled-select'))
+  return false
 }
 
 const activeElementChain = (): Element[] => {

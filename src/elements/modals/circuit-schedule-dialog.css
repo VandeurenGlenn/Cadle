@@ -1,0 +1,27 @@
+:host { position: fixed; inset: 0; z-index: 10020; display: none; place-items: center; padding: 16px; background: var(--cadle-scrim); box-sizing: border-box; }
+:host([data-open]) { display: grid; }
+.panel { width: min(760px, 100%); max-height: min(880px, 92vh); display: flex; flex-direction: column; overflow: hidden; color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface-container); border: var(--cadle-panel-border); border-radius: var(--cadle-panel-radius); box-shadow: var(--cadle-elevation-5); }
+header, footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
+header { border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+footer { justify-content: flex-end; border-top: 1px solid var(--md-sys-color-outline-variant); }
+h3, p { margin: 0; }
+header p, .settings p { margin-top: 4px; color: var(--md-sys-color-on-surface-variant); font-size: 13px; }
+.settings { display: flex; align-items: end; gap: 20px; padding: 14px 20px; background: var(--md-sys-color-surface-container-high); }
+.settings p { flex: 1; margin-bottom: 8px; }
+.list { min-height: 0; overflow: auto; display: grid; gap: 6px; padding: 12px 20px 20px; }
+.item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 58px; padding: 8px 10px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--cadle-radius-sm); background: var(--md-sys-color-surface-container-high); }
+.item[data-kind='differential'] { border-left: 4px solid var(--md-sys-color-primary); }
+.order { display: flex; gap: 4px; }
+.copy { display: grid; min-width: 0; }
+.copy span { color: var(--md-sys-color-on-surface-variant); font-size: 12px; }
+label { display: grid; gap: 4px; color: var(--md-sys-color-on-surface-variant); font-size: 11px; }
+select, button { min-height: 34px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--cadle-radius-sm); color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface-container-highest); font: inherit; padding: 0 10px; }
+button { cursor: pointer; font-weight: 600; }
+button:hover:not(:disabled) { background: var(--cadle-hover-bg); }
+button:disabled { opacity: .35; cursor: default; }
+button.primary { color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); border-color: var(--md-sys-color-primary); }
+@media (max-width: 620px) {
+  .settings { align-items: stretch; flex-direction: column; gap: 8px; }
+  .item { grid-template-columns: auto minmax(0, 1fr); }
+  .gap { grid-column: 1 / -1; }
+}

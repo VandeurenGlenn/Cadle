@@ -41,14 +41,36 @@ export type OneWireTopologyPlan = {
     sectionMm2: number
     cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   }
+  mainSwitch?: {
+    ratedCurrentA: number
+    manufacturer?: string
+    neutralPosition?: 'left' | 'right'
+  }
   mainDifferential?: {
     ratedCurrentA: number
     sensitivityMa: number
+    manufacturer?: string
+    neutralPosition?: 'left' | 'right'
   }
   residualBreaker: boolean
+  residualBreakerRatedCurrentA?: number
+  residualBreakerManufacturer?: string
+  residualBreakerNeutralPosition?: 'left' | 'right'
+  gridProtectionCurrentA?: number
   solar: boolean
+  solarBreakerRatedCurrentA?: number
+  solarBreakerManufacturer?: string
+  solarBreakerNeutralPosition?: 'left' | 'right'
   consumers: boolean
   solarPlacement?: 'parallel-after-main-differential'
+  additionalDifferentials?: Array<{
+    count: number
+    sensitivityMa: number
+    ratedCurrentA?: number
+    manufacturer?: string
+    neutralPosition?: 'left' | 'right'
+    purpose: 'consumers' | 'ev' | 'other'
+  }>
 }
 
 export type ProjectCircuitSpecification = {
@@ -62,6 +84,10 @@ export type ProjectCircuitSpecification = {
   showCableInstallation?: boolean
   poles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  manufacturer?: string
+  neutralPosition?: 'left' | 'right'
+  productSeries?: string
+  productReference?: string
   showPhaseLabel?: boolean
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
@@ -69,6 +95,13 @@ export type ProjectCircuitSpecification = {
   boardId?: string
   railId?: string
   notes?: string
+}
+
+export type CircuitScheduleLayout = {
+  modulesPerRow?: 18 | 24
+  /** @deprecated Legacy equal-column layout; read only for migration. */
+  columns?: number
+  items?: Array<{ id: string; gapBefore?: number }>
 }
 
 export type ProjectInput = {
@@ -100,6 +133,7 @@ export type ProjectInput = {
   mainFuseA?: number
   electricalProfile?: ElectricalProjectProfile
   circuitSpecifications?: Record<string, ProjectCircuitSpecification>
+  circuitScheduleLayout?: CircuitScheduleLayout
   oneWirePrompt?: string
   oneWireTopology?: OneWireTopologyPlan
 }
@@ -118,7 +152,7 @@ export interface Project extends ProjectInput {
   }
 }
 
-export type PageType = 'groundplan' | 'onewire'
+export type PageType = 'groundplan' | 'onewire' | 'circuit-schedule'
 
 export type Projects = [string, string][]
 

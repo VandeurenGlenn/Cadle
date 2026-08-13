@@ -17,6 +17,7 @@ const TOOL_LABELS: Record<string, string> = {
   '': 'Select',
   select: 'Select',
   'draw-wall': 'Draw wall',
+  'draw-room': 'Draw room',
   'draw-door': 'Draw door',
   'draw-gate': 'Draw gate',
   'draw-window': 'Draw window',

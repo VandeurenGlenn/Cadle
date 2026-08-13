@@ -65,14 +65,14 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'circle' || tool === 'arc'
+  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc'
     ? {
         id,
         kind: 'rect',
         start: point,
         end: point,
         variant: tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : rectVariant,
-        strokeWidth: DEFAULT_DRAW_STROKE_WIDTH
+        ...(tool === 'room' ? {} : { strokeWidth: DEFAULT_DRAW_STROKE_WIDTH })
       }
     : {
         id,

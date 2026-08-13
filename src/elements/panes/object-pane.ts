@@ -4,9 +4,13 @@ import styles from './object-pane.css' with { type: 'css' }
 import { buildKlemmenlijstTSV, buildLabelSheetHTML, downloadText } from './../../helpers/panel-labels.js'
 import type { PanelLabelRow } from '../../helpers/panel-labels.js'
 import { normalizeSelection, type BindingLabelSide, type SelectionPayload, type SelectionShapeElectrical, type SymbolTextField } from './object-pane/selection-model.js'
+import { effectiveSelectionElectrical } from './object-pane/electrical-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE } from '../../editor/constants.js'
+import {
+  neutralPositionForManufacturer
+} from '../../editor/model/electrical.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -20,6 +24,9 @@ export class ObjectPane extends LiteElement {
   @property({ type: Number })
   private accessor _selectionCount = 0
 
+  @property({ type: Boolean, attribute: false })
+  private accessor _canConvertToRoom = false
+
   @property({ type: String, attribute: false })
   private accessor _nativeSelectedId = ''
 
@@ -31,6 +38,12 @@ export class ObjectPane extends LiteElement {
 
   @property({ type: String, attribute: false })
   private accessor _nativeName = ''
+
+  @property({ type: Boolean, attribute: false })
+  private accessor _nativeIsRoom = false
+
+  @property({ type: String, attribute: false })
+  private accessor _nativeRoomName = ''
 
   @property({ type: String, attribute: false })
   private accessor _nativePath = ''
@@ -127,12 +140,15 @@ export class ObjectPane extends LiteElement {
     this.#cancelBindingSave()
     const selection = normalizeSelection(payload)
     this._selectionCount = selection.selectionCount
+    this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
       this._nativeSelectedId = ''
       this._nativeSelectedKind = ''
       if (this._selectionCount === 0) this._nativeBindingId = ''
       this._nativeName = ''
+      this._nativeIsRoom = false
+      this._nativeRoomName = ''
       this._nativePath = ''
       this._nativeText = ''
       this._nativeCanFlip = false
@@ -162,6 +178,8 @@ export class ObjectPane extends LiteElement {
     this._nativeSelectedKind = shape.kind
     this._nativeBindingId = shape.bindingId
     this._nativeName = shape.name
+    this._nativeIsRoom = shape.isRoom
+    this._nativeRoomName = shape.roomName
     this._nativePath = shape.path ?? ''
     this._nativeText = shape.text
     this._nativeSymbolTextFields = shape.symbolTextFields
@@ -268,6 +286,11 @@ export class ObjectPane extends LiteElement {
     const input = event.target as HTMLInputElement | null
     this._nativeText = input?.value ?? ''
     pubsub.publish('editor.object.update', { text: this._nativeText })
+  }
+
+  #onRoomNameInput = (event: Event) => {
+    this._nativeRoomName = (event.target as HTMLInputElement).value
+    pubsub.publish('editor.object.update', { roomName: this._nativeRoomName })
   }
 
   #onSymbolTextInput = (key: string, value: string) => {
@@ -397,6 +420,19 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.update', { electrical: { [field]: parsed } })
   }
 
+  #updateManufacturer = (value: string) => {
+    const manufacturer = value.trim() || null
+    const neutralPosition = neutralPositionForManufacturer(manufacturer ?? undefined) ?? null
+    this._nativeElectrical = {
+      ...(this._nativeElectrical ?? {}),
+      manufacturer: manufacturer ?? undefined,
+      neutralPosition: neutralPosition ?? undefined
+    }
+    pubsub.publish('editor.object.update', {
+      electrical: { manufacturer, neutralPosition }
+    })
+  }
+
   #updatePhaseConfiguration = (value: string) => {
     if (value === 'none') {
       this._nativeElectrical = { ...(this._nativeElectrical ?? {}), showPhaseLabel: false }
@@ -431,26 +467,11 @@ export class ObjectPane extends LiteElement {
   }
 
   #effectiveElectrical = (): SelectionShapeElectrical => {
-    const electrical = this._nativeElectrical ?? {}
-    const defaults = circuitDefaults(electrical.circuitType)
-    const cableConductors = electrical.cableConductors ?? defaults.cableConductors
-    return {
-      ...electrical,
-      breakerCurrentA: electrical.breakerCurrentA ?? defaults.breakerCurrentA,
-      cableSectionMm2: electrical.cableSectionMm2 ?? defaults.cableSectionMm2,
-      cableConductors,
-      hasProtectiveConductor:
-        electrical.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
-      cableType: electrical.cableType ?? defaults.cableType,
-      cableInstallation: electrical.cableInstallation ?? defaults.cableInstallation,
-      showCableInstallation: electrical.showCableInstallation ?? true,
-      poles: electrical.poles ?? defaults.poles,
-      phaseConfiguration: electrical.phaseConfiguration ?? defaults.phaseConfiguration,
-      showPhaseLabel: electrical.showPhaseLabel ?? true,
-      breakerCurve: electrical.breakerCurve ?? defaults.breakerCurve,
-      boardId: electrical.boardId ?? defaults.boardId,
-      railId: electrical.railId ?? defaults.railId
-    }
+    return effectiveSelectionElectrical(
+      this._nativeElectrical,
+      this._nativeName,
+      this._nativePath
+    )
   }
 
   #flipNativeShape = () => {
@@ -461,6 +482,11 @@ export class ObjectPane extends LiteElement {
   #deleteNativeSelection = () => {
     if (this._selectionCount === 0) return
     pubsub.publish('editor.object.delete', {})
+  }
+
+  #convertSelectionToRoom = () => {
+    if (!this._canConvertToRoom) return
+    pubsub.publish('editor.object.convert-room', {})
   }
 
   #renderNativeSelection() {
@@ -521,9 +547,40 @@ export class ObjectPane extends LiteElement {
           @input=${this.#onNativeBindingInput}
           @change=${this.#saveNativeBinding}
           placeholder="e.g. Q1" />
+        ${this._nativeIsRoom
+          ? html`
+              <div class="native-section-title">Room</div>
+              <label class="native-label">Room name</label>
+              <input
+                class="native-input room-name-input"
+                .value=${this._nativeRoomName}
+                @input=${this.#onRoomNameInput}
+                placeholder="e.g. Living" />
+            `
+          : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? html`
               <div class="native-section-title">Circuit properties</div>
+              <label class="native-label">Manufacturer</label>
+              <input
+                data-electrical-field="manufacturer"
+                class="native-input"
+                list="cadle-manufacturers"
+                .value=${this.#effectiveElectrical().manufacturer ?? ''}
+                @change=${(event: Event) => this.#updateManufacturer((event.target as HTMLInputElement).value)}
+                placeholder="e.g. Schneider Electric" />
+              <datalist id="cadle-manufacturers">
+                <option value="Schneider Electric"></option>
+                <option value="TECO"></option>
+                <option value="Niko"></option>
+                <option value="Hager"></option>
+                <option value="ABB"></option>
+                <option value="Legrand"></option>
+              </datalist>
+              <div class="native-row">
+                <label><span class="native-label">Product series</span><input data-electrical-field="productSeries" class="native-input" .value=${this.#effectiveElectrical().productSeries ?? ''} @change=${(event: Event) => this.#updateElectrical('productSeries', (event.target as HTMLInputElement).value)} placeholder="e.g. Resi9" /></label>
+                <label><span class="native-label">Article reference</span><input data-electrical-field="productReference" class="native-input native-mono" .value=${this.#effectiveElectrical().productReference ?? ''} @change=${(event: Event) => this.#updateElectrical('productReference', (event.target as HTMLInputElement).value)} placeholder="e.g. R9F64216" /></label>
+              </div>
               <label class="native-label">Role</label>
               <select class="native-select" .value=${this.#effectiveElectrical().role ?? ''} @change=${(event: Event) => this.#updateElectrical('role', (event.target as HTMLSelectElement).value)}>
                 <option value="">Not classified</option><option value="switch">Switch</option><option value="load">Load</option><option value="protection">Protection</option><option value="junction">Junction</option><option value="neutral">Other</option>
@@ -534,7 +591,7 @@ export class ObjectPane extends LiteElement {
               </select>
               ${isProtectionDevice ? html`
               <div class="native-row">
-                <label><span class="native-label">Breaker (A)</span><input data-electrical-field="breakerCurrentA" class="native-input" type="number" min="1" .value=${String(this.#effectiveElectrical().breakerCurrentA ?? '')} @input=${(event: Event) => this.#updateElectrical('breakerCurrentA', (event.target as HTMLInputElement).value)} /></label>
+                <label><span class="native-label">${isResidualBreaker ? 'Rated current (A)' : 'Breaker (A)'}</span><input data-electrical-field="breakerCurrentA" class="native-input" type="number" min="1" .value=${String(this.#effectiveElectrical().breakerCurrentA ?? '')} @input=${(event: Event) => this.#updateElectrical('breakerCurrentA', (event.target as HTMLInputElement).value)} /></label>
                 <label><span class="native-label">Cable (mm²)</span><input data-electrical-field="cableSectionMm2" class="native-input" type="number" min="0.1" step="0.1" .value=${String(this.#effectiveElectrical().cableSectionMm2 ?? '')} @input=${(event: Event) => this.#updateElectrical('cableSectionMm2', (event.target as HTMLInputElement).value)} /></label>
               </div>
               <div class="native-row">
@@ -560,6 +617,16 @@ export class ObjectPane extends LiteElement {
                 <label><span class="native-label">Poles</span><input data-electrical-field="poles" class="native-input" type="number" min="1" step="1" .value=${String(this.#effectiveElectrical().poles ?? '')} @input=${(event: Event) => this.#updateElectrical('poles', (event.target as HTMLInputElement).value)} /></label>
                 <label><span class="native-label">Phase</span><select data-electrical-field="phaseConfiguration" class="native-select" .value=${this.#effectiveElectrical().showPhaseLabel === false ? 'none' : this.#effectiveElectrical().phaseConfiguration ?? ''} @change=${(event: Event) => this.#updatePhaseConfiguration((event.target as HTMLSelectElement).value)}><option value="none">None</option><option value="">Project default</option><option value="L1+N">L1N</option><option value="L2+N">L2N</option><option value="L3+N">L3N</option><option value="L1+L2+L3+N">L1L2L3N</option></select></label>
               </div>
+              <label class="native-label">Neutral position</label>
+              <select
+                data-electrical-field="neutralPosition"
+                class="native-select"
+                .value=${this.#effectiveElectrical().neutralPosition ?? ''}
+                @change=${(event: Event) => this.#updateElectrical('neutralPosition', (event.target as HTMLSelectElement).value)}>
+                <option value="">According to manufacturer</option>
+                <option value="left">N left</option>
+                <option value="right">N right</option>
+              </select>
               <div class="native-note">Values apply to this circuit and are stored with the project.</div>
               ${isResidualBreaker ? '' : html`<div class="native-row">
                 <label><span class="native-label">Breaker curve</span><select data-electrical-field="breakerCurve" class="native-select" .value=${this.#effectiveElectrical().breakerCurve ?? ''} @change=${(event: Event) => this.#updateElectrical('breakerCurve', (event.target as HTMLSelectElement).value)}><option value="">Not set</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="other">Other</option></select></label>
@@ -870,6 +937,14 @@ export class ObjectPane extends LiteElement {
             `
           : ''}
         <div class="native-actions">
+          ${this._canConvertToRoom
+            ? html`<button
+                type="button"
+                class="native-button"
+                @click=${this.#convertSelectionToRoom}>
+                Convert to room
+              </button>`
+            : ''}
           ${this._nativeCanFlip
             ? html`<button
                 type="button"

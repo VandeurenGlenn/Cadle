@@ -1,6 +1,6 @@
-import { isCacheableSvgRequest } from './service-worker/cache-policy.js'
+import { isCacheableCadleAssetRequest } from './service-worker/cache-policy.js'
 
-const CACHE_NAME = 'cadle-svg-assets-v3'
+const CACHE_NAME = 'cadle-local-assets-v4'
 
 type ExtendableEventLike = Event & {
   waitUntil(promise: Promise<unknown>): void
@@ -29,14 +29,14 @@ const cacheResponse = async (request: Request, response: Response): Promise<Resp
 const networkFirst = async (request: Request): Promise<Response> => {
   const cache = await caches.open(CACHE_NAME)
   try {
-    // Always revalidate SVG symbols so edits and deployments are visible
+    // Always revalidate local symbols and OCR runtime files so deployments are visible
     // immediately. The Cache API remains an offline fallback only.
     const response = await fetch(request, { cache: 'no-cache' })
     return cacheResponse(request, response)
   } catch {
     const cached = await cache.match(request)
     if (cached) return cached
-    throw new Error(`SVG unavailable from network and cache: ${request.url}`)
+    throw new Error(`Cadle asset unavailable from network and cache: ${request.url}`)
   }
 }
 
@@ -59,7 +59,7 @@ serviceWorkerGlobal.addEventListener('fetch', (event) => {
   const fetchEvent = event as FetchEventLike
   const request = fetchEvent.request
 
-  if (!isCacheableSvgRequest(request, location.origin)) return
+  if (!isCacheableCadleAssetRequest(request, location.origin)) return
 
   fetchEvent.respondWith(networkFirst(request))
 })

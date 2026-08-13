@@ -24,6 +24,10 @@ export type ElectricalDeviceMetadata = {
   breakerCurrentA?: number
   poles?: number
   phaseConfiguration?: ElectricalPhaseConfiguration
+  manufacturer?: string
+  neutralPosition?: 'left' | 'right'
+  productSeries?: string
+  productReference?: string
   showPhaseLabel?: boolean
   cableSectionMm2?: number
   cableConductors?: number
@@ -40,19 +44,49 @@ export type ElectricalDeviceMetadata = {
 }
 
 export const phaseConfigurationLabel = (
-  phase: ElectricalPhaseConfiguration | undefined
+  phase: ElectricalPhaseConfiguration | undefined,
+  neutralPosition: 'left' | 'right' = 'right'
 ): string => {
-  if (phase === 'three-phase') return '3N'
-  if (phase === 'L2+N') return 'L2N'
-  if (phase === 'L3+N') return 'L3N'
-  if (phase === 'L1+L2+L3+N') return 'L1L2L3N'
-  return 'L1N'
+  if (phase === 'three-phase') return 'L1-L2-L3'
+  const active = phase === 'L2+N'
+    ? 'L2'
+    : phase === 'L3+N'
+      ? 'L3'
+      : phase === 'L1+L2+L3+N'
+        ? 'L1-L2-L3'
+        : 'L1'
+  return neutralPosition === 'left' ? `N-${active}` : `${active}-N`
+}
+
+export const neutralPositionForManufacturer = (
+  manufacturer: string | undefined
+): 'left' | 'right' | undefined => {
+  const normalized = manufacturer?.trim().toLocaleLowerCase('nl-BE') ?? ''
+  if (/schneider/.test(normalized)) return 'left'
+  if (/\b(?:teco|tecko)\b/.test(normalized)) return 'right'
+  return undefined
+}
+
+export const defaultManufacturerForDevice = (
+  role: ElectricalRole,
+  circuitType: ElectricalCircuitType | undefined,
+  name = '',
+  path = ''
+): string | undefined => {
+  if (role === 'protection') return 'Schneider Electric'
+  const searchable = `${name} ${path}`.toLocaleLowerCase('nl-BE')
+  if (
+    role === 'switch'
+    || circuitType === 'sockets'
+    || /\b(?:socket|outlet|stopcontact|schakelaar|switch|drukknop)\b/.test(searchable)
+  ) return 'Niko'
+  return undefined
 }
 
 export const shouldShowPhaseLabel = (
-  _poles: number | undefined,
+  poles: number | undefined,
   showPhaseLabel: boolean | undefined
-): boolean => showPhaseLabel !== false
+): boolean => poles !== 4 && showPhaseLabel !== false
 
 export const rcdTypeLabel = (type: ElectricalDeviceMetadata['rcdType']): string => {
   if (!type) return ''
@@ -134,6 +168,13 @@ export const electricalMetadataFromCatalog = (
     ['single-phase', 'three-phase', 'L1+N', 'L2+N', 'L3+N', 'L1+L2+L3+N'].includes(explicit.phaseConfiguration)
       ? explicit.phaseConfiguration as ElectricalPhaseConfiguration
       : undefined
+  const manufacturer = typeof explicit.manufacturer === 'string'
+    ? explicit.manufacturer.trim() || undefined
+    : defaultManufacturerForDevice(role, circuitType, name, path)
+  const neutralPosition =
+    explicit.neutralPosition === 'left' || explicit.neutralPosition === 'right'
+      ? explicit.neutralPosition
+      : neutralPositionForManufacturer(manufacturer)
 
   return {
     role,
@@ -143,6 +184,10 @@ export const electricalMetadataFromCatalog = (
     breakerCurrentA: finitePositive(explicit.breakerCurrentA),
     poles: finitePositive(explicit.poles),
     phaseConfiguration,
+    manufacturer,
+    neutralPosition,
+    productSeries: typeof explicit.productSeries === 'string' ? explicit.productSeries.trim() || undefined : undefined,
+    productReference: typeof explicit.productReference === 'string' ? explicit.productReference.trim() || undefined : undefined,
     showPhaseLabel:
       typeof explicit.showPhaseLabel === 'boolean' ? explicit.showPhaseLabel : undefined,
     cableSectionMm2: finitePositive(explicit.cableSectionMm2),
@@ -213,6 +258,13 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
       ['single-phase', 'three-phase', 'L1+N', 'L2+N', 'L3+N', 'L1+L2+L3+N'].includes(raw.phaseConfiguration)
         ? raw.phaseConfiguration as ElectricalPhaseConfiguration
         : undefined,
+    manufacturer: typeof raw.manufacturer === 'string' ? raw.manufacturer.trim() || undefined : undefined,
+    neutralPosition:
+      raw.neutralPosition === 'left' || raw.neutralPosition === 'right'
+        ? raw.neutralPosition
+        : neutralPositionForManufacturer(typeof raw.manufacturer === 'string' ? raw.manufacturer : undefined),
+    productSeries: typeof raw.productSeries === 'string' ? raw.productSeries.trim() || undefined : undefined,
+    productReference: typeof raw.productReference === 'string' ? raw.productReference.trim() || undefined : undefined,
     showPhaseLabel:
       typeof raw.showPhaseLabel === 'boolean' ? raw.showPhaseLabel : undefined,
     cableSectionMm2: finitePositive(raw.cableSectionMm2),

@@ -109,6 +109,9 @@ export class ProjectActions extends LiteElement {
       case 'edit-project-details':
         cadleShell.openProjectDetailsDialog()
         break
+      case 'edit-circuit-schedule':
+        cadleShell.openCircuitScheduleDialog()
+        break
       case 'toggle-history-panel':
         cadleShell.toggleHistoryPanel()
         break

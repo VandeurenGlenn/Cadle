@@ -4,3 +4,6 @@ www/**/*.mjs
 .DS_Store
 test-results/
 playwright-report/
+/eng.traineddata
+/nld.traineddata
+/www/ocr/

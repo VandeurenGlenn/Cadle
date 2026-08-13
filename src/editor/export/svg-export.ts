@@ -400,7 +400,7 @@ export const buildWallMask = (shapes: Shape[], worldWidth: number, worldHeight: 
         `<line x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}" stroke="black" stroke-width="${openingMaskWidth}" stroke-linecap="butt" vector-effect="non-scaling-stroke"/>`
     )
     .join('')
-  return `<mask id="wall-opening-mask" maskUnits="userSpaceOnUse">
+  return `<mask id="wall-opening-mask" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" style="mask-type: luminance">
       <rect x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}" fill="white"/>
       ${openingStrokes}
     </mask>`

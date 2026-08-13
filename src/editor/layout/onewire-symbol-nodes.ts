@@ -1,5 +1,14 @@
 import type { Point } from '../../editor/model/types.js'
 
+// One canonical rendered size for every Automaat.svg, independent of where it
+// appears in the one-wire topology. Keeping this value here prevents topology,
+// circuit and composed breakers from silently drifting to different scales.
+export const ONE_WIRE_BREAKER_SCALE = 2.8
+
+// The RCD asset has a much wider viewBox than the breaker asset. It therefore
+// needs a larger numeric scale to reach the same visible device height.
+export const ONE_WIRE_RCD_SCALE = 3.6
+
 // Trikker-style wire connection metadata for the built-in one-wire symbols.
 // node — not the bounding box — lands on the wire axis, and defines how wide
 // the wire interruption around that node should be. `cutRadius: null` means
@@ -9,6 +18,11 @@ export type OneWireNodeInfo = {
   offset: Point
   // Half-width of the wire interruption around the node; null = passthrough.
   cutHalfWidth: number | null
+}
+
+export type OneWireTerminalInfo = {
+  top?: Point
+  bottom?: Point
 }
 
 type NodeSpec = {
@@ -47,7 +61,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 28.783, height: 28.8265 },
       node: { x: 15.3836, y: 28.47 },
       cutRadius: 2.83465,
-      oneWireScale: 3,
+      oneWireScale: ONE_WIRE_BREAKER_SCALE,
       rotation: 0
     }
   },
@@ -59,7 +73,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       cutRadius: 2.83465,
       // Its wide viewBox otherwise makes the visible breaker body shorter
       // than the square custom automaat at the same numerical scale.
-      oneWireScale: 4,
+      oneWireScale: ONE_WIRE_RCD_SCALE,
       rotation: 0
     }
   },
@@ -157,7 +171,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 28.783, height: 28.8265 },
       node: { x: 15.0236, y: 28.47 },
       cutRadius: 2.83465,
-      oneWireScale: 3
+      oneWireScale: ONE_WIRE_BREAKER_SCALE
     }
   },
   {
@@ -172,12 +186,92 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   }
 ]
 
+type TerminalSpec = {
+  viewBox: { width: number; height: number }
+  top?: Point
+  bottom?: Point
+}
+
+const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
+  {
+    match: /consumption appliances\/kwh meter\.svg$/i,
+    spec: {
+      viewBox: { width: 17.5861, height: 17.2479 },
+      top: { x: 8.8167, y: 0.12 },
+      bottom: { x: 8.8167, y: 17.1279 }
+    }
+  },
+  {
+    match: /(?:Custom )?Residual-current circuit breaker\.svg$/i,
+    spec: {
+      viewBox: { width: 38.5625, height: 29.8893 },
+      top: { x: 15.3836, y: 1.18 },
+      bottom: { x: 15.3836, y: 29.5293 }
+    }
+  },
+  {
+    match: /protection devices\/automaat\.svg$/i,
+    spec: {
+      viewBox: { width: 28.783, height: 28.8265 },
+      top: { x: 15.3836, y: 0.12 },
+      bottom: { x: 15.3836, y: 28.47 }
+    }
+  },
+  {
+    match: /photovoltaic devices \(≠arei\)\/inverter\.svg$/i,
+    spec: {
+      viewBox: { width: 17.7579, height: 17.2579 },
+      top: { x: 8.87895, y: 0.125 },
+      bottom: { x: 8.87895, y: 17.1329 }
+    }
+  },
+  {
+    match: /photovoltaic devices \(≠arei\)\/solar panel\.svg$/i,
+    spec: {
+      viewBox: { width: 48.6079, height: 28.9659 },
+      bottom: { x: 24.30395, y: 28.8459 }
+    }
+  },
+  {
+    match: /protection devices\/earth electrode\.svg$/i,
+    spec: {
+      viewBox: { width: 17.2479, height: 17.2479 },
+      top: { x: 8.62, y: 0.12 }
+    }
+  },
+  {
+    match: /consumption appliances\/elektrische wagen ev\.svg$/i,
+    spec: {
+      viewBox: { width: 44, height: 34 },
+      bottom: { x: 22, y: 34 }
+    }
+  },
+  {
+    match: /electrical devices\/laadpaal ev\.svg$/i,
+    spec: {
+      viewBox: { width: 40, height: 40 },
+      bottom: { x: 20, y: 35 }
+    }
+  }
+]
+
 // Rendered node radius shared by every switch on a wire (matches the two-way /
 // intermediate switch look the user approved).
 const TARGET_NODE_RADIUS = 5.6
 const NODE_CUT_MARGIN = 0.35
 
 const findSpec = (path: string): NodeSpec | null => NODE_SPECS.find(({ match }) => match.test(path))?.spec ?? null
+
+const pointOffset = (viewBox: { width: number; height: number }, point: Point, scale: number): Point => {
+  const size = 24 * Math.max(0.4, scale)
+  const svgScale = size / Math.max(viewBox.width, viewBox.height)
+  const xOff = (size - viewBox.width * svgScale) / 2
+  const yOff = (size - viewBox.height * svgScale) / 2
+  return {
+    x: xOff + point.x * svgScale - size / 2,
+    y: yOff + point.y * svgScale - size / 2
+  }
+}
 
 // Maps the node from viewBox coordinates into the rendered 24×scale box
 // (inner <svg> uses preserveAspectRatio "xMidYMid meet").
@@ -195,6 +289,17 @@ export const oneWireSymbolNodeInfo = (path: string, scale: number): OneWireNodeI
       y: yOff + node.y * svgScale - size / 2
     },
     cutHalfWidth: cutRadius === null ? null : cutRadius * svgScale + NODE_CUT_MARGIN
+  }
+}
+
+// Electrical terminal offsets used by generated vertical topology chains.
+// Unlike visual bounds, these points land on the actual SVG conductor ends.
+export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireTerminalInfo | null => {
+  const spec = TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec
+  if (!spec) return null
+  return {
+    ...(spec.top ? { top: pointOffset(spec.viewBox, spec.top, scale) } : {}),
+    ...(spec.bottom ? { bottom: pointOffset(spec.viewBox, spec.bottom, scale) } : {})
   }
 }
 

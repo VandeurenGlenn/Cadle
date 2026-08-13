@@ -9,27 +9,27 @@ import {
   setStoredCustomSymbols,
   getCustomCatalogSections
 } from './shell/custom-symbols.js'
-import '@material/web/dialog/dialog.js'
-import '@material/web/button/filled-tonal-button.js'
-import '@material/web/button/text-button.js'
-import '@material/web/button/filled-button.js'
-import '@material/web/checkbox/checkbox.js'
-import '@material/web/progress/circular-progress.js'
-import '@material/web/iconbutton/icon-button.js'
-import '@material/web/list/list.js'
-import '@material/web/list/list-item.js'
 import '@vandeurenglenn/lite-elements/pages.js'
+import '@vandeurenglenn/lite-elements/button.js'
 import './elements/header.js'
 import pubsub from './pubsub.js'
 import type { ValidationReport } from './elements/modals/validation-report.js'
-import '@material/web/textfield/filled-text-field.js'
-import '@material/web/button/outlined-button.js'
-import '@material/web/icon/icon.js'
+import './elements/modals/page-operation-dialog.js'
+import type { PageOperationSubmitDetail } from './elements/modals/page-operation-dialog.js'
+import './elements/modals/color-picker-dialog.js'
 import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import state from './state.js'
 import { Color } from './symbols/default-options.js'
-import { Project, type Projects, type UUID, type Catalog, type JsonValue, type OneWireTopologyPlan } from './types.js'
+import {
+  Project,
+  type Projects,
+  type UUID,
+  type Catalog,
+  type JsonValue,
+  type OneWireTopologyPlan,
+  type CircuitScheduleLayout
+} from './types.js'
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
 import { circuitTemplates } from './templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from './editor/circuit-analysis.js'
@@ -39,6 +39,7 @@ import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
 import { evaluateOneWirePreflight } from './shell/onewire-preflight.js'
 import { validateOneWireTopology } from './editor/onewire-topology-schema.js'
 import { storeOneWireTrainingExample } from './editor/onewire-training-data.js'
+import type { CircuitScheduleEditorItem } from './editor/circuit-schedule-page.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -69,22 +70,14 @@ type NativeAppElement = HTMLElement & {
   exportProjectPdf?: (filename?: string) => Promise<void>
   analyzeBindings?: () => CircuitAnalysis
   getBOMRows?: () => BomRow[]
+  getCircuitScheduleEditorItems?: () => CircuitScheduleEditorItem[]
   generateAutoOneWire?: (pageIndex?: number) => { generated: boolean; circuitCount: number; pageCount?: number; message?: string }
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
   flushPendingCircuitUpdates?: () => Promise<void>
 }
 
-type ShellProjectStore = {
-  set: (key: Uint8Array, value: unknown) => Promise<void>
-  get: (key: string) => Promise<Project>
-}
-
 type KeyboardShortcutsElement = HTMLElement & {
-  open?: boolean
-}
-
-type PickerDialogElement = HTMLElement & {
   open?: boolean
 }
 
@@ -97,14 +90,6 @@ declare global {
   }
   var cadleShell: AppShell
 }
-declare type dialogAction =
-  | 'create-project'
-  | 'open-project'
-  | 'create-page'
-  | 'rename-project'
-  | 'rename-page'
-  | 'confirm-input'
-  | 'clone-page'
 @customElement('app-shell')
 export class AppShell extends LiteElement {
   static readonly LAST_OPEN_PROJECT_KEY_STORAGE = 'cadle.lastOpenProjectKey'
@@ -194,6 +179,12 @@ export class AppShell extends LiteElement {
 
   @property({ type: Boolean })
   accessor projectDetailsDialogOpen = false
+
+  @property({ type: Boolean })
+  accessor circuitScheduleDialogOpen = false
+
+  @property({ attribute: false })
+  accessor circuitScheduleItems: CircuitScheduleEditorItem[] = []
 
   @property({ type: Boolean })
   accessor oneWirePromptDialogOpen = false
@@ -301,6 +292,8 @@ export class AppShell extends LiteElement {
       import('./elements/modals/validation-report.js'),
       import('./elements/modals/template-library.js'),
       import('./elements/modals/project-details-dialog.js'),
+      import('./elements/modals/circuit-schedule-dialog.js'),
+      import('./fields/circuit-schedule.js'),
       import('./elements/modals/onewire-prompt-dialog.js'),
       import('./elements/modals/project-share-dialog.js'),
       import('./elements/panels/history-panel.js'),
@@ -391,6 +384,25 @@ export class AppShell extends LiteElement {
     this.projectDetailsDialogOpen = true
   }
 
+  async openCircuitScheduleDialog() {
+    if (!this.projectKey || !this.project) return
+    await this.savePage()
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    this.circuitScheduleItems = nativeApp?.getCircuitScheduleEditorItems?.() ?? []
+    let pageEntry = Object.entries(this.project.pages).find(([, page]) => page.pageType === 'circuit-schedule')
+    if (!pageEntry) {
+      await addPage(
+        this.projectKey,
+        'Kringenoverzicht',
+        { version: 'circuit-schedule-1', objects: [] },
+        'circuit-schedule'
+      )
+      this.project = await getProjectData(this.projectKey)
+      pageEntry = Object.entries(this.project.pages).find(([, page]) => page.pageType === 'circuit-schedule')
+    }
+    if (pageEntry) await this.loadPage(pageEntry[0])
+  }
+
   openProjectShareDialog() {
     if (!this.projectKey || !this.project) return
     this.projectShareDialogOpen = true
@@ -419,7 +431,10 @@ export class AppShell extends LiteElement {
     this.project = {
       ...this.project,
       oneWirePrompt: detail.prompt,
-      oneWireTopology: validation.value
+      oneWireTopology: validation.value,
+      ...(validation.value.gridProtectionCurrentA
+        ? { mainFuseA: validation.value.gridProtectionCurrentA }
+        : {})
     }
     const mainDifferential = detail.topology.mainDifferential
     if (mainDifferential) {
@@ -708,14 +723,12 @@ export class AppShell extends LiteElement {
         projectName: this.previousProjectName
       })
     }
-    this.dialog?.addEventListener('close', this.#dialogAction)
   }
 
   disconnectedCallback(): void {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
     window.removeEventListener('hashchange', this.#onhashchange)
-    this.dialog?.removeEventListener('close', this.#dialogAction)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
 
@@ -784,10 +797,6 @@ export class AppShell extends LiteElement {
     }
   }
 
-  get dialog() {
-    return this.shadowRoot?.querySelector('md-dialog') ?? this.querySelector('md-dialog')
-  }
-
   #nativeDrawHash() {
     if (this.projectKey && this.loadedPage) {
       return `#!/editor/model?project=${this.projectKey}&page=${this.loadedPage}`
@@ -795,157 +804,37 @@ export class AppShell extends LiteElement {
     return '#!/editor/model'
   }
 
-  #dialogAction = async () => {
-    const dialog = this.dialog
-    if (!dialog) return
-    const action: dialogAction = dialog.returnValue as dialogAction
-    const projectKey = dialog.dataset?.key
-    if (action === 'confirm-input') {
-      const textField = dialog.querySelector('md-filled-text-field') as unknown as HTMLInputElement | null
-      const value = textField?.value ?? ''
-      state.text.current = value
-      const match = value.match(/\d+/g)
-      if (match && match.length > 0) {
-        const number = Number(match.join(''))
-        state.text.lastNumber = number
-      }
-    }
-
-    if (action === 'create-project') {
-      await cadleShell.savePage()
-      const textField = cadleShell.dialog?.querySelector('md-filled-text-field') as unknown as HTMLInputElement | null
-      cadleShell.projectName = textField?.value ?? ''
-      if (cadleShell.projectStore && 'set' in cadleShell.projectStore) {
-        const store = cadleShell.projectStore as unknown as ShellProjectStore
-        await store.set(new TextEncoder().encode(cadleShell.projectName), {
-          creationTime: new Date().getTime(),
-          pages: []
-        })
-      }
-
-      const projects = cadleShell.projects
-      cadleShell.projects = [...projects, [cadleShell.projectName, cadleShell.projectName]] as Projects
-      const store = cadleShell.projectStore as unknown as ShellProjectStore
-      cadleShell.project = await store.get(cadleShell.projectName)
-      const firstKey = Object.keys(cadleShell.project.pages)[0]
-      if (firstKey) await cadleShell.loadPage(firstKey)
-      location.hash = this.#nativeDrawHash()
-    }
-
-    if (action === 'open-project' && projectKey) await this.#openProject(projectKey as UUID)
-
-    if (action === 'clone-page') {
-      const pageKey = dialog.dataset?.pageKey
-      if (!pageKey) return
-      const page = this.project.pages[pageKey]
-      if (!page) return
-      const includeWalls = (dialog.querySelector('#clone-walls') as HTMLInputElement | null)?.checked ?? false
-      const outsideWalls = (dialog.querySelector('#clone-outside-walls') as HTMLInputElement | null)?.checked ?? false
-      const includeOpenings = (dialog.querySelector('#clone-openings') as HTMLInputElement | null)?.checked ?? false
-      const includeElectrical =
-        (dialog.querySelector('#clone-switches-loads') as HTMLInputElement | null)?.checked ?? false
-      const pageNameField = dialog.querySelector('#clone-page-name') as HTMLInputElement | null
-      const newPageName = pageNameField?.value?.trim() || `${page.name} copy`
-      const clonedSchema = clonePageSchema(page.schema, {
-        includeWalls: includeWalls || outsideWalls,
-        outsideWallsOnly: outsideWalls,
-        includeOpenings,
-        includeElectrical
-      })
-      await addPage(this.projectKey, newPageName, clonedSchema, page.pageType ?? 'groundplan')
-      this.project = await getProjectData(this.projectKey)
-    }
-
-    if (action === 'rename-page') {
-      const pageKey = dialog.dataset?.pageKey
-      if (!pageKey) return
-      const pageNameField = dialog.querySelector('#rename-page-name') as HTMLInputElement | null
-      const newPageName = pageNameField?.value?.trim() || ''
-      if (!newPageName) return
-      const page = this.project.pages?.[pageKey]
-      if (!page) return
-      page.name = newPageName
-      await setProjectData(this.projectKey, this.project)
-      this.project = await getProjectData(this.projectKey)
-    }
-  }
-
   async openClonePageDialog(pageKey: string) {
     const page = this.project.pages?.[pageKey]
     if (!page) return
-    const dialog = this.dialog
-    if (!dialog) return
-    dialog.dataset.action = 'clone-page'
-    dialog.dataset.pageKey = pageKey
-    const defaultName = `${page.name} copy`.replace(/"/g, '')
-    dialog.innerHTML = `
-      <form id="clone-page" slot="content" method="dialog">
-        <flex-column style="gap: 1rem;">
-          <p>Clone "${page.name}" into a new page</p>
-          <label style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="checkbox" id="clone-walls" checked />
-            <span>Clone walls only</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="checkbox" id="clone-outside-walls" />
-            <span>Only outside walls</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="checkbox" id="clone-openings" />
-            <span>Include doors, windows & gates</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="checkbox" id="clone-switches-loads" />
-            <span>Include switches and loads</span>
-          </label>
-          <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <span>New page name</span>
-            <md-filled-text-field id="clone-page-name" value="${defaultName}"></md-filled-text-field>
-          </label>
-        </flex-column>
-      </form>
-      <flex-row slot="actions" style="width: 100%;">
-        <md-outlined-button form="clone-page" value="cancel-clone-page">
-          cancel
-        </md-outlined-button>
-        <flex-it></flex-it>
-        <md-filled-button form="clone-page" value="clone-page">
-          clone
-        </md-filled-button>
-      </flex-row>
-    `
-    dialog.open = true
+    await this.rendered
+    this.shadowRoot?.querySelector('page-operation-dialog')?.show('clone', pageKey, page.name)
   }
 
   async openRenamePageDialog(pageKey: string) {
     const page = this.project.pages?.[pageKey]
     if (!page) return
-    const dialog = this.dialog
-    if (!dialog) return
-    dialog.dataset.action = 'rename-page'
-    dialog.dataset.pageKey = pageKey
-    const defaultName = page.name.replace(/"/g, '')
-    dialog.innerHTML = `
-      <form id="rename-page" slot="content" method="dialog">
-        <flex-column style="gap: 1rem;">
-          <p>Rename page</p>
-          <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-            <span>Page name</span>
-            <md-filled-text-field id="rename-page-name" value="${defaultName}"></md-filled-text-field>
-          </label>
-        </flex-column>
-      </form>
-      <flex-row slot="actions" style="width: 100%;">
-        <md-outlined-button form="rename-page" value="cancel-rename-page">
-          cancel
-        </md-outlined-button>
-        <flex-it></flex-it>
-        <md-filled-button form="rename-page" value="rename-page">
-          rename
-        </md-filled-button>
-      </flex-row>
-    `
-    dialog.open = true
+    await this.rendered
+    this.shadowRoot?.querySelector('page-operation-dialog')?.show('rename', pageKey, page.name)
+  }
+
+  #onPageOperationSubmit = async (event: CustomEvent<PageOperationSubmitDetail>) => {
+    const detail = event.detail
+    const page = this.project.pages?.[detail.pageKey]
+    if (!page || !detail.pageName.trim()) return
+    if (detail.mode === 'clone') {
+      const clonedSchema = clonePageSchema(page.schema, {
+        includeWalls: detail.includeWalls || detail.outsideWallsOnly,
+        outsideWallsOnly: detail.outsideWallsOnly,
+        includeOpenings: detail.includeOpenings,
+        includeElectrical: detail.includeElectrical
+      })
+      await addPage(this.projectKey, detail.pageName.trim(), clonedSchema, page.pageType ?? 'groundplan')
+    } else {
+      page.name = detail.pageName.trim()
+      await setProjectData(this.projectKey, this.project)
+    }
+    this.project = await getProjectData(this.projectKey)
   }
 
   async loadProject(projectKey: UUID, projectName: string) {
@@ -1005,7 +894,10 @@ export class AppShell extends LiteElement {
     this.#syncRemotePresence()
     this.#refreshBoundOneLineCatalog()
 
-    await this.#nativeAppForPage(key)
+    const nativeApp = await this.#nativeAppForPage(key)
+    if (this.project?.pages?.[key]?.pageType === 'circuit-schedule') {
+      this.circuitScheduleItems = nativeApp?.getCircuitScheduleEditorItems?.() ?? []
+    }
   }
 
   async #nativeAppForPage(pageKey: string): Promise<NativeAppElement | null> {
@@ -1122,25 +1014,13 @@ export class AppShell extends LiteElement {
   }
 
   pickColor = async (): Promise<Color> => {
-    // No updateComplete or renderRoot in Lite; use shadowRoot
-    return new Promise(async (resolve, reject) => {
-      const picker = this.shadowRoot?.querySelector('input[type="color"]') as HTMLInputElement
-      const pickerDialog = this.shadowRoot?.querySelector('.color-picker') as PickerDialogElement | null
-      if (!picker || !pickerDialog) return reject('Color picker not found')
-      pickerDialog.addEventListener('close', () => {
-        if ((pickerDialog as unknown as { returnValue?: string }).returnValue === 'confirm-color') {
-          const color = picker.value as Color
-          state.styling.fill = color
-          this.actions.fill = color
-          this._currentColor = color
-          resolve(color)
-        } else {
-          reject(new DOMException('Color selection cancelled', 'AbortError'))
-        }
-      }, { once: true })
-      pickerDialog.open = true
-      picker.click()
-    })
+    const pickerDialog = this.shadowRoot?.querySelector('color-picker-dialog')
+    if (!pickerDialog) throw new Error('Color picker not found')
+    const color = await pickerDialog.pick(this.#normalizeColorInput(state.styling.fill)) as Color
+    state.styling.fill = color
+    this.actions.fill = color
+    this._currentColor = color
+    return color
   }
 
   #normalizeColorInput(value: unknown): string {
@@ -1193,16 +1073,20 @@ export class AppShell extends LiteElement {
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
-      <md-dialog></md-dialog>
+      <page-operation-dialog
+        @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <main class="route-only">${routeContent}</main>
     `
   }
 
   render() {
     if (this.activeRoute !== 'editor/model') return this.#lightweightRouteTemplate()
+    const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
 
     return html`
-      <md-dialog></md-dialog>
+      <page-operation-dialog
+        @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
+      <color-picker-dialog></color-picker-dialog>
       <validation-report
         .open=${this.validationReportOpen}
         .report=${this.validationReportData}
@@ -1234,6 +1118,17 @@ export class AppShell extends LiteElement {
           this.projects = event.detail.projects
           this.projectDetailsDialogOpen = false
         }}></project-details-dialog>
+      <circuit-schedule-dialog
+        .open=${this.circuitScheduleDialogOpen}
+        .items=${this.circuitScheduleItems}
+        .layout=${this.project?.circuitScheduleLayout ?? {}}
+        @close=${() => (this.circuitScheduleDialogOpen = false)}
+        @saved=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
+          if (!this.projectKey || !this.project) return
+          this.project = { ...this.project, circuitScheduleLayout: event.detail.layout }
+          await setProjectData(this.projectKey, this.project)
+          this.circuitScheduleDialogOpen = false
+        }}></circuit-schedule-dialog>
       <project-share-dialog
         .open=${this.projectShareDialogOpen}
         .project=${this.project}
@@ -1267,7 +1162,7 @@ export class AppShell extends LiteElement {
         }}></history-panel>
       ${iconSetTemplate}
       <div class="shell-frame">
-        <section class="layout">
+        <section class="layout" data-circuit-schedule=${circuitSchedulePage ? 'true' : 'false'}>
           <aside
             id="project-drawer"
             class="left-rail"
@@ -1341,27 +1236,39 @@ export class AppShell extends LiteElement {
                 @click=${this.#toggleMobileDrawer}>
                 <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
               </button>
-              <cadle-actions></cadle-actions>
-              <onewire-actions></onewire-actions>
+              ${circuitSchedulePage ? '' : html`<cadle-actions></cadle-actions><onewire-actions></onewire-actions>`}
               ${this.loadedPage && this.project?.pages?.[this.loadedPage]
                 ? html`<span style="font-size: 14px; color: var(--md-sys-color-on-surface-variant);"
                     >${this.project.pages[this.loadedPage].name}</span
                   >`
                 : ''}
-              <design-mode-toggle></design-mode-toggle>
+              ${circuitSchedulePage ? '' : html`<design-mode-toggle></design-mode-toggle>`}
             </div>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
-              <cadle-app data-route="editor/model"></cadle-app>
+              <div data-route="editor/model" style="width:100%;height:100%;min-height:0;">
+                <cadle-app style=${circuitSchedulePage ? 'display:none' : ''}></cadle-app>
+                ${circuitSchedulePage
+                  ? html`
+                      <circuit-schedule-field
+                        .items=${this.circuitScheduleItems}
+                        .layout=${this.project?.circuitScheduleLayout ?? {}}
+                        @schedule-layout-changed=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
+                          if (!this.projectKey || !this.project) return
+                          this.project = { ...this.project, circuitScheduleLayout: event.detail.layout }
+                          await setProjectData(this.projectKey, this.project)
+                        }}>
+                      </circuit-schedule-field>
+                    `
+                  : ''}
+              </div>
               <projects-field data-route="projects"></projects-field>
               <add-page-field data-route="add-page"></add-page-field>
               <create-project-field data-route="create-project"></create-project-field>
               <settings-field data-route="settings"></settings-field>
             </custom-pages>
           </main>
-          <aside class="right-rail">
-            <object-pane></object-pane>
-          </aside>
+          ${circuitSchedulePage ? '' : html`<aside class="right-rail"><object-pane></object-pane></aside>`}
           <button
             class="mobile-drawer-backdrop"
             type="button"
@@ -1372,29 +1279,6 @@ export class AppShell extends LiteElement {
         <status-bar></status-bar>
       </div>
       <keyboard-shortcuts></keyboard-shortcuts>
-      <md-dialog class="color-picker">
-        <form
-          id="pick-color"
-          slot="content"
-          method="dialog">
-          <flex-it></flex-it>
-          <flex-row>
-            <input
-              type="color"
-              label="color"
-              value="${this.#normalizeColorInput(state.styling.fill)}"
-              dialogFocus />
-            <flex-it></flex-it>
-          </flex-row>
-        </form>
-        <div slot="actions">
-          <md-filled-button
-            form="pick-color"
-            value="confirm-color">
-            done
-          </md-filled-button>
-        </div>
-      </md-dialog>
     `
   }
 }

@@ -17,7 +17,7 @@ test('uses a one-pixel stroke for newly drawn lines and outline shapes', () => {
 test('keeps architectural tools on their specialized stroke defaults', () => {
   const point = { x: 10, y: 20 }
 
-  for (const tool of ['wall', 'door', 'window', 'gate'] as const) {
+  for (const tool of ['wall', 'room', 'door', 'window', 'gate'] as const) {
     const draft = createDraftShape(tool, point, tool)
     assert.equal(draft.strokeWidth, undefined, tool)
   }

@@ -2,6 +2,7 @@ import type { Tool } from '../../editor/model/types.js'
 
 const ACTION_TO_TOOL: Readonly<Record<string, Tool>> = {
   'draw-wall': 'wall',
+  'draw-room': 'room',
   'draw-door': 'door',
   'draw-window': 'window',
   'draw-gate': 'gate',
@@ -21,6 +22,7 @@ const ACTION_TO_TOOL: Readonly<Record<string, Tool>> = {
 const TOOL_TO_ACTION: Readonly<Record<Tool, string>> = {
   select: 'select',
   wall: 'draw-wall',
+  room: 'draw-room',
   door: 'draw-door',
   window: 'draw-window',
   gate: 'draw-gate',

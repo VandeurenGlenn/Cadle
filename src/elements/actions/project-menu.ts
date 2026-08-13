@@ -29,7 +29,7 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
     id: 'import',
     title: 'Import',
     items: [
-      { title: 'Import plan', action: 'import-pdf', icon: 'upload_file' },
+      { title: 'Import old plan from PDF', action: 'import-pdf', icon: 'picture_as_pdf' },
       { title: 'Upload project', action: 'upload', icon: 'upload_file' },
       { title: 'Import drawing JSON', action: 'import-json', icon: 'data_object' },
       { title: 'Import custom symbol', action: 'import-custom-symbol', icon: 'category' }
@@ -61,6 +61,7 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
     title: 'Project tools',
     items: [
       { title: 'Edit project details', action: 'edit-project-details', icon: 'edit' },
+      { title: 'Edit circuit overview', action: 'edit-circuit-schedule', icon: 'table_view' },
       { title: 'History panel', action: 'toggle-history-panel', icon: 'menu' },
       { title: 'One-wire training data', action: 'open-onewire-training-data', icon: 'dataset' }
     ]

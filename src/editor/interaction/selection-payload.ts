@@ -20,6 +20,8 @@ export type NativeSelectionShapePayload = {
   bindingId?: string
   bindingLabelOffset?: { x: number; y: number }
   name?: string
+  isRoom?: boolean
+  roomName?: string
   canFlip?: boolean
   flipSide?: boolean
   flipX?: boolean
@@ -64,6 +66,7 @@ const defaultStrokeWidthForShape = (shape: Shape): number | null => {
 
 export type NativeSelectionChangedPayload = {
   selectionCount: number
+  canConvertToRoom?: boolean
   shape?: NativeSelectionShapePayload
 }
 
@@ -76,12 +79,14 @@ export const createNativeSelectionChangedPayload = (
     electricalOverride?: ElectricalDeviceMetadata
     circuitPropertiesEditable?: boolean
     hideSymbolTextFields?: boolean
+    canConvertToRoom?: boolean
   }
 ): NativeSelectionChangedPayload => {
   const selectionCount = selectedIdsCount > 0 ? selectedIdsCount : selectedShape ? 1 : 0
   if (selectionCount !== 1 || !selectedShape) {
     return {
       selectionCount,
+      canConvertToRoom: options?.canConvertToRoom === true,
       shape: undefined
     }
   }
@@ -105,7 +110,11 @@ export const createNativeSelectionChangedPayload = (
             role: sourceElectrical.role,
             oneWireEligible: sourceElectrical.oneWireEligible,
             circuitType: sourceElectrical.circuitType,
-            ratedCurrentA: sourceElectrical.ratedCurrentA
+            ratedCurrentA: sourceElectrical.ratedCurrentA,
+            manufacturer: sourceElectrical.manufacturer,
+            neutralPosition: sourceElectrical.neutralPosition,
+            productSeries: sourceElectrical.productSeries,
+            productReference: sourceElectrical.productReference
           }
     }
     shapePayload.circuitPropertiesEditable = options?.circuitPropertiesEditable === true
@@ -125,6 +134,10 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.bindingLabelOffset = { ...selectedShape.bindingLabelOffset }
   }
   if (selectedShape.kind === 'symbol' || selectedShape.kind === 'image') shapePayload.name = selectedShape.name
+  if (selectedShape.kind === 'wall' && selectedShape.groupId?.startsWith('room-')) {
+    shapePayload.isRoom = true
+    shapePayload.roomName = selectedShape.roomName ?? ''
+  }
   if (selectedShape.kind === 'door' || selectedShape.kind === 'gate') {
     shapePayload.canFlip = true
     shapePayload.flipSide = selectedShape.flipSide ?? false
@@ -195,6 +208,7 @@ export const createNativeSelectionChangedPayload = (
 
   return {
     selectionCount,
+    canConvertToRoom: options?.canConvertToRoom === true,
     shape: shapePayload
   }
 }

@@ -46,10 +46,17 @@ export type ValidationReport = {
 
 @customElement('validation-report')
 export class ValidationReportModal extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ attribute: false }) accessor report: ValidationReport | null = null
   @property({ type: String }) accessor projectName = ''
   static styles = [styles]
+
+  onChange(property: string) {
+    if (property !== 'open') return
+
+    this.toggleAttribute('data-open', this.open)
+    this.setAttribute('aria-hidden', String(!this.open))
+  }
 
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
@@ -61,7 +68,7 @@ export class ValidationReportModal extends LiteElement {
 
   render() {
     const report = this.report
-    if (!report) return html``
+    if (!this.open || !report) return html``
     return html`
       <div
         class="panel"

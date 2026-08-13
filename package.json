@@ -30,17 +30,20 @@
   "dependencies": {
     "@leofcoin/peernet": "^1.2.21",
     "@leofcoin/storage": "^3.5.38",
-    "@material/web": "^2.5.0",
-    "@vandeurenglenn/custom-elements": "^0.1.22",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/nld": "^1.0.0",
     "@vandeurenglenn/flex-elements": "^1.4.0",
     "@vandeurenglenn/lite-elements": "^0.4.4",
     "@vandeurenglenn/little-pubsub": "^1.5.2",
     "crypto-browserify": "^3.12.1",
     "events": "^3.3.0",
     "jspdf": "^4.2.1",
-    "pdfjs-dist": "^6.1.200",
+    "lit": "^3.3.3",
+    "lit-html": "^3.3.3",
+    "pdfjs-dist": "^6.2.108",
     "process": "^0.11.10",
-    "stream-browserify": "^3.0.0"
+    "stream-browserify": "^3.0.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

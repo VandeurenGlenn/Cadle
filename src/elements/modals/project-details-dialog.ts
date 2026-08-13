@@ -14,7 +14,7 @@ type ProjectDetailsSavedDetail = {
 
 @customElement('project-details-dialog')
 export class ProjectDetailsDialog extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ attribute: false }) accessor project: Project | null = null
   @property({ type: String }) accessor projectKey: UUID = '' as UUID
 
@@ -52,6 +52,10 @@ export class ProjectDetailsDialog extends LiteElement {
   static styles = [styles]
 
   onChange(property: string) {
+    if (property === 'open') {
+      this.toggleAttribute('data-open', this.open)
+      this.setAttribute('aria-hidden', String(!this.open))
+    }
     if (property === 'project' || property === 'open') {
       this.#syncFormFromProject()
     }
@@ -431,6 +435,8 @@ export class ProjectDetailsDialog extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
+
     return html`
       <div
         class="panel"

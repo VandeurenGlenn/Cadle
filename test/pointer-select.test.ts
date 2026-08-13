@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  allowsExistingShapeSelection,
   dragIdsForSelectedShape,
   shouldSelectExistingOneWireShape
 } from '../src/editor/interaction/pointer-select.ts'
@@ -86,4 +87,12 @@ test('selects an existing group instead of running one-wire preset placement', (
   assert.equal(shouldSelectExistingOneWireShape(groupShape, false), true)
   assert.equal(shouldSelectExistingOneWireShape(groupShape, true), false)
   assert.equal(shouldSelectExistingOneWireShape(null, false), false)
+})
+
+test('does not select existing objects while using an architectural drawing tool', () => {
+  for (const tool of ['wall', 'room', 'door', 'window', 'gate', 'line', 'rect', 'circle', 'arc', 'text'] as const) {
+    assert.equal(allowsExistingShapeSelection(tool, false), false, tool)
+  }
+  assert.equal(allowsExistingShapeSelection('select', false), true)
+  assert.equal(allowsExistingShapeSelection('symbol', true), false)
 })

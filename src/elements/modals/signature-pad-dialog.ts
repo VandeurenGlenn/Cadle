@@ -18,7 +18,7 @@ export type SignatureSavedDetail = {
 
 @customElement('signature-pad-dialog')
 export class SignaturePadDialog extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ type: String }) accessor signatureRole: SignatureRole = 'installer'
 
   @query('.signature-canvas') accessor canvas!: HTMLCanvasElement
@@ -32,6 +32,10 @@ export class SignaturePadDialog extends LiteElement {
   #hasInk = false
 
   onChange(property: string) {
+    if (property === 'open') {
+      this.toggleAttribute('data-open', this.open)
+      this.setAttribute('aria-hidden', String(!this.open))
+    }
     if (property === 'open' && this.open) {
       queueMicrotask(() => {
         this.#resetCanvas()
@@ -164,6 +168,8 @@ export class SignaturePadDialog extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
+
     const person = this.signatureRole === 'installer' ? 'installateur' : 'eigenaar'
     return html`
       <div class="backdrop" @click=${this.#close}></div>

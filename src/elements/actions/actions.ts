@@ -15,6 +15,7 @@ type DrawTool = { action: string; icon: string; title: string; nativeOnly?: bool
 const DRAW_TOOLS: DrawTool[] = [
   { action: 'select', icon: 'arrow_selector_tool', title: 'Select' },
   { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
+  { action: 'draw-room', icon: 'pentagon', title: 'Draw room' },
   { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },

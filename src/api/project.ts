@@ -189,11 +189,13 @@ export const importPlan = async () => {
     `
 
     // Handle import completion
-    const handleImportComplete = async (event: CustomEvent) => {
+    const handleImportComplete = async (event: CustomEvent<{ pagesImported: number; pageKeys: UUID[] }>) => {
       dialog.close()
       dialog.remove()
       cadleShell.projects = await getProjects()
-      void event.detail.pagesImported
+      cadleShell.project = await getProjectData(cadleShell.projectKey)
+      const firstImportedPage = event.detail.pageKeys[0]
+      if (firstImportedPage) await cadleShell.loadPage(firstImportedPage)
     }
 
     // Handle import cancellation
@@ -211,6 +213,8 @@ export const importPlan = async () => {
 
     // Load PDF into importer
     const typedImporter = importer as PDFImporter
+    typedImporter.projectKey = cadleShell.projectKey
+    typedImporter.project = cadleShell.project
     await typedImporter.loadPDF(file)
   }, { once: true })
   input.click()

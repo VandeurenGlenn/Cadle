@@ -16,6 +16,8 @@ export type SelectionShape = {
   symbolTextFields?: SymbolTextField[]
   bindingId?: string
   name?: string
+  isRoom?: boolean
+  roomName?: string
   canFlip?: boolean
   flipSide?: boolean
   flipX?: boolean
@@ -45,6 +47,10 @@ export type SelectionShape = {
     showCableInstallation?: boolean
     poles?: number
     phaseConfiguration?: string
+    manufacturer?: string
+    neutralPosition?: string
+    productSeries?: string
+    productReference?: string
     showPhaseLabel?: boolean
     breakerCurve?: string
     rcdSensitivityMa?: number
@@ -57,6 +63,7 @@ export type SelectionShape = {
 
 export type SelectionPayload = {
   selectionCount?: number
+  canConvertToRoom?: boolean
   shape?: SelectionShape
 }
 
@@ -72,7 +79,13 @@ export const inferBindingLabelSide = (offset: { x: number; y: number } | null): 
 export const normalizeSelection = (payload: SelectionPayload) => {
   const selectionCount = Number.isFinite(payload?.selectionCount) ? Number(payload.selectionCount) : 0
   const shape = payload?.shape
-  if (!shape) return { selectionCount, shape: null }
+  if (!shape) {
+    return {
+      selectionCount,
+      ...(payload?.canConvertToRoom === true ? { canConvertToRoom: true } : {}),
+      shape: null
+    }
+  }
 
   const kind = typeof shape.kind === 'string' ? shape.kind : 'shape'
   const symbolTextFields = Array.isArray(shape.symbolTextFields)
@@ -90,6 +103,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
 
   return {
     selectionCount,
+    ...(payload?.canConvertToRoom === true ? { canConvertToRoom: true } : {}),
     shape: {
       id: typeof shape.id === 'string' ? shape.id : '',
       kind,
@@ -97,6 +111,8 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       label: kind.charAt(0).toUpperCase() + kind.slice(1),
       bindingId: typeof shape.bindingId === 'string' ? shape.bindingId : '',
       name: typeof shape.name === 'string' ? shape.name : '',
+      isRoom: shape.isRoom === true,
+      roomName: typeof shape.roomName === 'string' ? shape.roomName : '',
       text: typeof shape.text === 'string' ? shape.text : '',
       symbolTextFields,
       canFlip: shape.canFlip === true,

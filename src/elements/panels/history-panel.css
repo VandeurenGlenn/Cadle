@@ -4,7 +4,7 @@
         right: 18px;
         width: min(360px, calc(100vw - 32px));
         max-height: calc(100vh - 96px);
-        display: block;
+        display: none;
         opacity: 0;
         pointer-events: none;
         transform: translateX(18px);
@@ -13,7 +13,8 @@
           transform 160ms ease;
         z-index: 10005;
       }
-      :host([open]) {
+      :host([data-open]) {
+        display: block;
         opacity: 1;
         pointer-events: auto;
         transform: translateX(0);
@@ -87,4 +88,3 @@
         color: var(--md-sys-color-on-surface-variant);
         background: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
       }
-    

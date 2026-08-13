@@ -30,3 +30,18 @@ test('reports added and removed generated source objects', () => {
   )
   assert.deepEqual({ added: result.added, removed: result.removed, preserved: result.preserved }, { added: 1, removed: 1, preserved: 0 })
 })
+
+test('recomputes node-connected topology geometry instead of preserving disconnected positions', () => {
+  const previous = {
+    ...generatedSymbol('old-topology', 'board:main:topology:v2:earth', 440),
+    position: { x: 440, y: 440 }
+  }
+  const fresh = {
+    ...generatedSymbol('new-topology', 'board:main:topology:v2:earth', 120),
+    position: { x: 120, y: 160 }
+  }
+
+  const result = reconcileGeneratedOneWire([previous], [fresh])
+  assert.equal(result.shapes[0].id, 'old-topology')
+  assert.deepEqual(result.shapes[0].kind === 'symbol' ? result.shapes[0].position : null, { x: 120, y: 160 })
+})

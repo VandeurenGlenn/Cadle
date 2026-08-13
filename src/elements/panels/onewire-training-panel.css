@@ -2,14 +2,14 @@
   position: fixed;
   inset: 0;
   z-index: 10014;
-  display: grid;
+  display: none;
   place-items: center;
   padding: var(--cadle-space-4);
   background: var(--cadle-scrim);
   opacity: 0;
   pointer-events: none;
 }
-:host([open]) { opacity: 1; pointer-events: auto; }
+:host([data-open]) { display: grid; opacity: 1; pointer-events: auto; }
 .panel {
   width: min(860px, calc(100vw - var(--cadle-space-6)));
   max-height: 88vh;

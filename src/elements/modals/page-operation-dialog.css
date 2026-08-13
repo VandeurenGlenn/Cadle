@@ -1,0 +1,78 @@
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 12050;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+:host([data-open]) {
+  pointer-events: auto;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 46%, transparent);
+}
+
+.dialog {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  width: min(440px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 24px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-extra-large, 24px);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--cadle-elevation-5);
+}
+
+h2,
+p {
+  margin: 0;
+}
+
+p {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.fields {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.name-field {
+  display: grid;
+  align-items: stretch;
+  gap: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+
+input[type='text'] {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--cadle-radius-sm, 8px);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

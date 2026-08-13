@@ -1,5 +1,5 @@
 import { cloneShape } from '../../editor/model/model.js'
-import type { DragState, Point, Shape } from '../../editor/model/types.js'
+import type { DragState, Point, Shape, Tool } from '../../editor/model/types.js'
 
 export type ResolveSelectPointerDownInput = {
   shapeId: string | null
@@ -45,6 +45,9 @@ export const shouldSelectExistingOneWireShape = (
   shape: Shape | null,
   isKamrail: boolean
 ): boolean => shape !== null && !isKamrail
+
+export const allowsExistingShapeSelection = (tool: Tool, hasPendingCatalogSymbol: boolean): boolean =>
+  tool === 'select' || (tool === 'symbol' && !hasPendingCatalogSymbol)
 
 export const resolveSelectPointerDown = (
   input: ResolveSelectPointerDownInput

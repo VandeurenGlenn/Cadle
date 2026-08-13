@@ -1,6 +1,7 @@
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/toggle.js'
 import '@vandeurenglenn/lite-elements/icon.js'
+import '@vandeurenglenn/lite-elements/list-item.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/flex-elements/row.js'
 import pubsub from '../pubsub.js'
@@ -35,21 +36,21 @@ export class SettingsField extends LiteElement {
 
   render() {
     return html`
-      <md-list-item>
+      <custom-list-item>
         <custom-icon
-          slot="icon"
+          slot="start"
           icon="save"></custom-icon>
-        <flex-row slot="headline">
+        <flex-row>
           <span>auto save</span>
           <flex-it></flex-it>
           <custom-toggle toggler="['check_box_outline_blank', 'check_box']"></custom-toggle>
         </flex-row>
-      </md-list-item>
-      <md-list-item>
+      </custom-list-item>
+      <custom-list-item>
         <custom-icon
-          slot="icon"
+          slot="start"
           icon="line_weight"></custom-icon>
-        <flex-row slot="headline">
+        <flex-row>
           <span>symbol stroke width</span>
           <flex-it></flex-it>
           <input
@@ -65,7 +66,7 @@ export class SettingsField extends LiteElement {
             >${this.#symbolStrokeWidth.toFixed(2)}</span
           >
         </flex-row>
-      </md-list-item>
+      </custom-list-item>
     `
   }
 }

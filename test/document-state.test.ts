@@ -45,6 +45,51 @@ test('restores stable generated source links used by incremental regeneration', 
   assert.deepEqual(state?.shapes[0].sourceLink, { kind: 'device', id: 'floor-load-1', role: 'load' })
 })
 
+test('preserves a locked imported-plan background', () => {
+  const state = asNativeState({
+    version: 2,
+    shapes: [{
+      id: 'old-plan',
+      kind: 'image',
+      position: { x: 500, y: 400 },
+      name: 'Old plan',
+      path: 'data:image/png;base64,AA==',
+      width: 900,
+      height: 650,
+      locked: true
+    }],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 10,
+    worldWidth: 2376,
+    worldHeight: 1680
+  })
+
+  assert.equal(state?.shapes[0].locked, true)
+})
+
+test('restores bidirectional one-wire energy flow metadata', () => {
+  const state = asNativeState({
+    version: 1,
+    shapes: [{
+      id: 'main-meter-line',
+      kind: 'line',
+      start: { x: 100, y: 200 },
+      end: { x: 100, y: 100 },
+      energyFlow: 'bidirectional',
+      energySource: 'mixed'
+    }],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 0,
+    worldWidth: 1000,
+    worldHeight: 1000
+  })
+
+  assert.equal(state?.shapes[0].kind === 'line' ? state.shapes[0].energyFlow : null, 'bidirectional')
+  assert.equal(state?.shapes[0].kind === 'line' ? state.shapes[0].energySource : null, 'mixed')
+})
+
 test('restores generated text alignment anchors', () => {
   const state = asNativeState({
     version: 1,

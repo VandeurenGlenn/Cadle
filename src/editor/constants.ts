@@ -1,7 +1,8 @@
 import type { PaperPreset } from '../editor/model/types.js'
 
-export const DEFAULT_WORLD_WIDTH = 2400
-export const DEFAULT_WORLD_HEIGHT = 1400
+export const PAPER_WORLD_UNITS_PER_MM = 8
+export const DEFAULT_WORLD_WIDTH = 297 * PAPER_WORLD_UNITS_PER_MM
+export const DEFAULT_WORLD_HEIGHT = 210 * PAPER_WORLD_UNITS_PER_MM
 export const GRID_SIZE = 10
 export const DEFAULT_PRINT_MARGIN_MM = 10
 export const ONE_WIRE_BREAKER_WIDTH = 240
@@ -39,6 +40,11 @@ export const PAPER_PRESETS: Record<PaperPreset, PaperPresetConfig> = {
   'a3-portrait': { label: 'A3 Portrait', widthMm: 297, heightMm: 420 },
   'a3-landscape': { label: 'A3 Landscape', widthMm: 420, heightMm: 297 }
 }
+
+export const paperWorldSize = (preset: PaperPreset): { width: number; height: number } => ({
+  width: PAPER_PRESETS[preset].widthMm * PAPER_WORLD_UNITS_PER_MM,
+  height: PAPER_PRESETS[preset].heightMm * PAPER_WORLD_UNITS_PER_MM
+})
 
 export const nextOneWireBindingId = (currentBindingId: string, preset: OneWirePreset): string => {
   const match = /^([A-Z]+)(\d+)$/.exec(currentBindingId)

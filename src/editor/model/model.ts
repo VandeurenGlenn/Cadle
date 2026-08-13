@@ -34,10 +34,11 @@ export const isPoint = (value: unknown): value is Point => {
 }
 
 const copyGeneratedMetadata = (
-  source: { generationKey?: unknown; sourceLink?: unknown; hidden?: unknown },
+  source: { generationKey?: unknown; sourceLink?: unknown; hidden?: unknown; locked?: unknown },
   target: Shape
 ): void => {
   if (source.hidden === true) target.hidden = true
+  if (source.locked === true) target.locked = true
   if (typeof source.generationKey === 'string' && source.generationKey.trim()) {
     target.generationKey = source.generationKey.trim()
   }
@@ -87,10 +88,13 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
+      energyFlow?: unknown
+      energySource?: unknown
       textAnchor?: unknown
       flipX?: unknown
       flipY?: unknown
       wallId?: unknown
+      roomName?: unknown
       bindingId?: unknown
       groupId?: unknown
       bindingLabelOffset?: unknown
@@ -98,6 +102,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       generationKey?: unknown
       sourceLink?: unknown
       hidden?: unknown
+      locked?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue
@@ -122,10 +127,17 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (raw.flipX === true) line.flipX = true
       if (raw.flipY === true) line.flipY = true
       if (typeof raw.wallId === 'string' && raw.wallId.trim()) line.wallId = raw.wallId.trim()
+      if (typeof raw.roomName === 'string' && raw.roomName.trim()) line.roomName = raw.roomName.trim()
       if ((raw as { flipSide?: unknown }).flipSide === true) line.flipSide = true
       if (typeof raw.stroke === 'string' && raw.stroke) line.stroke = raw.stroke
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
         line.strokeWidth = Math.max(0.5, raw.strokeWidth)
+      }
+      if (raw.energyFlow === 'forward' || raw.energyFlow === 'reverse' || raw.energyFlow === 'bidirectional') {
+        line.energyFlow = raw.energyFlow
+      }
+      if (raw.energySource === 'default' || raw.energySource === 'generator' || raw.energySource === 'mixed') {
+        line.energySource = raw.energySource
       }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim()) line.bindingId = raw.bindingId.trim().toUpperCase()
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) line.groupId = raw.groupId.trim()
@@ -331,9 +343,12 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.flipX) cloned.flipX = true
       if (shape.flipY) cloned.flipY = true
       if (shape.wallId) cloned.wallId = shape.wallId
+      if (shape.roomName) cloned.roomName = shape.roomName
       if (shape.flipSide) cloned.flipSide = true
       if (shape.stroke) cloned.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') cloned.strokeWidth = shape.strokeWidth
+      if (shape.energyFlow) cloned.energyFlow = shape.energyFlow
+      if (shape.energySource) cloned.energySource = shape.energySource
       if (shape.bindingId) cloned.bindingId = shape.bindingId
       if (shape.groupId) cloned.groupId = shape.groupId
       if (shape.bindingLabelOffset) cloned.bindingLabelOffset = { ...shape.bindingLabelOffset }
@@ -453,6 +468,8 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.flipSide) scaled.flipSide = true
       if (shape.stroke) scaled.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
+      if (shape.energyFlow) scaled.energyFlow = shape.energyFlow
+      if (shape.energySource) scaled.energySource = shape.energySource
       if (shape.bindingId) scaled.bindingId = shape.bindingId
       if (shape.groupId) scaled.groupId = shape.groupId
       copyGeneratedMetadata(shape, scaled)

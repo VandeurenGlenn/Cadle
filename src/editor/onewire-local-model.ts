@@ -45,7 +45,6 @@ export const loadOneWireLocalModel = async (): Promise<OneWirePromptModel> => {
       for (const label of ['residualBreaker', 'solar', 'consumers'] as const) {
         const confidence = probability(model, label, prompt)
         if (confidence >= 0.68) plan[label] = true
-        else if (confidence <= 0.32) plan[label] = false
       }
       if (plan.solar) plan.solarPlacement = 'parallel-after-main-differential'
       else delete plan.solarPlacement

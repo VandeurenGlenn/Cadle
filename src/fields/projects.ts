@@ -2,7 +2,6 @@ import { LiteElement, html, customElement, property, query, listen } from '@vand
 import styles from './projects.css' with { type: 'css' }
 import { Projects, type Project, type UUID } from './../types.js'
 import '@vandeurenglenn/flex-elements/column.js'
-import '@material/web/elevation/elevation.js'
 import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'

@@ -143,6 +143,13 @@ export const iconSetTemplate = html`
       <span name="gesture">@symbol-gesture</span>
       <span name="line_curve">@symbol-line_curve</span>
       <span name="power_input">@symbol-power_input</span>
+      <span name="pentagon">@symbol-pentagon</span>
+      <span name="swap_horiz">@symbol-swap_horiz</span>
+      <span name="swap_vert">@symbol-swap_vert</span>
+      <span name="table_view">@symbol-table_view</span>
+      <span name="vertical_align_bottom">@symbol-vertical_align_bottom</span>
+      <span name="vertical_align_center">@symbol-vertical_align_center</span>
+      <span name="vertical_align_top">@symbol-vertical_align_top</span>
     </template>
   </custom-icon-set>
 `

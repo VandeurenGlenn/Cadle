@@ -1,6 +1,7 @@
 export type Tool =
   | 'select'
   | 'wall'
+  | 'room'
   | 'line'
   | 'door'
   | 'window'
@@ -24,6 +25,7 @@ type GeneratedShapeMetadata = {
   generationKey?: string
   sourceLink?: OneWireSourceLink
   hidden?: boolean
+  locked?: boolean
 }
 
 export type LineShape = GeneratedShapeMetadata & {
@@ -36,9 +38,12 @@ export type LineShape = GeneratedShapeMetadata & {
   flipX?: boolean
   flipY?: boolean
   wallId?: string
+  roomName?: string
   flipSide?: boolean
   stroke?: string
   strokeWidth?: number
+  energyFlow?: 'forward' | 'reverse' | 'bidirectional'
+  energySource?: 'default' | 'generator' | 'mixed'
   bindingId?: string
   groupId?: string
   bindingLabelOffset?: { x: number; y: number }

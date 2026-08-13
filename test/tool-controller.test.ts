@@ -5,6 +5,7 @@ import { ToolController } from '../src/editor/controllers/tool-controller.ts'
 test('maps shell actions to editor tools', () => {
   const tools = new ToolController()
   assert.equal(tools.toolForShellAction('draw-wall'), 'wall')
+  assert.equal(tools.toolForShellAction('draw-room'), 'room')
   assert.equal(tools.toolForShellAction('draw-cable'), 'line')
   assert.equal(tools.toolForShellAction('unknown'), 'select')
 })

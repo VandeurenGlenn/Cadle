@@ -2,6 +2,12 @@ import type { Shape } from '../../editor/model/types.js'
 
 const preserveManualGeometry = (fresh: Shape, previous: Shape): Shape => {
   if (fresh.kind !== previous.kind) return fresh
+  // Board topology is a node-connected network. Its geometry is recomputed
+  // from the preserved busbar so individual stale positions cannot disconnect
+  // terminals, wires, or busbar taps during regeneration.
+  if (/^board:main:topology:v\d+:/.test(fresh.generationKey ?? '')) {
+    return { ...fresh, id: previous.id }
+  }
   if ('position' in fresh && 'position' in previous) {
     const preserved = { ...fresh, id: previous.id, position: { ...previous.position }, rotation: previous.rotation } as Shape
     if ('scale' in preserved && 'scale' in previous) preserved.scale = previous.scale

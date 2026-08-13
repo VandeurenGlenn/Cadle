@@ -15,6 +15,7 @@ import {
   ONE_WIRE_NODE_SIZE,
   ONE_WIRE_PRESETS,
   PAPER_PRESETS,
+  paperWorldSize,
   nextOneWireBindingId,
   type OneWirePreset
 } from './editor/constants.js'
@@ -51,6 +52,7 @@ import type { Project, UUID } from './types.js'
 import {
   electricalMetadataFromCatalog,
   isDistributionBoardDevice,
+  neutralPositionForManufacturer,
   rcdTypeLabel,
   shouldShowPhaseLabel,
   type ElectricalDeviceMetadata
@@ -63,6 +65,11 @@ import {
   safeAreaRect
 } from './editor/export/svg-export.js'
 import {
+  pagePixelSize,
+  rasterizePageSvgToPng,
+  rasterizeSvgToPng
+} from './editor/export/rasterize-svg.js'
+import {
   buildProjectTitleBlockMarkup,
   getProjectLogoBounds,
   isProjectLogoVisible,
@@ -70,12 +77,20 @@ import {
 } from './editor/layout/project-title-block.js'
 import { buildIntroPageSvg } from './editor/intro-page.js'
 import {
+  buildCircuitScheduleSvgs,
+  circuitScheduleEditorItems,
+  type CircuitScheduleEditorItem
+} from './editor/circuit-schedule-page.js'
+import {
   bindingLabelsTemplate,
+  hasWallOpeningMask,
   measurementTemplate,
   rubberBandTemplate,
   safeAreaTemplate,
   selectedOutlineTemplate,
   shapeTemplate,
+  roomDraftTemplate,
+  roomLabelsTemplate,
   wallChainPreviewTemplate,
   wallMaskTemplate
 } from './editor/svg-templates.js'
@@ -88,6 +103,8 @@ import {
   oneWireProtectionSymbolPath
 } from './editor/layout/onewire-helpers.js'
 import { buildOneWireTopology } from './editor/layout/onewire-topology.js'
+import { fitLegacyGroundPlanToPrintArea, scaleShapesBetweenPages } from './editor/layout/page-scaling.js'
+import { assessOneWireCapacity } from './editor/onewire-capacity.js'
 import {
   oneWireSymbolNodeInfo,
   oneWireSymbolRotationFor,
@@ -102,11 +119,14 @@ import {
 } from './editor/interaction/pointer-down.js'
 import { applyDragMove, updateDraftShapeEnd, updateWallChainPreview } from './editor/interaction/pointer-move.js'
 import {
+  allowsExistingShapeSelection,
   dragIdsForSelectedShape,
   shouldSelectExistingOneWireShape
 } from './editor/interaction/pointer-select.js'
 import { snapPasteTranslation } from './editor/interaction/clipboard-placement.js'
 import { resolveNativeEscapeAction } from './editor/interaction/keyboard.js'
+import { convertWallsToRoom, createRoomWalls } from './editor/interaction/room-rectangle.js'
+import { bindOpeningToNearestWall } from './editor/interaction/opening-wall.js'
 import { createDraftShape, createSymbolShape, createTextShape } from './editor/interaction/pointer-down-builders.js'
 import { createNativeSelectionChangedPayload } from './editor/interaction/selection-payload.js'
 import { transformShapeForSelection, type SelectionTransformAction } from './editor/interaction/selection-transforms.js'
@@ -206,6 +226,7 @@ export class CadleApp extends LiteElement {
   #persistError: unknown = null
   #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
+  #documentSizeMigrated = false
   // Wall click-chain state
   #wallChain: { startPoint: Point } | null = null
   #chainPreviewEnd: Point | null = null
@@ -273,6 +294,7 @@ export class CadleApp extends LiteElement {
     pubsub.subscribe('native.catalog.pick', this.#onNativeCatalogPick)
     pubsub.subscribe('editor.object.update', this.#onNativeObjectUpdate)
     pubsub.subscribe('editor.object.delete', this.#onNativeObjectDelete)
+    pubsub.subscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
     pubsub.subscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
     pubsub.subscribe('editor.controls.command', this.#onNativeControlsCommand)
     pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
@@ -294,6 +316,7 @@ export class CadleApp extends LiteElement {
     pubsub.unsubscribe('native.catalog.pick', this.#onNativeCatalogPick)
     pubsub.unsubscribe('editor.object.update', this.#onNativeObjectUpdate)
     pubsub.unsubscribe('editor.object.delete', this.#onNativeObjectDelete)
+    pubsub.unsubscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
     pubsub.unsubscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
     pubsub.unsubscribe('editor.controls.command', this.#onNativeControlsCommand)
   }
@@ -322,37 +345,15 @@ export class CadleApp extends LiteElement {
     const paper = this.#paperMeta()
     const resolvedOrientation =
       orientation === 'auto' ? (paper.widthMm >= paper.heightMm ? 'landscape' : 'portrait') : orientation
-    const widthPx = resolvedOrientation === 'landscape' ? 3508 : 2480
-    const heightPx = resolvedOrientation === 'landscape' ? 2480 : 3508
+    const { widthPx, heightPx } = pagePixelSize(resolvedOrientation)
     const exportViewBox = this.#exportViewBox(resolvedOrientation)
-    const svgBlob = new Blob([this.#buildSvgDocument(exportViewBox ?? undefined, monochrome)], {
-      type: 'image/svg+xml;charset=utf-8'
-    })
-    const url = URL.createObjectURL(svgBlob)
-    try {
-      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => resolve(img)
-        img.onerror = () => reject(new Error('Unable to render SVG export'))
-        img.src = url
-      })
-      const canvas = document.createElement('canvas')
-      canvas.width = widthPx
-      canvas.height = heightPx
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('Canvas export is unavailable')
-      context.fillStyle = '#ffffff'
-      context.fillRect(0, 0, widthPx, heightPx)
-      context.drawImage(image, 0, 0, widthPx, heightPx)
-      return {
-        dataUrl: canvas.toDataURL('image/png'),
-        orientation: resolvedOrientation,
-        widthPx,
-        heightPx
-      }
-    } finally {
-      URL.revokeObjectURL(url)
-    }
+    const dataUrl = await rasterizeSvgToPng(
+      this.#buildSvgDocument(exportViewBox ?? undefined, monochrome),
+      widthPx,
+      heightPx,
+      'Unable to render SVG export'
+    )
+    return { dataUrl, orientation: resolvedOrientation, widthPx, heightPx }
   }
 
   #onShellAction = (action: string) => {
@@ -641,7 +642,111 @@ export class CadleApp extends LiteElement {
     const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const isProtectionSymbol = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
+    const isTopologyProtection = Boolean(
+      isProtectionSymbol && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
+    )
     const standaloneCircuitKey = selectedShape ? this.#circuitKeyForShape(selectedShape) : null
+    if (payload.electrical && isTopologyProtection) {
+      const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
+        selectedIds: this.#document.selectedIds,
+        selectedId: this.#document.selectedId,
+        groupedSelection: false
+      })
+      if (!nextShapes) return
+      this.#document.shapes = nextShapes
+      const updatedProtection = nextShapes.find((shape) => shape.id === selectedShape?.id)
+      const topology = this.#project?.oneWireTopology
+      if (updatedProtection?.kind === 'symbol' && topology && this.#project) {
+        const role = updatedProtection.sourceLink?.role ?? ''
+        const ratedCurrentA = updatedProtection.electrical?.breakerCurrentA
+        const sensitivityMa = updatedProtection.electrical?.rcdSensitivityMa
+        const manufacturer = updatedProtection.electrical?.manufacturer
+        const neutralPosition = updatedProtection.electrical?.neutralPosition
+        if (role === 'main-switch') {
+          const switchRating =
+            ratedCurrentA
+            ?? topology.mainSwitch?.ratedCurrentA
+            ?? topology.gridProtectionCurrentA
+            ?? topology.mainDifferential?.ratedCurrentA
+            ?? 40
+          topology.mainSwitch = {
+            ratedCurrentA: switchRating,
+            ...(manufacturer ? { manufacturer } : {}),
+            ...(neutralPosition ? { neutralPosition } : {})
+          }
+        } else if (role === 'main-differential' && topology.mainDifferential) {
+          if (typeof ratedCurrentA === 'number') topology.mainDifferential.ratedCurrentA = ratedCurrentA
+          if (typeof sensitivityMa === 'number') topology.mainDifferential.sensitivityMa = sensitivityMa
+          if (manufacturer) topology.mainDifferential.manufacturer = manufacturer
+          else delete topology.mainDifferential.manufacturer
+          if (neutralPosition) topology.mainDifferential.neutralPosition = neutralPosition
+          else delete topology.mainDifferential.neutralPosition
+        } else if (role === 'residual-breaker' && typeof ratedCurrentA === 'number') {
+          topology.residualBreakerRatedCurrentA = ratedCurrentA
+          if (manufacturer) topology.residualBreakerManufacturer = manufacturer
+          else delete topology.residualBreakerManufacturer
+          if (neutralPosition) topology.residualBreakerNeutralPosition = neutralPosition
+          else delete topology.residualBreakerNeutralPosition
+        } else if (role === 'solar-breaker' && typeof ratedCurrentA === 'number') {
+          topology.solarBreakerRatedCurrentA = ratedCurrentA
+          if (manufacturer) topology.solarBreakerManufacturer = manufacturer
+          else delete topology.solarBreakerManufacturer
+          if (neutralPosition) topology.solarBreakerNeutralPosition = neutralPosition
+          else delete topology.solarBreakerNeutralPosition
+        } else {
+          const additionalMatch = /^additional-differential-(?:consumers|ev|other)-(\d+)$/.exec(role)
+          if (additionalMatch && topology.additionalDifferentials) {
+            const expanded = topology.additionalDifferentials.flatMap((item) =>
+              Array.from({ length: item.count }, () => ({ ...item, count: 1 }))
+            )
+            const evDifferentials = expanded.filter((item) => item.purpose === 'ev')
+            const otherDifferentials = expanded.filter((item) => item.purpose !== 'ev')
+            const middle = Math.ceil(otherDifferentials.length / 2)
+            const displayedOrder = [
+              ...otherDifferentials.slice(0, middle),
+              ...evDifferentials,
+              ...otherDifferentials.slice(middle)
+            ]
+            const target = displayedOrder[Number(additionalMatch[1]) - 1]
+            if (target) {
+              if (typeof ratedCurrentA === 'number') target.ratedCurrentA = ratedCurrentA
+              else delete target.ratedCurrentA
+              if (typeof sensitivityMa === 'number') target.sensitivityMa = sensitivityMa
+              if (manufacturer) target.manufacturer = manufacturer
+              else delete target.manufacturer
+              if (neutralPosition) target.neutralPosition = neutralPosition
+              else delete target.neutralPosition
+              topology.additionalDifferentials = expanded
+            }
+          }
+        }
+        const capacity = assessOneWireCapacity(topology, {
+          gridProtectionCurrentA: this.#project.mainFuseA
+        })
+        const capacityColor = topology.residualBreaker
+          ? capacity.status === 'overload' ? '#b3261e' : '#000000'
+          : capacity.status === 'ok' ? '#8a5200' : '#b3261e'
+        this.#document.shapes = this.#document.shapes.map((shape) => {
+          if (shape.kind !== 'text') return shape
+          const statusRole = shape.sourceLink?.role
+          if (
+            statusRole === 'secondary-busbar-protection-label'
+            || statusRole === 'secondary-busbar-protection-warning'
+          ) {
+            return { ...shape, text: capacity.message, fill: capacityColor }
+          }
+          if (statusRole === 'secondary-busbar-capacity-detail') {
+            return { ...shape, text: capacity.detail, fill: capacityColor }
+          }
+          return shape
+        })
+        cadleShell.project = this.#project
+        void this.#persistProjectMetadata()
+      }
+      this.#pushHistory()
+      this.#render()
+      return
+    }
     if (payload.electrical && (circuitGroup || (currentPageType === 'onewire' && isProtectionSymbol && standaloneCircuitKey))) {
       const { role, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
       if (Object.keys(circuitProperties).length > 0) {
@@ -693,6 +798,20 @@ export class CadleApp extends LiteElement {
     this.#deleteNativeSelection()
   }
 
+  #onConvertSelectionToRoom = () => {
+    const ids = this.#selectedShapeIds()
+    const walls = ids
+      .map((id) => this.#shapeById(id))
+      .filter((shape): shape is LineShape => Boolean(shape && shape.kind === 'wall'))
+    if (walls.length !== ids.length) return
+    const converted = convertWallsToRoom(walls, nextShapeId)
+    if (!converted) return
+    const updates = new Map(converted.map((wall) => [wall.id, wall]))
+    this.#document.shapes = this.#document.shapes.map((shape) => updates.get(shape.id) ?? shape)
+    this.#pushHistory()
+    this.#render()
+  }
+
   #onNativeObjectFlipSide = () => {
     const shape = this.#shapeById(this.#document.selectedId)
     if (!shape || (shape.kind !== 'door' && shape.kind !== 'gate')) return
@@ -710,6 +829,10 @@ export class CadleApp extends LiteElement {
     this.#document.selectedIds = new Set()
 
     await this.#restore()
+    if (this.#documentSizeMigrated) {
+      this.#documentSizeMigrated = false
+      await this.#persist()
+    }
     this.#pushHistory(false)
     this.#render()
     await this.#syncWorldSizeSettled()
@@ -831,17 +954,38 @@ export class CadleApp extends LiteElement {
     this.#resetPageState()
     if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes)
     this.#rebindAllOpeningsToWalls()
-    if (typeof parsed.worldWidth === 'number' && Number.isFinite(parsed.worldWidth) && parsed.worldWidth > 0) {
-      this.#worldWidth = parsed.worldWidth
-    }
-    if (typeof parsed.worldHeight === 'number' && Number.isFinite(parsed.worldHeight) && parsed.worldHeight > 0) {
-      this.#worldHeight = parsed.worldHeight
-    }
     if (parsed.paperPreset && parsed.paperPreset in PAPER_PRESETS) {
       this.#paperPreset = parsed.paperPreset
     }
     if (typeof parsed.printMargin === 'number' && Number.isFinite(parsed.printMargin) && parsed.printMargin >= 0) {
       this.#printMargin = parsed.printMargin
+    }
+    const target = paperWorldSize(this.#paperPreset)
+    const previousWidth = typeof parsed.worldWidth === 'number' && parsed.worldWidth > 0 ? parsed.worldWidth : target.width
+    const previousHeight = typeof parsed.worldHeight === 'number' && parsed.worldHeight > 0 ? parsed.worldHeight : target.height
+    if (Math.abs(previousWidth - target.width) > 1 || Math.abs(previousHeight - target.height) > 1) {
+      const scale = Math.min(target.width / previousWidth, target.height / previousHeight)
+      const offsetX = (target.width - previousWidth * scale) / 2
+      const offsetY = (target.height - previousHeight * scale) / 2
+      this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, scale, offsetX, offsetY)
+      this.#documentSizeMigrated = true
+    }
+    this.#worldWidth = target.width
+    this.#worldHeight = target.height
+    const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    if (parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
+      const paper = PAPER_PRESETS[this.#paperPreset]
+      const fitted = fitLegacyGroundPlanToPrintArea(this.#document.shapes, {
+        width: this.#worldWidth,
+        height: this.#worldHeight,
+        widthMm: paper.widthMm,
+        heightMm: paper.heightMm,
+        marginMm: this.#printMargin
+      })
+      if (fitted.changed) {
+        this.#document.shapes = fitted.shapes
+        this.#documentSizeMigrated = true
+      }
     }
   }
 
@@ -910,15 +1054,7 @@ export class CadleApp extends LiteElement {
   #syncWorldSize() {
     const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
     if (!panel) return
-
-    const rect = panel.getBoundingClientRect()
-    const nextWidth = Math.max(1, Math.round(rect.width))
-    const nextHeight = Math.max(1, Math.round(rect.height))
-    if (nextWidth === this.#worldWidth && nextHeight === this.#worldHeight) return
-    this.#worldWidth = nextWidth
-    this.#worldHeight = nextHeight
-
-    this.#persist()
+    this.#autoCenterView()
     this.#render()
   }
 
@@ -1055,6 +1191,7 @@ export class CadleApp extends LiteElement {
     const maxY = Math.max(a.y, b.y)
     const ids: string[] = []
     for (const shape of this.#document.shapes) {
+      if (shape.locked) continue
       const bounds = shapeBounds(shape)
       if (bounds.x + bounds.width >= minX && bounds.x <= maxX && bounds.y + bounds.height >= minY && bounds.y <= maxY) {
         ids.push(shape.id)
@@ -1099,51 +1236,14 @@ export class CadleApp extends LiteElement {
     return Math.hypot(point.x - projection.x, point.y - projection.y) <= tolerance
   }
 
-  #pointToSegmentDistance(point: Point, start: Point, end: Point): number {
-    const deltaX = end.x - start.x
-    const deltaY = end.y - start.y
-    const lengthSquared = deltaX * deltaX + deltaY * deltaY
-    if (lengthSquared === 0) return Math.hypot(point.x - start.x, point.y - start.y)
-    const position = Math.max(
-      0,
-      Math.min(1, ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared)
-    )
-    const projectionX = start.x + position * deltaX
-    const projectionY = start.y + position * deltaY
-    return Math.hypot(point.x - projectionX, point.y - projectionY)
-  }
-
   #isOpeningShape(shape: Shape): shape is LineShape {
     return shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate'
   }
 
   #bindOpeningToWall(shape: LineShape): LineShape {
     if (!this.#isOpeningShape(shape)) return shape
-
-    const midpoint: Point = {
-      x: (shape.start.x + shape.end.x) / 2,
-      y: (shape.start.y + shape.end.y) / 2
-    }
-
-    let bestWall: LineShape | null = null
-    let bestDistance = 8
-    for (const candidate of this.#document.shapes) {
-      if (candidate.kind !== 'wall') continue
-      const startDistance = this.#pointToSegmentDistance(shape.start, candidate.start, candidate.end)
-      const endDistance = this.#pointToSegmentDistance(shape.end, candidate.start, candidate.end)
-      const middleDistance = this.#pointToSegmentDistance(midpoint, candidate.start, candidate.end)
-      if (startDistance > 8 || endDistance > 8 || middleDistance > 8) continue
-      const distance = (startDistance + endDistance + middleDistance) / 3
-      if (distance < bestDistance) {
-        bestDistance = distance
-        bestWall = candidate
-      }
-    }
-
-    const bound = { ...shape }
-    if (bestWall) bound.wallId = bestWall.id
-    else delete bound.wallId
-    return bound
+    const walls = this.#document.shapes.filter((candidate): candidate is LineShape => candidate.kind === 'wall')
+    return bindOpeningToNearestWall(shape, walls)
   }
 
   #rebindAllOpeningsToWalls() {
@@ -1168,7 +1268,7 @@ export class CadleApp extends LiteElement {
     const tolerance = Math.max(6, 12 / this.#viewport.state.zoom)
     for (let index = this.#document.shapes.length - 1; index >= 0; index -= 1) {
       const shape = this.#document.shapes[index]
-      if (shape.hidden) continue
+      if (shape.hidden || shape.locked) continue
       if (shape.kind === 'text' && shape.generationKey && shape.sourceLink) continue
       if (
         shape.kind === 'wall' ||
@@ -1219,18 +1319,27 @@ export class CadleApp extends LiteElement {
   }
 
   #selectedShapeIds(): string[] {
-    if (this.#document.selectedIds.size > 0) return [...this.#document.selectedIds]
-    return this.#document.selectedId ? [this.#document.selectedId] : []
+    const ids = this.#document.selectedIds.size > 0
+      ? [...this.#document.selectedIds]
+      : this.#document.selectedId
+        ? [this.#document.selectedId]
+        : []
+    return ids.filter((id) => !this.#shapeById(id)?.locked)
   }
 
   #expandSelectionWithGroup(shapeId: string): Set<string> {
     const shape = this.#shapeById(shapeId)
+    if (shape?.locked) return new Set()
     const groupId = shape?.groupId
     if (!groupId) return new Set([shapeId])
     // One-wire groupIds are layout metadata (realign, label dedupe) — shapes
     // stay individually selectable. Only user-made groups select as a whole.
     if (groupId.startsWith('onewire-')) return new Set([shapeId])
-    return new Set(this.#document.shapes.filter((item) => item.groupId === groupId).map((item) => item.id))
+    return new Set(
+      this.#document.shapes
+        .filter((item) => item.groupId === groupId && !item.locked)
+        .map((item) => item.id)
+    )
   }
 
   #selectedGroupIds(): string[] {
@@ -1572,8 +1681,9 @@ export class CadleApp extends LiteElement {
     let shapeId = shapeElement?.dataset.shapeId ?? null
     shapeId ??= this.#shapeIdAtPoint(point)
     if (!shapeId) {
-      this.#document.selectedIds = new Set(this.#document.shapes.map((shape) => shape.id))
-      this.#document.selectedId = this.#document.shapes[0]?.id ?? null
+      const selectable = this.#document.shapes.filter((shape) => !shape.locked)
+      this.#document.selectedIds = new Set(selectable.map((shape) => shape.id))
+      this.#document.selectedId = selectable[0]?.id ?? null
       this.#drag = null
       this.#bandStart = null
       this.#bandEnd = null
@@ -1890,8 +2000,11 @@ export class CadleApp extends LiteElement {
       case 'scale-down':
         return this.#transformNativeSelection('scale-down')
       case 'select-all':
-        this.#document.selectedIds = new Set(this.#document.shapes.map((shape) => shape.id))
-        this.#document.selectedId = this.#document.shapes[0]?.id ?? null
+        {
+          const selectable = this.#document.shapes.filter((shape) => !shape.locked)
+          this.#document.selectedIds = new Set(selectable.map((shape) => shape.id))
+          this.#document.selectedId = selectable[0]?.id ?? null
+        }
         this.#render()
         return true
       case 'delete':
@@ -2494,16 +2607,23 @@ export class CadleApp extends LiteElement {
 
   #groundplanShapePool(): Shape[] {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
-    const pool: Shape[] = currentPageType === 'onewire' ? [] : [...this.#document.shapes]
+    // Separate page coordinate spaces before room inference. Ground plans often
+    // reuse the same A4 coordinates, so flattening them directly could assign a
+    // device on page 2 to a room drawn at the same position on page 1.
+    const pageOffset = (shapes: readonly Shape[], pageIndex: number): Shape[] =>
+      shapes.map((shape) => translateShape(cloneShape(shape), pageIndex * 10_000_000, 0))
+    const pageKeys = Object.keys(this.#project?.pages ?? {}) as UUID[]
+    const currentPageIndex = this.#pageKey ? Math.max(0, pageKeys.indexOf(this.#pageKey)) : 0
+    const pool: Shape[] = currentPageType === 'onewire' ? [] : pageOffset(this.#document.shapes, currentPageIndex)
     if (!this.#project?.pages) return pool
 
-    for (const pageKey of Object.keys(this.#project.pages) as UUID[]) {
+    for (const [pageIndex, pageKey] of pageKeys.entries()) {
       if (pageKey === this.#pageKey) continue
       const page = this.#project.pages[pageKey]
       if (page?.pageType === 'onewire') continue
       const state = this.#nativeStateForPage(pageKey)
       if (!state || !Array.isArray(state.shapes)) continue
-      pool.push(...sanitizeShapes(state.shapes))
+      pool.push(...pageOffset(sanitizeShapes(state.shapes), pageIndex))
     }
 
     return pool
@@ -2519,6 +2639,10 @@ export class CadleApp extends LiteElement {
 
   getBOMRows(): BomRow[] {
     return circuitBomRows(this.analyzeBindings())
+  }
+
+  getCircuitScheduleEditorItems(): CircuitScheduleEditorItem[] {
+    return circuitScheduleEditorItems(this.#project, this.analyzeBindings())
   }
 
   generateAutoOneWire(pageIndex = 0): { generated: boolean; circuitCount: number; pageCount?: number; message?: string } {
@@ -2572,20 +2696,51 @@ export class CadleApp extends LiteElement {
       const rails = new Map<number, LineShape>()
       if (topologyPage && topology) {
         const busWidth = Math.min(620, this.#worldWidth - 240)
-        const busY = this.#worldHeight * 0.46
+        const busY = this.#worldHeight * 0.64
+        const previousTopologyBus = previousGenerated.find(
+          (shape): shape is LineShape =>
+            shape.kind === 'line' && shape.generationKey === 'board:main:topology:bus'
+        )
         const topologyBus: LineShape = {
           id: nextShapeId(),
           kind: 'line',
-          start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
-          end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
+          start: previousTopologyBus
+            ? { ...previousTopologyBus.start }
+            : { x: (this.#worldWidth - busWidth) / 2, y: busY },
+          end: previousTopologyBus
+            ? { ...previousTopologyBus.end }
+            : { x: (this.#worldWidth + busWidth) / 2, y: busY },
           stroke: '#111111',
-          strokeWidth: 2.5,
+          strokeWidth: KAMRAIL_STROKE_WIDTH,
           groupId: `onewire-topology-${nextShapeId()}`,
           generationKey: 'board:main:topology:bus',
           sourceLink: { kind: 'board', id: 'main', role: 'topology-bus' }
         }
         this.#document.shapes.push(topologyBus)
-        this.#document.shapes.push(...buildOneWireTopology(topology, topologyBus, nextShapeId))
+        const evGroup = analysis.groups.find((group) =>
+          group.components.some((component) =>
+            /(?:elektrische\s+(?:wagen|auto)|laadpaal|wallbox|\bev\b)/i.test(`${component.name} ${component.path ?? ''}`)
+          )
+        )
+        const evComponent = evGroup?.components.find((component) =>
+          Boolean(component.path) && /(?:elektrische\s+(?:wagen|auto)|laadpaal|wallbox|\bev\b)/i.test(`${component.name} ${component.path}`)
+        )
+        this.#document.shapes.push(...buildOneWireTopology(topology, topologyBus, nextShapeId, {
+          gridProtectionCurrentA: this.#project?.mainFuseA,
+          defaultPoles: this.#project?.electricalProfile?.defaultPoles,
+          phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
+          protectionManufacturer: 'Schneider Electric',
+          ...(evGroup && evComponent?.path
+            ? {
+                ev: {
+                  bindingId: evGroup.bindingId,
+                  name: evComponent.name,
+                  path: evComponent.path,
+                  scale: inferSymbolScale(evComponent.path)
+                }
+              }
+            : {})
+        }))
       } else {
         for (const railIndex of new Set(visiblePlacements.map((placement) => placement.railIndex))) {
           const railY = Math.max(220, this.#worldHeight - 180 - railIndex * 320)
@@ -2628,6 +2783,8 @@ export class CadleApp extends LiteElement {
           breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
           poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
           phaseConfiguration: familyGroups.some((group) => group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N') ? 'three-phase' : familyGroups[0]?.specification.phaseConfiguration,
+          manufacturer: familyGroups[0]?.specification.manufacturer ?? 'Schneider Electric',
+          neutralPosition: familyGroups[0]?.specification.neutralPosition ?? 'left',
           showPhaseLabel: familyGroups[0]?.specification.showPhaseLabel ?? true,
           family,
           autoIncludeFamily: true,
@@ -2725,7 +2882,7 @@ export class CadleApp extends LiteElement {
   #addKamrailCircuitBundle(
     rail: LineShape,
     anchorX: number,
-    options: { amps: number; cableSectionMm2?: number; cableConductors?: number; hasProtectiveConductor?: boolean; cableType?: string; cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'; showCableInstallation?: boolean; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; showPhaseLabel?: boolean; family: string; autoIncludeFamily: boolean; omitBreaker?: boolean; hideFamilyLabel?: boolean; allowEmptyFamily?: boolean; bindingIds?: string[] }
+    options: { amps: number; cableSectionMm2?: number; cableConductors?: number; hasProtectiveConductor?: boolean; cableType?: string; cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'; showCableInstallation?: boolean; breakerCurve?: 'B' | 'C' | 'D' | 'other'; poles?: number; phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'; manufacturer?: string; neutralPosition?: 'left' | 'right'; showPhaseLabel?: boolean; family: string; autoIncludeFamily: boolean; omitBreaker?: boolean; hideFamilyLabel?: boolean; allowEmptyFamily?: boolean; bindingIds?: string[] }
   ): boolean {
     const includedBindings = options.bindingIds?.length ? new Set(options.bindingIds) : null
     const familyComponents = options.autoIncludeFamily
@@ -3081,8 +3238,8 @@ export class CadleApp extends LiteElement {
     const defaults = circuitDefaults(stored.circuitType ?? base.circuitType)
     const cableConductors = stored.cableConductors ?? base.cableConductors ?? defaults.cableConductors
     return {
-      ...base,
       ...defaults,
+      ...base,
       ...stored,
       role: 'protection',
       oneWireEligible: true,
@@ -3096,6 +3253,12 @@ export class CadleApp extends LiteElement {
         stored.phaseConfiguration ??
         this.#project?.electricalProfile?.phaseConfiguration ??
         defaults.phaseConfiguration,
+      manufacturer: stored.manufacturer ?? base.manufacturer ?? 'Schneider Electric',
+      neutralPosition:
+        stored.neutralPosition
+        ?? base.neutralPosition
+        ?? neutralPositionForManufacturer(stored.manufacturer ?? base.manufacturer ?? 'Schneider Electric')
+        ?? 'right',
       showPhaseLabel: stored.showPhaseLabel ?? base.showPhaseLabel ?? true,
       poles:
         stored.poles ??
@@ -3125,6 +3288,10 @@ export class CadleApp extends LiteElement {
       showCableInstallation: group.specification.showCableInstallation,
       poles: group.specification.poles,
       phaseConfiguration: group.specification.phaseConfiguration,
+      manufacturer: group.specification.manufacturer,
+      productSeries: group.specification.productSeries,
+      productReference: group.specification.productReference,
+      neutralPosition: group.specification.neutralPosition,
       showPhaseLabel: group.specification.showPhaseLabel,
       breakerCurve: group.specification.breakerCurve ?? 'C',
       rcdSensitivityMa: group.specification.rcdSensitivityMa,
@@ -3198,6 +3365,14 @@ export class CadleApp extends LiteElement {
         groupSpecification?.phaseConfiguration ??
         this.#project?.electricalProfile?.phaseConfiguration ??
         defaults.phaseConfiguration,
+      manufacturer: stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric',
+      productSeries: stored.productSeries ?? groupSpecification?.productSeries,
+      productReference: stored.productReference ?? groupSpecification?.productReference,
+      neutralPosition:
+        stored.neutralPosition
+        ?? groupSpecification?.neutralPosition
+        ?? neutralPositionForManufacturer(stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric')
+        ?? 'right',
       showPhaseLabel:
         stored.showPhaseLabel ??
         groupSpecification?.showPhaseLabel ??
@@ -3212,7 +3387,7 @@ export class CadleApp extends LiteElement {
       'breaker-poles': `${specification.poles}P`,
       'breaker-current': `${specification.breakerCurve ?? 'C'}${specification.breakerCurrentA}A`,
       'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-        ? oneWirePhaseLabelText(specification.phaseConfiguration)
+        ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
         : '',
       'cable-section': oneWireCableLabelText({
         conductors: specification.cableConductors,
@@ -3237,11 +3412,16 @@ export class CadleApp extends LiteElement {
         changed = true
         return {
           ...shape,
+          electrical: {
+            ...(shape.electrical ?? { role: 'protection', oneWireEligible: true }),
+            manufacturer: specification.manufacturer,
+            neutralPosition: specification.neutralPosition
+          },
           symbolTextOverrides: {
             ...(shape.symbolTextOverrides ?? {}),
             poles: `${specification.poles}P`,
             phase: shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-              ? oneWirePhaseLabelText(specification.phaseConfiguration)
+              ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
               : '',
             'rated-current': `${specification.breakerCurrentA}A`,
             ...(isResidualBreaker
@@ -3320,12 +3500,24 @@ export class CadleApp extends LiteElement {
     }
 
     const groupedSelection = this.#selectedGroupId()
+    const selectedShapes = this.#selectedShapeIds()
+      .map((id) => this.#shapeById(id))
+      .filter((shape): shape is Shape => Boolean(shape))
+    const canConvertToRoom =
+      !groupedSelection &&
+      selectedShapes.length >= 3 &&
+      selectedShapes.every((shape) => shape.kind === 'wall')
     const circuitGroup = selectedShape ? this.#circuitGroupForShape(selectedShape) : null
     const isProtectionText = selectedShape?.kind === 'symbol' && /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
+    const isTopologyProtection = Boolean(
+      isProtectionText && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
+    )
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const circuitPropertiesEditable = currentPageType === 'onewire' && Boolean(isProtectionText)
     const effectiveElectrical = selectedShape?.kind === 'symbol' && circuitPropertiesEditable
-      ? circuitGroup
+      ? isTopologyProtection
+        ? selectedShape.electrical ?? electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
+        : circuitGroup
         ? this.#effectiveCircuitElectrical(selectedShape, circuitGroup)
         : this.#effectiveStandaloneCircuitElectrical(selectedShape)
       : undefined
@@ -3338,14 +3530,15 @@ export class CadleApp extends LiteElement {
           : circuitGroup?.bindingId ?? (selectedShape ? this.#circuitKeyForShape(selectedShape) ?? undefined : undefined),
         electricalOverride: effectiveElectrical,
         circuitPropertiesEditable,
-        hideSymbolTextFields: Boolean(isProtectionText)
+        hideSymbolTextFields: Boolean(isProtectionText),
+        canConvertToRoom
       })
     )
   }
 
   #nativeDocumentState(): NativeDocumentState {
     return {
-      version: 1,
+      version: 2,
       shapes: this.#document.shapes,
       selectedId: null,
       paperPreset: this.#paperPreset,
@@ -3536,26 +3729,8 @@ export class CadleApp extends LiteElement {
     return safeAreaRect(this.#paperMeta(), this.#printMargin, this.#worldWidth, this.#worldHeight)
   }
 
-  async #svgToLandscapePng(svgString: string): Promise<string> {
-    const widthPx = 3508
-    const heightPx = 2480
-    // Use a data URL — blob URLs can fail silently in Electron renderer
-    const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image(widthPx, heightPx)
-      img.onload = () => resolve(img)
-      img.onerror = () => reject(new Error('Unable to render intro page SVG'))
-      img.src = svgDataUrl
-    })
-    const canvas = document.createElement('canvas')
-    canvas.width = widthPx
-    canvas.height = heightPx
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Canvas unavailable')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, widthPx, heightPx)
-    ctx.drawImage(image, 0, 0, widthPx, heightPx)
-    return canvas.toDataURL('image/png')
+  async #svgToPagePng(svgString: string, orientation: 'landscape' | 'portrait' = 'landscape'): Promise<string> {
+    return rasterizePageSvgToPng(svgString, orientation, 'Unable to render intro page SVG')
   }
 
   async exportProjectPdf(filename = `cadle-${this.#paperPreset}.pdf`) {
@@ -3593,7 +3768,7 @@ export class CadleApp extends LiteElement {
     try {
       // ── Cover / intro page (AREI) ──────────────────────────────────────
       const introSvg = buildIntroPageSvg(this.#project)
-      const introDataUrl = await this.#svgToLandscapePng(introSvg)
+      const introDataUrl = await this.#svgToPagePng(introSvg)
       pdf = new jsPDF({ format: 'a4', unit: 'px', orientation: 'landscape', compress: true })
       const introPw = pdf.internal.pageSize.getWidth()
       const introPh = pdf.internal.pageSize.getHeight()
@@ -3602,7 +3777,33 @@ export class CadleApp extends LiteElement {
       pdf.addImage(introDataUrl, 'PNG', 0, 0, introPw, introPh, 'intro-page', 'FAST')
       pageIndex = 1
 
+      // ── Distribution-board circuit schedule ───────────────────────────
+      const scheduleSvgs = buildCircuitScheduleSvgs(this.#project, this.analyzeBindings())
+      for (const [scheduleIndex, scheduleSvg] of scheduleSvgs.entries()) {
+        const scheduleDataUrl = await this.#svgToPagePng(scheduleSvg, 'portrait')
+        pdf.addPage('a4', 'portrait')
+        const scheduleWidth = pdf.internal.pageSize.getWidth()
+        const scheduleHeight = pdf.internal.pageSize.getHeight()
+        pdf.setFillColor(255, 255, 255)
+        pdf.rect(0, 0, scheduleWidth, scheduleHeight, 'F')
+        pdf.addImage(
+          scheduleDataUrl,
+          'PNG',
+          0,
+          0,
+          scheduleWidth,
+          scheduleHeight,
+          `circuit-schedule-${scheduleIndex}`,
+          'FAST'
+        )
+        pageIndex += 1
+      }
+
       for (const [pageKey, page] of projectPages) {
+        // The circuit overview is rendered from live project data above; its
+        // project-page entry only stores navigation/order and must not become
+        // an extra blank drawing page in the dossier.
+        if (page.pageType === 'circuit-schedule') continue
         // For the currently active page use the captured in-memory state so unsaved
         // edits are included. For all other pages read from the stored project schema.
         const state =
@@ -3617,24 +3818,11 @@ export class CadleApp extends LiteElement {
         const exportViewBox = this.#exportViewBox(this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait')
         const svgString = this.#buildSvgDocument(exportViewBox ?? undefined, false, page.name, pageKey)
         const orientation: 'landscape' | 'portrait' = this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait'
-        const widthPx = orientation === 'landscape' ? 3508 : 2480
-        const heightPx = orientation === 'landscape' ? 2480 : 3508
-        const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
-        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const img = new Image(widthPx, heightPx)
-          img.onload = () => resolve(img)
-          img.onerror = () => reject(new Error(`Failed to render page ${page.name}`))
-          img.src = svgDataUrl
-        })
-        const canvas = document.createElement('canvas')
-        canvas.width = widthPx
-        canvas.height = heightPx
-        const ctx2d = canvas.getContext('2d')
-        if (!ctx2d) throw new Error('Canvas unavailable')
-        ctx2d.fillStyle = '#ffffff'
-        ctx2d.fillRect(0, 0, widthPx, heightPx)
-        ctx2d.drawImage(image, 0, 0, widthPx, heightPx)
-        const dataUrl = canvas.toDataURL('image/png')
+        const dataUrl = await rasterizePageSvgToPng(
+          svgString,
+          orientation,
+          `Failed to render page ${page.name}`
+        )
 
         pdf.addPage('a4', orientation)
         const pageWidth = pdf.internal.pageSize.getWidth()
@@ -3748,7 +3936,8 @@ export class CadleApp extends LiteElement {
     const minorGrid = GRID_SIZE * 2 * zoom
     const majorGrid = GRID_SIZE * 10 * zoom
     const gridStyle =
-      `background-position: ${panX}px ${panY}px; ` +
+      `left:${panX}px;top:${panY}px;width:${this.#worldWidth * zoom}px;height:${this.#worldHeight * zoom}px; ` +
+      `background-position: 0 0; ` +
       `background-size: ${minorGrid}px ${minorGrid}px, ${minorGrid}px ${minorGrid}px, ` +
       `${majorGrid}px ${majorGrid}px, ${majorGrid}px ${majorGrid}px`
     const cursor = this.#isPanning || this.#spaceDown ? 'grab' : 'default'
@@ -3774,10 +3963,14 @@ export class CadleApp extends LiteElement {
               @pointercancel=${this.#onPointerUp}
               @dblclick=${this.#onStageDoubleClick}
               @contextmenu=${this.#onStageContextMenu}>
-              <defs>${this.#wallMaskTemplate()}</defs>
+              <defs>
+                ${this.#wallMaskTemplate()}
+                <clipPath id="page-clip"><rect width=${this.#worldWidth} height=${this.#worldHeight}></rect></clipPath>
+              </defs>
               <g
                 class="world"
-                transform=${worldTransform}>
+                transform=${worldTransform}
+                clip-path="url(#page-clip)">
                 ${this.#committedTemplate(selectedShape)} ${this.#previewTemplate()}
               </g>
             </svg>
@@ -4015,7 +4208,7 @@ export class CadleApp extends LiteElement {
   }
 
   #hasWallOpenings(): boolean {
-    return this.#document.shapes.some((shape) => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate')
+    return hasWallOpeningMask(this.#document.shapes)
   }
 
   #wallMaskTemplate() {
@@ -4085,6 +4278,7 @@ export class CadleApp extends LiteElement {
       ${groupedTemplate(restShapes)}
       ${groupedTemplate(openingShapes)}
       ${groupedTemplate(symbolShapes)}
+      ${roomLabelsTemplate(this.#document.shapes)}
       ${this.#bindingLabelsTemplate()}
       ${this.#projectTitleBlockTemplate()}
       ${this.#selectedOutlineTemplate(selectedShape)}
@@ -4105,7 +4299,11 @@ export class CadleApp extends LiteElement {
           }
         : null
     return svg`
-      ${this.#draft ? this.#shapeTemplate(this.#draft, false, 'draft') : nothing}
+      ${this.#draft
+        ? this.#tools.current === 'room' && this.#draft.kind === 'rect'
+          ? roomDraftTemplate(this.#draft.start, this.#draft.end)
+          : this.#shapeTemplate(this.#draft, false, 'draft')
+        : nothing}
       ${symbolPreviewShape ? this.#shapeTemplate(symbolPreviewShape, false, 'symbol-preview') : nothing}
       ${this.#snapIndicatorTemplate()}
       ${this.#wallChainPreviewTemplate()}
@@ -4154,7 +4352,17 @@ export class CadleApp extends LiteElement {
   }) => {
     const paperPreset = payload.paper
     if (paperPreset && paperPreset in PAPER_PRESETS) {
+      const previousWidth = this.#worldWidth
+      const previousHeight = this.#worldHeight
+      const target = paperWorldSize(paperPreset)
+      const scale = Math.min(target.width / previousWidth, target.height / previousHeight)
+      const offsetX = (target.width - previousWidth * scale) / 2
+      const offsetY = (target.height - previousHeight * scale) / 2
+      this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, scale, offsetX, offsetY)
       this.#paperPreset = paperPreset
+      this.#worldWidth = target.width
+      this.#worldHeight = target.height
+      this.#autoCenterView()
       this.#persist()
       this.#render()
       return
@@ -4291,9 +4499,13 @@ export class CadleApp extends LiteElement {
     const shapeElement = event.target instanceof Element ? event.target.closest<SVGElement>('[data-shape-id]') : null
     let shapeId = shapeElement?.dataset.shapeId ?? null
     shapeId ??= this.#shapeIdAtPoint(rawPoint)
+    const canSelectExistingShape = allowsExistingShapeSelection(
+      this.#tools.current,
+      Boolean(this.#pendingCatalogSymbol)
+    )
 
     const labelElement = event.target instanceof Element ? event.target.closest<SVGGElement>('.binding-label') : null
-    if (labelElement && event.button === 0 && shapeId) {
+    if (canSelectExistingShape && labelElement && event.button === 0 && shapeId) {
       const shape = this.#shapeById(shapeId)
       if (shape) {
         const labelText = labelElement.querySelector<SVGTextElement>('text')
@@ -4327,8 +4539,7 @@ export class CadleApp extends LiteElement {
     if (
       shapeId &&
       isAdditiveSelection &&
-      this.#tools.current !== 'onewire' &&
-      !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
+      canSelectExistingShape
     ) {
       const expanded = this.#expandSelectionWithGroup(shapeId)
       const next = new Set(this.#document.selectedIds.size ? this.#document.selectedIds : this.#document.selectedId ? [this.#document.selectedId] : [])
@@ -4353,8 +4564,7 @@ export class CadleApp extends LiteElement {
     if (
       shapeId &&
       event.button === 0 &&
-      this.#tools.current !== 'onewire' &&
-      !(this.#tools.current === 'symbol' && this.#pendingCatalogSymbol)
+      canSelectExistingShape
     ) {
       if (shapeId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
         this.#document.selectedIds = new Set([PROJECT_LOGO_SHAPE_ID])
@@ -4590,7 +4800,7 @@ export class CadleApp extends LiteElement {
       return
     }
 
-    if (this.#tools.current === 'select' || (this.#tools.current === 'symbol' && !this.#pendingCatalogSymbol)) {
+    if (canSelectExistingShape) {
       const selectResult = resolveSelectPointerDownState({
         shapeId,
         rawPoint,
@@ -4910,7 +5120,18 @@ export class CadleApp extends LiteElement {
     }
 
     if (phase === 'draft' && this.#draft) {
-      if (canCommitDraft(this.#draft)) {
+      if (
+        this.#tools.current === 'room' &&
+        this.#draft.kind === 'rect' &&
+        Math.abs(this.#draft.end.x - this.#draft.start.x) >= 2 &&
+        Math.abs(this.#draft.end.y - this.#draft.start.y) >= 2
+      ) {
+        const walls = createRoomWalls(this.#draft.start, this.#draft.end, nextShapeId)
+        this.#document.shapes.push(...walls)
+        this.#document.selectedId = walls[0]?.id ?? null
+        this.#document.selectedIds = new Set(walls.map((wall) => wall.id))
+        this.#pushHistory()
+      } else if (canCommitDraft(this.#draft) && this.#tools.current !== 'room') {
         const draftShape = cloneShape(this.#draft)
         const committedShape =
           draftShape.kind === 'door' || draftShape.kind === 'window' || draftShape.kind === 'gate'

@@ -32,8 +32,8 @@ test('normalizes ground-plan protection symbols to their one-wire variants', () 
     ),
     'symbols/Protection devices/Residual-current circuit breaker.svg'
   )
-  assert.equal(oneWireSymbolScaleFor('symbols/Protection devices/Automaat.svg'), 3)
-  assert.equal(oneWireSymbolScaleFor('symbols/Protection devices/Residual-current circuit breaker.svg'), 4)
+  assert.equal(oneWireSymbolScaleFor('symbols/Protection devices/Automaat.svg'), 2.8)
+  assert.equal(oneWireSymbolScaleFor('symbols/Protection devices/Residual-current circuit breaker.svg'), 3.6)
 })
 
 test('formats cable designations with or without a yellow-green conductor', () => {
@@ -117,7 +117,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
       ['label', 'A'],
       ['breaker-poles', '2P'],
       ['breaker-current', 'C20A'],
-      ['breaker-phase', 'L1N'],
+      ['breaker-phase', 'N-L1'],
       ['cable-section', '3G1.5 mm²']
     ]
   )
@@ -190,7 +190,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
     configuredPhase.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')?.kind === 'text'
       ? configuredPhase.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')?.text
       : null,
-    'L1N'
+    'N-L1'
   )
   const hiddenPhase = buildOneWireBreakerSection(
     700,
@@ -244,10 +244,10 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   const fourPolePhaseLabel = fourPolePhase.shapes.find(
     (shape) => shape.sourceLink?.role === 'breaker-phase'
   )
-  assert.equal(fourPolePhaseLabel?.kind === 'text' ? fourPolePhaseLabel.text : null, 'L1L2L3N')
-  assert.equal(oneWirePhaseLabelText('L2+N'), 'L2N')
-  assert.equal(oneWirePhaseLabelText('L3+N'), 'L3N')
-  assert.equal(oneWirePhaseLabelText('L1+L2+L3+N'), 'L1L2L3N')
+  assert.equal(fourPolePhaseLabel?.kind === 'text' ? fourPolePhaseLabel.text : null, '')
+  assert.equal(oneWirePhaseLabelText('L2+N'), 'L2-N')
+  assert.equal(oneWirePhaseLabelText('L3+N'), 'L3-N')
+  assert.equal(oneWirePhaseLabelText('L1+L2+L3+N'), 'L1-L2-L3-N')
 
   const placedBreaker = result.shapes.find(
     (shape): shape is Extract<Shape, { kind: 'symbol' }> =>
@@ -356,6 +356,52 @@ test('turns a lone socket onto the vertical circuit trunk', () => {
   assert.equal(outlet.rotation, -90)
   assert.equal(outlet.position.x, 400)
   assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'number-label'))
+})
+
+test('keeps numbered row symbols close to the vertical circuit trunk', () => {
+  const result = buildKamrailCircuitBundle({
+    rail: {
+      id: 'rail',
+      kind: 'line',
+      start: { x: 80, y: 700 },
+      end: { x: 900, y: 700 }
+    },
+    anchorX: 400,
+    options: {
+      amps: 20,
+      cableSectionMm2: 2.5,
+      family: 'A',
+      autoIncludeFamily: true
+    },
+    familyComponents: [
+      { bindingId: 'A1', kind: 'load', sourceShapeId: 'load-1', sourceName: 'Load 1' },
+      { bindingId: 'A2', kind: 'load', sourceShapeId: 'load-2', sourceName: 'Load 2' }
+    ],
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: (kind) => ({
+      name: kind === 'breaker' ? 'Automaat' : 'Fallback',
+      path: kind === 'breaker' ? 'symbols/Protection devices/Automaat.svg' : 'symbols/Fallback.svg'
+    }),
+    oneWireSymbolScale: () => 1,
+    symbolContentBounds: (shape) => ({
+      x: shape.position.x - 12,
+      y: shape.position.y - 12,
+      width: 24,
+      height: 24
+    }),
+    branchStroke: '#000000'
+  })
+
+  assert.ok(result)
+  const firstSymbol = result.shapes.find(
+    (shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'load-1'
+  )
+  const firstConnector = result.shapes.find(
+    (shape) => shape.kind === 'line' && shape.bindingId === 'A1' && shape.start.y === shape.end.y
+  )
+  assert.equal(firstSymbol?.kind === 'symbol' ? firstSymbol.position.x : null, 430)
+  assert.ok(firstConnector?.kind === 'line')
+  assert.ok(firstConnector.end.x - firstConnector.start.x <= 20)
 })
 
 test('stacks the only multi-device circuit vertically instead of creating a row', () => {

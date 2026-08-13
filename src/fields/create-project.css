@@ -63,7 +63,7 @@ flex-container {
   gap: var(--cadle-space-3);
   align-items: end;
 }
-.field-grid md-outlined-text-field {
+.field-grid .input-field {
   margin-bottom: 0;
 }
 .address-row {
@@ -71,15 +71,18 @@ flex-container {
   grid-template-columns: minmax(100px, 0.75fr) minmax(140px, 1.25fr);
   gap: var(--cadle-space-3);
 }
-.select-field {
+.select-field,
+.input-field {
   display: grid;
   gap: 6px;
   color: var(--md-sys-color-on-surface-variant);
   font-size: 12px;
 }
-.select-field select {
+.select-field select,
+.input-field input {
   width: 100%;
   height: var(--cadle-control-height);
+  box-sizing: border-box;
   padding: 0 12px;
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--cadle-radius-sm);
@@ -100,14 +103,15 @@ flex-container {
   margin-top: var(--cadle-space-2);
   color: var(--md-sys-color-on-surface-variant);
 }
-md-outlined-text-field {
+.input-field {
   width: 100%;
-  height: var(--cadle-control-height);
   margin-bottom: var(--cadle-space-3);
-  --md-outlined-text-field-focus-outline-color: var(--md-sys-color-primary);
-  --md-outlined-text-field-caret-color: var(--md-sys-color-primary);
 }
-md-outlined-text-field:last-of-type {
+.input-field:focus-within input {
+  border-color: var(--md-sys-color-primary);
+  outline: 1px solid var(--md-sys-color-primary);
+}
+.input-field:last-of-type {
   margin-bottom: 0;
 }
 .actions {
@@ -134,11 +138,7 @@ md-outlined-text-field:last-of-type {
   background: var(--md-sys-color-error-container);
   font-size: 14px;
 }
-md-filled-button {
-  --md-filled-button-container-color: var(--md-sys-color-primary);
-  --md-filled-button-label-text-color: var(--md-sys-color-on-primary);
-}
-md-filled-button {
+custom-button {
   min-width: 140px;
   font-weight: 600;
   letter-spacing: 0.02em;

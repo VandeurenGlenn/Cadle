@@ -38,6 +38,10 @@ export const shellStyles = css`
     min-height: 0;
   }
 
+  .layout[data-circuit-schedule='true'] {
+    grid-template-columns: var(--cadle-rail-left, 272px) minmax(0, 1fr);
+  }
+
   .left-rail,
   .right-rail {
     display: flex;

@@ -1,5 +1,9 @@
 import { GRID_SIZE } from '../constants.js'
-import { phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
+import {
+  phaseConfigurationLabel,
+  neutralPositionForManufacturer,
+  shouldShowPhaseLabel
+} from '../model/electrical.js'
 import { oneWireSymbolNodeInfo, oneWireSymbolRotationFor } from './onewire-symbol-nodes.js'
 import type { LineShape, Point, Shape, SymbolShape, TextShape } from '../../editor/model/types.js'
 
@@ -42,6 +46,8 @@ type OneWireBundleOptions = {
   showCableInstallation?: boolean
   poles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
+  manufacturer?: string
+  neutralPosition?: 'left' | 'right'
   showPhaseLabel?: boolean
   breakerCurve?: string
   family: string
@@ -100,8 +106,11 @@ const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GR
 const ONE_WIRE_FIRST_ROW_OFFSET_Y = 180
 const ONE_WIRE_ROW_SPACING_Y = 40
 
-export const oneWirePhaseLabelText = (phase: OneWireBundleOptions['phaseConfiguration'] | undefined): string => {
-  return phaseConfigurationLabel(phase)
+export const oneWirePhaseLabelText = (
+  phase: OneWireBundleOptions['phaseConfiguration'] | undefined,
+  neutralPosition: OneWireBundleOptions['neutralPosition'] = 'right'
+): string => {
+  return phaseConfigurationLabel(phase, neutralPosition)
 }
 
 const ONE_WIRE_CABLE_INSTALLATION_PATHS: Record<OneWireCableInstallation, string> = {
@@ -172,6 +181,8 @@ export const buildOneWireBreakerSection = (
     | 'amps'
     | 'poles'
     | 'phaseConfiguration'
+    | 'manufacturer'
+    | 'neutralPosition'
     | 'showPhaseLabel'
     | 'cableSectionMm2'
     | 'cableConductors'
@@ -210,6 +221,25 @@ export const buildOneWireBreakerSection = (
       poles: '',
       phase: '',
       'rated-current': ''
+    },
+    electrical: {
+      role: 'protection',
+      oneWireEligible: true,
+      breakerCurrentA: specification?.amps ?? 20,
+      poles: specification?.poles ?? 2,
+      phaseConfiguration: specification?.phaseConfiguration ?? 'single-phase',
+      manufacturer: specification?.manufacturer ?? 'Schneider Electric',
+      neutralPosition:
+        specification?.neutralPosition
+        ?? neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric')
+        ?? 'right',
+      breakerCurve:
+        specification?.breakerCurve === 'B'
+        || specification?.breakerCurve === 'C'
+        || specification?.breakerCurve === 'D'
+        || specification?.breakerCurve === 'other'
+          ? specification.breakerCurve
+          : 'C'
     },
     bindingId,
     groupId
@@ -259,7 +289,12 @@ export const buildOneWireBreakerSection = (
       y: Math.min(breakerBounds.y + breakerBounds.height + 8, railY - 12)
     },
     text: shouldShowPhaseLabel(specification?.poles, specification?.showPhaseLabel)
-      ? oneWirePhaseLabelText(specification?.phaseConfiguration)
+      ? oneWirePhaseLabelText(
+          specification?.phaseConfiguration,
+          specification?.neutralPosition
+            ?? neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric')
+            ?? 'right'
+        )
       : '',
     textAnchor: 'end',
     fill: '#000000',
@@ -334,6 +369,7 @@ export const buildOneWireRowSection = (
   compactSingleCircuit = false
 ): { shapes: Shape[]; ids: string[] } => {
   const ROW_NUMBER_OFFSET_X = -20
+  const ROW_FIRST_SYMBOL_OFFSET_X = 30
   const ROW_SYMBOL_MARGIN_X = 0
   const SPOT_LEADING_MARGIN_X = 10
   const [bindingId, entries] = row
@@ -341,7 +377,9 @@ export const buildOneWireRowSection = (
   const rowJunctionX = snapToGrid(startX)
   const drawableEntryCount = entries.filter((entry) => entry.kind !== 'empty').length
   const placeDirectlyOnTrunk = compactSingleCircuit && drawableEntryCount === 1
-  const symbolBaseX = snapToGrid(placeDirectlyOnTrunk ? rowJunctionX : rowJunctionX + 48)
+  const symbolBaseX = snapToGrid(
+    placeDirectlyOnTrunk ? rowJunctionX : rowJunctionX + ROW_FIRST_SYMBOL_OFFSET_X
+  )
   const rowGroupId = `onewire-${deps.nextShapeId()}`
 
   const resolvedEntryPath = (entry: OneWireResolvedComponent): string =>

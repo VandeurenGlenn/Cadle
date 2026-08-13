@@ -5,6 +5,13 @@ import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache
 import { symbolTextLayer } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 import { getBoundedCache, setBoundedCache } from '../helpers/bounded-cache.js'
+import {
+  ENERGY_SCENARIO_DURATION,
+  ENERGY_SCENARIO_KEY_TIMES,
+  energyScenarioOpacityValues,
+  oneWireEnergyFlowSegments
+} from './onewire-energy-flow.js'
+import { namedRoomRegions } from './room-regions.js'
 
 type OpticalInsets = { left: number; right: number; top: number; bottom: number }
 
@@ -149,6 +156,15 @@ const openingMatchesWall = (opening: LineShape, walls: LineShape[], tolerance = 
   return Boolean(boundWall && openingOnWall(opening, boundWall, tolerance))
 }
 
+const boundWallOpenings = (shapes: Shape[]): LineShape[] => {
+  const walls = shapes.filter((shape): shape is LineShape => shape.kind === 'wall')
+  return shapes
+    .filter((shape): shape is LineShape => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate')
+    .filter((opening) => openingMatchesWall(opening, walls))
+}
+
+export const hasWallOpeningMask = (shapes: Shape[]): boolean => boundWallOpenings(shapes).length > 0
+
 const shapeTransform = (shape: Extract<Shape, { position: Point }>): string => {
   const rotate = shape.rotation ? ` rotate(${shape.rotation})` : ''
   const scale = shape.flipX || shape.flipY ? ` scale(${shape.flipX ? -1 : 1} ${shape.flipY ? -1 : 1})` : ''
@@ -179,7 +195,11 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
     'strokeWidth' in shape && typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;` : nothing
   switch (shape.kind) {
     case 'wall':
-    case 'line':
+    case 'line': {
+      const energyFlows = shape.kind === 'line' ? oneWireEnergyFlowSegments(shape) : []
+      const animationDelay = energyFlows.length
+        ? `-${((shape.sourceLink?.role ?? '').split('').reduce((sum, character) => sum + character.charCodeAt(0), 0) % 14) / 10}s`
+        : '0s'
       return svg`
         <line
           class=${shapeClass}
@@ -191,7 +211,27 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
           y1=${shape.start.y}
           x2=${shape.end.x}
           y2=${shape.end.y}></line>
+        ${energyFlows.map((energyFlow, index) => svg`
+              <circle
+                class=${`onewire-energy-pulse ${energyFlow.source === 'generator' ? 'onewire-energy-pulse-generator' : ''}`}
+                aria-hidden="true"
+                cx=${energyFlow.from.x}
+                cy=${energyFlow.from.y}
+                r="3">
+                <animate attributeName="cx" values=${`${energyFlow.from.x};${energyFlow.to.x}`} dur="1.8s" begin=${index ? '-0.9s' : animationDelay} repeatCount="indefinite"></animate>
+                <animate attributeName="cy" values=${`${energyFlow.from.y};${energyFlow.to.y}`} dur="1.8s" begin=${index ? '-0.9s' : animationDelay} repeatCount="indefinite"></animate>
+                <animate attributeName="r" values="2.2;4.2;2.2" dur="0.9s" begin=${index ? '-0.9s' : animationDelay} repeatCount="indefinite"></animate>
+                <animate
+                  attributeName="opacity"
+                  values=${energyScenarioOpacityValues(energyFlow.source)}
+                  keyTimes=${ENERGY_SCENARIO_KEY_TIMES}
+                  dur=${ENERGY_SCENARIO_DURATION}
+                  begin="0s"
+                  repeatCount="indefinite"></animate>
+              </circle>
+            `)}
       `
+    }
     case 'door': {
       const { length, nx, ny } = lineMetrics(shape)
       const side = shape.flipSide ? -1 : 1
@@ -379,7 +419,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
                 height=${shape.height}
                 fill=${shape.fill || 'none'}
                 stroke=${shape.stroke || 'none'}
-                style=${`stroke-width: ${imageStrokeWidth}px;`}></rect>`
+                style=${`stroke-width: ${imageStrokeWidth}px;${shape.locked ? 'pointer-events:none;' : ''}`}></rect>`
               : nothing
           }
           <image
@@ -390,7 +430,8 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
             x=${x}
             y=${y}
             width=${shape.width}
-            height=${shape.height}></image>
+            height=${shape.height}
+            style=${shape.locked ? 'pointer-events:none;' : nothing}></image>
         </g>
       `
     }
@@ -407,6 +448,21 @@ export const bindingLabelsTemplate = (shapes: Shape[]) => {
   `
   )
 }
+
+export const roomLabelsTemplate = (shapes: Shape[]) =>
+  namedRoomRegions(shapes).map(
+    (room) => svg`<text
+      class="room-label"
+      x=${room.x + room.width / 2}
+      y=${room.y + room.height / 2}
+      text-anchor="middle"
+      dominant-baseline="middle"
+      fill="#2d2926"
+      font-family="Segoe UI,Arial,sans-serif"
+      font-size="14"
+      font-weight="600"
+      pointer-events="none">${room.name}</text>`
+  )
 
 const escapeBindingLabelText = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -693,6 +749,15 @@ export const wallChainPreviewTemplate = (wallChain: { startPoint: Point } | null
   `
 }
 
+export const roomDraftTemplate = (start: Point, end: Point) => svg`
+  <g class="room-draft">
+    <line class="shape shape-wall draft" x1=${start.x} y1=${start.y} x2=${end.x} y2=${start.y}></line>
+    <line class="shape shape-wall draft" x1=${end.x} y1=${start.y} x2=${end.x} y2=${end.y}></line>
+    <line class="shape shape-wall draft" x1=${end.x} y1=${end.y} x2=${start.x} y2=${end.y}></line>
+    <line class="shape shape-wall draft" x1=${start.x} y1=${end.y} x2=${start.x} y2=${start.y}></line>
+  </g>
+`
+
 export const measurementTemplate = (from: Point | null, to: Point | null) => {
   if (!from || !to) return nothing
   const dx = to.x - from.x
@@ -714,9 +779,7 @@ export const measurementTemplate = (from: Point | null, to: Point | null) => {
 export const wallMaskTemplate = (shapes: Shape[], worldWidth: number, worldHeight: number) => {
   const openingMaskWidth = 12
   const walls = shapes.filter((shape): shape is LineShape => shape.kind === 'wall')
-  const openings = shapes
-    .filter((shape): shape is LineShape => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate')
-    .filter((opening) => openingMatchesWall(opening, walls))
+  const openings = boundWallOpenings(shapes)
   if (!openings.length) return nothing
 
   const maskShapes = [...walls, ...openings]
@@ -738,7 +801,15 @@ export const wallMaskTemplate = (shapes: Shape[], worldWidth: number, worldHeigh
   const maskHeight = Number.isFinite(maxY - minY) ? Math.max(worldHeight, maxY - minY + padding * 2) : worldHeight
 
   return svg`
-    <mask id="wall-opening-mask" maskUnits="userSpaceOnUse">
+    <mask
+      id="wall-opening-mask"
+      x=${maskX}
+      y=${maskY}
+      width=${maskWidth}
+      height=${maskHeight}
+      maskUnits="userSpaceOnUse"
+      maskContentUnits="userSpaceOnUse"
+      style="mask-type: luminance;">
       <rect x=${maskX} y=${maskY} width=${maskWidth} height=${maskHeight} fill="white"></rect>
       ${openings.map(
         (shape) => svg`

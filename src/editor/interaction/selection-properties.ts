@@ -5,6 +5,7 @@ import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
 import {
   phaseConfigurationLabel,
+  neutralPositionForManufacturer,
   rcdTypeLabel,
   shouldShowPhaseLabel,
   type ElectricalDeviceMetadata
@@ -16,6 +17,7 @@ export type SelectionPropertyUpdate = {
   text?: string
   symbolTextOverrides?: Record<string, string>
   bindingId?: string
+  roomName?: string
   bindingLabelSide?: BindingLabelSide | 'auto'
   rotation?: number
   scale?: number
@@ -68,6 +70,27 @@ const normalizedBindingId = (payload: SelectionPropertyUpdate): string | undefin
   return value && value !== 'UNDEFINED' && value !== 'NULL' ? value : undefined
 }
 
+const sequentialBindingIds = (
+  shapes: readonly Shape[],
+  targetIds: ReadonlySet<string>,
+  bindingId: string | undefined,
+  groupedSelection: boolean
+): Map<string, string> | null => {
+  if (!bindingId || groupedSelection || targetIds.size < 2) return null
+  const match = /^(.*?)(\d+)?$/.exec(bindingId)
+  const prefix = match?.[1] || bindingId
+  const start = match?.[2] ? Number(match[2]) : 1
+  const result = new Map<string, string>()
+  let index = 0
+  // Document order is stable and matches the drawing's stacking order.
+  for (const shape of shapes) {
+    if (!targetIds.has(shape.id)) continue
+    result.set(shape.id, `${prefix}${start + index}`)
+    index += 1
+  }
+  return result
+}
+
 const applyProperties = (
   shape: Shape,
   payload: SelectionPropertyUpdate,
@@ -79,6 +102,11 @@ const applyProperties = (
   if ('bindingId' in payload) {
     if (bindingId && (!context.groupedSelection || shape.id === context.selectedId)) updated.bindingId = bindingId
     else delete updated.bindingId
+  }
+  if ('roomName' in payload && updated.kind === 'wall' && updated.groupId?.startsWith('room-')) {
+    const roomName = typeof payload.roomName === 'string' ? payload.roomName.trim() : ''
+    if (roomName) updated.roomName = roomName
+    else delete updated.roomName
   }
 
   if (payload.bindingLabelSide === 'auto') delete updated.bindingLabelOffset
@@ -195,15 +223,23 @@ const applyProperties = (
     updated.electrical = electrical
     if (/automaat|breaker|protection devices/i.test(`${updated.name} ${updated.path}`)) {
       const isResidualBreaker = /residual-current|differential|differentieel|\brcd\b/i.test(`${updated.name} ${updated.path}`)
+      const showProtectionPhase =
+        shouldShowPhaseLabel(electrical.poles, electrical.showPhaseLabel)
+        && Boolean(electrical.phaseConfiguration)
       updated.symbolTextOverrides = {
         ...(updated.symbolTextOverrides ?? {}),
         ...(typeof electrical.poles === 'number' ? { poles: `${electrical.poles}P` } : {}),
-        ...(shouldShowPhaseLabel(electrical.poles, electrical.showPhaseLabel) && electrical.phaseConfiguration
-            ? { phase: phaseLabel(electrical.phaseConfiguration) }
-            : { phase: '' }),
-        ...(typeof electrical.breakerCurrentA === 'number'
-          ? { 'rated-current': `${electrical.breakerCurrentA}A` }
-          : {}),
+        phase: showProtectionPhase
+          ? phaseLabel(
+              electrical.phaseConfiguration as NonNullable<typeof electrical.phaseConfiguration>,
+              electrical.neutralPosition
+                ?? neutralPositionForManufacturer(electrical.manufacturer)
+                ?? 'right'
+            )
+          : '',
+        'rated-current': typeof electrical.breakerCurrentA === 'number'
+          ? `${!isResidualBreaker && electrical.breakerCurve ? electrical.breakerCurve : ''}${electrical.breakerCurrentA}A`
+          : '',
         ...(isResidualBreaker
           ? {
               'residual-current': typeof electrical.rcdSensitivityMa === 'number'
@@ -241,11 +277,12 @@ export const updateSelectionProperties = (
 
   const center = selectionCenter(shapes, targetIds)
   const bindingId = normalizedBindingId(payload)
+  const bindingIds = sequentialBindingIds(shapes, targetIds, bindingId, context.groupedSelection)
   let changed = false
   const next = shapes.map((shape) => {
     if (!targetIds.has(shape.id)) return shape
     changed = true
-    return applyProperties(shape, payload, center, bindingId, context)
+    return applyProperties(shape, payload, center, bindingIds?.get(shape.id) ?? bindingId, context)
   })
   return changed ? next : null
 }

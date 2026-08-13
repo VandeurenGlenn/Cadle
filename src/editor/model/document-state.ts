@@ -3,7 +3,7 @@ import { sanitizeShapes } from './model.js'
 import type { PaperPreset, Shape } from './types.js'
 
 export type NativeDocumentState = {
-  version: 1
+  version: 1 | 2
   shapes: Shape[]
   selectedId: UUID | null
   paperPreset: PaperPreset
@@ -35,7 +35,7 @@ export const asNativeState = (value: unknown): NativeDocumentState | null => {
   }
 
   return {
-    version: 1,
+    version: candidate.version === 2 ? 2 : 1,
     shapes: sanitizeShapes(candidate.shapes),
     selectedId: null,
     paperPreset: candidate.paperPreset,

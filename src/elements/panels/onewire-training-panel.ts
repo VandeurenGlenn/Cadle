@@ -11,14 +11,18 @@ import { downloadTextFile } from '../../editor/export/downloads.js'
 
 @customElement('onewire-training-panel')
 export class OneWireTrainingPanel extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ type: Array }) accessor examples: OneWireTrainingExample[] = []
   @property({ type: Boolean }) accessor loading = false
 
   static styles = [styles]
 
   onChange(property: string) {
-    if (property === 'open' && this.open) void this.#load()
+    if (property !== 'open') return
+
+    this.toggleAttribute('data-open', this.open)
+    this.setAttribute('aria-hidden', String(!this.open))
+    if (this.open) void this.#load()
   }
 
   #load = async () => {
@@ -43,6 +47,8 @@ export class OneWireTrainingPanel extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
+
     const corrected = this.examples.filter((example) => example.corrected).length
     return html`
       <section class="panel" role="dialog" aria-modal="true" aria-labelledby="training-title">

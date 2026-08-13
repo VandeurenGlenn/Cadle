@@ -2,14 +2,15 @@
   position: fixed;
   inset: 0;
   z-index: 10014;
-  display: grid;
+  display: none;
   place-items: center;
   padding: var(--cadle-space-4);
   opacity: 0;
   pointer-events: none;
 }
 
-:host([open]) {
+:host([data-open]) {
+  display: grid;
   opacity: 1;
   pointer-events: auto;
 }

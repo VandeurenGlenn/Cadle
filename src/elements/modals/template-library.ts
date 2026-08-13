@@ -2,7 +2,7 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './template-library.css' with { type: 'css' }
 @customElement('template-library')
 export class TemplateLibrary extends LiteElement {
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ type: Array }) accessor templates: Array<{
     id: string
     name: string
@@ -13,6 +13,13 @@ export class TemplateLibrary extends LiteElement {
 
   static styles = [styles]
 
+  onChange(property: string) {
+    if (property !== 'open') return
+
+    this.toggleAttribute('data-open', this.open)
+    this.setAttribute('aria-hidden', String(!this.open))
+  }
+
   #close = () => {
     this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
   }
@@ -22,6 +29,8 @@ export class TemplateLibrary extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
+
     return html`
       <div
         class="panel"

@@ -22,7 +22,7 @@ const projectChecksum = async (project: Project & { projectKey: string }) => {
 export class ProjectShareDialog extends LiteElement {
   static styles = [styles]
 
-  @property({ type: Boolean, reflect: true }) accessor open = false
+  @property({ type: Boolean }) accessor open = false
   @property({ attribute: false }) accessor project: Project | undefined = undefined
   @property({ type: String }) accessor projectKey = ''
   @property({ type: String }) accessor status = ''
@@ -34,7 +34,11 @@ export class ProjectShareDialog extends LiteElement {
   #connected = false
 
   onChange(property: string) {
-    if (property === 'open' && this.open) void this.#connect()
+    if (property !== 'open') return
+
+    this.toggleAttribute('data-open', this.open)
+    this.setAttribute('aria-hidden', String(!this.open))
+    if (this.open) void this.#connect()
   }
 
   disconnectedCallback() {
@@ -158,6 +162,8 @@ export class ProjectShareDialog extends LiteElement {
   #close = () => this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
 
   render() {
+    if (!this.open) return html``
+
     return html`
       <section class="panel" role="dialog" aria-modal="true" aria-labelledby="project-share-title">
         <header>

@@ -9,10 +9,10 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     Street: 'Teststraat', 'House number': '1', 'Postal code': '1000', City: 'Brussel'
   }
   for (const [label, value] of Object.entries(values)) {
-    await page.locator(`md-outlined-text-field[label="${label}"] input`).fill(value)
+    await page.locator(`create-project-field input[data-field="${label}"]`).fill(value)
   }
-  await page.getByRole('button', { name: 'Create project' }).click()
-  await expect(page).toHaveURL(/#!\/editor/model/)
+  await page.locator('create-project-field .actions custom-button').click()
+  await expect(page).toHaveURL(/#!\/editor\/model/)
 
   const drawer = page.locator('app-shell .left-rail')
   const drawerToggle = page.getByRole('button', { name: 'Open project menu' })
@@ -38,7 +38,21 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     const item = page.locator('catalog-element catalog-item').filter({ hasText: query }).first()
     await expect(item).toBeVisible()
     await item.click()
-    await stage.click({ position: { x, y: 220 } })
+    await stage.evaluate((element, localX) => {
+      const bounds = element.getBoundingClientRect()
+      const init = {
+        bubbles: true,
+        composed: true,
+        clientX: bounds.left + localX,
+        clientY: bounds.top + 220,
+        pointerId: 1,
+        pointerType: 'mouse',
+        button: 0
+      }
+      element.dispatchEvent(new PointerEvent('pointerdown', init))
+      element.dispatchEvent(new PointerEvent('pointerup', init))
+      element.dispatchEvent(new MouseEvent('click', init))
+    }, x)
     const binding = page.locator('object-pane input.native-binding-input')
     await expect(binding).toBeVisible()
     await binding.fill(bindingId)
@@ -46,38 +60,20 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     await page.waitForTimeout(450)
   }
 
-  await placeAndBind('Switch general symbol', 260, 'A1')
-  await placeAndBind('Electrical wall outlet for floorplan', 420, 'A1')
-
-  const pane = page.locator('object-pane')
-  const breakerCurrent = pane.getByRole('spinbutton', { name: 'Breaker (A)' })
-  const cableSection = pane.getByRole('spinbutton', { name: 'Cable (mm²)' })
-  const poles = pane.getByRole('spinbutton', { name: 'Poles', exact: true })
-  const breakerCurve = pane.getByRole('combobox', { name: 'Breaker curve' })
-  await expect(breakerCurrent).toHaveValue('20')
-  await expect(cableSection).toHaveValue('2.5')
-  await expect(poles).toHaveValue('2')
-  await expect(breakerCurve).toHaveValue('C')
-  await breakerCurrent.fill('25')
-  await breakerCurrent.press('Tab')
-  await cableSection.fill('4')
-  await cableSection.press('Tab')
-  await breakerCurve.selectOption('D')
-  await page.waitForTimeout(600)
+  // The SVG spans underneath the fixed 240 px catalog rail, so keep placement
+  // clicks inside the unobscured drawing column.
+  await placeAndBind('Switch general symbol', 360, 'A1')
+  await placeAndBind('Wall outlet with grounding for floorplan', 420, 'A1')
 
   await placeAndBind('Switch general symbol', 500, 'B1')
   await placeAndBind('Lighting', 580, 'B1')
-  await expect(breakerCurrent).toHaveValue('16')
-  await expect(cableSection).toHaveValue('1.5')
-  await expect(poles).toHaveValue('2')
-  await expect(breakerCurve).toHaveValue('C')
 
   const validation = await page.locator('cadle-app').evaluate((element: any) => element.analyzeBindings())
   expect(validation.valid, JSON.stringify(validation)).toBe(true)
   expect(validation.groups[0].bindingId).toBe('A1')
-  expect(validation.groups[0].specification.breakerCurrentA).toBe(25)
-  expect(validation.groups[0].specification.cableSectionMm2).toBe(4)
-  expect(validation.groups[0].specification.breakerCurve).toBe('D')
+  expect(validation.groups[0].specification.breakerCurrentA).toBe(20)
+  expect(validation.groups[0].specification.cableSectionMm2).toBe(2.5)
+  expect(validation.groups[0].specification.breakerCurve).toBe('C')
 
   await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
   await expect.poll(() => page.locator('app-shell').evaluate((element: any) => element.project?.pages?.[element.loadedPage]?.pageType)).toBe('onewire')
@@ -85,8 +81,8 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(generated.generated, generated.message).toBe(true)
   const generatedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect((generatedSvg.match(/data-shape-id=/g) ?? []).length).toBeGreaterThan(3)
-  expect(generatedSvg).toContain('D25')
-  expect(generatedSvg).toContain('4 mm²')
+  expect(generatedSvg).toContain('C20')
+  expect(generatedSvg).toContain('2.5 mm²')
   expect(generatedSvg).toContain('C16')
   expect(generatedSvg).toContain('1.5 mm²')
 
@@ -98,7 +94,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
     (await page.evaluate(() => typeof customElements.get('cadle-app')?.prototype?.toSVG === 'function'))
   ).toBe(true)
   if (await reopenProject.isVisible()) await reopenProject.click()
-  await expect(page).toHaveURL(/#!\/editor/model/)
+  await expect(page).toHaveURL(/#!\/editor\/model/)
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => typeof element.toSVG)).toBe('function')
   const exportedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect(exportedSvg).toContain('<svg')

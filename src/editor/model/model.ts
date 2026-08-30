@@ -46,7 +46,10 @@ const copyGeneratedMetadata = (
     const link = source.sourceLink as { kind?: unknown; id?: unknown; role?: unknown }
     if (
       (link.kind === 'board' || link.kind === 'circuit' || link.kind === 'device') &&
-      typeof link.id === 'string' && link.id.trim() && typeof link.role === 'string' && link.role.trim()
+      typeof link.id === 'string' &&
+      link.id.trim() &&
+      typeof link.role === 'string' &&
+      link.role.trim()
     ) {
       target.sourceLink = { kind: link.kind, id: link.id.trim(), role: link.role.trim() }
     }
@@ -63,6 +66,24 @@ const currentSymbolPath = (path: string, name: string): string => {
   return /^data:image\/svg\+xml(?:;|,)/i.test(path) && name.trim().toLowerCase() === 'spot'
     ? 'symbols/Consumption appliances/Spot.svg'
     : path
+}
+
+const migratedSymbolScale = (path: string, scale: number): number => {
+  if (/\/consumption appliances\/wall light\.svg$/i.test(path)) {
+    return scale === 1 || scale === 1.2 || scale === 1.3 || scale === 1.4 ? 1.5 : scale
+  }
+  if (/\/consumption appliances\/fluorescent lamp\.svg$/i.test(path)) return scale === 1 ? 2 : scale
+  if (/\/electrical devices\/distribution board\.svg$/i.test(path)) return scale === 1 ? 2 : scale
+  if (/\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)) return scale === 1 ? 2 : scale
+  if (/\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)) {
+    return scale === 1 || scale === 1.6 || scale === 2 ? 1.4 : scale
+  }
+  if (!/\/switches\//i.test(path)) return scale
+  if (/double push button\.svg$/i.test(path)) return scale === 0.8 || scale === 1.3 ? 1.25 : scale
+  if (/push button\.svg$/i.test(path)) return scale === 1.3 ? 0.8 : scale
+  if (/dual switch, single casing\.svg$/i.test(path)) return scale === 1.3 ? 1.15 : scale
+  if (/(?:change over|intermediate switch).*\.svg$/i.test(path)) return scale === 1.3 ? 1.7 : scale
+  return scale === 1.7 ? 1.3 : scale
 }
 
 export const sanitizeShapes = (values: unknown[]): Shape[] => {
@@ -217,7 +238,10 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         position: clonePoint(raw.position),
         name: path !== raw.path ? 'Spot' : raw.name,
         path,
-        scale: typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0 ? raw.scale : 1
+        scale:
+          typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0
+            ? migratedSymbolScale(path, raw.scale)
+            : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
       if (raw.flipX === true) symbol.flipX = true
@@ -225,7 +249,18 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.fill === 'string' && raw.fill) symbol.fill = raw.fill
       if (typeof raw.stroke === 'string' && raw.stroke) symbol.stroke = raw.stroke
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
-        symbol.strokeWidth = Math.max(0.5, raw.strokeWidth)
+        symbol.strokeWidth =
+          /\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path) && raw.strokeWidth === 6
+            ? 5
+            : /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path) && raw.strokeWidth === 1.35
+              ? 1.15
+              : Math.max(0.5, raw.strokeWidth)
+      } else if (/\/electrical devices\/distribution board\.svg$/i.test(path)) {
+        symbol.strokeWidth = 1.35
+      } else if (/\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)) {
+        symbol.strokeWidth = 5
+      } else if (/\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)) {
+        symbol.strokeWidth = 1.15
       }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim())
         symbol.bindingId = raw.bindingId.trim().toUpperCase()
@@ -234,9 +269,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         const entries = Object.entries(raw.symbolTextOverrides)
           .filter(
             (entry): entry is [string, string] =>
-              typeof entry[0] === 'string' &&
-              Boolean(entry[0].trim()) &&
-              typeof entry[1] === 'string'
+              typeof entry[0] === 'string' && Boolean(entry[0].trim()) && typeof entry[1] === 'string'
           )
           .map(([key, text]) => [key.trim(), text] as const)
         if (entries.length) symbol.symbolTextOverrides = Object.fromEntries(entries)
@@ -257,9 +290,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
           poles: '',
           phase: '',
           'rated-current': '',
-          ...(symbol.path.toLowerCase().includes('residual-current')
-            ? { 'residual-current': '', 'rcd-type': '' }
-            : {})
+          ...(symbol.path.toLowerCase().includes('residual-current') ? { 'residual-current': '', 'rcd-type': '' } : {})
         }
       }
       if (symbol.sourceLink?.role === 'cable-installation' && symbol.scale < 3) {
@@ -633,11 +664,12 @@ export const shapeBounds = (shape: Shape) => {
       const scale = shape.scale ?? 1
       const textWidth = Math.max(36, shape.text.length * 9 * scale)
       const textHeight = 28 * scale
-      const x = shape.textAnchor === 'end'
-        ? shape.position.x - textWidth
-        : shape.textAnchor === 'middle'
-          ? shape.position.x - textWidth / 2
-          : shape.position.x
+      const x =
+        shape.textAnchor === 'end'
+          ? shape.position.x - textWidth
+          : shape.textAnchor === 'middle'
+            ? shape.position.x - textWidth / 2
+            : shape.position.x
       return { x, y: shape.position.y - textHeight, width: textWidth, height: textHeight }
     }
     case 'symbol': {

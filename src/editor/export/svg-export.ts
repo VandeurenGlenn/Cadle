@@ -38,7 +38,7 @@ const openingMatchesWall = (opening: LineShape, walls: LineShape[], tolerance = 
 const EXPORT_STYLE_BLOCK = `
   .shape { vector-effect: non-scaling-stroke; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
-  .shape-wall { stroke: #3b2c20; stroke-width: 8; }
+  .shape-wall { stroke: #3b2c20; stroke-width: 6; }
   .shape-line { stroke-width: 2; }
 
   .binding-label-text {
@@ -74,7 +74,7 @@ const EXPORT_STYLE_BLOCK = `
 const EXPORT_STYLE_BLOCK_MONO = `
   .shape { vector-effect: non-scaling-stroke; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
-  .shape-wall { stroke: #101010; stroke-width: 8; }
+  .shape-wall { stroke: #101010; stroke-width: 6; }
   .shape-line { stroke: #151515; stroke-width: 2.4; }
 
   .binding-label-text {
@@ -322,7 +322,7 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
           `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText}</svg>
+            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText}</svg>
           </g>
         `
       }

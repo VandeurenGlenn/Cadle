@@ -70,16 +70,25 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
     case 'line':
     case 'door':
     case 'window':
-    case 'gate':
+    case 'gate': {
+      const start = transformPoint(shape.start, center, action)
+      const end = transformPoint(shape.end, center, action)
+      const mirrored = action === 'flip-horizontal' || action === 'flip-vertical'
       return {
         ...shape,
-        start: transformPoint(shape.start, center, action),
-        end: transformPoint(shape.end, center, action),
+        start,
+        end,
         scale: action === 'scale-up' || action === 'scale-down' ? (shape.scale ?? 1) * scaleFactor : shape.scale,
-        rotation: nextRotation(shape.rotation, action),
+        rotation: mirrored
+          ? ((Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI + 360) % 360
+          : nextRotation(shape.rotation, action),
         flipX: nextFlipX(shape.flipX, action),
-        flipY: nextFlipY(shape.flipY, action)
+        flipY: nextFlipY(shape.flipY, action),
+        ...((shape.kind === 'door' || shape.kind === 'gate') && mirrored
+          ? { flipSide: !shape.flipSide || undefined }
+          : {})
       }
+    }
     case 'rect': {
       if (action === 'rotate-left' || action === 'rotate-right') {
         const width = Math.abs(shape.end.x - shape.start.x)

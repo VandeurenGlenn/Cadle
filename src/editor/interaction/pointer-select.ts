@@ -22,6 +22,16 @@ const shapeById = (shapes: Shape[], id: string | null): Shape | null => {
   return shapes.find((shape) => shape.id === id) ?? null
 }
 
+export const expandSelectionWithGroup = (shapes: readonly Shape[], shapeId: string): Set<string> => {
+  const shape = shapes.find((candidate) => candidate.id === shapeId)
+  if (!shape || shape.locked) return new Set()
+  const groupId = shape.groupId
+  if (!groupId || groupId.startsWith('onewire-')) return new Set([shapeId])
+  return new Set(
+    shapes.filter((candidate) => candidate.groupId === groupId && !candidate.locked).map((candidate) => candidate.id)
+  )
+}
+
 export const dragIdsForSelectedShape = (
   shapes: Shape[],
   shapeId: string,
@@ -41,17 +51,13 @@ export const dragIdsForSelectedShape = (
   return [...ids]
 }
 
-export const shouldSelectExistingOneWireShape = (
-  shape: Shape | null,
-  isKamrail: boolean
-): boolean => shape !== null && !isKamrail
+export const shouldSelectExistingOneWireShape = (shape: Shape | null, isKamrail: boolean): boolean =>
+  shape !== null && !isKamrail
 
 export const allowsExistingShapeSelection = (tool: Tool, hasPendingCatalogSymbol: boolean): boolean =>
   tool === 'select' || (tool === 'symbol' && !hasPendingCatalogSymbol)
 
-export const resolveSelectPointerDown = (
-  input: ResolveSelectPointerDownInput
-): ResolveSelectPointerDownResult => {
+export const resolveSelectPointerDown = (input: ResolveSelectPointerDownInput): ResolveSelectPointerDownResult => {
   if (input.shapeId) {
     const nextSelectedIds = input.selectedIds.has(input.shapeId) ? new Set(input.selectedIds) : new Set([input.shapeId])
     const nextSelectedId = input.shapeId

@@ -4,7 +4,7 @@ import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextLayer } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
-import { getBoundedCache, setBoundedCache } from '../helpers/bounded-cache.js'
+import { symbolContentBounds, symbolOpticalMetrics } from './layout/symbol-layout.js'
 import {
   ENERGY_SCENARIO_DURATION,
   ENERGY_SCENARIO_KEY_TIMES,
@@ -12,121 +12,6 @@ import {
   oneWireEnergyFlowSegments
 } from './onewire-energy-flow.js'
 import { namedRoomRegions } from './room-regions.js'
-
-type OpticalInsets = { left: number; right: number; top: number; bottom: number }
-
-const symbolOpticalInsetsCache = new Map<string, OpticalInsets | null>()
-const MAX_OPTICAL_INSET_CACHE_ENTRIES = 256
-const symbolMeasurementHostId = 'cadle-symbol-measurement-host'
-
-const getSymbolMeasurementHost = (): SVGSVGElement | null => {
-  if (typeof document === 'undefined') return null
-  const existing = document.getElementById(symbolMeasurementHostId)
-  if (existing && existing instanceof SVGSVGElement) return existing
-
-  const host = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  host.id = symbolMeasurementHostId
-  host.setAttribute('aria-hidden', 'true')
-  host.style.position = 'absolute'
-  host.style.left = '-10000px'
-  host.style.top = '-10000px'
-  host.style.visibility = 'hidden'
-  host.style.pointerEvents = 'none'
-  host.style.overflow = 'hidden'
-  const mountTarget = document.body ?? document.documentElement
-  mountTarget.appendChild(host)
-  return host
-}
-
-const parseViewBox = (viewBox: string): { minX: number; minY: number; width: number; height: number } | null => {
-  const parts = viewBox
-    .trim()
-    .split(/\s+/)
-    .map((part) => Number(part))
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return null
-  const [minX, minY, width, height] = parts
-  if (width <= 0 || height <= 0) return null
-  return { minX, minY, width, height }
-}
-
-const symbolOpticalInsets = (path: string): OpticalInsets | null => {
-  const cached = getBoundedCache(symbolOpticalInsetsCache, path)
-  if (cached !== undefined) return cached
-
-  const symbolSvg = getCachedSymbolSvg(path)
-  if (!symbolSvg) {
-    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
-    return null
-  }
-
-  const viewBox = parseViewBox(symbolSvg.viewBox)
-  const host = getSymbolMeasurementHost()
-  if (!viewBox || !host) {
-    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
-    return null
-  }
-
-  const previousViewBox = host.getAttribute('viewBox')
-  const previousWidth = host.getAttribute('width')
-  const previousHeight = host.getAttribute('height')
-  const previousContent = host.innerHTML
-  host.setAttribute('viewBox', symbolSvg.viewBox)
-  host.setAttribute('width', `${viewBox.width}`)
-  host.setAttribute('height', `${viewBox.height}`)
-  host.innerHTML = `${symbolSvg.inner}${symbolTextLayer(path)}`
-
-  let box: DOMRect | null = null
-  try {
-    box = host.getBBox()
-  } catch {
-    box = null
-  }
-
-  host.innerHTML = previousContent
-  if (previousViewBox == null) host.removeAttribute('viewBox')
-  else host.setAttribute('viewBox', previousViewBox)
-  if (previousWidth == null) host.removeAttribute('width')
-  else host.setAttribute('width', previousWidth)
-  if (previousHeight == null) host.removeAttribute('height')
-  else host.setAttribute('height', previousHeight)
-
-  if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) {
-    setBoundedCache(symbolOpticalInsetsCache, path, null, MAX_OPTICAL_INSET_CACHE_ENTRIES)
-    return null
-  }
-
-  const left = Math.max(0, Math.min(0.49, (box.x - viewBox.minX) / viewBox.width))
-  const right = Math.max(0, Math.min(0.49, (viewBox.minX + viewBox.width - (box.x + box.width)) / viewBox.width))
-  const top = Math.max(0, Math.min(0.49, (box.y - viewBox.minY) / viewBox.height))
-  const bottom = Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height))
-  const insets = { left, right, top, bottom }
-  setBoundedCache(symbolOpticalInsetsCache, path, insets, MAX_OPTICAL_INSET_CACHE_ENTRIES)
-  return insets
-}
-
-// Visible content box of a symbol in world coordinates, derived from measured whitespace.
-// Falls back to the full 24px box for rotated/flipped symbols where insets don't map cleanly.
-const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) => {
-  const size = 24 * Math.max(0.4, shape.scale)
-  const x = shape.position.x - size / 2
-  const y = shape.position.y - size / 2
-  const fullBox = { x, y, width: size, height: size }
-  const expandBreakerLabel = (bounds: typeof fullBox) => {
-    if (!/automaat|breaker/i.test(`${shape.name} ${shape.path}`)) return bounds
-    const label = shape.symbolTextOverrides?.['desc:20A'] ?? ''
-    const extraRight = Math.max(0, label.length - 3) * 7 * Math.max(0.4, shape.scale)
-    return extraRight > 0 ? { ...bounds, width: bounds.width + extraRight } : bounds
-  }
-  if (shape.rotation || shape.flipX || shape.flipY) return expandBreakerLabel(fullBox)
-  const insets = symbolOpticalInsets(shape.path)
-  if (!insets) return expandBreakerLabel(fullBox)
-  return expandBreakerLabel({
-    x: x + size * insets.left,
-    y: y + size * insets.top,
-    width: Math.max(1, size * (1 - insets.left - insets.right)),
-    height: Math.max(1, size * (1 - insets.top - insets.bottom))
-  })
-}
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -211,7 +96,8 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
           y1=${shape.start.y}
           x2=${shape.end.x}
           y2=${shape.end.y}></line>
-        ${energyFlows.map((energyFlow, index) => svg`
+        ${energyFlows.map(
+          (energyFlow, index) => svg`
               <circle
                 class=${`onewire-energy-pulse ${energyFlow.source === 'generator' ? 'onewire-energy-pulse-generator' : ''}`}
                 aria-hidden="true"
@@ -229,7 +115,8 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
                   begin="0s"
                   repeatCount="indefinite"></animate>
               </circle>
-            `)}
+            `
+        )}
       `
     }
     case 'door': {
@@ -394,7 +281,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
+              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
               : nothing
           }
         </g>
@@ -581,7 +468,7 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
       const anchorBounds = shapeCollisionBounds(anchorShape)
       const anchorVisualBounds =
         anchorShape.kind === 'symbol' ? symbolContentBounds(anchorShape) : shapeBounds(anchorShape)
-      const symbolInsets = isSymbolAnchor ? symbolOpticalInsets(anchorShape.path) : null
+      const symbolInsets = isSymbolAnchor ? symbolOpticalMetrics(anchorShape.path) : null
       const anchorKeepOut = {
         x: anchorVisualBounds.x - (isSpotAnchor ? 0.5 : isSymbolAnchor ? 1.5 : 4),
         y: anchorVisualBounds.y - (isSpotAnchor ? 0.5 : isSymbolAnchor ? 1.5 : 4),
@@ -688,19 +575,19 @@ const selectedOutlineBounds = (shape: Shape) => {
     }
   }
 
-  const bounds = shapeBounds(shape)
   if (shape.kind === 'symbol') {
-    const inset = Math.max(0.75, Math.min(3.5, Math.min(bounds.width, bounds.height) * 0.16))
+    const bounds = symbolContentBounds(shape)
     return {
-      x: bounds.x + inset,
-      y: bounds.y + inset,
-      width: Math.max(1, bounds.width - inset * 2),
-      height: Math.max(1, bounds.height - inset * 2),
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
       padding: 2.5,
       minSize: 8
     }
   }
 
+  const bounds = shapeBounds(shape)
   const padding =
     shape.kind === 'wall'
       ? 8
@@ -710,9 +597,26 @@ const selectedOutlineBounds = (shape: Shape) => {
   return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, padding, minSize: 10 }
 }
 
-export const selectedOutlineTemplate = (shape: Shape | null) => {
-  if (!shape) return nothing
-  const bounds = selectedOutlineBounds(shape)
+export const selectedOutlineTemplate = (selection: Shape | readonly Shape[] | null) => {
+  if (!selection) return nothing
+  const shapes = Array.isArray(selection) ? selection : [selection]
+  if (!shapes.length) return nothing
+  const individualBounds = shapes.map((shape) => selectedOutlineBounds(shape))
+  const bounds =
+    individualBounds.length === 1
+      ? individualBounds[0]
+      : {
+          x: Math.min(...individualBounds.map((entry) => entry.x)),
+          y: Math.min(...individualBounds.map((entry) => entry.y)),
+          width:
+            Math.max(...individualBounds.map((entry) => entry.x + entry.width)) -
+            Math.min(...individualBounds.map((entry) => entry.x)),
+          height:
+            Math.max(...individualBounds.map((entry) => entry.y + entry.height)) -
+            Math.min(...individualBounds.map((entry) => entry.y)),
+          padding: 6,
+          minSize: 10
+        }
   return svg`
     <rect
       class="selected-outline"

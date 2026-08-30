@@ -88,6 +88,7 @@ export const addPage = async (uuid: UUID, pageName: string, schema, pageType: Pa
     order: maxOrder + 1
   }
   await setProjectData(uuid, project)
+  return pageUuid
 }
 
 export const save = async () => {
@@ -122,28 +123,32 @@ export const importProjectPayload = async (payload: Project & { projectKey?: str
 export const upload = async () => {
   const input = document.createElement('input')
   input.type = 'file'
-  input.addEventListener('change', () => {
-    const fr = new FileReader()
+  input.addEventListener(
+    'change',
+    () => {
+      const fr = new FileReader()
 
-    fr.onload = async (e) => {
-      const payload = e.target?.result
-      if (typeof payload !== 'string') return
-      let result: Project & { projectKey?: string }
-      try {
-        result = JSON.parse(payload) as Project & { projectKey?: string }
-      } catch {
-        globalThis.alert('This file is not a valid Cadle project.')
-        return
+      fr.onload = async (e) => {
+        const payload = e.target?.result
+        if (typeof payload !== 'string') return
+        let result: Project & { projectKey?: string }
+        try {
+          result = JSON.parse(payload) as Project & { projectKey?: string }
+        } catch {
+          globalThis.alert('This file is not a valid Cadle project.')
+          return
+        }
+        if (!result.projectKey || !result.name || !result.pages || typeof result.pages !== 'object') {
+          globalThis.alert('This Cadle project is incomplete or damaged.')
+          return
+        }
+        await importProjectPayload(result)
       }
-      if (!result.projectKey || !result.name || !result.pages || typeof result.pages !== 'object') {
-        globalThis.alert('This Cadle project is incomplete or damaged.')
-        return
-      }
-      await importProjectPayload(result)
-    }
 
-    fr.readAsText(input.files[0])
-  }, { once: true })
+      fr.readAsText(input.files[0])
+    },
+    { once: true }
+  )
   input.click()
 }
 
@@ -168,16 +173,18 @@ export const importPlan = async () => {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'application/pdf'
-  input.addEventListener('change', async () => {
-    const file = input.files[0]
-    if (!file) return
+  input.addEventListener(
+    'change',
+    async () => {
+      const file = input.files[0]
+      if (!file) return
 
-    await import('../elements/pdf-importer.js')
-    // Show PDF importer dialog
-    const importer = document.createElement('pdf-importer')
-    const dialog = document.createElement('dialog')
+      await import('../elements/pdf-importer.js')
+      // Show PDF importer dialog
+      const importer = document.createElement('pdf-importer')
+      const dialog = document.createElement('dialog')
 
-    dialog.style.cssText = `
+      dialog.style.cssText = `
       width: 90vw;
       height: 90vh;
       max-width: 1200px;
@@ -188,34 +195,36 @@ export const importPlan = async () => {
       padding: 0;
     `
 
-    // Handle import completion
-    const handleImportComplete = async (event: CustomEvent<{ pagesImported: number; pageKeys: UUID[] }>) => {
-      dialog.close()
-      dialog.remove()
-      cadleShell.projects = await getProjects()
-      cadleShell.project = await getProjectData(cadleShell.projectKey)
-      const firstImportedPage = event.detail.pageKeys[0]
-      if (firstImportedPage) await cadleShell.loadPage(firstImportedPage)
-    }
+      // Handle import completion
+      const handleImportComplete = async (event: CustomEvent<{ pagesImported: number; pageKeys: UUID[] }>) => {
+        dialog.close()
+        dialog.remove()
+        cadleShell.projects = await getProjects()
+        cadleShell.project = await getProjectData(cadleShell.projectKey)
+        const firstImportedPage = event.detail.pageKeys[0]
+        if (firstImportedPage) await cadleShell.loadPage(firstImportedPage)
+      }
 
-    // Handle import cancellation
-    const handleImportCancel = () => {
-      dialog.close()
-      dialog.remove()
-    }
+      // Handle import cancellation
+      const handleImportCancel = () => {
+        dialog.close()
+        dialog.remove()
+      }
 
-    importer.addEventListener('import-complete', handleImportComplete, { once: true })
-    importer.addEventListener('import-cancel', handleImportCancel, { once: true })
+      importer.addEventListener('import-complete', handleImportComplete, { once: true })
+      importer.addEventListener('import-cancel', handleImportCancel, { once: true })
 
-    dialog.appendChild(importer)
-    document.body.appendChild(dialog)
-    dialog.showModal()
+      dialog.appendChild(importer)
+      document.body.appendChild(dialog)
+      dialog.showModal()
 
-    // Load PDF into importer
-    const typedImporter = importer as PDFImporter
-    typedImporter.projectKey = cadleShell.projectKey
-    typedImporter.project = cadleShell.project
-    await typedImporter.loadPDF(file)
-  }, { once: true })
+      // Load PDF into importer
+      const typedImporter = importer as PDFImporter
+      typedImporter.projectKey = cadleShell.projectKey
+      typedImporter.project = cadleShell.project
+      await typedImporter.loadPDF(file)
+    },
+    { once: true }
+  )
   input.click()
 }

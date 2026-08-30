@@ -14,22 +14,30 @@ const symbol = (id: string): Shape => ({
 
 test('normalizes binding ids without mutating input shapes', () => {
   const source = [symbol('one')]
-  const updated = updateSelectionProperties(source, { bindingId: ' a1 ' }, {
-    selectedIds: new Set(['one']),
-    selectedId: 'one',
-    groupedSelection: false
-  })
+  const updated = updateSelectionProperties(
+    source,
+    { bindingId: ' a1 ' },
+    {
+      selectedIds: new Set(['one']),
+      selectedId: 'one',
+      groupedSelection: false
+    }
+  )
 
   assert.equal(updated?.[0].bindingId, 'A1')
   assert.equal(source[0].bindingId, undefined)
 })
 
 test('keeps a grouped binding id only on the primary shape', () => {
-  const updated = updateSelectionProperties([symbol('one'), symbol('two')], { bindingId: 'B2' }, {
-    selectedIds: new Set(['one', 'two']),
-    selectedId: 'one',
-    groupedSelection: true
-  })
+  const updated = updateSelectionProperties(
+    [symbol('one'), symbol('two')],
+    { bindingId: 'B2' },
+    {
+      selectedIds: new Set(['one', 'two']),
+      selectedId: 'one',
+      groupedSelection: true
+    }
+  )
 
   assert.equal(updated?.[0].bindingId, 'B2')
   assert.equal(updated?.[1].bindingId, undefined)
@@ -46,7 +54,10 @@ test('numbers a shared binding id across a multi-selection', () => {
     }
   )
 
-  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['A1', 'A2', 'A3'])
+  assert.deepEqual(
+    updated?.map((shape) => shape.bindingId),
+    ['A1', 'A2', 'A3']
+  )
 })
 
 test('continues numbering when a multi-selection binding includes a starting number', () => {
@@ -60,17 +71,115 @@ test('continues numbering when a multi-selection binding includes a starting num
     }
   )
 
-  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['B4', 'B5'])
+  assert.deepEqual(
+    updated?.map((shape) => shape.bindingId),
+    ['B4', 'B5']
+  )
+})
+
+test('keeps a selected switch and lighting load on the same binding point', () => {
+  const light: Shape = {
+    ...symbol('light'),
+    name: 'Light',
+    path: 'symbols/Lighting/Light.svg',
+    electrical: { role: 'load', circuitType: 'lighting', oneWireEligible: true }
+  }
+  const lightSwitch: Shape = {
+    ...symbol('switch'),
+    name: 'Switch',
+    path: 'symbols/Switches/Switch.svg',
+    electrical: { role: 'switch', circuitType: 'lighting', oneWireEligible: true }
+  }
+
+  const updated = updateSelectionProperties(
+    [lightSwitch, light],
+    { bindingId: 'T5' },
+    {
+      selectedIds: new Set(['switch', 'light']),
+      selectedId: 'switch',
+      groupedSelection: false
+    }
+  )
+
+  assert.deepEqual(
+    updated?.map((shape) => shape.bindingId),
+    ['T5', 'T5']
+  )
 })
 
 test('moves a selected shape by its visual center', () => {
-  const updated = updateSelectionProperties([symbol('one')], { x: 50, y: 60 }, {
-    selectedIds: new Set(['one']),
-    selectedId: 'one',
-    groupedSelection: false
-  })
+  const updated = updateSelectionProperties(
+    [symbol('one')],
+    { x: 50, y: 60 },
+    {
+      selectedIds: new Set(['one']),
+      selectedId: 'one',
+      groupedSelection: false
+    }
+  )
 
   assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].position : null, { x: 50, y: 60 })
+})
+
+test('rotates grouped members around one shared center', () => {
+  const left = { ...symbol('left'), position: { x: 0, y: 0 }, groupId: 'group-a' }
+  const right = { ...symbol('right'), position: { x: 100, y: 0 }, groupId: 'group-a' }
+  const updated = updateSelectionProperties(
+    [left, right],
+    { rotation: 90 },
+    {
+      selectedIds: new Set(['left', 'right']),
+      selectedId: 'left',
+      groupedSelection: true
+    }
+  )
+
+  assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].position : null, { x: 50, y: -50 })
+  assert.deepEqual(updated?.[1].kind === 'symbol' ? updated[1].position : null, { x: 50, y: 50 })
+  assert.equal(updated?.[0].rotation, 90)
+  assert.equal(updated?.[1].rotation, 90)
+})
+
+test('mirrors grouped members around one shared axis', () => {
+  const left = { ...symbol('left'), position: { x: 0, y: 0 }, groupId: 'group-a' }
+  const right = { ...symbol('right'), position: { x: 100, y: 0 }, groupId: 'group-a', flipX: true }
+  const updated = updateSelectionProperties(
+    [left, right],
+    { flipX: true },
+    {
+      selectedIds: new Set(['left', 'right']),
+      selectedId: 'left',
+      groupedSelection: true
+    }
+  )
+
+  assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].position : null, { x: 100, y: 0 })
+  assert.deepEqual(updated?.[1].kind === 'symbol' ? updated[1].position : null, { x: 0, y: 0 })
+  assert.equal(updated?.[0].flipX, true)
+  assert.equal(updated?.[1].flipX, undefined)
+})
+
+test('mirrors an individual door including its opening side', () => {
+  const door: Shape = {
+    id: 'door',
+    kind: 'door',
+    start: { x: 0, y: 0 },
+    end: { x: 100, y: 0 }
+  }
+  const updated = updateSelectionProperties(
+    [door],
+    { flipX: true },
+    {
+      selectedIds: new Set(['door']),
+      selectedId: 'door',
+      groupedSelection: false
+    }
+  )
+
+  assert.deepEqual(updated?.[0].kind === 'door' ? updated[0].start : null, { x: 100, y: 0 })
+  assert.deepEqual(updated?.[0].kind === 'door' ? updated[0].end : null, { x: 0, y: 0 })
+  assert.equal(updated?.[0].flipSide, true)
+  assert.equal(updated?.[0].rotation, 180)
 })
 
 test('resizes a busbar symmetrically on the drawing grid', () => {
@@ -81,22 +190,38 @@ test('resizes a busbar symmetrically on the drawing grid', () => {
     end: { x: 300, y: 200 },
     groupId: 'onewire-kamrail-main'
   }
-  const updated = updateSelectionProperties([busbar], { busbarLength: 320 }, {
-    selectedIds: new Set(['busbar']),
-    selectedId: 'busbar',
-    groupedSelection: false
-  })
+  const updated = updateSelectionProperties(
+    [busbar],
+    { busbarLength: 320 },
+    {
+      selectedIds: new Set(['busbar']),
+      selectedId: 'busbar',
+      groupedSelection: false
+    }
+  )
 
   assert.deepEqual(updated?.[0].kind === 'line' ? updated[0].start : null, { x: 40, y: 200 })
   assert.deepEqual(updated?.[0].kind === 'line' ? updated[0].end : null, { x: 360, y: 200 })
 })
 
 test('updates and clears selected symbol electrical properties', () => {
-  const configured = { ...symbol('one'), electrical: { role: 'load' as const, oneWireEligible: true, breakerCurrentA: 16 } }
+  const configured = {
+    ...symbol('one'),
+    electrical: { role: 'load' as const, oneWireEligible: true, breakerCurrentA: 16 }
+  }
   const context = { selectedIds: new Set(['one']), selectedId: 'one', groupedSelection: false }
   const updated = updateSelectionProperties(
     [configured],
-    { electrical: { breakerCurrentA: 20, cableSectionMm2: 2.5, breakerCurve: 'C', rcdSensitivityMa: 30, boardId: 'main', railId: 'rail-1' } },
+    {
+      electrical: {
+        breakerCurrentA: 20,
+        cableSectionMm2: 2.5,
+        breakerCurve: 'C',
+        rcdSensitivityMa: 30,
+        boardId: 'main',
+        railId: 'rail-1'
+      }
+    },
     context
   )
   assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.breakerCurrentA, 20)

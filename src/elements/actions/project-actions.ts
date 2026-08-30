@@ -12,11 +12,7 @@ import { download, share, upload, importPlan } from '../../api/project.js'
 import { map } from '@vandeurenglenn/lite/map.js'
 import { render } from 'lit-html'
 import pubsub from '../../pubsub.js'
-import {
-  PROJECT_MENU_GROUPS,
-  PROJECT_MENU_PRIMARY_ACTIONS,
-  type ProjectMenuGroupId
-} from './project-menu.js'
+import { PROJECT_MENU_GROUPS, PROJECT_MENU_PRIMARY_ACTIONS, type ProjectMenuGroupId } from './project-menu.js'
 @customElement('project-actions')
 export class ProjectActions extends LiteElement {
   lastAction: string = ''
@@ -81,6 +77,9 @@ export class ProjectActions extends LiteElement {
         break
       case 'validate-bindings':
         cadleShell.validateBindingsForOneWire()
+        break
+      case 'auto-name-electrical':
+        cadleShell.autoNameElectricalCircuits()
         break
       case 'export-bom':
         cadleShell.generateBOM()
@@ -200,15 +199,25 @@ export class ProjectActions extends LiteElement {
   #fileGroupIcon(group: ProjectMenuGroupId) {
     switch (group) {
       case 'new':
-        return html`<custom-icon slot="start" icon="create_new_folder"></custom-icon>`
+        return html`<custom-icon
+          slot="start"
+          icon="create_new_folder"></custom-icon>`
       case 'import':
-        return html`<custom-icon slot="start" icon="upload_file"></custom-icon>`
+        return html`<custom-icon
+          slot="start"
+          icon="upload_file"></custom-icon>`
       case 'export':
-        return html`<custom-icon slot="start" icon="download"></custom-icon>`
+        return html`<custom-icon
+          slot="start"
+          icon="download"></custom-icon>`
       case 'onewire':
-        return html`<custom-icon slot="start" icon="output"></custom-icon>`
+        return html`<custom-icon
+          slot="start"
+          icon="output"></custom-icon>`
       case 'tools':
-        return html`<custom-icon slot="start" icon="edit"></custom-icon>`
+        return html`<custom-icon
+          slot="start"
+          icon="edit"></custom-icon>`
     }
   }
 
@@ -224,7 +233,9 @@ export class ProjectActions extends LiteElement {
               data-action=${action.action}
               @click=${this.#onMenuItemClick}
               tabindex="0">
-              <custom-icon slot="start" .icon=${action.icon}></custom-icon>
+              <custom-icon
+                slot="start"
+                .icon=${action.icon}></custom-icon>
               <span>${action.title}</span>
             </custom-list-item>
           `
@@ -242,20 +253,29 @@ export class ProjectActions extends LiteElement {
               tabindex="0">
               ${this.#fileGroupIcon(group.id)}
               <span>${group.title}</span>
-              <span slot="end" class="submenu-chevron ${expanded ? 'expanded' : ''}" aria-hidden="true">›</span>
+              <span
+                slot="end"
+                class="submenu-chevron ${expanded ? 'expanded' : ''}"
+                aria-hidden="true"
+                >›</span
+              >
             </custom-list-item>
             ${expanded
-              ? group.items.map((action) => html`
-                  <custom-list-item
-                    class="submenu-item"
-                    title=${action.title}
-                    data-action=${action.action}
-                    @click=${this.#onMenuItemClick}
-                    tabindex="0">
-                    <custom-icon slot="start" .icon=${action.icon}></custom-icon>
-                    <span>${action.title}</span>
-                  </custom-list-item>
-                `)
+              ? group.items.map(
+                  (action) => html`
+                    <custom-list-item
+                      class="submenu-item"
+                      title=${action.title}
+                      data-action=${action.action}
+                      @click=${this.#onMenuItemClick}
+                      tabindex="0">
+                      <custom-icon
+                        slot="start"
+                        .icon=${action.icon}></custom-icon>
+                      <span>${action.title}</span>
+                    </custom-list-item>
+                  `
+                )
               : ''}
           `
         })}

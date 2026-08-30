@@ -281,6 +281,32 @@ custom-button:active {
   margin-top: var(--cadle-space-2);
 }
 
+.circuit-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--cadle-space-2);
+  margin-top: var(--cadle-space-2);
+}
+
+.circuit-actions .native-button {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding-inline: 6px;
+}
+
+.circuit-actions custom-icon {
+  flex: 0 0 auto;
+  --custom-icon-size: 18px;
+}
+
+.circuit-actions span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .native-button {
   flex: 1 1 auto;
   border: 1px solid var(--md-sys-color-outline-variant);

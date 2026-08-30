@@ -6,9 +6,16 @@ import { getBoundedCache, setBoundedCache } from '../../helpers/bounded-cache.js
 
 export type BindingLabelSide = 'left' | 'right' | 'top' | 'bottom'
 
-type OpticalInsets = { left: number; right: number; top: number; bottom: number }
+export type OpticalMetrics = {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  viewBoxWidth: number
+  viewBoxHeight: number
+}
 
-const opticalInsetsCache = new Map<string, OpticalInsets | null>()
+const opticalInsetsCache = new Map<string, OpticalMetrics | null>()
 const MAX_OPTICAL_INSET_CACHE_ENTRIES = 256
 const measurementHostId = 'cadle-symbol-measurement-host'
 
@@ -43,7 +50,7 @@ const measurementHost = (): SVGSVGElement | null => {
   return host
 }
 
-const symbolOpticalInsets = (path: string): OpticalInsets | null => {
+export const symbolOpticalMetrics = (path: string): OpticalMetrics | null => {
   const cached = getBoundedCache(opticalInsetsCache, path)
   if (cached !== undefined) return cached
 
@@ -92,7 +99,9 @@ const symbolOpticalInsets = (path: string): OpticalInsets | null => {
     left: Math.max(0, Math.min(0.49, (box.x - viewBox.minX) / viewBox.width)),
     right: Math.max(0, Math.min(0.49, (viewBox.minX + viewBox.width - (box.x + box.width)) / viewBox.width)),
     top: Math.max(0, Math.min(0.49, (box.y - viewBox.minY) / viewBox.height)),
-    bottom: Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height))
+    bottom: Math.max(0, Math.min(0.49, (viewBox.minY + viewBox.height - (box.y + box.height)) / viewBox.height)),
+    viewBoxWidth: viewBox.width,
+    viewBoxHeight: viewBox.height
   }
   setBoundedCache(opticalInsetsCache, path, insets, MAX_OPTICAL_INSET_CACHE_ENTRIES)
   return insets
@@ -109,15 +118,40 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
     const extraRight = Math.max(0, label.length - 3) * 7 * Math.max(0.4, shape.scale)
     return extraRight > 0 ? { ...bounds, width: bounds.width + extraRight } : bounds
   }
-  if (shape.rotation || shape.flipX || shape.flipY) return expandBreakerLabel(fullBox)
-  const insets = symbolOpticalInsets(shape.path)
-  if (!insets) return expandBreakerLabel(fullBox)
-  return expandBreakerLabel({
-    x: x + size * insets.left,
-    y: y + size * insets.top,
-    width: Math.max(1, size * (1 - insets.left - insets.right)),
-    height: Math.max(1, size * (1 - insets.top - insets.bottom))
+  const metrics = symbolOpticalMetrics(shape.path)
+  if (!metrics) return expandBreakerLabel(fullBox)
+  const fitScale = size / Math.max(metrics.viewBoxWidth, metrics.viewBoxHeight)
+  const renderedWidth = metrics.viewBoxWidth * fitScale
+  const renderedHeight = metrics.viewBoxHeight * fitScale
+  const bounds = {
+    x: shape.position.x - renderedWidth / 2 + renderedWidth * metrics.left,
+    y: shape.position.y - renderedHeight / 2 + renderedHeight * metrics.top,
+    width: Math.max(1, renderedWidth * (1 - metrics.left - metrics.right)),
+    height: Math.max(1, renderedHeight * (1 - metrics.top - metrics.bottom))
+  }
+  if (!shape.rotation && !shape.flipX && !shape.flipY) return expandBreakerLabel(bounds)
+
+  const radians = ((shape.rotation ?? 0) * Math.PI) / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+  const corners = [
+    { x: bounds.x, y: bounds.y },
+    { x: bounds.x + bounds.width, y: bounds.y },
+    { x: bounds.x, y: bounds.y + bounds.height },
+    { x: bounds.x + bounds.width, y: bounds.y + bounds.height }
+  ].map((point) => {
+    const dx = (point.x - shape.position.x) * (shape.flipX ? -1 : 1)
+    const dy = (point.y - shape.position.y) * (shape.flipY ? -1 : 1)
+    return {
+      x: shape.position.x + dx * cos - dy * sin,
+      y: shape.position.y + dx * sin + dy * cos
+    }
   })
+  const minX = Math.min(...corners.map((point) => point.x))
+  const maxX = Math.max(...corners.map((point) => point.x))
+  const minY = Math.min(...corners.map((point) => point.y))
+  const maxY = Math.max(...corners.map((point) => point.y))
+  return expandBreakerLabel({ x: minX, y: minY, width: maxX - minX, height: maxY - minY })
 }
 
 export const bindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: number; y: number } => {

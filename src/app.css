@@ -380,7 +380,7 @@
 .shape-wall {
   fill: none;
   stroke: #3b2c20;
-  stroke-width: 12;
+  stroke-width: 6;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }

@@ -51,6 +51,7 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
     id: 'onewire',
     title: 'One-wire',
     items: [
+      { title: 'Auto name circuits', action: 'auto-name-electrical', icon: 'auto_fix_high' },
       { title: 'Validate bindings', action: 'validate-bindings', icon: 'check' },
       { title: 'Describe structure', action: 'describe-one-wire', icon: 'account_tree' },
       { title: 'Generate schema', action: 'generate-one-wire', icon: 'output' }

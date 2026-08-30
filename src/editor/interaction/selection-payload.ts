@@ -42,7 +42,7 @@ export type NativeSelectionShapePayload = {
 const defaultStrokeWidthForShape = (shape: Shape): number | null => {
   switch (shape.kind) {
     case 'wall':
-      return 12
+      return 8
     case 'line':
       return 2
     case 'door':
@@ -102,7 +102,10 @@ export const createNativeSelectionChangedPayload = (
   if (selectedShape.kind === 'text') shapePayload.text = selectedShape.text
   if (selectedShape.kind === 'symbol') {
     shapePayload.path = selectedShape.path
-    const sourceElectrical = options?.electricalOverride ?? selectedShape.electrical ?? electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
+    const sourceElectrical =
+      options?.electricalOverride ??
+      selectedShape.electrical ??
+      electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path)
     if (sourceElectrical.oneWireEligible || selectedShape.bindingId) {
       shapePayload.electrical = options?.circuitPropertiesEditable
         ? { ...sourceElectrical }
@@ -118,8 +121,11 @@ export const createNativeSelectionChangedPayload = (
           }
     }
     shapePayload.circuitPropertiesEditable = options?.circuitPropertiesEditable === true
-    const isProtectionSymbol = /automaat|breaker|protection devices/i.test(`${selectedShape.name} ${selectedShape.path}`)
-    const editableFields = options?.hideSymbolTextFields || isProtectionSymbol ? [] : listEditableSymbolTextFields(selectedShape.path)
+    const isProtectionSymbol = /automaat|breaker|protection devices/i.test(
+      `${selectedShape.name} ${selectedShape.path}`
+    )
+    const editableFields =
+      options?.hideSymbolTextFields || isProtectionSymbol ? [] : listEditableSymbolTextFields(selectedShape.path)
     if (editableFields.length) {
       const overrides = selectedShape.symbolTextOverrides ?? {}
       shapePayload.symbolTextFields = editableFields.map((field) => ({

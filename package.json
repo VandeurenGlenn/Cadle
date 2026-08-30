@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "npm run generate:manifest && npm run watch",
     "watch": "rollup -c -w",
-    "serve": "npx serve -p 4333 www ",
+    "serve": "npx serve -p 4433 www ",
     "standalone": "npm run build && npm run standalone:serve",
     "standalone:serve": "node scripts/standalone.mjs",
     "standalone:desktop": "npm run build && electron .",

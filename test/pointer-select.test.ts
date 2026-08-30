@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   allowsExistingShapeSelection,
   dragIdsForSelectedShape,
+  expandSelectionWithGroup,
   shouldSelectExistingOneWireShape
 } from '../src/editor/interaction/pointer-select.ts'
 import type { Shape } from '../src/editor/model/types.ts'
@@ -87,6 +88,17 @@ test('selects an existing group instead of running one-wire preset placement', (
   assert.equal(shouldSelectExistingOneWireShape(groupShape, false), true)
   assert.equal(shouldSelectExistingOneWireShape(groupShape, true), false)
   assert.equal(shouldSelectExistingOneWireShape(null, false), false)
+})
+
+test('selects every shape in a regular group', () => {
+  const shapes: Shape[] = [
+    { id: 'one', kind: 'rect', start: { x: 0, y: 0 }, end: { x: 20, y: 20 }, groupId: 'group-a' },
+    { id: 'two', kind: 'rect', start: { x: 30, y: 0 }, end: { x: 50, y: 20 }, groupId: 'group-a' },
+    { id: 'other', kind: 'rect', start: { x: 60, y: 0 }, end: { x: 80, y: 20 } }
+  ]
+
+  assert.deepEqual([...expandSelectionWithGroup(shapes, 'one')], ['one', 'two'])
+  assert.deepEqual([...expandSelectionWithGroup(shapes, 'other')], ['other'])
 })
 
 test('does not select existing objects while using an architectural drawing tool', () => {

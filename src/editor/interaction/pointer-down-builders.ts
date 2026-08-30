@@ -13,6 +13,34 @@ type SymbolStyleDefaults = {
 }
 
 export const DEFAULT_DRAW_STROKE_WIDTH = 1
+const FLOOR_PLAN_SWITCH_SCALE = 1.3
+const FLOOR_PLAN_PUSH_BUTTON_SCALE = 0.8
+const FLOOR_PLAN_DOUBLE_PUSH_BUTTON_SCALE = 1.25
+const FLOOR_PLAN_CHANGE_OVER_SWITCH_SCALE = 1.7
+const FLOOR_PLAN_DUAL_SWITCH_SCALE = 1.15
+const WALL_LIGHT_SCALE = 1.5
+const FLUORESCENT_LAMP_SCALE = 2
+const DISTRIBUTION_BOARD_SCALE = 2
+const DISTRIBUTION_BOARD_STROKE_WIDTH = 1.35
+const BATTERY_BANK_SCALE = 2
+const BATTERY_BANK_STROKE_WIDTH = 5
+const INVERTER_SCALE = 1.4
+const INVERTER_STROKE_WIDTH = 1.15
+
+const isBatteryBankPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)
+const isInverterPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)
+const isDistributionBoardPath = (path: string): boolean => /\/electrical devices\/distribution board\.svg$/i.test(path)
+
+const floorPlanSwitchScale = (path: string): number | null => {
+  if (!/\/switches\//i.test(path)) return null
+  if (/double push button\.svg$/i.test(path)) return FLOOR_PLAN_DOUBLE_PUSH_BUTTON_SCALE
+  if (/push button\.svg$/i.test(path)) return FLOOR_PLAN_PUSH_BUTTON_SCALE
+  if (/dual switch, single casing\.svg$/i.test(path)) return FLOOR_PLAN_DUAL_SWITCH_SCALE
+  if (/(?:change over|intermediate switch).*\.svg$/i.test(path)) return FLOOR_PLAN_CHANGE_OVER_SWITCH_SCALE
+  return /(?:timer|time switch|thermostat|impulse relay|electric lock|guard tour control device)\.svg$/i.test(path)
+    ? 1
+    : FLOOR_PLAN_SWITCH_SCALE
+}
 
 const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefaults => {
   const metadata = symbol.metadata
@@ -20,6 +48,19 @@ const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefau
   const defaults = (metadata as Record<string, unknown>).symbolDefaults
   if (!defaults || typeof defaults !== 'object') return {}
   return defaults as SymbolStyleDefaults
+}
+
+export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick): number => {
+  const defaults = resolveSymbolStyleDefaults(symbol)
+  if (typeof defaults.scale === 'number' && Number.isFinite(defaults.scale)) {
+    return Math.max(0.1, Math.min(20, defaults.scale))
+  }
+  if (/\/consumption appliances\/wall light\.svg$/i.test(symbol.path)) return WALL_LIGHT_SCALE
+  if (/\/consumption appliances\/fluorescent lamp\.svg$/i.test(symbol.path)) return FLUORESCENT_LAMP_SCALE
+  if (isDistributionBoardPath(symbol.path)) return DISTRIBUTION_BOARD_SCALE
+  if (isBatteryBankPath(symbol.path)) return BATTERY_BANK_SCALE
+  if (isInverterPath(symbol.path)) return INVERTER_SCALE
+  return floorPlanSwitchScale(symbol.path) ?? inferSymbolScale(symbol.path)
 }
 
 export const createTextShape = (id: string, position: Point, text: string): TextShape => ({
@@ -32,17 +73,13 @@ export const createTextShape = (id: string, position: Point, text: string): Text
 
 export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalogPick): SymbolShape => {
   const defaults = resolveSymbolStyleDefaults(symbol)
-  const defaultScale =
-    typeof defaults.scale === 'number' && Number.isFinite(defaults.scale)
-      ? Math.max(0.1, Math.min(20, defaults.scale))
-      : undefined
   const shape: SymbolShape = {
     id,
     kind: 'symbol',
     position: point,
     name: symbol.name,
     path: symbol.path,
-    scale: defaultScale ?? inferSymbolScale(symbol.path),
+    scale: resolveCatalogSymbolScale(symbol),
     electrical: electricalMetadataFromCatalog(symbol.metadata, symbol.name, symbol.path)
   }
   if (typeof defaults.rotation === 'number' && Number.isFinite(defaults.rotation)) {
@@ -52,6 +89,12 @@ export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalo
   if (typeof defaults.stroke === 'string' && defaults.stroke.trim()) shape.stroke = defaults.stroke
   if (typeof defaults.strokeWidth === 'number' && Number.isFinite(defaults.strokeWidth)) {
     shape.strokeWidth = Math.max(0.5, Math.min(40, defaults.strokeWidth))
+  } else if (isDistributionBoardPath(symbol.path)) {
+    shape.strokeWidth = DISTRIBUTION_BOARD_STROKE_WIDTH
+  } else if (isBatteryBankPath(symbol.path)) {
+    shape.strokeWidth = BATTERY_BANK_STROKE_WIDTH
+  } else if (isInverterPath(symbol.path)) {
+    shape.strokeWidth = INVERTER_STROKE_WIDTH
   }
   if (Array.isArray(symbol.shapes) && symbol.shapes.length > 0) {
     shape.catalogShapes = symbol.shapes

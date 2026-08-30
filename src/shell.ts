@@ -71,7 +71,13 @@ type NativeAppElement = HTMLElement & {
   analyzeBindings?: () => CircuitAnalysis
   getBOMRows?: () => BomRow[]
   getCircuitScheduleEditorItems?: () => CircuitScheduleEditorItem[]
-  generateAutoOneWire?: (pageIndex?: number) => { generated: boolean; circuitCount: number; pageCount?: number; message?: string }
+  autoNameElectrical?: (lightingCircuitCount: number) => { labeled: number; circuitCount: number; message: string }
+  generateAutoOneWire?: (pageIndex?: number) => {
+    generated: boolean
+    circuitCount: number
+    pageCount?: number
+    message?: string
+  }
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
   flushPendingCircuitUpdates?: () => Promise<void>
@@ -432,9 +438,7 @@ export class AppShell extends LiteElement {
       ...this.project,
       oneWirePrompt: detail.prompt,
       oneWireTopology: validation.value,
-      ...(validation.value.gridProtectionCurrentA
-        ? { mainFuseA: validation.value.gridProtectionCurrentA }
-        : {})
+      ...(validation.value.gridProtectionCurrentA ? { mainFuseA: validation.value.gridProtectionCurrentA } : {})
     }
     const mainDifferential = detail.topology.mainDifferential
     if (mainDifferential) {
@@ -450,18 +454,20 @@ export class AppShell extends LiteElement {
         boards: [{ id: 'main', name: 'Main distribution board', rails: [{ id: 'rail-1', name: 'Rail 1' }] }]
       }
       const boards = profile.boards?.length
-        ? profile.boards.map((board, index) => index === 0
-            ? {
-                ...board,
-                mainDifferential: {
-                  id: board.mainDifferential?.id ?? 'main-differential',
-                  ratedCurrentA: mainDifferential.ratedCurrentA,
-                  sensitivityMa: mainDifferential.sensitivityMa,
-                  poles: board.mainDifferential?.poles ?? profile.defaultPoles,
-                  type: board.mainDifferential?.type ?? 'A'
+        ? profile.boards.map((board, index) =>
+            index === 0
+              ? {
+                  ...board,
+                  mainDifferential: {
+                    id: board.mainDifferential?.id ?? 'main-differential',
+                    ratedCurrentA: mainDifferential.ratedCurrentA,
+                    sensitivityMa: mainDifferential.sensitivityMa,
+                    poles: board.mainDifferential?.poles ?? profile.defaultPoles,
+                    type: board.mainDifferential?.type ?? 'A'
+                  }
                 }
-              }
-            : board)
+              : board
+          )
         : profile.boards
       this.project.electricalProfile = { ...profile, boards }
     }
@@ -546,10 +552,14 @@ export class AppShell extends LiteElement {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.svg,image/svg+xml'
-    input.addEventListener('change', async () => {
-      const file = input.files?.[0]
-      if (file) await this.importCustomSymbolFile(file)
-    }, { once: true })
+    input.addEventListener(
+      'change',
+      async () => {
+        const file = input.files?.[0]
+        if (file) await this.importCustomSymbolFile(file)
+      },
+      { once: true }
+    )
     input.click()
   }
 
@@ -702,7 +712,11 @@ export class AppShell extends LiteElement {
     // spend that work looking at an editor without an open project.
     this.#captureReloadResumeFromHash()
     const initialRoute = parseHash(location.hash).route
-    if (!initialRoute || ((initialRoute === 'editor/model' || initialRoute === 'draw' || initialRoute === 'save') && !this.showReopenPreviousProjectPrompt)) {
+    if (
+      !initialRoute ||
+      ((initialRoute === 'editor/model' || initialRoute === 'draw' || initialRoute === 'save') &&
+        !this.showReopenPreviousProjectPrompt)
+    ) {
       location.hash = '#!/projects'
     }
     await this.#onhashchange()
@@ -940,8 +954,18 @@ export class AppShell extends LiteElement {
       return
     }
 
-    const oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
-    if (!oneWirePage) return
+    let oneWirePage: Awaited<ReturnType<typeof ensureOneWirePage>>
+    try {
+      oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
+    } catch (error) {
+      console.error('Failed to create the one-wire page.', error)
+      globalThis.alert('The one-wire page could not be created. Please try again.')
+      return
+    }
+    if (!oneWirePage) {
+      globalThis.alert('The one-wire page could not be created. Please try again.')
+      return
+    }
     this.project = oneWirePage.project
 
     await this.loadPage(oneWirePage.pageKey)
@@ -981,6 +1005,41 @@ export class AppShell extends LiteElement {
     await this.loadPage(oneWirePage.pageKey)
   }
 
+  async autoNameElectricalCircuits() {
+    if (!this.projectKey || !this.project) {
+      globalThis.alert('Create or open a project before automatically naming circuits.')
+      return
+    }
+
+    const input = globalThis.prompt('How many lighting circuits should be used?', '1')
+    if (input === null) return
+    const lightingCircuitCount = Number(input.trim())
+    if (!Number.isInteger(lightingCircuitCount) || lightingCircuitCount < 1 || lightingCircuitCount > 20) {
+      globalThis.alert('Enter a whole number between 1 and 20.')
+      return
+    }
+
+    const currentApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    await currentApp?.flushPendingSave?.()
+    this.project = await getProjectData(this.projectKey)
+    const groundPlanPageKey = Object.entries(this.project.pages).find(
+      ([, page]) => page.pageType !== 'onewire' && page.pageType !== 'circuit-schedule'
+    )?.[0]
+    if (!groundPlanPageKey) {
+      globalThis.alert('No floor plan is available to label.')
+      return
+    }
+
+    if (this.loadedPage !== groundPlanPageKey) await this.loadPage(groundPlanPageKey)
+    const activeApp = await this.#nativeAppForPage(groundPlanPageKey)
+    if (!activeApp?.autoNameElectrical) {
+      globalThis.alert('The floor plan did not finish loading. Please try again.')
+      return
+    }
+    const result = activeApp.autoNameElectrical(lightingCircuitCount)
+    globalThis.alert(result.message)
+  }
+
   async validateBindingsForOneWire() {
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     const report = nativeApp?.analyzeBindings?.() ?? null
@@ -1016,7 +1075,7 @@ export class AppShell extends LiteElement {
   pickColor = async (): Promise<Color> => {
     const pickerDialog = this.shadowRoot?.querySelector('color-picker-dialog')
     if (!pickerDialog) throw new Error('Color picker not found')
-    const color = await pickerDialog.pick(this.#normalizeColorInput(state.styling.fill)) as Color
+    const color = (await pickerDialog.pick(this.#normalizeColorInput(state.styling.fill))) as Color
     state.styling.fill = color
     this.actions.fill = color
     this._currentColor = color
@@ -1073,8 +1132,7 @@ export class AppShell extends LiteElement {
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
-      <page-operation-dialog
-        @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
+      <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <main class="route-only">${routeContent}</main>
     `
   }
@@ -1084,15 +1142,15 @@ export class AppShell extends LiteElement {
     const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
 
     return html`
-      <page-operation-dialog
-        @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
+      <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <color-picker-dialog></color-picker-dialog>
       <validation-report
         .open=${this.validationReportOpen}
         .report=${this.validationReportData}
         .projectName=${this.projectName ?? this.project?.name ?? ''}
         @close=${() => (this.validationReportOpen = false)}
-        @focus-binding=${(event: CustomEvent<{ bindingId: string }>) => this.#focusBindingGroup(event.detail.bindingId)}>
+        @focus-binding=${(event: CustomEvent<{ bindingId: string }>) =>
+          this.#focusBindingGroup(event.detail.bindingId)}>
       </validation-report>
       <template-library
         .open=${this.templateLibraryOpen}
@@ -1141,11 +1199,13 @@ export class AppShell extends LiteElement {
         .open=${this.oneWirePromptDialogOpen}
         .prompt=${this.project?.oneWirePrompt ?? ''}
         @close=${() => (this.oneWirePromptDialogOpen = false)}
-        @apply-topology=${(event: CustomEvent<{
-          prompt: string
-          topology: OneWireTopologyPlan
-          parserTopology: OneWireTopologyPlan
-        }>) => {
+        @apply-topology=${(
+          event: CustomEvent<{
+            prompt: string
+            topology: OneWireTopologyPlan
+            parserTopology: OneWireTopologyPlan
+          }>
+        ) => {
           void this.#applyOneWireTopology(event.detail)
         }}></onewire-prompt-dialog>
       <onewire-training-panel
@@ -1162,7 +1222,9 @@ export class AppShell extends LiteElement {
         }}></history-panel>
       ${iconSetTemplate}
       <div class="shell-frame">
-        <section class="layout" data-circuit-schedule=${circuitSchedulePage ? 'true' : 'false'}>
+        <section
+          class="layout"
+          data-circuit-schedule=${circuitSchedulePage ? 'true' : 'false'}>
           <aside
             id="project-drawer"
             class="left-rail"
@@ -1246,7 +1308,9 @@ export class AppShell extends LiteElement {
             </div>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
-              <div data-route="editor/model" style="width:100%;height:100%;min-height:0;">
+              <div
+                data-route="editor/model"
+                style="width:100%;height:100%;min-height:0;">
                 <cadle-app style=${circuitSchedulePage ? 'display:none' : ''}></cadle-app>
                 ${circuitSchedulePage
                   ? html`

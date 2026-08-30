@@ -10,6 +10,10 @@ import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { del, getProjects, renameProject, upload } from '../api/project.js'
 import pubsub from '../pubsub.js'
+import { chooseProjectSparkIndex, PROJECT_SPARKS } from './project-sparks.js'
+
+const SPARK_STORAGE_KEY = 'cadle.last-project-spark'
+
 @customElement('projects-field')
 export class ProjectsField extends LiteElement {
   @property({ attribute: false })
@@ -30,6 +34,7 @@ export class ProjectsField extends LiteElement {
   _currentSelected
   _transitionEnd?: () => void
   _reopenPromptFocusedButton: 'open' | 'dismiss' = 'open'
+  _sparkIndex = 0
   static styles = [styles]
 
   @listen('click', { target: (host: ProjectsField) => host.shadowRoot })
@@ -39,6 +44,13 @@ export class ProjectsField extends LiteElement {
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
+    try {
+      const stored = Number.parseInt(localStorage.getItem(SPARK_STORAGE_KEY) ?? '', 10)
+      this._sparkIndex = chooseProjectSparkIndex(Number.isFinite(stored) ? stored : null)
+      localStorage.setItem(SPARK_STORAGE_KEY, String(this._sparkIndex))
+    } catch {
+      this._sparkIndex = chooseProjectSparkIndex(null)
+    }
     // Projects render before the deferred shell on first load. Subscribe
     // immediately so shell state emitted while project storage is loading is not lost.
     pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
@@ -344,6 +356,7 @@ export class ProjectsField extends LiteElement {
   }
 
   render() {
+    const spark = PROJECT_SPARKS[this._sparkIndex] ?? PROJECT_SPARKS[0]
     return html`
       <custom-dropdown class="contextmenu">
         <custom-list-item
@@ -616,7 +629,7 @@ export class ProjectsField extends LiteElement {
                 >
                 <div>
                   <strong>A little spark before you start</strong>
-                  <p>Why did the circuit break up with the wire? Too much resistance.</p>
+                  <p><span>${spark.setup}</span> ${spark.punchline}</p>
                 </div>
               </aside>`
             : ''}

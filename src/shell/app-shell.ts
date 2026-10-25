@@ -1556,6 +1556,14 @@ export class AppShell extends LiteElement {
                     >${this.project.pages[this.loadedPage].name}</span
                   >`
                 : ''}
+              <button
+                class="settings-navigation"
+                type="button"
+                title="Instellingen en back-ups"
+                aria-label="Instellingen en back-ups"
+                @click=${() => (location.hash = '#!/settings')}>
+                <custom-icon icon="settings"></custom-icon>
+              </button>
               ${circuitSchedulePage
                 ? ''
                 : html`

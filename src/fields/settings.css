@@ -1,5 +1,6 @@
 :host { display: block; overflow: auto; box-sizing: border-box; padding: clamp(24px, 5vw, 64px); color: var(--md-sys-color-on-background); background: var(--md-sys-color-background); }
 .settings-shell { width: min(880px, 100%); margin: 0 auto; }
+.back-button { min-height: 34px; margin: 0 0 20px; padding: 0 12px; }
 h1 { margin: 0; font-size: 34px; letter-spacing: -0.025em; }
 .lead { margin: 8px 0 32px; color: var(--md-sys-color-on-surface-variant); line-height: 1.55; }
 .section { margin-top: 28px; }

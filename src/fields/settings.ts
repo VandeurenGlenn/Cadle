@@ -142,6 +142,7 @@ export class SettingsField extends LiteElement {
   render() {
     return html`
       <div class="settings-shell">
+        <button class="back-button" @click=${() => history.back()} aria-label="Terug naar het vorige scherm">← Terug</button>
         <h1>Instellingen</h1>
         <p class="lead">Beheer de weergave en houd een extra kopie van al je Cadle-projecten bij.</p>
         <section class="section" aria-labelledby="backup-title">

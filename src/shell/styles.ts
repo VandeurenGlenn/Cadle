@@ -479,6 +479,32 @@ export const shellStyles = css`
     pointer-events: auto;
   }
 
+  .settings-navigation {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: var(--md-sys-color-on-surface-variant);
+    background: transparent;
+    cursor: pointer;
+    transition: color var(--cadle-motion-fast), background-color var(--cadle-motion-fast);
+  }
+
+  .settings-navigation:hover {
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface-container-high);
+  }
+
+  .settings-navigation:focus-visible {
+    outline: none;
+    box-shadow: var(--cadle-focus-ring);
+  }
+
   input[type='color'] {
     left: 50%;
     top: 50%;

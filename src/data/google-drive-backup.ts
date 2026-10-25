@@ -15,9 +15,10 @@ const DRIVE_FOLDER_NAME = 'Cadle Projects'
 const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
 export const GOOGLE_DRIVE_CONNECTED_KEY = 'cadle.backup.google-drive-connected'
 export const GOOGLE_DRIVE_RETENTION_KEY = 'cadle.backup.google-drive-retention'
+export const GOOGLE_DRIVE_EXIT_BACKUP_KEY = 'cadle.backup.google-drive-on-exit'
 export type GoogleDriveRetention = 0 | 3 | 5 | 10
 
-type TokenResponse = { access_token?: string; error?: string; error_description?: string }
+type TokenResponse = { access_token?: string; expires_in?: number; error?: string; error_description?: string }
 type TokenClient = { requestAccessToken(options?: { prompt?: string }): void }
 
 declare global {
@@ -41,6 +42,20 @@ declare global {
 
 let scriptPromise: Promise<void> | undefined
 let accessToken = ''
+let accessTokenExpiresAt = 0
+let exitBackupInstalled = false
+let exitBackupStarted = false
+
+const notifyAuthRequired = () => {
+  if (
+    document.visibilityState === 'visible' &&
+    readGoogleDriveExitBackup() &&
+    googleDriveWasConnected() &&
+    (!accessToken || Date.now() >= accessTokenExpiresAt)
+  ) {
+    window.dispatchEvent(new CustomEvent('cadle-google-drive-auth-required'))
+  }
+}
 
 export const googleDriveClientId = () =>
   window.cadleConfig?.googleDriveClientId?.trim() ||
@@ -55,6 +70,9 @@ export const readGoogleDriveRetention = (): GoogleDriveRetention => {
 }
 export const writeGoogleDriveRetention = (value: GoogleDriveRetention) =>
   localStorage.setItem(GOOGLE_DRIVE_RETENTION_KEY, String(value))
+export const readGoogleDriveExitBackup = () => localStorage.getItem(GOOGLE_DRIVE_EXIT_BACKUP_KEY) !== 'false'
+export const writeGoogleDriveExitBackup = (enabled: boolean) =>
+  localStorage.setItem(GOOGLE_DRIVE_EXIT_BACKUP_KEY, String(enabled))
 
 const loadIdentityServices = (): Promise<void> => {
   if (window.google?.accounts.oauth2) return Promise.resolve()
@@ -90,6 +108,7 @@ const requestAccessToken = async (forceConsent = false): Promise<string> => {
           return
         }
         accessToken = response.access_token
+        accessTokenExpiresAt = Date.now() + Math.max(0, Number(response.expires_in ?? 3600) - 60) * 1000
         localStorage.setItem(GOOGLE_DRIVE_CONNECTED_KEY, 'true')
         resolve(accessToken)
       },
@@ -220,5 +239,34 @@ export const disconnectGoogleDrive = async (): Promise<void> => {
     await new Promise<void>((resolve) => window.google!.accounts.oauth2.revoke(accessToken, resolve))
   }
   accessToken = ''
+  accessTokenExpiresAt = 0
   localStorage.removeItem(GOOGLE_DRIVE_CONNECTED_KEY)
+}
+
+const tryExitBackup = () => {
+  if (
+    exitBackupStarted ||
+    !readGoogleDriveExitBackup() ||
+    !googleDriveWasConnected() ||
+    !accessToken ||
+    Date.now() >= accessTokenExpiresAt
+  ) return
+  exitBackupStarted = true
+  void backupToGoogleDrive().catch((error) => {
+    console.warn('Drive-back-up bij afsluiten is niet voltooid', error)
+  })
+}
+
+export const installGoogleDriveExitBackup = () => {
+  if (exitBackupInstalled) return
+  exitBackupInstalled = true
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') tryExitBackup()
+    else {
+      exitBackupStarted = false
+      notifyAuthRequired()
+    }
+  })
+  window.addEventListener('pagehide', tryExitBackup)
+  queueMicrotask(notifyAuthRequired)
 }

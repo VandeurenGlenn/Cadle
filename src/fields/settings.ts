@@ -18,8 +18,11 @@ import {
   disconnectGoogleDrive,
   googleDriveIsConfigured,
   googleDriveWasConnected,
+  installGoogleDriveExitBackup,
   readBackupFromGoogleDrive,
+  readGoogleDriveExitBackup,
   readGoogleDriveRetention,
+  writeGoogleDriveExitBackup,
   writeGoogleDriveRetention,
   type GoogleDriveRetention
 } from '../data/google-drive-backup.js'
@@ -41,6 +44,7 @@ export class SettingsField extends LiteElement {
   #driveConnected = false
   #driveConfigured = false
   #driveRetention: GoogleDriveRetention = 3
+  #driveBackupOnExit = true
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
@@ -49,6 +53,8 @@ export class SettingsField extends LiteElement {
     this.#driveConnected = googleDriveWasConnected()
     this.#driveConfigured = googleDriveIsConfigured()
     this.#driveRetention = readGoogleDriveRetention()
+    this.#driveBackupOnExit = readGoogleDriveExitBackup()
+    installGoogleDriveExitBackup()
     try {
       this.#directory = await getBackupDirectory()
     } catch {
@@ -163,6 +169,16 @@ export class SettingsField extends LiteElement {
     this.requestRender()
   }
 
+  #onDriveExitBackupChange = (event: Event) => {
+    this.#driveBackupOnExit = (event.target as HTMLInputElement).checked
+    writeGoogleDriveExitBackup(this.#driveBackupOnExit)
+    this.#message = this.#driveBackupOnExit
+      ? 'Automatische Drive-back-up bij afsluiten is ingeschakeld.'
+      : 'Automatische Drive-back-up bij afsluiten is uitgeschakeld.'
+    this.#error = false
+    this.requestRender()
+  }
+
   #lastBackupLabel() {
     if (!this.#lastBackup) return 'Nog geen back-up gemaakt'
     return `Laatste back-up: ${new Intl.DateTimeFormat('nl-BE', { dateStyle: 'medium', timeStyle: 'short' }).format(this.#lastBackup)}`
@@ -197,6 +213,10 @@ export class SettingsField extends LiteElement {
                 <option value="10" ?selected=${this.#driveRetention === 10}>Laatste 10</option>
                 <option value="0" ?selected=${this.#driveRetention === 0}>Alles bewaren</option>
               </select>
+            </label>
+            <label class="setting-row">
+              <div class="setting-copy"><strong>Back-up bij afsluiten</strong><span>Maakt automatisch een Drive-back-up wanneer Cadle sluit of naar de achtergrond gaat, zolang de Google-sessie actief is.</span></div>
+              <input type="checkbox" role="switch" .checked=${this.#driveBackupOnExit} @change=${this.#onDriveExitBackupChange} />
             </label>
             <div class="setting-row">
               <div class="setting-copy">

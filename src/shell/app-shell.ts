@@ -47,6 +47,7 @@ import { storeOneWireTrainingExample } from '../editor/onewire-training-data.js'
 import type { CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
 import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
 import { nativeStateForProjectPage } from '../data/project-document.js'
+import { connectGoogleDrive, installGoogleDriveExitBackup } from '../data/google-drive-backup.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -138,6 +139,9 @@ export class AppShell extends LiteElement {
 
   @property({ type: String, attribute: false })
   accessor selectedBindingId = ''
+
+  @property({ type: Boolean, attribute: false })
+  accessor googleDriveAuthRequired = false
 
   _currentColor: string = ''
 
@@ -883,6 +887,8 @@ export class AppShell extends LiteElement {
 
   async connectedCallback(): Promise<void> {
     if (super.connectedCallback) await super.connectedCallback()
+    window.addEventListener('cadle-google-drive-auth-required', this.#onGoogleDriveAuthRequired)
+    installGoogleDriveExitBackup()
     // const entries = await this.projectStore.entries()
     // for (const [key, value] of entries) {
     //   this.projectStore.set(globalThis.crypto.randomUUID(), { ...value, name: key })
@@ -932,9 +938,35 @@ export class AppShell extends LiteElement {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
     window.removeEventListener('hashchange', this.#onhashchange)
+    window.removeEventListener('cadle-google-drive-auth-required', this.#onGoogleDriveAuthRequired)
     pubsub.unsubscribe('editor.selection.changed', this.#onEditorSelectionChanged)
     pubsub.unsubscribe('editor.symbol.placed', this.#openObjectInspectorAfterPlacement)
     if (super.disconnectedCallback) super.disconnectedCallback()
+  }
+
+  #onGoogleDriveAuthRequired = () => {
+    this.googleDriveAuthRequired = true
+  }
+
+  #reauthorizeGoogleDrive = async () => {
+    try {
+      await connectGoogleDrive()
+      this.googleDriveAuthRequired = false
+    } catch (error) {
+      console.warn('Google Drive opnieuw aanmelden is mislukt', error)
+    }
+  }
+
+  #googleDriveAuthNotice() {
+    if (!this.googleDriveAuthRequired) return ''
+    return html`
+      <aside class="drive-auth-notice" role="alert" aria-live="assertive">
+        <custom-icon icon="cloud_off"></custom-icon>
+        <div><strong>Google Drive opnieuw aanmelden</strong><span>Je sessie is verlopen. Meld opnieuw aan zodat back-ups bij afsluiten blijven werken.</span></div>
+        <button type="button" @click=${this.#reauthorizeGoogleDrive}>Opnieuw aanmelden</button>
+        <button class="notice-close" type="button" aria-label="Melding sluiten" @click=${() => (this.googleDriveAuthRequired = false)}>×</button>
+      </aside>
+    `
   }
 
   @listen('dragover')
@@ -1384,6 +1416,7 @@ export class AppShell extends LiteElement {
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
+      ${this.#googleDriveAuthNotice()}
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>
       <main class="route-only">${routeContent}</main>
@@ -1395,6 +1428,7 @@ export class AppShell extends LiteElement {
     const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
 
     return html`
+      ${this.#googleDriveAuthNotice()}
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>
       <color-picker-dialog></color-picker-dialog>

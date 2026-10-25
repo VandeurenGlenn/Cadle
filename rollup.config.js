@@ -17,6 +17,9 @@ const browserBuiltins = () => ({
     }
     if (source === 'fs/promises') return new URL('./src/shims/fs-promises.ts', import.meta.url).pathname
     if (source === 'crypto') return new URL('./src/shims/crypto.ts', import.meta.url).pathname
+    if (source === '@vandeurenglenn/wrtc' || source === '@koush/wrtc') {
+      return new URL('./src/shims/wrtc-browser.ts', import.meta.url).pathname
+    }
     const replacement = replacements[source]
     if (!replacement) return null
     return this.resolve(replacement, importer, { ...options, skipSelf: true })

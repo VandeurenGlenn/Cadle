@@ -29,4 +29,6 @@ button:disabled { opacity: .55; cursor: wait; }
 .message[data-error='true'] { color: var(--md-sys-color-error); }
 input[type='file'] { display: none; }
 input[type='range'] { width: 130px; }
+select { min-height: 38px; padding: 0 34px 0 12px; border: 1px solid var(--md-sys-color-outline); border-radius: 10px; color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface-container-low); font: inherit; }
+select:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
 @media (max-width: 650px) { :host { padding: 24px 16px; } .setting-row { align-items: flex-start; flex-direction: column; } .actions, .actions button { width: 100%; } }

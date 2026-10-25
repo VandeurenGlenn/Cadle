@@ -8,6 +8,7 @@ export const LAST_BACKUP_KEY = 'cadle.backup.last-completed-at'
 export type ProjectBackup = {
   format: 'cadle-backup'
   version: number
+  backupId: string
   createdAt: string
   projects: Array<{ projectKey: string; project: Project }>
 }
@@ -35,9 +36,15 @@ export const createProjectBackup = async (): Promise<ProjectBackup> => {
   return {
     format: 'cadle-backup',
     version: BACKUP_VERSION,
+    backupId: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     projects: await Promise.all(projects.map(async ([projectKey]) => ({ projectKey, project: await getProjectData(projectKey as UUID) })))
   }
+}
+
+export const projectBackupFileName = (backup: Pick<ProjectBackup, 'createdAt' | 'backupId'>) => {
+  const timestamp = backup.createdAt.replace(/[:.]/g, '-').replace(/-000Z$/, 'Z')
+  return `cadle-backup-${timestamp}-${backup.backupId.slice(0, 8)}.json`
 }
 
 export const parseProjectBackup = (value: unknown): ProjectBackup => {
@@ -51,7 +58,10 @@ export const parseProjectBackup = (value: unknown): ProjectBackup => {
       throw new Error('De back-up bevat ongeldige projectgegevens.')
     }
   }
-  return backup as ProjectBackup
+  return {
+    ...backup,
+    backupId: typeof backup.backupId === 'string' && backup.backupId ? backup.backupId : 'legacy'
+  } as ProjectBackup
 }
 
 export const restoreProjectBackup = async (backup: ProjectBackup): Promise<number> => {
@@ -68,7 +78,7 @@ export const downloadProjectBackup = async (): Promise<ProjectBackup> => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }))
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `cadle-backup-${backup.createdAt.slice(0, 10)}.json`
+  anchor.download = projectBackupFileName(backup)
   anchor.click()
   URL.revokeObjectURL(url)
   markBackupCompleted(backup.createdAt)
@@ -110,7 +120,7 @@ export const writeBackupToDirectory = async (handle: DirectoryHandleLike): Promi
     throw new Error('Cadle heeft geen schrijftoegang tot deze map.')
   }
   const backup = await createProjectBackup()
-  const writable = await (await handle.getFileHandle(BACKUP_FILE_NAME, { create: true })).createWritable()
+  const writable = await (await handle.getFileHandle(projectBackupFileName(backup), { create: true })).createWritable()
   await writable.write(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }))
   await writable.close()
   markBackupCompleted(backup.createdAt)

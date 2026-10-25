@@ -17,7 +17,11 @@ import {
   connectGoogleDrive,
   disconnectGoogleDrive,
   googleDriveIsConfigured,
-  googleDriveWasConnected
+  googleDriveWasConnected,
+  readBackupFromGoogleDrive,
+  readGoogleDriveRetention,
+  writeGoogleDriveRetention,
+  type GoogleDriveRetention
 } from '../data/google-drive-backup.js'
 import {
   DEFAULT_SYMBOL_STROKE_WIDTH,
@@ -36,6 +40,7 @@ export class SettingsField extends LiteElement {
   #lastBackup: Date | null = null
   #driveConnected = false
   #driveConfigured = false
+  #driveRetention: GoogleDriveRetention = 3
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback()
@@ -43,6 +48,7 @@ export class SettingsField extends LiteElement {
     this.#lastBackup = readLastBackupAt()
     this.#driveConnected = googleDriveWasConnected()
     this.#driveConfigured = googleDriveIsConfigured()
+    this.#driveRetention = readGoogleDriveRetention()
     try {
       this.#directory = await getBackupDirectory()
     } catch {
@@ -102,15 +108,26 @@ export class SettingsField extends LiteElement {
   })
 
   #connectDrive = () => this.#run(async () => {
-    const backup = await connectGoogleDrive()
+    await connectGoogleDrive()
     this.#driveConnected = true
-    return `Google Drive is gekoppeld. ${backup.projects.length} project${backup.projects.length === 1 ? '' : 'en'} opgeslagen.`
+    return 'Google Drive is gekoppeld. Kies nu of je wilt back-uppen of herstellen.'
   })
 
   #backupDrive = () => this.#run(async () => {
     const backup = await backupToGoogleDrive()
     this.#driveConnected = true
     return `Google Drive-back-up bijgewerkt met ${backup.projects.length} project${backup.projects.length === 1 ? '' : 'en'}.`
+  })
+
+  #restoreDrive = () => this.#run(async () => {
+    const backup = await readBackupFromGoogleDrive()
+    const confirmed = globalThis.confirm(
+      `De Google Drive-back-up bevat ${backup.projects.length} project${backup.projects.length === 1 ? '' : 'en'}. Projecten met hetzelfde ID worden vervangen. Doorgaan?`
+    )
+    if (!confirmed) return 'Herstellen geannuleerd.'
+    const count = await restoreProjectBackup(backup)
+    globalThis.cadleShell.projects = await (await import('../api/project.js')).getProjects()
+    return `${count} project${count === 1 ? '' : 'en'} vanuit Google Drive hersteld.`
   })
 
   #disconnectDrive = () => this.#run(async () => {
@@ -132,6 +149,18 @@ export class SettingsField extends LiteElement {
       return `${count} project${count === 1 ? '' : 'en'} hersteld.`
     })
     input.value = ''
+  }
+
+  #onDriveRetentionChange = (event: Event) => {
+    const value = Number((event.target as HTMLSelectElement).value)
+    if (value !== 0 && value !== 3 && value !== 5 && value !== 10) return
+    this.#driveRetention = value
+    writeGoogleDriveRetention(value)
+    this.#message = value === 0
+      ? 'Alle toekomstige Drive-back-ups worden bewaard.'
+      : `Na de volgende Drive-back-up worden alleen de laatste ${value} versies bewaard.`
+    this.#error = false
+    this.requestRender()
   }
 
   #lastBackupLabel() {
@@ -156,10 +185,19 @@ export class SettingsField extends LiteElement {
               </div>
               <div class="actions">
                 ${this.#driveConnected
-                  ? html`<button class="primary" ?disabled=${this.#busy} @click=${this.#backupDrive}>Nu back-uppen</button><button class="danger" ?disabled=${this.#busy} @click=${this.#disconnectDrive}>Loskoppelen</button>`
+                  ? html`<button class="primary" ?disabled=${this.#busy} @click=${this.#backupDrive}>Nu back-uppen</button><button ?disabled=${this.#busy} @click=${this.#restoreDrive}>Herstellen uit Drive</button><button class="danger" ?disabled=${this.#busy} @click=${this.#disconnectDrive}>Loskoppelen</button>`
                   : html`<button class="primary" ?disabled=${this.#busy || !this.#driveConfigured} @click=${this.#connectDrive}>Koppelen met Drive</button>`}
               </div>
             </div>
+            <label class="setting-row retention-row">
+              <div class="setting-copy"><strong>Drive-versies bewaren</strong><span>Oudere versies worden pas verwijderd nadat een nieuwe back-up geslaagd is.</span></div>
+              <select @change=${this.#onDriveRetentionChange} aria-label="Aantal Drive-back-ups bewaren">
+                <option value="3" ?selected=${this.#driveRetention === 3}>Laatste 3</option>
+                <option value="5" ?selected=${this.#driveRetention === 5}>Laatste 5</option>
+                <option value="10" ?selected=${this.#driveRetention === 10}>Laatste 10</option>
+                <option value="0" ?selected=${this.#driveRetention === 0}>Alles bewaren</option>
+              </select>
+            </label>
             <div class="setting-row">
               <div class="setting-copy">
                 <strong>Cloud- of lokale map</strong>
@@ -181,7 +219,7 @@ export class SettingsField extends LiteElement {
               </div>
             </div>
           </div>
-          <p class="hint">Cadle schrijft één bestand, <code>cadle-backup.json</code>, in de gekozen map. Je cloud-app verzorgt daarna de synchronisatie.</p>
+          <p class="hint">Drive-back-ups worden bewaard in de map <strong>Cadle Projects</strong>. Elke back-up krijgt een bestandsnaam met datum, tijd en een korte unieke ID; herstellen gebruikt automatisch de nieuwste versie.</p>
           <p class="message" data-error=${String(this.#error)} role="status">${this.#message}</p>
         </section>
         <section class="section" aria-labelledby="display-title">

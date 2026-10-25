@@ -1,8 +1,12 @@
-import type { Point, Shape } from '../../editor/model/types.js'
+import type { LineShape, Point, Shape } from '../../editor/model/types.js'
+
+type WallShape = LineShape & { kind: 'wall' }
+
+const isWallShape = (shape: Shape): shape is WallShape => shape.kind === 'wall'
 
 type WallTransform = {
-  before: Extract<Shape, { kind: 'wall' }>
-  after: Extract<Shape, { kind: 'wall' }>
+  before: WallShape
+  after: WallShape
 }
 
 const mappedWallConnection = (point: Point, transform: WallTransform, tolerance = 1): Point | null => {
@@ -25,12 +29,10 @@ const mappedWallConnection = (point: Point, transform: WallTransform, tolerance 
 }
 
 export const connectedWallIds = (shapes: readonly Shape[], targetIds: ReadonlySet<string>): Set<string> => {
-  const targets = shapes.filter(
-    (shape): shape is Extract<Shape, { kind: 'wall' }> => targetIds.has(shape.id) && shape.kind === 'wall'
-  )
+  const targets = shapes.filter((shape): shape is WallShape => targetIds.has(shape.id) && isWallShape(shape))
   const connected = new Set<string>()
   for (const shape of shapes) {
-    if (targetIds.has(shape.id) || shape.kind !== 'wall') continue
+    if (targetIds.has(shape.id) || !isWallShape(shape)) continue
     if (
       targets.some((target) => {
         const transform = { before: target, after: target }
@@ -51,14 +53,14 @@ export const updateConnectedWalls = (
   const updatedById = new Map(after.map((shape) => [shape.id, shape]))
   const transforms: WallTransform[] = before.flatMap((shape) => {
     const updated = updatedById.get(shape.id)
-    return targetIds.has(shape.id) && shape.kind === 'wall' && updated?.kind === 'wall'
+    return targetIds.has(shape.id) && isWallShape(shape) && updated && isWallShape(updated)
       ? [{ before: shape, after: updated }]
       : []
   })
   if (!transforms.length) return after
 
   return after.map((shape) => {
-    if (targetIds.has(shape.id) || shape.kind !== 'wall') return shape
+    if (targetIds.has(shape.id) || !isWallShape(shape)) return shape
     const start = transforms.map((transform) => mappedWallConnection(shape.start, transform)).find(Boolean)
     const end = transforms.map((transform) => mappedWallConnection(shape.end, transform)).find(Boolean)
     if (!start && !end) return shape
@@ -72,9 +74,7 @@ export const dragEndpointSnapDelta = (
   allShapes: Shape[],
   snapRadius = 20
 ): Point | null => {
-  const isEndpointShape = (
-    shape: Shape
-  ): shape is Extract<Shape, { kind: 'wall' | 'line' | 'door' | 'window' | 'gate' }> =>
+  const isEndpointShape = (shape: Shape): shape is LineShape =>
     shape.kind === 'wall' ||
     shape.kind === 'line' ||
     shape.kind === 'door' ||

@@ -21,17 +21,20 @@ test('accepts strict model output for a one-wire topology', () => {
 })
 
 test('validates the structured hoofdschakelaar', () => {
-  assert.equal(validateOneWireTopology({
-    version: 1,
-    mainSwitch: {
-      ratedCurrentA: 25,
-      manufacturer: 'Schneider Electric',
-      neutralPosition: 'left'
-    },
-    residualBreaker: false,
-    solar: false,
-    consumers: false
-  }).valid, true)
+  assert.equal(
+    validateOneWireTopology({
+      version: 1,
+      mainSwitch: {
+        ratedCurrentA: 25,
+        manufacturer: 'Schneider Electric',
+        neutralPosition: 'left'
+      },
+      residualBreaker: false,
+      solar: false,
+      consumers: false
+    }).valid,
+    true
+  )
 
   const invalid = validateOneWireTopology({
     version: 1,
@@ -83,14 +86,57 @@ test('accepts manufacturer and neutral-position metadata', () => {
       manufacturer: 'Schneider Electric',
       neutralPosition: 'left'
     },
-    additionalDifferentials: [{
-      count: 1,
-      sensitivityMa: 30,
-      purpose: 'consumers',
-      manufacturer: 'TECO',
-      neutralPosition: 'right'
-    }]
+    additionalDifferentials: [
+      {
+        count: 1,
+        sensitivityMa: 30,
+        purpose: 'consumers',
+        manufacturer: 'TECO',
+        neutralPosition: 'right'
+      }
+    ]
   })
 
   assert.equal(result.valid, true)
+})
+
+test('accepts one differential assigned to one cabinet row', () => {
+  const result = validateOneWireTopology({
+    version: 1,
+    residualBreaker: false,
+    solar: false,
+    consumers: true,
+    additionalDifferentials: [
+      { count: 1, railId: 'rail-1', sensitivityMa: 30, ratedCurrentA: 40, purpose: 'consumers' }
+    ]
+  })
+
+  assert.equal(result.valid, true)
+})
+
+test('accepts one differential assigned to another cabinet', () => {
+  const result = validateOneWireTopology({
+    version: 1,
+    residualBreaker: false,
+    solar: false,
+    consumers: true,
+    additionalDifferentials: [
+      { count: 1, boardId: 'kitchen', railId: 'rail-1', sensitivityMa: 30, purpose: 'consumers' }
+    ]
+  })
+
+  assert.equal(result.valid, true)
+})
+
+test('rejects one row identity shared by a counted differential group', () => {
+  const result = validateOneWireTopology({
+    version: 1,
+    residualBreaker: false,
+    solar: false,
+    consumers: true,
+    additionalDifferentials: [{ count: 2, railId: 'rail-1', sensitivityMa: 30, purpose: 'consumers' }]
+  })
+
+  assert.equal(result.valid, false)
+  assert.ok(result.errors.some((error) => error.includes('count moet 1 zijn')))
 })

@@ -1,7 +1,7 @@
 import Storage from '@leofcoin/storage'
 import type { PDFImporter } from '../elements/pdf-importer.js'
 import { Project, ProjectInput, type PageType, UUID } from '../types.js'
-import { safeExportName } from '../shell/export-commands.js'
+import { safeExportName } from '../helpers/export-name.js'
 
 export const decoder = new TextDecoder()
 
@@ -155,7 +155,8 @@ export const upload = async () => {
 export const download = async () => {
   await cadleShell.savePage()
   const projectName = safeExportName(cadleShell.project.name)
-  await cadleShell.exportProjectPdf(`${projectName}.pdf`)
+  const exported = await cadleShell.exportProjectPdf(`${projectName}.pdf`)
+  if (!exported) return
 
   const projectData = { ...cadleShell.project, projectKey: cadleShell.projectKey }
   const blob = new Blob([JSON.stringify(projectData, null, 2)], {

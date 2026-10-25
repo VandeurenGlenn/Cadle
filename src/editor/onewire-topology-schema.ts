@@ -58,6 +58,8 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
         required: ['count', 'sensitivityMa', 'purpose'],
         properties: {
           count: { type: 'integer', minimum: 1, maximum: 12 },
+          boardId: { type: 'string', minLength: 1, maxLength: 120 },
+          railId: { type: 'string', minLength: 1, maxLength: 120 },
           sensitivityMa: { type: 'number', exclusiveMinimum: 0, maximum: 3000 },
           ratedCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
           manufacturer: { type: 'string', minLength: 1, maxLength: 120 },
@@ -76,9 +78,7 @@ export type OneWireTopologyValidation = {
 }
 
 const record = (value: unknown): Record<string, unknown> | null =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 
 export const validateOneWireTopology = (input: unknown): OneWireTopologyValidation => {
   const value = record(input)
@@ -109,19 +109,19 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
   for (const key of ['residualBreaker', 'solar', 'consumers'] as const) {
     if (typeof value[key] !== 'boolean') errors.push(`${key} moet boolean zijn.`)
   }
-  if (value.residualBreakerRatedCurrentA !== undefined && (
-    typeof value.residualBreakerRatedCurrentA !== 'number'
-    || !Number.isFinite(value.residualBreakerRatedCurrentA)
-    || value.residualBreakerRatedCurrentA <= 0
-  )) {
+  if (
+    value.residualBreakerRatedCurrentA !== undefined &&
+    (typeof value.residualBreakerRatedCurrentA !== 'number' ||
+      !Number.isFinite(value.residualBreakerRatedCurrentA) ||
+      value.residualBreakerRatedCurrentA <= 0)
+  ) {
     errors.push('residualBreakerRatedCurrentA moet positief zijn.')
   }
   for (const key of ['gridProtectionCurrentA', 'solarBreakerRatedCurrentA'] as const) {
-    if (value[key] !== undefined && (
-      typeof value[key] !== 'number'
-      || !Number.isFinite(value[key])
-      || value[key] <= 0
-    )) {
+    if (
+      value[key] !== undefined &&
+      (typeof value[key] !== 'number' || !Number.isFinite(value[key]) || value[key] <= 0)
+    ) {
       errors.push(`${key} moet positief zijn.`)
     }
   }
@@ -164,19 +164,21 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
       }
     }
     if (
-      typeof mainSwitch.ratedCurrentA !== 'number'
-      || !Number.isFinite(mainSwitch.ratedCurrentA)
-      || mainSwitch.ratedCurrentA <= 0
+      typeof mainSwitch.ratedCurrentA !== 'number' ||
+      !Number.isFinite(mainSwitch.ratedCurrentA) ||
+      mainSwitch.ratedCurrentA <= 0
     ) {
       errors.push('mainSwitch.ratedCurrentA moet positief zijn.')
     }
-    if (mainSwitch.manufacturer !== undefined && (
-      typeof mainSwitch.manufacturer !== 'string' || !mainSwitch.manufacturer.trim()
-    )) errors.push('mainSwitch.manufacturer moet tekst zijn.')
     if (
-      mainSwitch.neutralPosition !== undefined
-      && mainSwitch.neutralPosition !== 'left'
-      && mainSwitch.neutralPosition !== 'right'
+      mainSwitch.manufacturer !== undefined &&
+      (typeof mainSwitch.manufacturer !== 'string' || !mainSwitch.manufacturer.trim())
+    )
+      errors.push('mainSwitch.manufacturer moet tekst zijn.')
+    if (
+      mainSwitch.neutralPosition !== undefined &&
+      mainSwitch.neutralPosition !== 'left' &&
+      mainSwitch.neutralPosition !== 'right'
     ) {
       errors.push('mainSwitch.neutralPosition is ongeldig.')
     }
@@ -191,31 +193,34 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
       }
     }
     if (
-      typeof differential.ratedCurrentA !== 'number'
-      || !Number.isFinite(differential.ratedCurrentA)
-      || differential.ratedCurrentA <= 0
+      typeof differential.ratedCurrentA !== 'number' ||
+      !Number.isFinite(differential.ratedCurrentA) ||
+      differential.ratedCurrentA <= 0
     ) {
       errors.push('mainDifferential.ratedCurrentA moet positief zijn.')
     }
     if (
-      typeof differential.sensitivityMa !== 'number'
-      || !Number.isFinite(differential.sensitivityMa)
-      || differential.sensitivityMa <= 0
+      typeof differential.sensitivityMa !== 'number' ||
+      !Number.isFinite(differential.sensitivityMa) ||
+      differential.sensitivityMa <= 0
     ) {
       errors.push('mainDifferential.sensitivityMa moet positief zijn.')
     }
-    if (differential.manufacturer !== undefined && (
-      typeof differential.manufacturer !== 'string' || !differential.manufacturer.trim()
-    )) errors.push('mainDifferential.manufacturer moet tekst zijn.')
-    if (differential.neutralPosition !== undefined && differential.neutralPosition !== 'left' && differential.neutralPosition !== 'right') {
+    if (
+      differential.manufacturer !== undefined &&
+      (typeof differential.manufacturer !== 'string' || !differential.manufacturer.trim())
+    )
+      errors.push('mainDifferential.manufacturer moet tekst zijn.')
+    if (
+      differential.neutralPosition !== undefined &&
+      differential.neutralPosition !== 'left' &&
+      differential.neutralPosition !== 'right'
+    ) {
       errors.push('mainDifferential.neutralPosition is ongeldig.')
     }
   }
 
-  if (
-    value.solarPlacement !== undefined
-    && value.solarPlacement !== 'parallel-after-main-differential'
-  ) {
+  if (value.solarPlacement !== undefined && value.solarPlacement !== 'parallel-after-main-differential') {
     errors.push('solarPlacement is ongeldig.')
   }
 
@@ -238,27 +243,68 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
           return
         }
         for (const key of Object.keys(differential)) {
-          if (!['count', 'sensitivityMa', 'ratedCurrentA', 'manufacturer', 'neutralPosition', 'purpose'].includes(key)) {
+          if (
+            ![
+              'count',
+              'boardId',
+              'railId',
+              'sensitivityMa',
+              'ratedCurrentA',
+              'manufacturer',
+              'neutralPosition',
+              'purpose'
+            ].includes(key)
+          ) {
             errors.push(`Onbekend ${prefix}-veld: ${key}.`)
           }
         }
-        if (!Number.isInteger(differential.count) || Number(differential.count) < 1 || Number(differential.count) > 12) {
+        if (
+          !Number.isInteger(differential.count) ||
+          Number(differential.count) < 1 ||
+          Number(differential.count) > 12
+        ) {
           errors.push(`${prefix}.count moet een geheel getal van 1 tot en met 12 zijn.`)
         }
-        if (typeof differential.sensitivityMa !== 'number' || !Number.isFinite(differential.sensitivityMa) || differential.sensitivityMa <= 0) {
+        if (
+          differential.railId !== undefined &&
+          (typeof differential.railId !== 'string' || !differential.railId.trim())
+        ) {
+          errors.push(`${prefix}.railId moet tekst zijn.`)
+        }
+        if (
+          differential.boardId !== undefined &&
+          (typeof differential.boardId !== 'string' || !differential.boardId.trim())
+        ) {
+          errors.push(`${prefix}.boardId moet tekst zijn.`)
+        }
+        if ((differential.boardId !== undefined || differential.railId !== undefined) && differential.count !== 1) {
+          errors.push(`${prefix}.count moet 1 zijn wanneer een bestemming is ingesteld.`)
+        }
+        if (
+          typeof differential.sensitivityMa !== 'number' ||
+          !Number.isFinite(differential.sensitivityMa) ||
+          differential.sensitivityMa <= 0
+        ) {
           errors.push(`${prefix}.sensitivityMa moet positief zijn.`)
         }
-        if (differential.ratedCurrentA !== undefined && (
-          typeof differential.ratedCurrentA !== 'number'
-          || !Number.isFinite(differential.ratedCurrentA)
-          || differential.ratedCurrentA <= 0
-        )) {
+        if (
+          differential.ratedCurrentA !== undefined &&
+          (typeof differential.ratedCurrentA !== 'number' ||
+            !Number.isFinite(differential.ratedCurrentA) ||
+            differential.ratedCurrentA <= 0)
+        ) {
           errors.push(`${prefix}.ratedCurrentA moet positief zijn.`)
         }
-        if (differential.manufacturer !== undefined && (
-          typeof differential.manufacturer !== 'string' || !differential.manufacturer.trim()
-        )) errors.push(`${prefix}.manufacturer moet tekst zijn.`)
-        if (differential.neutralPosition !== undefined && differential.neutralPosition !== 'left' && differential.neutralPosition !== 'right') {
+        if (
+          differential.manufacturer !== undefined &&
+          (typeof differential.manufacturer !== 'string' || !differential.manufacturer.trim())
+        )
+          errors.push(`${prefix}.manufacturer moet tekst zijn.`)
+        if (
+          differential.neutralPosition !== undefined &&
+          differential.neutralPosition !== 'left' &&
+          differential.neutralPosition !== 'right'
+        ) {
           errors.push(`${prefix}.neutralPosition is ongeldig.`)
         }
         if (!['consumers', 'ev', 'other'].includes(String(differential.purpose))) {
@@ -267,7 +313,5 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
       })
     }
   }
-  return errors.length
-    ? { valid: false, errors }
-    : { valid: true, value: input as OneWireTopologyPlan, errors }
+  return errors.length ? { valid: false, errors } : { valid: true, value: input as OneWireTopologyPlan, errors }
 }

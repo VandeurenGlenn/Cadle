@@ -12,13 +12,13 @@ import {
   renameCustomCatalogCategory,
   renameCustomCatalogFolder,
   type CustomCatalogCategory
-} from '../../shell/custom-symbols.js'
+} from '../../catalog/custom-symbols.js'
 import {
   ensureCatalogSymbolOverridesLoaded,
   getStoredCatalogSymbolOverrides,
   setStoredCatalogSymbolOverride,
   type CatalogSymbolOverride
-} from '../../shell/catalog-symbol-overrides.js'
+} from '../../catalog/symbol-overrides.js'
 
 const symbolKey = (symbol: Catalog[number]['symbols'][number]) => symbol.path
 
@@ -79,7 +79,12 @@ export class CatalogEditor extends LiteElement {
   }
 
   #createFolder = async () => {
-    const name = globalThis.prompt('Folder name', this._selectedFolder)?.trim()
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Create catalog folder',
+      submitLabel: 'Create folder',
+      fields: [{ name: 'name', label: 'Folder name', value: this._selectedFolder, required: true }]
+    })
+    const name = values?.name
     if (!name) return
     await createCustomCatalogFolder(name)
     this._selectedFolder = name
@@ -88,7 +93,12 @@ export class CatalogEditor extends LiteElement {
 
   #renameFolder = async () => {
     if (!this._selectedFolder) return
-    const nextName = globalThis.prompt('Rename folder', this._selectedFolder)?.trim()
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Rename catalog folder',
+      submitLabel: 'Rename folder',
+      fields: [{ name: 'name', label: 'Folder name', value: this._selectedFolder, required: true }]
+    })
+    const nextName = values?.name
     if (!nextName || nextName === this._selectedFolder) return
     await renameCustomCatalogFolder(this._selectedFolder, nextName)
     this._selectedFolder = nextName
@@ -107,7 +117,12 @@ export class CatalogEditor extends LiteElement {
   }
 
   #createCategory = async () => {
-    const name = globalThis.prompt('Category name', '')?.trim()
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Create symbol category',
+      submitLabel: 'Create category',
+      fields: [{ name: 'name', label: 'Category name', required: true }]
+    })
+    const name = values?.name
     if (!name) return
     await createCustomCatalogCategory(name, this._selectedFolder || undefined)
     this._selectedCategoryKey = `${this._selectedFolder || ''}::${name}`
@@ -118,7 +133,12 @@ export class CatalogEditor extends LiteElement {
     if (!this._selectedCategoryKey) return
     const category = this.#parseCategoryKey(this._selectedCategoryKey)
     if (!category.name) return
-    const nextName = globalThis.prompt('Rename category', category.name)?.trim()
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Rename symbol category',
+      submitLabel: 'Rename category',
+      fields: [{ name: 'name', label: 'Category name', value: category.name, required: true }]
+    })
+    const nextName = values?.name
     if (!nextName || nextName === category.name) return
     await renameCustomCatalogCategory(category.name, nextName, category.folder)
     this._selectedCategoryKey = `${category.folder ?? ''}::${nextName}`

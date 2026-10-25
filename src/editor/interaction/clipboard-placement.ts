@@ -12,17 +12,21 @@ export const snapPasteTranslation = (
 ): Point => {
   const electricalSymbol = shapes.find((shape) => {
     if (shape.kind !== 'symbol') return false
-    return isGridAnchoredProtectionSymbol(shape) && oneWireSymbolNodeInfo(shape.path, shape.scale) !== null
+    return (
+      isGridAnchoredProtectionSymbol(shape) && oneWireSymbolNodeInfo(shape.path, shape.scale, shape.rotation) !== null
+    )
   })
-  const node = electricalSymbol?.kind === 'symbol'
-    ? oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale)
-    : null
-  const origin = electricalSymbol?.kind === 'symbol' && node
-    ? {
-        x: electricalSymbol.position.x + node.offset.x,
-        y: electricalSymbol.position.y + node.offset.y
-      }
-    : fallbackOrigin
+  const node =
+    electricalSymbol?.kind === 'symbol'
+      ? oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale, electricalSymbol.rotation)
+      : null
+  const origin =
+    electricalSymbol?.kind === 'symbol' && node
+      ? {
+          x: electricalSymbol.position.x + node.offset.x,
+          y: electricalSymbol.position.y + node.offset.y
+        }
+      : fallbackOrigin
   const translated = {
     x: origin.x + translation.x,
     y: origin.y + translation.y

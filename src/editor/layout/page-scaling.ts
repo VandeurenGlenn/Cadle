@@ -1,4 +1,5 @@
 import { shapeBounds } from '../model/model.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
 import type { Point, Shape } from '../model/types.js'
 
 const scaleShape = (shape: Shape, scale: number, offsetX: number, offsetY: number): Shape => {
@@ -29,6 +30,15 @@ const scaleShape = (shape: Shape, scale: number, offsetX: number, offsetY: numbe
     ...shape,
     position: point(shape.position),
     scale: (shape.scale ?? 1) * scale,
+    ...(shape.kind === 'symbol' &&
+    /protection devices\/automaat\.svg$/i.test(shape.path) &&
+    typeof shape.strokeWidth === 'number'
+      ? {
+          strokeWidth:
+            (shape.strokeWidth * renderedSymbolScale(shape.path, shape.scale)) /
+            renderedSymbolScale(shape.path, shape.scale * scale)
+        }
+      : {}),
     ...bindingLabelOffset
   }
 }

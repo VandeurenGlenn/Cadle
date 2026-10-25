@@ -69,6 +69,23 @@ test('starts a second socket circuit only after eight points', () => {
   assert.equal(families.size, 2)
 })
 
+test('counts a grouped symbol assembly as one point and assigns one binding ID', () => {
+  const groupedLeft = symbol('grouped-left', 0, 0, 'load', 'sockets')
+  const groupedRight = symbol('grouped-right', 20, 0, 'load', 'sockets')
+  groupedLeft.groupId = 'group-double-socket'
+  groupedRight.groupId = 'group-double-socket'
+  const standalone = Array.from({ length: 7 }, (_, index) =>
+    symbol(`socket-${index + 1}`, 80 + index * 40, 0, 'load', 'sockets')
+  )
+
+  const plan = planAutomaticBindings([groupedLeft, groupedRight, ...standalone], 1)
+
+  assert.equal(plan.socketCircuitCount, 1)
+  assert.equal(plan.assignments.get('grouped-left'), 'A1')
+  assert.equal(plan.assignments.has('grouped-right'), false)
+  assert.equal(plan.assignments.size, 8)
+})
+
 test('preserves existing labels and does not reuse their circuit family', () => {
   const shapes = [symbol('existing', 0, 0, 'load', 'lighting', 'A1'), symbol('new', 300, 0, 'load', 'lighting')]
 

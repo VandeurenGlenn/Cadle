@@ -45,6 +45,20 @@ test('groups floor-plan devices and ignores generated one-wire geometry', () => 
   assert.equal(analysis.groups[1].specification.cableSectionMm2, 2.5)
 })
 
+test('counts shapes in one group as one electrical component', () => {
+  const left = symbol('socket-left', 'C1', 'Socket', 'symbols/Socket outlets/Electrical wall outlet.svg')
+  const right = symbol('socket-right', 'C2', 'Socket', 'symbols/Socket outlets/Electrical wall outlet.svg')
+  left.groupId = 'group-double-socket'
+  right.groupId = 'group-double-socket'
+
+  const analysis = analyzeCircuits([left, right])
+
+  assert.equal(analysis.totalGroups, 1)
+  assert.equal(analysis.groups[0]?.bindingId, 'C1')
+  assert.equal(analysis.groups[0]?.loads, 1)
+  assert.equal(analysis.groups[0]?.components.length, 1)
+})
+
 test('keeps the original path for imported ground-plan images', () => {
   const sourcePath = 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg'
   const analysis = analyzeCircuits([
@@ -89,9 +103,7 @@ test('recovers legacy custom sockets that were stored with the neutral role', ()
 })
 
 test('accepts a deliberately unloaded breaker circuit', () => {
-  const analysis = analyzeCircuits([
-    symbol('breaker', 'R1', 'Automaat', 'symbols/Protection devices/Automaat.svg')
-  ])
+  const analysis = analyzeCircuits([symbol('breaker', 'R1', 'Automaat', 'symbols/Protection devices/Automaat.svg')])
   assert.equal(analysis.valid, true)
   assert.equal(analysis.errorCount, 0)
   assert.equal(analysis.groups[0]?.protection, 1)
@@ -147,7 +159,10 @@ test('ignores earthing symbols and recognises boards and PV inverters', () => {
   assert.equal(analysis.valid, true)
   assert.equal(analysis.errorCount, 0)
   assert.equal(analysis.warningCount, 0)
-  assert.deepEqual(analysis.groups.map((group) => group.bindingId), ['ALSB', 'T', 'U'])
+  assert.deepEqual(
+    analysis.groups.map((group) => group.bindingId),
+    ['ALSB', 'T', 'U']
+  )
   assert.equal(analysis.readyGroups, 3)
   assert.equal(analysis.groups.find((group) => group.bindingId === 'ALSB')?.junctions, 1)
   assert.equal(analysis.groups.find((group) => group.bindingId === 'U')?.loads, 1)
@@ -173,10 +188,22 @@ test('appends category and exact material totals to the BOM', () => {
   const rows = circuitBomRows(analysis)
   const csv = bomRowsToCsv(rows)
 
-  assert.equal(rows.reduce((sum, row) => sum + row.switches, 0), 1)
-  assert.equal(rows.reduce((sum, row) => sum + row.sockets, 0), 2)
-  assert.equal(rows.reduce((sum, row) => sum + row.lightingPoints, 0), 2)
-  assert.equal(rows.reduce((sum, row) => sum + row.protections, 0), 2)
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.switches, 0),
+    1
+  )
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.sockets, 0),
+    2
+  )
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.lightingPoints, 0),
+    2
+  )
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.protections, 0),
+    2
+  )
   assert.match(csv, /CATEGORY TOTALS,Quantity/)
   assert.match(csv, /Schakelaars,1/)
   assert.match(csv, /Stopcontacten,2/)
@@ -190,12 +217,7 @@ test('appends category and exact material totals to the BOM', () => {
 })
 
 test('exports an exact verified product reference selected in Object Settings', () => {
-  const outlet = symbol(
-    'socket',
-    'B1',
-    'Wall outlet',
-    'symbols/Socket outlets/Electrical wall outlet.svg'
-  )
+  const outlet = symbol('socket', 'B1', 'Wall outlet', 'symbols/Socket outlets/Electrical wall outlet.svg')
   if (outlet.kind === 'symbol') {
     outlet.electrical = {
       role: 'load',
@@ -268,7 +290,10 @@ test('uses project-level circuit specifications without storing them on symbols'
     breakerCurve: 'C',
     source: 'explicit',
     sources: {
-      breakerCurrentA: 'entered', cableSectionMm2: 'entered', poles: 'entered', phaseConfiguration: 'entered'
+      breakerCurrentA: 'entered',
+      cableSectionMm2: 'entered',
+      poles: 'entered',
+      phaseConfiguration: 'entered'
     }
   })
 })
@@ -295,8 +320,8 @@ test('normalizes catalog electrical metadata and keeps legacy inference as fallb
       oneWireEligible: true,
       ratedCurrentA: 20,
       breakerCurrentA: 25,
-    poles: undefined,
-    phaseConfiguration: undefined,
+      poles: undefined,
+      phaseConfiguration: undefined,
       manufacturer: 'Niko',
       neutralPosition: undefined,
       productSeries: undefined,
@@ -379,10 +404,16 @@ test('does not use a device rated current as its breaker current', () => {
 })
 
 test('uses project phase and pole defaults with field-level provenance', () => {
-  const analysis = analyzeCircuits(
-    [symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')],
-    { standard: 'AREI', edition: 'Book 1', distributor: 'Fluvius', supplyConfiguration: '3x400V+N', supplyVoltageV: 400, phaseConfiguration: 'three-phase', earthingSystem: 'TT', defaultPoles: 4 }
-  )
+  const analysis = analyzeCircuits([symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')], {
+    standard: 'AREI',
+    edition: 'Book 1',
+    distributor: 'Fluvius',
+    supplyConfiguration: '3x400V+N',
+    supplyVoltageV: 400,
+    phaseConfiguration: 'three-phase',
+    earthingSystem: 'TT',
+    defaultPoles: 4
+  })
   assert.equal(analysis.groups[0].specification.phaseConfiguration, 'three-phase')
   assert.equal(analysis.groups[0].specification.poles, 4)
   assert.equal(analysis.groups[0].specification.sources.phaseConfiguration, 'project')

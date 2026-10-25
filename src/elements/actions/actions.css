@@ -5,7 +5,13 @@
   gap: var(--cadle-space-1);
   padding: 0 var(--cadle-space-2);
   box-sizing: border-box;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   transition: opacity var(--cadle-motion-fast);
+}
+:host::-webkit-scrollbar {
+  display: none;
 }
 flex-it {
   flex: 0 0 auto;

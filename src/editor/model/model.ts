@@ -1,5 +1,6 @@
 import type { DraftShape, ImageShape, LineShape, Point, RectShape, Shape, SymbolShape, TextShape } from './types.js'
 import { sanitizeElectricalMetadata } from './electrical.js'
+import { renderedSymbolScale } from './symbol-scale.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -34,13 +35,22 @@ export const isPoint = (value: unknown): value is Point => {
 }
 
 const copyGeneratedMetadata = (
-  source: { generationKey?: unknown; sourceLink?: unknown; hidden?: unknown; locked?: unknown },
+  source: {
+    generationKey?: unknown
+    sourceLink?: unknown
+    oneWireRailId?: unknown
+    hidden?: unknown
+    locked?: unknown
+  },
   target: Shape
 ): void => {
   if (source.hidden === true) target.hidden = true
   if (source.locked === true) target.locked = true
   if (typeof source.generationKey === 'string' && source.generationKey.trim()) {
     target.generationKey = source.generationKey.trim()
+  }
+  if (typeof source.oneWireRailId === 'string' && source.oneWireRailId.trim()) {
+    target.oneWireRailId = source.oneWireRailId.trim()
   }
   if (source.sourceLink && typeof source.sourceLink === 'object') {
     const link = source.sourceLink as { kind?: unknown; id?: unknown; role?: unknown }
@@ -68,7 +78,8 @@ const currentSymbolPath = (path: string, name: string): string => {
     : path
 }
 
-const migratedSymbolScale = (path: string, scale: number): number => {
+const migratedSymbolScale = (path: string, scale: number, groupId: unknown): number => {
+  if (typeof groupId === 'string' && groupId.startsWith('onewire-')) return scale
   if (/\/consumption appliances\/wall light\.svg$/i.test(path)) {
     return scale === 1 || scale === 1.2 || scale === 1.3 || scale === 1.4 ? 1.5 : scale
   }
@@ -109,6 +120,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
+      fontWeight?: unknown
       energyFlow?: unknown
       energySource?: unknown
       textAnchor?: unknown
@@ -122,6 +134,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       catalogShapes?: unknown
       generationKey?: unknown
       sourceLink?: unknown
+      oneWireRailId?: unknown
       hidden?: unknown
       locked?: unknown
     }
@@ -211,6 +224,9 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
         text.strokeWidth = Math.max(0.5, raw.strokeWidth)
       }
+      if (typeof raw.fontWeight === 'number' && Number.isFinite(raw.fontWeight)) {
+        text.fontWeight = Math.max(100, Math.min(900, raw.fontWeight))
+      }
       if (raw.textAnchor === 'start' || raw.textAnchor === 'middle' || raw.textAnchor === 'end') {
         text.textAnchor = raw.textAnchor
       }
@@ -220,7 +236,6 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (typeof raw.groupId === 'string' && raw.groupId.trim()) text.groupId = raw.groupId.trim()
       if (isPoint(raw.bindingLabelOffset)) text.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       copyGeneratedMetadata(raw, text)
-      if (text.sourceLink?.role === 'cable-section') text.rotation = -90
       shapes.push(text)
       continue
     }
@@ -240,7 +255,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         path,
         scale:
           typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0
-            ? migratedSymbolScale(path, raw.scale)
+            ? migratedSymbolScale(path, raw.scale, raw.groupId)
             : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
@@ -293,10 +308,6 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
           ...(symbol.path.toLowerCase().includes('residual-current') ? { 'residual-current': '', 'rcd-type': '' } : {})
         }
       }
-      if (symbol.sourceLink?.role === 'cable-installation' && symbol.scale < 3) {
-        symbol.scale = 3
-      }
-      if (symbol.sourceLink?.role === 'cable-installation') symbol.strokeWidth = 1
       shapes.push(symbol)
       continue
     }
@@ -334,23 +345,6 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       if (isPoint(raw.bindingLabelOffset)) image.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       copyGeneratedMetadata(raw, image)
       shapes.push(image)
-    }
-  }
-  for (const shape of shapes) {
-    if (shape.kind !== 'text' || shape.sourceLink?.kind !== 'board' || shape.sourceLink.role !== 'cable-section') {
-      continue
-    }
-    const installation = shapes.find(
-      (candidate): candidate is SymbolShape =>
-        candidate.kind === 'symbol' &&
-        candidate.sourceLink?.kind === 'board' &&
-        candidate.sourceLink.id === shape.sourceLink?.id &&
-        candidate.sourceLink.role === 'cable-installation'
-    )
-    if (!installation) continue
-    shape.position = {
-      x: installation.position.x + 18,
-      y: installation.position.y + 30
     }
   }
   return shapes
@@ -673,7 +667,7 @@ export const shapeBounds = (shape: Shape) => {
       return { x, y: shape.position.y - textHeight, width: textWidth, height: textHeight }
     }
     case 'symbol': {
-      const size = 24 * Math.max(0.4, shape.scale)
+      const size = 24 * renderedSymbolScale(shape.path, shape.scale)
       return { x: shape.position.x - size / 2, y: shape.position.y - size / 2, width: size, height: size }
     }
     case 'image':

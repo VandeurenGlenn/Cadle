@@ -28,6 +28,7 @@ export type ElectricalBoard = {
 
 export type DifferentialProtection = {
   id: string
+  railId?: string
   ratedCurrentA: number
   sensitivityMa: number
   poles: number
@@ -65,6 +66,8 @@ export type OneWireTopologyPlan = {
   solarPlacement?: 'parallel-after-main-differential'
   additionalDifferentials?: Array<{
     count: number
+    boardId?: string
+    railId?: string
     sensitivityMa: number
     ratedCurrentA?: number
     manufacturer?: string

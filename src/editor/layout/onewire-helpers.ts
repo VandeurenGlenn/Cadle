@@ -1,10 +1,18 @@
 import { GRID_SIZE } from '../constants.js'
 import {
-  phaseConfigurationLabel,
-  neutralPositionForManufacturer,
-  shouldShowPhaseLabel
-} from '../model/electrical.js'
-import { oneWireSymbolNodeInfo, oneWireSymbolRotationFor } from './onewire-symbol-nodes.js'
+  ONE_WIRE_COLUMN_GAP_X,
+  ONE_WIRE_FIRST_ROW_OFFSET_Y,
+  ONE_WIRE_ROW_SPACING_Y
+} from './onewire-layout-plan.js'
+import { phaseConfigurationLabel, neutralPositionForManufacturer, shouldShowPhaseLabel } from '../model/electrical.js'
+import {
+  oneWireSymbolBounds,
+  oneWireSymbolNodeInfo,
+  oneWireSymbolRotationFor,
+  oneWireSymbolScaleFor,
+  oneWireSymbolStrokeWidthFor,
+  oneWireSymbolTerminalInfo
+} from './onewire-symbol-nodes.js'
 import type { LineShape, Point, Shape, SymbolShape, TextShape } from '../../editor/model/types.js'
 
 type SymbolBounds = {
@@ -81,6 +89,7 @@ export type BuildKamrailCircuitBundleInput = {
   anchorX: number
   options: OneWireBundleOptions
   familyComponents: OneWireCatalogComponent[]
+  minimumRowY?: number
 } & OneWireBuilderDeps
 
 export type BuildKamrailCircuitBundleResult = {
@@ -103,8 +112,13 @@ type RowSymbolSpec = {
 }
 
 const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
-const ONE_WIRE_FIRST_ROW_OFFSET_Y = 180
-const ONE_WIRE_ROW_SPACING_Y = 40
+const ONE_WIRE_COLUMN_SPACING_X = 200
+export const ONE_WIRE_CONDUCTOR_STROKE_WIDTH = 2
+const ONE_WIRE_LABEL_SCALE = 0.9
+const ONE_WIRE_TECHNICAL_LABEL_SCALE = 0.65
+const ONE_WIRE_LABEL_WEIGHT = 300
+const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = 300
+const ONE_WIRE_BREAKER_RAIL_GAP = 40
 
 export const oneWirePhaseLabelText = (
   phase: OneWireBundleOptions['phaseConfiguration'] | undefined,
@@ -125,14 +139,28 @@ const ONE_WIRE_CABLE_INSTALLATION_PATHS: Record<OneWireCableInstallation, string
 export const oneWireCableInstallationPath = (installation: OneWireCableInstallation): string =>
   ONE_WIRE_CABLE_INSTALLATION_PATHS[installation]
 
+export const oneWireCableInstallationLabel = (installation: OneWireCableInstallation): string =>
+  ({
+    conduit: 'In conduit',
+    'conduit-recessed': 'In conduit, recessed in wall',
+    'without-conduit': 'Without conduit',
+    'on-wall': 'On wall',
+    recessed: 'Recessed in wall',
+    underground: 'Underground'
+  })[installation]
+
+const IMPULSE_RELAY_PATH = 'symbols/Switches/Impulse relay.svg'
+const CONTROL_DEVICE_PATH =
+  /switches\/(?:impulse relay|time switch|thermostat|timer|dimmer switch|niko home control dimmer)\.svg$/i
+const PUSH_BUTTON_PATH = /switches\/(?:illuminated |double )?push button\.svg$/i
+
 export const oneWireCableLabelText = (cable: {
   conductors?: number
   sectionMm2?: number
   hasProtectiveConductor?: boolean
   cableType?: string
 }): string => {
-  const hasProtectiveConductor =
-    cable.hasProtectiveConductor ?? cable.conductors !== 4
+  const hasProtectiveConductor = cable.hasProtectiveConductor ?? cable.conductors !== 4
   const conductorMarker = hasProtectiveConductor ? 'G' : 'X'
   const cableType = cable.cableType?.trim()
   const cableTypeLabel = cableType && cableType !== 'none' ? ` ${cableType.replace('-', ' ')}` : ''
@@ -191,22 +219,19 @@ export const buildOneWireBreakerSection = (
     | 'cableInstallation'
     | 'showCableInstallation'
     | 'breakerCurve'
-  >,
-  railStrokeWidth = 10
+  >
 ): { shapes: Shape[]; ids: string[]; breakerContentTopY: number } => {
   const x = snapToGrid(startX)
   const component = deps.oneWireComponentSymbol('breaker')
   const scale = deps.oneWireSymbolScale(component.path, 'breaker')
   const nodeInfo = oneWireSymbolNodeInfo(component.path, scale)
+  const terminals = oneWireSymbolTerminalInfo(component.path, scale)
 
-  const nodeOffsetX = nodeInfo?.offset.x ?? 0
-  const nodeOffsetY = nodeInfo?.offset.y ?? 0
-  // The breaker's bottom terminal sits on the upper edge of the thick rail,
-  // rather than disappearing into its centre line.
-  const snappedY = railY - railStrokeWidth / 2
+  const bottomTerminal = terminals?.bottom ?? nodeInfo?.offset ?? { x: 0, y: 0 }
+  const breakerBottomY = railY - ONE_WIRE_BREAKER_RAIL_GAP
   // Place the symbol from its electrical node, not from its visual bounds.
   // The breaker terminal must remain exactly collinear with the feeder.
-  const center: Point = { x: x - nodeOffsetX, y: snappedY - nodeOffsetY }
+  const center: Point = { x: x - bottomTerminal.x, y: breakerBottomY - bottomTerminal.y }
   const groupId = `onewire-${deps.nextShapeId()}`
 
   const symbol: SymbolShape = {
@@ -216,7 +241,7 @@ export const buildOneWireBreakerSection = (
     name: component.name,
     path: component.path,
     scale,
-    strokeWidth: 0.5,
+    strokeWidth: oneWireSymbolStrokeWidthFor(component.path, scale),
     symbolTextOverrides: {
       poles: '',
       phase: '',
@@ -230,14 +255,14 @@ export const buildOneWireBreakerSection = (
       phaseConfiguration: specification?.phaseConfiguration ?? 'single-phase',
       manufacturer: specification?.manufacturer ?? 'Schneider Electric',
       neutralPosition:
-        specification?.neutralPosition
-        ?? neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric')
-        ?? 'right',
+        specification?.neutralPosition ??
+        neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric') ??
+        'right',
       breakerCurve:
-        specification?.breakerCurve === 'B'
-        || specification?.breakerCurve === 'C'
-        || specification?.breakerCurve === 'D'
-        || specification?.breakerCurve === 'other'
+        specification?.breakerCurve === 'B' ||
+        specification?.breakerCurve === 'C' ||
+        specification?.breakerCurve === 'D' ||
+        specification?.breakerCurve === 'other'
           ? specification.breakerCurve
           : 'C'
     },
@@ -248,9 +273,11 @@ export const buildOneWireBreakerSection = (
     ? {
         id: deps.nextShapeId(),
         kind: 'text',
-        position: { x: x - 4, y: railY + 24 },
+        position: { x, y: railY + 24 },
+        textAnchor: 'middle',
         text: familyLabel,
-        scale: 0.7,
+        scale: ONE_WIRE_LABEL_SCALE,
+        fontWeight: ONE_WIRE_LABEL_WEIGHT,
         fill: '#000000',
         stroke: 'none',
         bindingId,
@@ -259,25 +286,29 @@ export const buildOneWireBreakerSection = (
     : null
 
   const breakerBounds = deps.symbolContentBounds(symbol)
+  const breakerContentTopY = terminals?.top ? center.y + terminals.top.y : breakerBounds.y
   const polesLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: { x: x - 33, y: center.y + 4 },
+    position: { x: x - 16, y: center.y + 5 },
+    textAnchor: 'end',
     text: `${specification?.poles ?? 2}P`,
     fill: '#000000',
     stroke: 'none',
-    scale: 0.55,
+    scale: ONE_WIRE_TECHNICAL_LABEL_SCALE,
+    fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
     bindingId,
     groupId
   }
   const currentLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: { x: x + 8, y: center.y + 4 },
+    position: { x: x + 12, y: center.y + 5 },
     text: `${specification?.breakerCurve ?? 'C'}${specification?.amps ?? 20}A`,
     fill: '#000000',
     stroke: 'none',
-    scale: 0.65,
+    scale: ONE_WIRE_TECHNICAL_LABEL_SCALE,
+    fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
     bindingId,
     groupId
   }
@@ -286,50 +317,74 @@ export const buildOneWireBreakerSection = (
     kind: 'text',
     position: {
       x: x - 13,
-      y: Math.min(breakerBounds.y + breakerBounds.height + 8, railY - 12)
+      y: railY - 6
     },
     text: shouldShowPhaseLabel(specification?.poles, specification?.showPhaseLabel)
       ? oneWirePhaseLabelText(
           specification?.phaseConfiguration,
-          specification?.neutralPosition
-            ?? neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric')
-            ?? 'right'
+          specification?.neutralPosition ??
+            neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric') ??
+            'right'
         )
       : '',
     textAnchor: 'end',
     fill: '#000000',
     stroke: 'none',
-    scale: 0.65,
-    bindingId,
-    groupId
-  }
-  const cableSectionLabel: TextShape = {
-    id: deps.nextShapeId(),
-    kind: 'text',
-    position: { x: x + 18, y: breakerBounds.y + 16 },
-    text: oneWireCableLabelText({
-      conductors: specification?.cableConductors,
-      sectionMm2: specification?.cableSectionMm2,
-      hasProtectiveConductor: specification?.hasProtectiveConductor,
-      cableType: specification?.cableType
-    }),
-    fill: '#000000',
-    stroke: 'none',
-    scale: 0.65,
-    rotation: -90,
+    scale: ONE_WIRE_TECHNICAL_LABEL_SCALE,
+    fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
     bindingId,
     groupId
   }
   const cableInstallation = specification?.cableInstallation ?? 'conduit-recessed'
+  const showCableInstallation = specification?.showCableInstallation !== false
+  const cableDesignation = oneWireCableLabelText({
+    conductors: specification?.cableConductors,
+    sectionMm2: specification?.cableSectionMm2,
+    hasProtectiveConductor: specification?.hasProtectiveConductor,
+    cableType: specification?.cableType
+  })
+  const cableSectionLabel: TextShape = {
+    id: deps.nextShapeId(),
+    kind: 'text',
+    position: { x: x + 18, y: breakerContentTopY - 12 },
+    text: cableDesignation,
+    fill: '#000000',
+    stroke: 'none',
+    scale: 0.7,
+    fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
+    rotation: -90,
+    bindingId,
+    groupId
+  }
+  const cableInstallationLabel: TextShape = {
+    id: deps.nextShapeId(),
+    kind: 'text',
+    position: { x: x + 32, y: breakerBounds.y - 10 },
+    text: oneWireCableInstallationLabel(cableInstallation),
+    fill: '#000000',
+    stroke: 'none',
+    scale: 0.54,
+    fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
+    rotation: -90,
+    hidden: true,
+    bindingId,
+    groupId
+  }
+  const cableInstallationPath = oneWireCableInstallationPath(cableInstallation)
+  const cableInstallationScale = oneWireSymbolScaleFor(cableInstallationPath) ?? 1.35
+  const installationNode = oneWireSymbolNodeInfo(cableInstallationPath, cableInstallationScale)?.offset ?? {
+    x: 0,
+    y: 0
+  }
   const cableInstallationSymbol: SymbolShape = {
     id: deps.nextShapeId(),
     kind: 'symbol',
-    position: { x, y: breakerBounds.y - 28 },
+    position: { x: x - installationNode.x, y: breakerContentTopY - 8 - installationNode.y },
     name: `Cable ${cableInstallation}`,
-    path: oneWireCableInstallationPath(cableInstallation),
-    scale: 3,
-    strokeWidth: 1,
-    hidden: specification?.showCableInstallation === false,
+    path: cableInstallationPath,
+    scale: cableInstallationScale,
+    strokeWidth: oneWireSymbolStrokeWidthFor(cableInstallationPath, cableInstallationScale),
+    hidden: !showCableInstallation,
     bindingId,
     groupId,
     symbolTextOverrides: {
@@ -338,21 +393,33 @@ export const buildOneWireBreakerSection = (
     }
   }
 
+  const feeder: LineShape = {
+    id: deps.nextShapeId(),
+    kind: 'line',
+    start: { x, y: railY },
+    end: { x, y: breakerBottomY },
+    stroke: deps.branchStroke,
+    strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+    bindingId,
+    groupId
+  }
+
   const linkedShapes: Array<[Shape, string]> = [
     [symbol, 'breaker'],
+    [feeder, 'breaker-feed'],
     ...(label ? [[label, 'label'] as [Shape, string]] : []),
     [polesLabel, 'breaker-poles'],
     [currentLabel, 'breaker-current'],
     [phaseLabel, 'breaker-phase'],
     [cableSectionLabel, 'cable-section'],
-    [cableInstallationSymbol, 'cable-installation']
+    [cableInstallationSymbol, 'cable-installation'],
+    [cableInstallationLabel, 'cable-installation-label']
   ]
   for (const [shape, role] of linkedShapes) {
     shape.sourceLink = { kind: 'board', id: bindingId, role }
     shape.generationKey = `board:${bindingId}:${role}`
   }
 
-  const breakerContentTopY = breakerBounds.y
   return {
     shapes: linkedShapes.map(([shape]) => shape),
     ids: linkedShapes.map(([shape]) => shape.id),
@@ -366,39 +433,59 @@ export const buildOneWireRowSection = (
   railY: number,
   startX: number,
   deps: OneWireBuilderDeps,
-  compactSingleCircuit = false
+  compactSingleCircuit = false,
+  rowSpacingY = ONE_WIRE_ROW_SPACING_Y
 ): { shapes: Shape[]; ids: string[] } => {
-  const ROW_NUMBER_OFFSET_X = -20
+  const ROW_NUMBER_OFFSET_X = -24
   const ROW_FIRST_SYMBOL_OFFSET_X = 30
-  const ROW_SYMBOL_MARGIN_X = 0
-  const SPOT_LEADING_MARGIN_X = 10
+  const ROW_SYMBOL_MARGIN_X = 4
+  const SPOT_LEADING_MARGIN_X = 0
   const [bindingId, entries] = row
-  const rowY = railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - rowIndex * ONE_WIRE_ROW_SPACING_Y
+  const rowY = railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - rowIndex * rowSpacingY
   const rowJunctionX = snapToGrid(startX)
   const drawableEntryCount = entries.filter((entry) => entry.kind !== 'empty').length
   const placeDirectlyOnTrunk = compactSingleCircuit && drawableEntryCount === 1
-  const symbolBaseX = snapToGrid(
-    placeDirectlyOnTrunk ? rowJunctionX : rowJunctionX + ROW_FIRST_SYMBOL_OFFSET_X
-  )
+  const symbolBaseX = snapToGrid(placeDirectlyOnTrunk ? rowJunctionX : rowJunctionX + ROW_FIRST_SYMBOL_OFFSET_X)
   const rowGroupId = `onewire-${deps.nextShapeId()}`
 
   const resolvedEntryPath = (entry: OneWireResolvedComponent): string =>
     entry.sourcePath ?? deps.oneWireComponentSymbol(entry.kind === 'empty' ? 'load' : entry.kind).path
 
+  const hasPushButton = entries.some(
+    (entry) => entry.kind === 'switch' && PUSH_BUTTON_PATH.test(resolvedEntryPath(entry))
+  )
+  const hasLoad = entries.some((entry) => entry.kind === 'load')
+  const hasControlDevice = entries.some(
+    (entry) => entry.kind === 'switch' && CONTROL_DEVICE_PATH.test(resolvedEntryPath(entry))
+  )
+  const resolvedEntries: OneWireResolvedComponent[] =
+    hasPushButton && hasLoad && !hasControlDevice
+      ? [
+          ...entries.filter((entry) => entry.kind === 'switch'),
+          {
+            bindingId,
+            kind: 'switch',
+            sourcePath: IMPULSE_RELAY_PATH,
+            sourceName: 'Impulse relay'
+          },
+          ...entries.filter((entry) => entry.kind !== 'switch')
+        ]
+      : entries
+
   const repeatedLightingCounts = new Map<string, number>()
   const seenLightingPaths = new Set<string>()
-  const collapsedEntries = entries.filter((
-    entry
-  ): entry is OneWireResolvedComponent & { kind: 'switch' | 'load' } => {
-    if (entry.kind === 'empty') return false
-    const path = resolvedEntryPath(entry)
-    if (entry.kind !== 'load' || !/lighting|lamp|fluorescent|spot|wall light/i.test(path)) return true
-    const key = path.toLowerCase()
-    repeatedLightingCounts.set(key, (repeatedLightingCounts.get(key) ?? 0) + 1)
-    if (seenLightingPaths.has(key)) return false
-    seenLightingPaths.add(key)
-    return true
-  })
+  const collapsedEntries = resolvedEntries.filter(
+    (entry): entry is OneWireResolvedComponent & { kind: 'switch' | 'load' } => {
+      if (entry.kind === 'empty') return false
+      const path = resolvedEntryPath(entry)
+      if (entry.kind !== 'load' || !/lighting|lamp|fluorescent|spot|wall light/i.test(path)) return true
+      const key = path.toLowerCase()
+      repeatedLightingCounts.set(key, (repeatedLightingCounts.get(key) ?? 0) + 1)
+      if (seenLightingPaths.has(key)) return false
+      seenLightingPaths.add(key)
+      return true
+    }
+  )
 
   const sortedByKind = [...collapsedEntries].sort((a, b) => {
     const aPath = resolvedEntryPath(a)
@@ -441,12 +528,10 @@ export const buildOneWireRowSection = (
     const fallback = deps.oneWireComponentSymbol(entry.kind)
     const component = { name: entry.sourceName ?? fallback.name, path: entry.sourcePath ?? fallback.path }
     const scale = deps.oneWireSymbolScale(component.path, entry.kind)
-    const node = oneWireSymbolNodeInfo(component.path, scale)
     const inlineRotation = oneWireSymbolRotationFor(component.path)
     const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
-    const rotation = placeDirectlyOnTrunk && isSocket
-      ? (inlineRotation ?? 0) - 90
-      : inlineRotation
+    const rotation = placeDirectlyOnTrunk && isSocket ? (inlineRotation ?? 0) - 90 : inlineRotation
+    const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
     const probeSlotX = 0
     const probe: SymbolShape = {
       id: deps.nextShapeId(),
@@ -459,7 +544,7 @@ export const buildOneWireRowSection = (
       groupId: rowGroupId
     }
     if (typeof rotation === 'number') probe.rotation = rotation
-    const bounds = deps.symbolContentBounds(probe)
+    const bounds = oneWireSymbolBounds(probe) ?? deps.symbolContentBounds(probe)
     const repeatCount = repeatedLightingCounts.get(component.path.toLowerCase()) ?? 1
     const symbolRightReach = bounds.x + bounds.width - probeSlotX
     const isSpot = /(?:^|[\/\s])spot(?:light)?(?:\.svg)?$/i.test(`${component.path} ${component.name}`)
@@ -485,20 +570,12 @@ export const buildOneWireRowSection = (
     }
     const prevSpec = rowSymbolSpecs[symbolIndex - 1]
     const prevX = slotXs[symbolIndex - 1]
-    const gap =
-      prevSpec.kind === 'switch' && spec.kind === 'switch'
-        ? 30
-        : prevSpec.kind === 'switch' && spec.kind === 'load'
-          ? 30
-          : prevSpec.rightReach + spec.leftReach + ROW_SYMBOL_MARGIN_X + (spec.isSpot ? SPOT_LEADING_MARGIN_X : 0)
-    slotXs.push(snapToGrid(prevX + gap))
+    const gap = prevSpec.rightReach + spec.leftReach + ROW_SYMBOL_MARGIN_X + (spec.isSpot ? SPOT_LEADING_MARGIN_X : 0)
+    slotXs.push(prevX + gap)
   }
 
   const rowSymbols: SymbolShape[] = rowSymbolSpecs.map((spec, symbolIndex) => {
     const slot: Point = { x: slotXs[symbolIndex] ?? symbolBaseX, y: rowY }
-    const isLighting = /lighting|lamp|fluorescent/i.test(spec.component.path)
-    const isFluorescent = /fluorescent/i.test(`${spec.component.path} ${spec.component.name}`)
-    const isWallLight = /wall light/i.test(`${spec.component.path} ${spec.component.name}`)
     const symbol: SymbolShape = {
       id: deps.nextShapeId(),
       kind: 'symbol',
@@ -506,7 +583,7 @@ export const buildOneWireRowSection = (
       name: spec.component.name,
       path: spec.component.path,
       scale: spec.scale,
-      strokeWidth: isFluorescent ? 1 : isWallLight ? 0.65 : isLighting ? 0.5 : 0.65,
+      strokeWidth: oneWireSymbolStrokeWidthFor(spec.component.path, spec.scale),
       bindingId,
       groupId: rowGroupId
     }
@@ -525,7 +602,7 @@ export const buildOneWireRowSection = (
   let wireEndX = rowJunctionX
   const wireSegments: Array<{ from: number; to: number }> = []
   for (const [symbolIndex, symbol] of rowSymbols.entries()) {
-    const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale)
+    const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation)
     const slotX = slotXs[symbolIndex] ?? symbolBaseX
     const spec = rowSymbolSpecs[symbolIndex]
 
@@ -565,16 +642,18 @@ export const buildOneWireRowSection = (
   const shapes: Shape[] = []
   const ids: string[] = []
 
-  for (const segment of wireSegments) {
+  for (const [segmentIndex, segment] of wireSegments.entries()) {
     const wire: LineShape = {
       id: deps.nextShapeId(),
       kind: 'line',
       start: { x: segment.from, y: rowY },
       end: { x: segment.to, y: rowY },
       stroke: deps.branchStroke,
-      strokeWidth: 1.25,
+      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
       bindingId,
-      groupId: rowGroupId
+      groupId: rowGroupId,
+      sourceLink: { kind: 'circuit', id: bindingId, role: 'row-wire' },
+      generationKey: `circuit:${bindingId}:wire:${segmentIndex}`
     }
     shapes.push(wire)
     ids.push(wire.id)
@@ -591,7 +670,8 @@ export const buildOneWireRowSection = (
       position: { x: rowNumberX, y: rowY + 5 },
       text: rowNumberText,
       fill: '#000000',
-      scale: 0.7,
+      scale: ONE_WIRE_LABEL_SCALE,
+      fontWeight: ONE_WIRE_LABEL_WEIGHT,
       bindingId,
       groupId: rowGroupId
     }
@@ -612,10 +692,13 @@ export const buildOneWireRowSection = (
       },
       text: `x${spec.repeatCount}`,
       fill: '#000000',
-      scale: 0.7,
+      scale: ONE_WIRE_LABEL_SCALE,
+      fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
       bindingId,
       groupId: rowGroupId
     }
+    countLabel.sourceLink = { kind: 'circuit', id: bindingId, role: 'count-label' }
+    countLabel.generationKey = `circuit:${bindingId}:count:${symbolIndex}`
     shapes.push(countLabel)
     ids.push(countLabel.id)
   }
@@ -655,7 +738,7 @@ export const buildOneWireRowSection = (
 export const buildKamrailCircuitBundle = (
   input: BuildKamrailCircuitBundleInput
 ): BuildKamrailCircuitBundleResult | null => {
-  const { rail, anchorX, options, familyComponents, ...deps } = input
+  const { rail, anchorX, options, familyComponents, minimumRowY, ...deps } = input
 
   const clampX = Math.max(
     Math.min(anchorX, Math.max(rail.start.x, rail.end.x) - 20),
@@ -671,10 +754,49 @@ export const buildKamrailCircuitBundle = (
   const drawableRows = orderedRows.filter(([, entries]) => entries.some((entry) => entry.kind !== 'empty'))
   const compactSingleCircuit = orderedRows.length === 1
   const railY = rail.start.y
+  const availableRowSpan =
+    typeof minimumRowY === 'number' ? railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - minimumRowY : Number.POSITIVE_INFINITY
+  const maximumRowsPerColumn = Number.isFinite(availableRowSpan)
+    ? Math.max(1, Math.floor(Math.max(0, availableRowSpan) / ONE_WIRE_ROW_SPACING_Y) + 1)
+    : Math.max(1, drawableRows.length)
+  const columnCount = Math.max(1, Math.ceil(drawableRows.length / maximumRowsPerColumn))
+  const baseRowsPerColumn = Math.floor(drawableRows.length / columnCount)
+  const columnsWithExtraRow = drawableRows.length % columnCount
+  const rowCounts = Array.from(
+    { length: columnCount },
+    (_, index) => baseRowsPerColumn + (index < columnsWithExtraRow ? 1 : 0)
+  )
+  const columnXs: number[] = []
+  const rowSections: Array<ReturnType<typeof buildOneWireRowSection>> = []
+  let rowOffset = 0
+  let columnX = startX
+  for (const rowCount of rowCounts) {
+    columnXs.push(columnX)
+    let rightEdge = columnX
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const row = drawableRows[rowOffset + rowIndex]
+      if (!row) continue
+      const section = buildOneWireRowSection(rowIndex, row, railY, columnX, deps, compactSingleCircuit)
+      rowSections.push(section)
+      for (const shape of section.shapes) {
+        if (shape.kind === 'line') rightEdge = Math.max(rightEdge, shape.start.x, shape.end.x)
+        if (shape.kind === 'symbol') {
+          const bounds = oneWireSymbolBounds(shape) ?? deps.symbolContentBounds(shape)
+          rightEdge = Math.max(rightEdge, bounds.x + bounds.width)
+        }
+        if (shape.kind === 'text')
+          rightEdge = Math.max(rightEdge, shape.position.x + shape.text.length * 11 * (shape.scale ?? 1))
+      }
+    }
+    columnX = Math.ceil(
+      Math.max(columnX + ONE_WIRE_COLUMN_SPACING_X, rightEdge + ONE_WIRE_COLUMN_GAP_X) / GRID_SIZE
+    ) * GRID_SIZE
+    rowOffset += rowCount
+  }
   const createdIds: string[] = []
   const shapes: Shape[] = []
 
-  let trunkStartY = railY - (rail.strokeWidth ?? 10) / 2
+  let trunkStartY = railY
   if (!options.omitBreaker) {
     const breaker = buildOneWireBreakerSection(
       railY,
@@ -682,8 +804,7 @@ export const buildKamrailCircuitBundle = (
       options.family,
       options.hideFamilyLabel ? '' : options.family,
       deps,
-      options,
-      rail.strokeWidth ?? 10
+      options
     )
     shapes.push(...breaker.shapes)
     createdIds.push(...breaker.ids)
@@ -691,34 +812,46 @@ export const buildKamrailCircuitBundle = (
   }
 
   if (drawableRows.length > 0) {
-    const trunkTopY = snapToGrid(
-      railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - (drawableRows.length - 1) * ONE_WIRE_ROW_SPACING_Y
-    )
-    const trunk: LineShape = {
-      id: deps.nextShapeId(),
-      kind: 'line',
-      start: { x: snapToGrid(startX), y: snapToGrid(trunkStartY) },
-      end: { x: snapToGrid(startX), y: trunkTopY },
-      stroke: deps.branchStroke,
-      strokeWidth: 1.25,
-      bindingId: options.family,
-      groupId: `onewire-${deps.nextShapeId()}`
+    const distributionY = trunkStartY
+    if (columnCount > 1) {
+      const distribution: LineShape = {
+        id: deps.nextShapeId(),
+        kind: 'line',
+        start: { x: snapToGrid(columnXs[0]), y: distributionY },
+        end: { x: snapToGrid(columnXs[columnXs.length - 1]), y: distributionY },
+        stroke: deps.branchStroke,
+        strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+        bindingId: options.family,
+        groupId: `onewire-${deps.nextShapeId()}`,
+        sourceLink: { kind: 'board', id: options.family, role: 'trunk-distribution' },
+        generationKey: `board:${options.family}:trunk-distribution`
+      }
+      shapes.push(distribution)
+      createdIds.push(distribution.id)
     }
-    trunk.sourceLink = { kind: 'board', id: options.family, role: 'trunk' }
-    trunk.generationKey = `board:${options.family}:trunk`
-    shapes.push(trunk)
-    createdIds.push(trunk.id)
+
+    for (const [columnIndex, columnX] of columnXs.entries()) {
+      const rowCount = rowCounts[columnIndex] ?? 0
+      const trunkTopY = railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - (rowCount - 1) * ONE_WIRE_ROW_SPACING_Y
+      const role = columnIndex === 0 ? 'trunk' : `trunk-${columnIndex + 1}`
+      const trunk: LineShape = {
+        id: deps.nextShapeId(),
+        kind: 'line',
+        start: { x: snapToGrid(columnX), y: distributionY },
+        end: { x: snapToGrid(columnX), y: trunkTopY },
+        stroke: deps.branchStroke,
+        strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+        bindingId: options.family,
+        groupId: `onewire-${deps.nextShapeId()}`,
+        sourceLink: { kind: 'board', id: options.family, role },
+        generationKey: `board:${options.family}:${role}`
+      }
+      shapes.push(trunk)
+      createdIds.push(trunk.id)
+    }
   }
 
-  for (const [rowIndex, row] of drawableRows.entries()) {
-    const rowSection = buildOneWireRowSection(
-      rowIndex,
-      row,
-      railY,
-      startX,
-      deps,
-      compactSingleCircuit
-    )
+  for (const rowSection of rowSections) {
     shapes.push(...rowSection.shapes)
     createdIds.push(...rowSection.ids)
   }

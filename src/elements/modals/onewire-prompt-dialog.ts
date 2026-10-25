@@ -33,7 +33,17 @@ export class OneWirePromptDialog extends LiteElement {
   }
 
   #syncJsonFromPrompt() {
-    const prompt = this.prompt.trim() || EXAMPLE
+    const prompt = this.prompt.trim()
+    if (!prompt) {
+      this.#interpretationSequence += 1
+      this.interpretedPlan = null
+      this.interpretationWarnings = []
+      this.topologyJson = ''
+      this.topologyJsonError = ''
+      this.#jsonManuallyEdited = false
+      this.modelStatus = 'Regelparser'
+      return
+    }
     const parsed = parseOneWirePrompt(prompt)
     this.interpretedPlan = parsed.plan
     this.interpretationWarnings = parsed.warnings
@@ -75,7 +85,8 @@ export class OneWirePromptDialog extends LiteElement {
   }
 
   #apply = () => {
-    const prompt = this.prompt.trim() || EXAMPLE
+    const prompt = this.prompt.trim()
+    if (!prompt) return
     const parsed = parseOneWirePrompt(prompt)
     let accepted: unknown
     try {
@@ -89,28 +100,37 @@ export class OneWirePromptDialog extends LiteElement {
       this.topologyJsonError = validation.errors.join(' ')
       return
     }
-    this.dispatchEvent(new CustomEvent('apply-topology', {
-      detail: { prompt, topology: validation.value, parserTopology: parsed.plan },
-      bubbles: true,
-      composed: true
-    }))
+    this.dispatchEvent(
+      new CustomEvent('apply-topology', {
+        detail: { prompt, topology: validation.value, parserTopology: parsed.plan },
+        bubbles: true,
+        composed: true
+      })
+    )
   }
 
   render() {
     if (!this.open) return html``
 
-    const value = this.prompt.trim() ? this.prompt : EXAMPLE
-    const parsed = parseOneWirePrompt(value)
-    const interpreted = this.interpretedPlan ?? parsed.plan
-    const warnings = this.interpretedPlan ? this.interpretationWarnings : parsed.warnings
+    const value = this.prompt
+    const parsed = value.trim() ? parseOneWirePrompt(value) : null
+    const interpreted = this.interpretedPlan ?? parsed?.plan ?? null
+    const warnings = this.interpretedPlan ? this.interpretationWarnings : (parsed?.warnings ?? [])
     return html`
-      <section class="panel" role="dialog" aria-modal="true" aria-labelledby="onewire-prompt-title">
+      <section
+        class="panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onewire-prompt-title">
         <header>
           <div>
             <h3 id="onewire-prompt-title">Beschrijf de schema-opbouw</h3>
             <p>Schrijf in gewone taal hoe voeding, beveiligingen en aftakkingen verbonden zijn.</p>
           </div>
-          <custom-button type="text" label="Sluiten" @click=${this.#close}></custom-button>
+          <custom-button
+            type="text"
+            label="Sluiten"
+            @click=${this.#close}></custom-button>
         </header>
         <main>
           <label>
@@ -120,11 +140,15 @@ export class OneWirePromptDialog extends LiteElement {
               .value=${value}
               @input=${this.#onInput}
               placeholder=${EXAMPLE}></textarea>
-            <small>Vermeld de inkomende kabel, hoofdschakelaar (A), hoofddifferentieel (A en mA), remautomaat, verbruikers en eventuele PV. Voor extra differentiëlen: vermeld aantal, mA en bestemming, bijvoorbeeld “2 diffs 30 mA voor verbruikers en 1 voor EV”.</small>
+            <small
+              >Vermeld de inkomende kabel, hoofdschakelaar (A), hoofddifferentieel (A en mA), remautomaat, verbruikers
+              en eventuele PV. Voor extra differentiëlen: vermeld aantal, mA en bestemming, bijvoorbeeld “2 diffs 30 mA
+              voor verbruikers en 1 voor EV”.</small
+            >
           </label>
           <section class="preview">
             <span class="eyebrow">Cadle begrijpt dit als · ${this.modelStatus}</span>
-            <pre>${oneWirePromptTree(interpreted).join('\n')}</pre>
+            <pre>${interpreted ? oneWirePromptTree(interpreted).join('\n') : 'Beschrijf eerst de installatie.'}</pre>
           </section>
           <details class="json-review">
             <summary>Gestructureerde JSON controleren of corrigeren</summary>
@@ -133,12 +157,14 @@ export class OneWirePromptDialog extends LiteElement {
               class="json-editor"
               rows="14"
               spellcheck="false"
-              .value=${this.topologyJson || JSON.stringify(parsed.plan, null, 2)}
+              .value=${this.topologyJson || (parsed ? JSON.stringify(parsed.plan, null, 2) : '')}
               @input=${this.#onTopologyJsonInput}></textarea>
             ${this.topologyJsonError ? html`<p class="json-error">${this.topologyJsonError}</p>` : ''}
           </details>
           ${warnings.length
-            ? html`<ul class="warnings">${warnings.map((warning) => html`<li>${warning}</li>`)}</ul>`
+            ? html`<ul class="warnings">
+                ${warnings.map((warning) => html`<li>${warning}</li>`)}
+              </ul>`
             : ''}
         </main>
         <footer>

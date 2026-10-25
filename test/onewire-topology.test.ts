@@ -23,30 +23,35 @@ test('keeps grid import and PV generation in exclusive animation phases', () => 
 })
 
 test('draws the solar branch beside the residual-breaker path after the main differential', () => {
-  const shapes = buildOneWireTopology({
-    version: 1,
-    incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' },
-    mainSwitch: { ratedCurrentA: 25 },
-    mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
-    residualBreaker: true,
-    solar: true,
-    consumers: true,
-    solarPlacement: 'parallel-after-main-differential',
-    additionalDifferentials: [
-      { count: 2, sensitivityMa: 30, purpose: 'consumers' },
-      { count: 1, sensitivityMa: 30, purpose: 'ev' }
-    ]
-  }, {
-    start: { x: 80, y: 700 },
-    end: { x: 920, y: 700 }
-  }, ids(), {
-    ev: {
-      bindingId: 'U',
-      name: 'Elektrische wagen EV',
-      path: 'symbols/Consumption appliances/Elektrische wagen EV.svg',
-      scale: 2
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' },
+      mainSwitch: { ratedCurrentA: 25 },
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      residualBreaker: true,
+      solar: true,
+      consumers: true,
+      solarPlacement: 'parallel-after-main-differential',
+      additionalDifferentials: [
+        { count: 2, sensitivityMa: 30, purpose: 'consumers' },
+        { count: 1, sensitivityMa: 30, purpose: 'ev' }
+      ]
+    },
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids(),
+    {
+      ev: {
+        bindingId: 'U',
+        name: 'Elektrische wagen EV',
+        path: 'symbols/Consumption appliances/Elektrische wagen EV.svg',
+        scale: 2
+      }
     }
-  })
+  )
 
   const roles = new Set(shapes.map((shape) => shape.sourceLink?.role))
   assert.ok(roles.has('meter'))
@@ -56,6 +61,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('main-differential'))
   assert.ok(roles.has('grid-incoming'))
   assert.ok(roles.has('earth'))
+  assert.ok(roles.has('earth-rail'))
   assert.ok(roles.has('earth-drop'))
   assert.ok(roles.has('secondary-busbar'))
   assert.ok(roles.has('residual-breaker'))
@@ -71,10 +77,10 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v10:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v18:')))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === '4x10 mm² EXVB'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'remautomaat'))
-  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'hoofdschakelaar'))
+  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'Hoofdautomaat'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'BEGRENZDE RAIL · REMAUTOMAAT C40A'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'EV · U'))
 
@@ -99,23 +105,30 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     return shape
   }
 
-  assert.deepEqual(topologyLine('main-to-rail').start, terminal('main-differential', 'top'))
-  assert.deepEqual(topologyLine('incoming').start, terminal('meter', 'top'))
-  assert.deepEqual(topologyLine('incoming').end, terminal('main-differential', 'bottom'))
-  assert.deepEqual(topologyLine('main-switch-to-meter').start, terminal('meter', 'bottom'))
-  assert.deepEqual(topologyLine('main-switch-to-meter').end, terminal('main-switch', 'top'))
-  assert.deepEqual(topologyLine('grid-incoming').start, terminal('main-switch', 'bottom'))
-  assert.deepEqual(topologyLine('residual-to-rail').end, terminal('residual-breaker', 'bottom'))
-  assert.deepEqual(topologyLine('residual-outgoing').start, terminal('residual-breaker', 'top'))
-  assert.deepEqual(topologyLine('earth-drop').end, terminal('earth', 'top'))
-  assert.deepEqual(topologyLine('solar-branch').end, terminal('solar-breaker', 'bottom'))
-  assert.deepEqual(topologyLine('solar-breaker-to-meter').start, terminal('solar-breaker', 'top'))
-  assert.deepEqual(topologyLine('solar-breaker-to-meter').end, terminal('solar-meter', 'bottom'))
-  assert.deepEqual(topologyLine('solar-meter-to-inverter').start, terminal('solar-meter', 'top'))
-  assert.deepEqual(topologyLine('solar-meter-to-inverter').end, terminal('solar-inverter', 'bottom'))
-  assert.deepEqual(topologyLine('solar-inverter-to-panels').start, terminal('solar-inverter', 'top'))
-  assert.deepEqual(topologyLine('solar-inverter-to-panels').end, terminal('solar-panels', 'bottom'))
-  assert.deepEqual(topologyLine('additional-differential-ev-2-outgoing').end, terminal('ev-load', 'bottom'))
+  const connections: Array<[string, 'start' | 'end', string, 'top' | 'bottom']> = [
+    ['main-to-rail', 'start', 'main-differential', 'top'],
+    ['incoming', 'start', 'meter', 'top'],
+    ['incoming', 'end', 'main-differential', 'bottom'],
+    ['main-switch-to-meter', 'start', 'meter', 'bottom'],
+    ['main-switch-to-meter', 'end', 'main-switch', 'top'],
+    ['grid-incoming', 'start', 'main-switch', 'bottom'],
+    ['residual-to-rail', 'end', 'residual-breaker', 'bottom'],
+    ['residual-outgoing', 'start', 'residual-breaker', 'top'],
+    ['earth-drop', 'end', 'earth', 'top'],
+    ['solar-branch', 'end', 'solar-breaker', 'bottom'],
+    ['solar-breaker-to-meter', 'start', 'solar-breaker', 'top'],
+    ['solar-breaker-to-meter', 'end', 'solar-meter', 'bottom'],
+    ['solar-meter-to-inverter', 'start', 'solar-meter', 'top'],
+    ['solar-meter-to-inverter', 'end', 'solar-inverter', 'bottom'],
+    ['solar-inverter-to-panels', 'start', 'solar-inverter', 'top'],
+    ['solar-inverter-to-panels', 'end', 'solar-panels', 'bottom'],
+    ['additional-differential-ev-2-outgoing', 'end', 'ev-load', 'bottom']
+  ]
+  for (const [lineRole, endpoint, symbolRole, terminalName] of connections) {
+    const actual = topologyLine(lineRole)[endpoint]
+    const expected = terminal(symbolRole, terminalName)
+    assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < 1e-9, lineRole)
+  }
 
   const earth = shapes.find((shape) => shape.sourceLink?.role === 'earth')
   const main = shapes.find((shape) => shape.sourceLink?.role === 'main-differential')
@@ -123,12 +136,12 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const mainLabel = shapes.find((shape) => shape.sourceLink?.role === 'main-differential-label')
   assert.ok(earth?.kind === 'symbol' && main?.kind === 'symbol' && earth.position.x < main.position.x)
   assert.ok(mainSwitch?.kind === 'symbol')
-  assert.equal(mainSwitch.scale, 2.8)
+  assert.equal(mainSwitch.scale, 2)
   assert.equal(mainSwitch.electrical?.breakerCurrentA, 25)
   assert.equal(mainSwitch.symbolTextOverrides?.['rated-current'], '25A')
   assert.equal(mainLabel, undefined)
   assert.ok(main?.kind === 'symbol')
-  assert.equal(main.scale, 3.6)
+  assert.equal(main.scale, 1.75)
   assert.equal(main.electrical?.breakerCurrentA, 40)
   assert.equal(main.electrical?.rcdSensitivityMa, 300)
   assert.equal(main.electrical?.manufacturer, 'Schneider Electric')
@@ -138,11 +151,13 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.equal(main.symbolTextOverrides?.['residual-current'], '300mA')
 
   const residualBreaker = shapes.find((shape) => shape.sourceLink?.role === 'residual-breaker')
-  const additionalDifferential = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')
+  const additionalDifferential = shapes.find(
+    (shape) => shape.sourceLink?.role === 'additional-differential-consumers-1'
+  )
   assert.ok(residualBreaker?.kind === 'symbol' && additionalDifferential?.kind === 'symbol')
-  assert.equal(additionalDifferential.scale, 3.6)
+  assert.equal(additionalDifferential.scale, 1.75)
   assert.equal(residualBreaker.electrical?.breakerCurrentA, 40)
-  assert.equal(residualBreaker.scale, 2.8)
+  assert.equal(residualBreaker.scale, 2)
   assert.equal(residualBreaker.electrical?.breakerCurve, 'C')
   assert.equal(residualBreaker.symbolTextOverrides?.['rated-current'], 'C40A')
   assert.equal(additionalDifferential.electrical?.breakerCurrentA, 40)
@@ -152,7 +167,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
 
   const solarBreaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
   assert.ok(solarBreaker?.kind === 'symbol')
-  assert.equal(solarBreaker.scale, 2.8)
+  assert.equal(solarBreaker.scale, 2)
   assert.equal(solarBreaker.electrical?.breakerCurrentA, 20)
   assert.equal(solarBreaker.electrical?.breakerCurve, 'C')
   assert.equal(solarBreaker.symbolTextOverrides?.['rated-current'], 'C20A')
@@ -166,7 +181,10 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(consumerFlow && consumerFlow.to.y < consumerFlow.from.y)
   assert.ok(solarFlow && solarFlow.to.y > solarFlow.from.y)
   assert.equal(consumerFlow?.source, 'default')
-  assert.deepEqual(consumerFlows.map((flow) => flow.source), ['default', 'generator'])
+  assert.deepEqual(
+    consumerFlows.map((flow) => flow.source),
+    ['default', 'generator']
+  )
   assert.ok(consumerFlows.every((flow) => flow.to.y < flow.from.y))
   assert.equal(solarFlow?.source, 'generator')
   for (const role of ['main-to-rail', 'incoming', 'main-switch-to-meter', 'grid-incoming']) {
@@ -179,31 +197,108 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   }
 })
 
-test('uses manufacturer metadata to render the physical neutral side', () => {
-  const shapes = buildOneWireTopology({
-    version: 1,
-    mainDifferential: {
-      ratedCurrentA: 40,
-      sensitivityMa: 300,
-      manufacturer: 'TECO'
+test('places one consumer differential as an outgoing branch on the distribution rail', () => {
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' },
+      mainSwitch: { ratedCurrentA: 40 },
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      residualBreaker: false,
+      solar: false,
+      consumers: true,
+      additionalDifferentials: [
+        { count: 1, railId: 'rail-1', ratedCurrentA: 40, sensitivityMa: 30, purpose: 'consumers' }
+      ]
     },
-    residualBreaker: true,
-    residualBreakerManufacturer: 'Schneider Electric',
-    solar: false,
-    consumers: true,
-    additionalDifferentials: [
-      {
-        count: 1,
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids()
+  )
+
+  const roles = new Set(shapes.map((shape) => shape.sourceLink?.role))
+  assert.ok(roles.has('main-differential'))
+  assert.ok(roles.has('main-to-rail'))
+  assert.ok(roles.has('additional-differential-consumers-1'))
+  assert.ok(roles.has('additional-differential-consumers-1-to-rail'))
+  assert.ok(!roles.has('secondary-busbar'))
+
+  const consumerDifferential = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')
+  const branch = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1-to-rail')
+  assert.ok(consumerDifferential?.kind === 'symbol')
+  assert.ok(branch?.kind === 'line')
+  assert.equal(branch.start.y, 700)
+  assert.equal(consumerDifferential.electrical?.rcdSensitivityMa, 30)
+  assert.equal(consumerDifferential.symbolTextOverrides?.['residual-current'], '30mA')
+  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'NAAR RIJ 1'))
+})
+
+test('balances two destination branches around the incoming supply', () => {
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      consumers: true,
+      additionalDifferentials: [
+        { count: 1, railId: 'rail-1', ratedCurrentA: 40, sensitivityMa: 30, purpose: 'consumers' },
+        { count: 1, boardId: 'kitchen', ratedCurrentA: 40, sensitivityMa: 30, purpose: 'consumers' }
+      ]
+    },
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids()
+  )
+
+  const feeders = shapes.filter(
+    (shape) =>
+      shape.kind === 'line' &&
+      shape.sourceLink?.role?.startsWith('additional-differential-') &&
+      shape.sourceLink.role.endsWith('-to-rail')
+  )
+  const destinations = shapes.filter(
+    (shape) => shape.kind === 'text' && shape.sourceLink?.role?.endsWith('-destination')
+  )
+
+  assert.deepEqual(
+    feeders.map((shape) => shape.start.x),
+    [290, 710]
+  )
+  assert.ok(destinations.every((shape) => shape.textAnchor === 'middle'))
+})
+
+test('uses manufacturer metadata to render the physical neutral side', () => {
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      mainDifferential: {
         ratedCurrentA: 40,
-        sensitivityMa: 30,
-        purpose: 'consumers',
+        sensitivityMa: 300,
         manufacturer: 'TECO'
-      }
-    ]
-  }, {
-    start: { x: 80, y: 700 },
-    end: { x: 920, y: 700 }
-  }, ids())
+      },
+      residualBreaker: true,
+      residualBreakerManufacturer: 'Schneider Electric',
+      solar: false,
+      consumers: true,
+      additionalDifferentials: [
+        {
+          count: 1,
+          ratedCurrentA: 40,
+          sensitivityMa: 30,
+          purpose: 'consumers',
+          manufacturer: 'TECO'
+        }
+      ]
+    },
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids()
+  )
 
   const main = shapes.find((shape) => shape.sourceLink?.role === 'main-differential')
   const residual = shapes.find((shape) => shape.sourceLink?.role === 'residual-breaker')
@@ -215,30 +310,35 @@ test('uses manufacturer metadata to render the physical neutral side', () => {
 })
 
 test('hides phase-order text on every four-pole protection device', () => {
-  const shapes = buildOneWireTopology({
-    version: 1,
-    mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
-    residualBreaker: true,
-    solar: true,
-    consumers: true,
-    additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'consumers' }]
-  }, {
-    start: { x: 80, y: 700 },
-    end: { x: 920, y: 700 }
-  }, ids(), {
-    defaultPoles: 4,
-    phaseConfiguration: 'L1+L2+L3+N'
-  })
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      residualBreaker: true,
+      solar: true,
+      consumers: true,
+      additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'consumers' }]
+    },
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids(),
+    {
+      defaultPoles: 4,
+      phaseConfiguration: 'L1+L2+L3+N'
+    }
+  )
 
   const main = shapes.find((shape) => shape.sourceLink?.role === 'main-differential')
   const downstream = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')
   const residualBreaker = shapes.find((shape) => shape.sourceLink?.role === 'residual-breaker')
   const solarBreaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
   assert.ok(
-    main?.kind === 'symbol'
-    && downstream?.kind === 'symbol'
-    && residualBreaker?.kind === 'symbol'
-    && solarBreaker?.kind === 'symbol'
+    main?.kind === 'symbol' &&
+      downstream?.kind === 'symbol' &&
+      residualBreaker?.kind === 'symbol' &&
+      solarBreaker?.kind === 'symbol'
   )
   assert.equal(main.symbolTextOverrides?.phase, '')
   assert.equal(downstream.symbolTextOverrides?.phase, '')
@@ -247,30 +347,44 @@ test('hides phase-order text on every four-pole protection device', () => {
 })
 
 test('marks a solar-fed downstream rail without a remautomaat as unprotected', () => {
-  const shapes = buildOneWireTopology({
-    version: 1,
-    mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
-    residualBreaker: false,
-    solar: true,
-    consumers: true,
-    additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'consumers' }]
-  }, {
-    start: { x: 80, y: 700 },
-    end: { x: 920, y: 700 }
-  }, ids(), { gridProtectionCurrentA: 40 })
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      residualBreaker: false,
+      solar: true,
+      consumers: true,
+      additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'consumers' }]
+    },
+    {
+      start: { x: 80, y: 700 },
+      end: { x: 920, y: 700 }
+    },
+    ids(),
+    { gridProtectionCurrentA: 40 }
+  )
 
   assert.ok(shapes.some((shape) => shape.sourceLink?.role === 'unprotected-feeder' && shape.kind === 'line'))
-  assert.ok(shapes.some((shape) =>
-    shape.sourceLink?.role === 'secondary-busbar-protection-warning'
-    && shape.kind === 'text'
-    && shape.text.includes('MAX 60 A')
-  ))
-  assert.ok(shapes.some((shape) =>
-    shape.sourceLink?.role === 'secondary-busbar-capacity-detail'
-    && shape.kind === 'text'
-    && shape.text.includes('63 A')
-  ))
-  assert.equal(shapes.some((shape) => shape.sourceLink?.role === 'residual-breaker'), false)
+  assert.ok(
+    shapes.some(
+      (shape) =>
+        shape.sourceLink?.role === 'secondary-busbar-protection-warning' &&
+        shape.kind === 'text' &&
+        shape.text.includes('MAX 60 A')
+    )
+  )
+  assert.ok(
+    shapes.some(
+      (shape) =>
+        shape.sourceLink?.role === 'secondary-busbar-capacity-detail' &&
+        shape.kind === 'text' &&
+        shape.text.includes('63 A')
+    )
+  )
+  assert.equal(
+    shapes.some((shape) => shape.sourceLink?.role === 'residual-breaker'),
+    false
+  )
 })
 
 test('connects every topology branch to a tap on a moved busbar', () => {
@@ -278,13 +392,17 @@ test('connects every topology branch to a tap on a moved busbar', () => {
     start: { x: 100, y: 680 },
     end: { x: 1100, y: 720 }
   }
-  const shapes = buildOneWireTopology({
-    version: 1,
-    residualBreaker: true,
-    solar: true,
-    consumers: true,
-    additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'ev' }]
-  }, rail, ids())
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      residualBreaker: true,
+      solar: true,
+      consumers: true,
+      additionalDifferentials: [{ count: 1, sensitivityMa: 30, purpose: 'ev' }]
+    },
+    rail,
+    ids()
+  )
 
   const onBusbar = (point: { x: number; y: number }, busbar: typeof rail) => {
     const dx = busbar.end.x - busbar.start.x
@@ -292,23 +410,24 @@ test('connects every topology branch to a tap on a moved busbar', () => {
     const crossProduct = (point.x - busbar.start.x) * dy - (point.y - busbar.start.y) * dx
     return Math.abs(crossProduct) < 1e-8
   }
-  const primaryRoles = new Set([
-    'main-to-rail',
-    'earth-drop',
-    'residual-to-rail',
-    'solar-branch'
-  ])
+  const primaryRoles = new Set(['main-to-rail', 'residual-to-rail', 'solar-branch'])
   const primaryLines = shapes.filter(
     (shape): shape is Extract<typeof shape, { kind: 'line' }> =>
       shape.kind === 'line' && primaryRoles.has(shape.sourceLink?.role ?? '')
   )
   const secondaryBusbar = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'secondary-busbar')
-  const additionalLine = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'additional-differential-ev-1-to-rail')
+  const additionalLine = shapes.find(
+    (shape) => shape.kind === 'line' && shape.sourceLink?.role === 'additional-differential-ev-1-to-rail'
+  )
   const feederLine = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'residual-outgoing')
 
   assert.equal(primaryLines.length, primaryRoles.size)
-  assert.ok(primaryLines.every((line) => onBusbar(line.sourceLink?.role === 'main-to-rail' ? line.end : line.start, rail)))
+  assert.ok(
+    primaryLines.every((line) => onBusbar(line.sourceLink?.role === 'main-to-rail' ? line.end : line.start, rail))
+  )
   assert.ok(secondaryBusbar?.kind === 'line')
+  const earthDrop = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'earth-drop')
+  assert.ok(earthDrop?.kind === 'line' && !onBusbar(earthDrop.start, rail))
   assert.ok(additionalLine?.kind === 'line' && onBusbar(additionalLine.start, secondaryBusbar))
   assert.ok(feederLine?.kind === 'line' && onBusbar(feederLine.end, secondaryBusbar))
 })

@@ -132,9 +132,9 @@ export class StatusBar extends LiteElement {
         <span class="value">${toolLabel}</span>
       </span>
       <span
-        class="separator"
+        class="separator cursor-detail"
         aria-hidden="true"></span>
-      <span class="item">
+      <span class="item cursor-detail">
         <span class="label">Cursor</span>
         <span class="value mono">${this.hasCursor ? `x ${Math.round(this.cursorX)}` : 'x —'}</span>
         <span class="value mono">${this.hasCursor ? `y ${Math.round(this.cursorY)}` : 'y —'}</span>
@@ -157,8 +157,18 @@ export class StatusBar extends LiteElement {
         <span class="mono">${Math.round(this.zoom * 100)}%</span>
       </button>
       ${this.dirty
-        ? html`<span class="status-pill unsaved">Unsaved</span>`
-        : html`<span class="status-pill saved ${this.saved ? 'visible' : ''}">Saved</span>`}
+        ? html`<span
+            class="status-pill unsaved"
+            role="status"
+            aria-live="polite"
+            >Unsaved</span
+          >`
+        : html`<span
+            class="status-pill saved ${this.saved ? 'visible' : ''}"
+            role="status"
+            aria-live="polite"
+            >Saved</span
+          >`}
     `
   }
 }

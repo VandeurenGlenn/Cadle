@@ -35,7 +35,9 @@ const topologyWarnings = (plan: OneWireTopologyPlan, prompt = ''): string[] => {
     warnings.push('Hoofddifferentieel is onvolledig; vermeld zowel de nominale stroom in A als de gevoeligheid in mA.')
   }
   if (plan.solar && !/\b(samen|naast|kant|parallel|hoofdbus|verdeelrail)\b/iu.test(prompt)) {
-    warnings.push('PV-positie niet vermeld; Cadle neemt parallel na de hoofddifferentieel aan. Controleer dit vóór het genereren.')
+    warnings.push(
+      'PV-positie niet vermeld; Cadle neemt parallel na de hoofddifferentieel aan. Controleer dit vóór het genereren.'
+    )
   }
   if (!plan.residualBreaker) {
     const capacity = assessOneWireCapacity(plan)
@@ -44,7 +46,9 @@ const topologyWarnings = (plan: OneWireTopologyPlan, prompt = ''): string[] => {
         `${capacity.message}. ${capacity.detail}. Een hogere differentieel begrenst de stroom niet; controleer rail, bedrading, klemmen en fabrikantgegevens.`
       )
     } else if (capacity.status === 'unknown' && plan.solar) {
-      warnings.push('PV en downstream-verbruikers zonder remautomaat: vul de hoofdzekering in om de maximale kaststroom te controleren.')
+      warnings.push(
+        'PV en downstream-verbruikers zonder remautomaat: vul de hoofdzekering in om de maximale kaststroom te controleren.'
+      )
     } else {
       warnings.push(
         plan.solar && (plan.consumers || (plan.additionalDifferentials?.length ?? 0) > 0)
@@ -55,8 +59,8 @@ const topologyWarnings = (plan: OneWireTopologyPlan, prompt = ''): string[] => {
   }
   if (plan.residualBreaker) {
     const residualLimitA = plan.residualBreakerRatedCurrentA ?? 40
-    const undersizedDifferential = plan.additionalDifferentials?.find((item) =>
-      (item.ratedCurrentA ?? plan.mainDifferential?.ratedCurrentA ?? residualLimitA) < residualLimitA
+    const undersizedDifferential = plan.additionalDifferentials?.find(
+      (item) => (item.ratedCurrentA ?? plan.mainDifferential?.ratedCurrentA ?? residualLimitA) < residualLimitA
     )
     if (undersizedDifferential) {
       warnings.push(
@@ -89,7 +93,8 @@ const manufacturerNeutralPosition = (manufacturer: string | undefined): 'left' |
 
 const parseAdditionalDifferentials = (text: string): NonNullable<OneWireTopologyPlan['additionalDifferentials']> => {
   const result: NonNullable<OneWireTopologyPlan['additionalDifferentials']> = []
-  const pattern = /(\d+)\s+(?:(?:bijkomende|extra)\s+)?(?:diffs?|differenti(?:e|ë)len?)\s+(?:(schneider(?:\s+electric)?|teco|tecko|niko|hager|abb|legrand)\s+)?(?:(\d+(?:[.,]\d+)?)\s*a\s+)?(\d+(?:[.,]\d+)?)\s*ma(?:\s+(?:voor|naar)\s+([^.,;]+))?/giu
+  const pattern =
+    /(\d+)\s+(?:(?:bijkomende|extra)\s+)?(?:diffs?|differenti(?:e|ë)len?)\s+(?:(schneider(?:\s+electric)?|teco|tecko|niko|hager|abb|legrand)\s+)?(?:(\d+(?:[.,]\d+)?)\s*a\s+)?(\d+(?:[.,]\d+)?)\s*ma(?:\s+(?:voor|naar)\s+([^.,;]+))?/giu
   for (const match of text.matchAll(pattern)) {
     const count = Number(match[1])
     const ratedCurrentA = match[3] ? Number(match[3].replace(',', '.')) : undefined
@@ -137,21 +142,26 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
     consumers: mentionsAffirmatively(text, consumerTerm)
   }
   const gridProtectionCurrent =
-    /\b(?:hoofdzekering|netaansluiting|netautomaat|aansluitautomaat)\b[^.\n,;]{0,24}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(text)?.[1]
-    ?? /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\b(?:hoofdzekering|netaansluiting|netautomaat|aansluitautomaat)\b/iu.exec(text)?.[1]
+    /\b(?:hoofdzekering|netaansluiting|netautomaat|aansluitautomaat)\b[^.\n,;]{0,24}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(
+      text
+    )?.[1] ??
+    /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\b(?:hoofdzekering|netaansluiting|netautomaat|aansluitautomaat)\b/iu.exec(
+      text
+    )?.[1]
   if (gridProtectionCurrent) {
     plan.gridProtectionCurrentA = Number(gridProtectionCurrent.replace(',', '.'))
   }
   if (plan.residualBreaker) {
-    const residualContext =
-      /\b(?:remautomaat|differentieelautomaat|rcbo)\b[^.\n,;]*/iu.exec(text)?.[0] ?? ''
+    const residualContext = /\b(?:remautomaat|differentieelautomaat|rcbo)\b[^.\n,;]*/iu.exec(text)?.[0] ?? ''
     const residualManufacturer = recognizedManufacturer(residualContext)
     const residualBreakerCurrent =
-      /\b(?:remautomaat|differentieelautomaat|rcbo)\b[^.\n,;]{0,30}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(text)?.[1]
-      ?? /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\b(?:remautomaat|differentieelautomaat|rcbo)\b/iu.exec(text)?.[1]
-    plan.residualBreakerRatedCurrentA = residualBreakerCurrent
-      ? Number(residualBreakerCurrent.replace(',', '.'))
-      : 40
+      /\b(?:remautomaat|differentieelautomaat|rcbo)\b[^.\n,;]{0,30}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(
+        text
+      )?.[1] ??
+      /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\b(?:remautomaat|differentieelautomaat|rcbo)\b/iu.exec(
+        text
+      )?.[1]
+    plan.residualBreakerRatedCurrentA = residualBreakerCurrent ? Number(residualBreakerCurrent.replace(',', '.')) : 40
     if (residualManufacturer) {
       plan.residualBreakerManufacturer = residualManufacturer
       plan.residualBreakerNeutralPosition = manufacturerNeutralPosition(residualManufacturer)
@@ -159,12 +169,12 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
   }
 
   const mainSwitchContext =
-    /\bhoofdschakelaar\b[^.\n,;]*/iu.exec(text)?.[0]
-    ?? /\b(?:c\s*)?\d+(?:[.,]\d+)?\s*a\b[^.\n,;]{0,20}?\bhoofdschakelaar\b/iu.exec(text)?.[0]
-    ?? ''
+    /\bhoofdschakelaar\b[^.\n,;]*/iu.exec(text)?.[0] ??
+    /\b(?:c\s*)?\d+(?:[.,]\d+)?\s*a\b[^.\n,;]{0,20}?\bhoofdschakelaar\b/iu.exec(text)?.[0] ??
+    ''
   const mainSwitchCurrent =
-    /\bhoofdschakelaar\b[^.\n,;]{0,30}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(text)?.[1]
-    ?? /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\bhoofdschakelaar\b/iu.exec(text)?.[1]
+    /\bhoofdschakelaar\b[^.\n,;]{0,30}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(text)?.[1] ??
+    /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,20}?\bhoofdschakelaar\b/iu.exec(text)?.[1]
   if (mainSwitchCurrent) {
     const manufacturer = recognizedManufacturer(mainSwitchContext)
     const neutralPosition = manufacturerNeutralPosition(manufacturer)
@@ -175,7 +185,10 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
     }
   }
 
-  const cable = /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2))?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)\b/i.exec(text)
+  const cable =
+    /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2))?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)\b/i.exec(
+      text
+    )
   if (cable) {
     plan.incomingCable = {
       conductors: Number(cable[1]),
@@ -206,8 +219,12 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
   }
   if (plan.solar) {
     const solarBreakerCurrent =
-      /\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b[^.\n,;]{0,24}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(text)?.[1]
-      ?? /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,24}?\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b/iu.exec(text)?.[1]
+      /\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b[^.\n,;]{0,24}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(
+        text
+      )?.[1] ??
+      /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,24}?\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b/iu.exec(
+        text
+      )?.[1]
     if (solarBreakerCurrent) {
       plan.solarBreakerRatedCurrentA = Number(solarBreakerCurrent.replace(',', '.'))
     }
@@ -242,10 +259,7 @@ export const interpretOneWirePrompt = async (
   const fallback = parseOneWirePrompt(prompt)
   return {
     ...fallback,
-    warnings: [
-      `Lokaal model gaf ongeldige topologie: ${validation.errors.join(' ')}`,
-      ...fallback.warnings
-    ]
+    warnings: [`Lokaal model gaf ongeldige topologie: ${validation.errors.join(' ')}`, ...fallback.warnings]
   }
 }
 
@@ -256,9 +270,7 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
   const differential = plan.mainDifferential
     ? `hoofddifferentieel ${plan.mainDifferential.ratedCurrentA} A / ${plan.mainDifferential.sensitivityMa} mA`
     : 'hoofddifferentieel'
-  const mainSwitch = plan.mainSwitch
-    ? `hoofdschakelaar ${plan.mainSwitch.ratedCurrentA} A`
-    : 'hoofdschakelaar'
+  const mainSwitch = plan.mainSwitch ? `hoofdschakelaar ${plan.mainSwitch.ratedCurrentA} A` : 'hoofdschakelaar'
   return [
     `${mainSwitch} → kWh-meter → ${cable} → ${differential}`,
     ...(plan.solar ? ['├─ zonnepanelen / omvormer'] : []),
@@ -266,7 +278,12 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
       const connector = index === items.length - 1 && !plan.residualBreaker ? '└─' : '├─'
       const purpose = item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'
       const rating = item.ratedCurrentA ? `${item.ratedCurrentA} A / ` : ''
-      return `${connector} ${item.count}× differentieel ${rating}${item.sensitivityMa} mA → ${purpose}`
+      const destination = item.boardId?.trim()
+        ? `kast ${item.boardId.trim()}${item.railId?.trim() ? `, rij ${item.railId.trim()}` : ''}`
+        : item.railId?.trim()
+          ? `rij ${item.railId.trim()}`
+          : purpose
+      return `${connector} ${item.count}× differentieel ${rating}${item.sensitivityMa} mA → ${destination}`
     }),
     ...(plan.residualBreaker
       ? [`└─ remautomaat ${plan.residualBreakerRatedCurrentA ?? 40} A${plan.consumers ? ' → verbruikers' : ''}`]

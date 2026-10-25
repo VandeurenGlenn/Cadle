@@ -66,6 +66,10 @@ export class ValidationReportModal extends LiteElement {
     this.dispatchEvent(new CustomEvent('focus-binding', { bubbles: true, composed: true, detail: { bindingId } }))
   }
 
+  #generate = () => {
+    this.dispatchEvent(new CustomEvent('generate-one-wire', { bubbles: true, composed: true }))
+  }
+
   render() {
     const report = this.report
     if (!this.open || !report) return html``
@@ -75,44 +79,45 @@ export class ValidationReportModal extends LiteElement {
         @click=${(event: Event) => event.stopPropagation()}>
         <div class="header">
           <div class="title">
-            <h3>Binding Validation</h3>
-            <p>${this.projectName || 'Current project'} • review one-wire readiness and jump to issues</p>
+            <h3>Circuit check</h3>
+            <p>${this.projectName || 'Current project'} • everything needed for the one-wire diagram</p>
           </div>
           <button @click=${this.#close}>Close</button>
         </div>
         <div class="content">
           <div class="stats">
-            <div class="stat"><strong>${report.totalGroups}</strong><span>Total groups</span></div>
-            <div class="stat"><strong>${report.readyGroups}</strong><span>Ready circuits</span></div>
+            <div class="stat"><strong>${report.totalGroups}</strong><span>Circuits</span></div>
+            <div class="stat"><strong>${report.readyGroups}</strong><span>Ready</span></div>
             <div class="stat"><strong>${report.errorCount}</strong><span>Errors</span></div>
             <div class="stat"><strong>${report.warningCount}</strong><span>Warnings</span></div>
           </div>
           <div class="group">
-            <strong>AREI-oriented preflight</strong>
+            <strong>Technical check</strong>
             <div>
-              This check catches missing drawing data and conflicting circuit values. Suggested protection and cable
-              values must still be confirmed by the designer and the completed installation remains subject to an
-              authorised inspection.
+              Cadle checks missing links and conflicting circuit values before building the diagram. Confirm suggested
+              protection and cable values against the installation before inspection.
             </div>
           </div>
           <div class="issues">
             <div class="row">
-              <strong>Issues</strong>
+              <strong>Needs attention</strong>
               <span>${report.issues.length} item${report.issues.length === 1 ? '' : 's'}</span>
             </div>
             ${report.issues.length === 0
               ? html`<div class="group">
-                  <div class="row"><strong>No issues found</strong><span class="pill ok">ready</span></div>
+                  <div class="row"><strong>All circuit data is complete</strong><span class="pill ok">ready</span></div>
                 </div>`
               : report.issues.map(
                   (issue: ValidationIssue) => html`
                     <div
                       class="issue"
-                      data-severity=${issue.severity}
-                      @click=${() => this.#focusBinding(issue.bindingId)}>
+                      data-severity=${issue.severity}>
                       <div class="row">
                         <strong>${issue.bindingId}</strong>
-                        <span class="pill ${issue.severity === 'error' ? 'error' : 'warn'}">${issue.severity}</span>
+                        <div class="issue-actions">
+                          <span class="pill ${issue.severity === 'error' ? 'error' : 'warn'}">${issue.severity}</span>
+                          <button @click=${() => this.#focusBinding(issue.bindingId)}>Review circuit</button>
+                        </div>
                       </div>
                       <div>${issue.message}</div>
                     </div>
@@ -120,33 +125,40 @@ export class ValidationReportModal extends LiteElement {
                 )}
           </div>
           <div class="groups">
-            <div class="row"><strong>Binding groups</strong></div>
+            <div class="row"><strong>Circuit details</strong></div>
             ${report.groups.map(
               (group: ValidationGroup) => html`
-                <div class="group">
-                  <div class="row">
+                <details class="group circuit-detail">
+                  <summary class="row">
                     <strong>${group.bindingId}</strong>
                     <span class="pill ${group.ready ? 'ok' : 'warn'}">${group.ready ? 'ready' : 'incomplete'}</span>
+                  </summary>
+                  <div class="circuit-detail-body">
+                    <div>${group.switches} switches • ${group.loads} loads/sockets • ${group.neutral} other</div>
+                    ${group.specification
+                      ? html`
+                          <div>
+                            ${group.specification.breakerCurrentA} A (${group.specification.sources.breakerCurrentA}) •
+                            ${group.specification.cableSectionMm2} mm² (${group.specification.sources.cableSectionMm2})
+                            • ${group.specification.poles}P (${group.specification.sources.poles}) •
+                            ${group.specification.phaseConfiguration === 'three-phase' ? '3-phase' : '1-phase'}
+                            (${group.specification.sources.phaseConfiguration})
+                          </div>
+                          <div>
+                            ${group.specification.breakerCurve
+                              ? `Curve ${group.specification.breakerCurve}`
+                              : 'Curve not set'}
+                            •
+                            ${group.specification.rcdSensitivityMa
+                              ? `${group.specification.rcdSensitivityMa} mA ${group.specification.rcdType ?? ''}`
+                              : 'No circuit-specific RCD'}
+                            • ${group.specification.boardId ?? 'main'} / ${group.specification.railId ?? 'rail-1'}
+                          </div>
+                          ${group.specification.notes ? html`<div>${group.specification.notes}</div>` : ''}
+                        `
+                      : ''}
                   </div>
-                  <div>${group.switches} switches • ${group.loads} loads/sockets • ${group.neutral} other</div>
-                  ${group.specification
-                    ? html`
-                        <div>
-                          ${group.specification.breakerCurrentA} A (${group.specification.sources.breakerCurrentA}) •
-                          ${group.specification.cableSectionMm2} mm² (${group.specification.sources.cableSectionMm2}) •
-                          ${group.specification.poles}P (${group.specification.sources.poles}) •
-                          ${group.specification.phaseConfiguration === 'three-phase' ? '3-phase' : '1-phase'}
-                          (${group.specification.sources.phaseConfiguration})
-                        </div>
-                        <div>
-                          ${group.specification.breakerCurve ? `Curve ${group.specification.breakerCurve}` : 'Curve not set'} •
-                          ${group.specification.rcdSensitivityMa ? `${group.specification.rcdSensitivityMa} mA ${group.specification.rcdType ?? ''}` : 'RCD not assigned'} •
-                          ${group.specification.boardId ?? 'main'} / ${group.specification.railId ?? 'rail-1'}
-                        </div>
-                        ${group.specification.notes ? html`<div>${group.specification.notes}</div>` : ''}
-                      `
-                    : ''}
-                </div>
+                </details>
               `
             )}
           </div>
@@ -154,11 +166,18 @@ export class ValidationReportModal extends LiteElement {
         <div class="footer">
           <div>
             ${report.valid
-              ? 'Preflight passed. Confirm suggested values before inspection.'
-              : 'Fix the errors before generating the one-wire diagram.'}
+              ? 'Everything is ready. Cadle can build the one-wire diagram now.'
+              : 'Review the errors above before creating the one-wire diagram.'}
           </div>
           <div class="footer-actions">
-            <button @click=${this.#close}>Done</button>
+            <button @click=${this.#close}>Close</button>
+            ${report.valid
+              ? html`<button
+                  class="primary"
+                  @click=${this.#generate}>
+                  Create one-wire diagram
+                </button>`
+              : ''}
           </div>
         </div>
       </div>

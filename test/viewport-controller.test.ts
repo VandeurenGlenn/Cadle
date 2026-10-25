@@ -26,6 +26,27 @@ test('fits and centers a world inside a container', () => {
   assert.deepEqual(viewport.state, { zoom: 0.61, panX: 12, panY: 25.5 })
 })
 
+test('fits content bounds independently of the page origin', () => {
+  const viewport = new ViewportController()
+  assert.equal(viewport.fitBounds({ width: 400, height: 800 }, { x: 800, y: 500, width: 1000, height: 500 }), true)
+  assert.deepEqual(viewport.state, { zoom: 0.336, panX: -236.8, panY: 148 })
+})
+
+test('keeps sparse content at a readable minimum zoom', () => {
+  const viewport = new ViewportController()
+  assert.equal(viewport.fitBounds({ width: 400, height: 800 }, { x: 0, y: 0, width: 2000, height: 500 }, 32, 0.3), true)
+  assert.deepEqual(viewport.state, { zoom: 0.3, panX: -100, panY: 325 })
+})
+
+test('preserves zoom and the centered world point across viewport resizes', () => {
+  const viewport = new ViewportController()
+  viewport.fit({ width: 400, height: 800 }, { width: 2000, height: 1000 })
+  const zoom = viewport.state.zoom
+  assert.equal(viewport.preserveCenter({ width: 400, height: 800 }, { width: 600, height: 700 }), true)
+  assert.equal(viewport.state.zoom, zoom)
+  assert.deepEqual(viewport.screenToWorld({ x: 300, y: 350 }), { x: 1000, y: 500 })
+})
+
 test('clamps zoom and rejects invalid factors', () => {
   const viewport = new ViewportController()
   viewport.zoomAt({ x: 0, y: 0 }, 100)

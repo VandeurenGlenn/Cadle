@@ -15,7 +15,7 @@ import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE } from '../../editor/constants.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
-import { neutralPositionForManufacturer } from '../../editor/model/electrical.js'
+import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -263,7 +263,7 @@ export class ObjectPane extends LiteElement {
     })
   }
 
-  #runCircuitOperation = (kind: CircuitOperationKind) => {
+  #runCircuitOperation = async (kind: CircuitOperationKind) => {
     if (this._selectionCount === 0) return
     const currentFamily = /^([A-Z]{1,4})/.exec(this._nativeBindingId.trim().toUpperCase())?.[1] ?? ''
     const label =
@@ -272,10 +272,20 @@ export class ObjectPane extends LiteElement {
         : kind === 'combine'
           ? 'Combine the selected circuits into'
           : 'Move the selected points to new circuit'
-    const targetFamily = globalThis
-      .prompt(label, kind === 'split' ? '' : currentFamily)
-      ?.trim()
-      .toUpperCase()
+    const values = await globalThis.cadleShell.requestInput({
+      title: label,
+      submitLabel: kind === 'split' ? 'Move points' : kind === 'combine' ? 'Combine circuits' : 'Replace circuit',
+      fields: [
+        {
+          name: 'family',
+          label: 'Target circuit family',
+          value: kind === 'split' ? '' : currentFamily,
+          placeholder: 'A',
+          required: true
+        }
+      ]
+    })
+    const targetFamily = values?.family.toUpperCase()
     if (!targetFamily) return
     pubsub.publish('editor.circuit.operation', { kind, targetFamily })
   }
@@ -465,20 +475,30 @@ export class ObjectPane extends LiteElement {
     })
   }
 
-  #updatePhaseConfiguration = (value: string) => {
-    if (value === 'none') {
-      this._nativeElectrical = { ...(this._nativeElectrical ?? {}), showPhaseLabel: false }
-      pubsub.publish('editor.object.update', { electrical: { showPhaseLabel: false } })
-      return
-    }
-    const phaseConfiguration = value || null
+  #setSupplyPreset = (phaseConfiguration: ElectricalPhaseConfiguration, poles: number) => {
     this._nativeElectrical = {
       ...(this._nativeElectrical ?? {}),
-      showPhaseLabel: true,
-      ...(phaseConfiguration ? { phaseConfiguration } : {})
+      phaseConfiguration,
+      poles,
+      showPhaseLabel: true
     }
     pubsub.publish('editor.object.update', {
-      electrical: { showPhaseLabel: true, phaseConfiguration }
+      electrical: { phaseConfiguration, poles, showPhaseLabel: true }
+    })
+  }
+
+  #setPhaseLabelVisibility = (showPhaseLabel: boolean) => {
+    this._nativeElectrical = { ...(this._nativeElectrical ?? {}), showPhaseLabel }
+    pubsub.publish('editor.object.update', { electrical: { showPhaseLabel } })
+  }
+
+  #setNeutralPosition = (neutralPosition: '' | 'left' | 'right') => {
+    this._nativeElectrical = {
+      ...(this._nativeElectrical ?? {}),
+      neutralPosition: neutralPosition || undefined
+    }
+    pubsub.publish('editor.object.update', {
+      electrical: { neutralPosition: neutralPosition || null }
     })
   }
 
@@ -527,7 +547,7 @@ export class ObjectPane extends LiteElement {
           <div class="empty-card">
             <custom-icon icon="arrow_selector_tool"></custom-icon>
             <span class="empty-title">No selection</span>
-            <span class="empty-hint">Select a native object to inspect.</span>
+            <span class="empty-hint">Select an object to view its properties.</span>
           </div>
         </div>
       `
@@ -763,49 +783,76 @@ export class ObjectPane extends LiteElement {
                       <option value="recessed">Recessed in wall</option>
                       <option value="underground">Underground</option>
                     </select>
-                    <div class="native-row">
-                      <label
-                        ><span class="native-label">Poles</span
-                        ><input
-                          data-electrical-field="poles"
-                          class="native-input"
-                          type="number"
-                          min="1"
-                          step="1"
-                          .value=${String(this.#effectiveElectrical().poles ?? '')}
-                          @input=${(event: Event) =>
-                            this.#updateElectrical('poles', (event.target as HTMLInputElement).value)}
-                      /></label>
-                      <label
-                        ><span class="native-label">Phase</span
-                        ><select
-                          data-electrical-field="phaseConfiguration"
-                          class="native-select"
-                          .value=${this.#effectiveElectrical().showPhaseLabel === false
-                            ? 'none'
-                            : (this.#effectiveElectrical().phaseConfiguration ?? '')}
-                          @change=${(event: Event) =>
-                            this.#updatePhaseConfiguration((event.target as HTMLSelectElement).value)}>
-                          <option value="none">None</option>
-                          <option value="">Project default</option>
-                          <option value="L1+N">L1N</option>
-                          <option value="L2+N">L2N</option>
-                          <option value="L3+N">L3N</option>
-                          <option value="L1+L2+L3+N">L1L2L3N</option>
-                        </select></label
-                      >
+                    <label class="native-label">Supply</label>
+                    <div
+                      class="native-chip-row native-supply-options"
+                      role="radiogroup"
+                      aria-label="Supply phase">
+                      ${(
+                        [
+                          ['L1 + N', 'L1+N', 2],
+                          ['L2 + N', 'L2+N', 2],
+                          ['L3 + N', 'L3+N', 2],
+                          ['3F', 'three-phase', 3],
+                          ['3F + N', 'L1+L2+L3+N', 4]
+                        ] as const
+                      ).map(
+                        ([label, phaseConfiguration, poles]) => html`
+                          <button
+                            type="button"
+                            class="native-chip"
+                            data-active=${this.#effectiveElectrical().phaseConfiguration === phaseConfiguration &&
+                            this.#effectiveElectrical().poles === poles
+                              ? 'true'
+                              : 'false'}
+                            aria-checked=${this.#effectiveElectrical().phaseConfiguration === phaseConfiguration &&
+                            this.#effectiveElectrical().poles === poles
+                              ? 'true'
+                              : 'false'}
+                            role="radio"
+                            @click=${() => this.#setSupplyPreset(phaseConfiguration, poles)}>
+                            ${label}
+                          </button>
+                        `
+                      )}
                     </div>
+                    <label class="native-check-row">
+                      <input
+                        type="checkbox"
+                        .checked=${this.#effectiveElectrical().showPhaseLabel !== false}
+                        @change=${(event: Event) =>
+                          this.#setPhaseLabelVisibility((event.target as HTMLInputElement).checked)} />
+                      <span>Show phase label</span>
+                    </label>
                     <label class="native-label">Neutral position</label>
-                    <select
-                      data-electrical-field="neutralPosition"
-                      class="native-select"
-                      .value=${this.#effectiveElectrical().neutralPosition ?? ''}
-                      @change=${(event: Event) =>
-                        this.#updateElectrical('neutralPosition', (event.target as HTMLSelectElement).value)}>
-                      <option value="">According to manufacturer</option>
-                      <option value="left">N left</option>
-                      <option value="right">N right</option>
-                    </select>
+                    <div
+                      class="native-chip-row native-neutral-options"
+                      role="radiogroup"
+                      aria-label="Neutral position">
+                      ${(
+                        [
+                          ['Auto', ''],
+                          ['N left', 'left'],
+                          ['N right', 'right']
+                        ] as const
+                      ).map(
+                        ([label, neutralPosition]) => html`
+                          <button
+                            type="button"
+                            class="native-chip"
+                            data-active=${(this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
+                              ? 'true'
+                              : 'false'}
+                            aria-checked=${(this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
+                              ? 'true'
+                              : 'false'}
+                            role="radio"
+                            @click=${() => this.#setNeutralPosition(neutralPosition)}>
+                            ${label}
+                          </button>
+                        `
+                      )}
+                    </div>
                     <div class="native-note">Values apply to this circuit and are stored with the project.</div>
                     ${isResidualBreaker
                       ? ''
@@ -885,7 +932,7 @@ export class ObjectPane extends LiteElement {
           : ''}
         <label class="native-label">Label position</label>
         <div
-          class="native-chip-row"
+          class="native-chip-row native-label-options"
           role="radiogroup"
           aria-label="Label position">
           <button

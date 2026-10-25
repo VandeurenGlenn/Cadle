@@ -93,12 +93,14 @@
      toolbar and dialog from inventing its own density. */
   --cadle-control-height: 36px;
   --cadle-control-height-compact: 32px;
+  --cadle-touch-target: 44px;
   --cadle-panel-radius: 14px;
   --cadle-panel-border: 1px solid var(--md-sys-color-outline-variant);
   --cadle-panel-bg: var(--md-sys-color-surface-container);
   --cadle-panel-bg-raised: var(--md-sys-color-surface-container-high);
   --cadle-hover-bg: color-mix(in srgb, var(--md-sys-color-on-surface) 7%, transparent);
   --cadle-selected-bg: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  --cadle-window-glass: #23749f;
 
   /* ── Spacing scale (4-pt rhythm). Use these in components instead of
      hardcoding pixel values. ──────────────────────────────────────── */
@@ -136,7 +138,7 @@
      The drawing artboard is its own depth layer below the chrome. Light
      mode = a hint warmer than --background; dark mode = a hint darker so
      the rails / header read as floating above. */
-  --cadle-canvas-surface: #f6f0eb;
+  --cadle-canvas-surface: #f2f3f3;
   --cadle-canvas-grid-line: color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent);
   --cadle-canvas-grid-line-major: color-mix(in srgb, var(--md-sys-color-outline-variant) 85%, transparent);
   --cadle-canvas-ink: color-mix(in srgb, var(--md-sys-color-on-surface) 82%, transparent);
@@ -160,14 +162,14 @@
 
   /* Chrome height — single source for header height. Components consume via
      `var(--cadle-header-height)`. */
-  --cadle-header-height: 44px;
+  --cadle-header-height: 40px;
 
   /* Layout column / row sizes. Single source for the shell grid template
      so rails and status-bar agree on geometry. */
-  --cadle-toolbar-height: 40px;
-  --cadle-rail-left: 272px;
-  --cadle-rail-right: 320px;
-  --cadle-status-bar: 28px;
+  --cadle-toolbar-height: 36px;
+  --cadle-rail-left: 224px;
+  --cadle-rail-right: 288px;
+  --cadle-status-bar: 24px;
 
   /* ── 6. Typescale ───────────────────────────────────────────────────── */
   --cadle-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;

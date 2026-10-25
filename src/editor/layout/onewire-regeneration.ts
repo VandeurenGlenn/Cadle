@@ -1,22 +1,8 @@
 import type { Shape } from '../../editor/model/types.js'
 
-const preserveManualGeometry = (fresh: Shape, previous: Shape): Shape => {
+const preserveGeneratedIdentity = (fresh: Shape, previous: Shape): Shape => {
   if (fresh.kind !== previous.kind) return fresh
-  // Board topology is a node-connected network. Its geometry is recomputed
-  // from the preserved busbar so individual stale positions cannot disconnect
-  // terminals, wires, or busbar taps during regeneration.
-  if (/^board:main:topology:v\d+:/.test(fresh.generationKey ?? '')) {
-    return { ...fresh, id: previous.id }
-  }
-  if ('position' in fresh && 'position' in previous) {
-    const preserved = { ...fresh, id: previous.id, position: { ...previous.position }, rotation: previous.rotation } as Shape
-    if ('scale' in preserved && 'scale' in previous) preserved.scale = previous.scale
-    return preserved
-  }
-  if ('start' in fresh && 'start' in previous && 'end' in fresh && 'end' in previous) {
-    return { ...fresh, id: previous.id, start: { ...previous.start }, end: { ...previous.end } } as Shape
-  }
-  return fresh
+  return { ...fresh, id: previous.id } as Shape
 }
 
 export type OneWireRegenerationResult = {
@@ -26,6 +12,22 @@ export type OneWireRegenerationResult = {
   removed: number
 }
 
+export const isOneWireRailShape = (shape: Shape | null): boolean =>
+  Boolean(
+    shape &&
+    shape.kind === 'line' &&
+    (shape.groupId?.startsWith('onewire-kamrail-') ||
+      /^board:[^:]+:rail:/.test(shape.generationKey ?? '') ||
+      (shape.sourceLink?.kind === 'board' && shape.sourceLink.role.startsWith('rail:')))
+  )
+
+export const partitionOneWireRegenerationShapes = (
+  shapes: readonly Shape[]
+): { generated: Shape[]; retained: Shape[] } => ({
+  generated: shapes.filter((shape) => Boolean(shape.generationKey)),
+  retained: shapes.filter((shape) => !shape.generationKey)
+})
+
 export const reconcileGeneratedOneWire = (
   previous: readonly Shape[],
   fresh: readonly Shape[]
@@ -34,12 +36,21 @@ export const reconcileGeneratedOneWire = (
     previous.filter((shape) => shape.generationKey).map((shape) => [shape.generationKey as string, shape])
   )
   let preserved = 0
-  const shapes = fresh.map((shape) => {
+  const reconciledIds = new Map<string, string>()
+  const reconciledShapes = fresh.map((shape) => {
     if (!shape.generationKey) return shape
     const matching = previousByKey.get(shape.generationKey)
     if (!matching) return shape
     preserved += 1
-    return preserveManualGeometry(shape, matching)
+    const reconciled = preserveGeneratedIdentity(shape, matching)
+    reconciledIds.set(shape.id, reconciled.id)
+    return reconciled
+  })
+  const shapes = reconciledShapes.map((shape) => {
+    if (!shape.oneWireRailId) return shape
+    const reconciledRailId = reconciledIds.get(shape.oneWireRailId)
+    if (!reconciledRailId || reconciledRailId === shape.oneWireRailId) return shape
+    return { ...shape, oneWireRailId: reconciledRailId } as Shape
   })
   const freshKeys = new Set(fresh.map((shape) => shape.generationKey).filter(Boolean))
   return {

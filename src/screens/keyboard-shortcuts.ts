@@ -5,7 +5,7 @@ import '@vandeurenglenn/flex-elements/container.js'
 import '@vandeurenglenn/flex-elements/row.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import { map } from '@vandeurenglenn/lite/map.js'
-import { hotkeyList, type NativeHotkey } from '../controllers/keyboard/hotkeys.js'
+import { hotkeyList, type NativeHotkey } from '../editor/keyboard/hotkeys.js'
 
 @customElement('keyboard-shortcuts')
 export class KeyboardShortcuts extends LiteElement {

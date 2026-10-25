@@ -9,6 +9,7 @@ import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/flex-elements/container.js'
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { del, getProjects, renameProject, upload } from '../api/project.js'
+import { ensureVisualTestProject } from '../data/visual-test-project.js'
 import pubsub from '../pubsub.js'
 import { chooseProjectSparkIndex, PROJECT_SPARKS } from './project-sparks.js'
 
@@ -55,6 +56,7 @@ export class ProjectsField extends LiteElement {
     // immediately so shell state emitted while project storage is loading is not lost.
     pubsub.subscribe('shell.reopen-previous-project-prompt', this.#onReopenPreviousProjectPrompt)
     try {
+      await ensureVisualTestProject()
       this.projects = await getProjects()
     } catch (error) {
       console.error('Failed to load projects', error)
@@ -62,10 +64,12 @@ export class ProjectsField extends LiteElement {
     } finally {
       this.projectsLoaded = true
     }
-    const shell = globalThis.cadleShell as unknown as {
-      showReopenPreviousProjectPrompt?: boolean
-      previousProjectName?: string
-    } | undefined
+    const shell = globalThis.cadleShell as unknown as
+      | {
+          showReopenPreviousProjectPrompt?: boolean
+          previousProjectName?: string
+        }
+      | undefined
     if (shell) {
       this.showReopenPreviousProjectPrompt = Boolean(shell.showReopenPreviousProjectPrompt)
       this.previousProjectName = String(shell.previousProjectName ?? '')
@@ -109,9 +113,7 @@ export class ProjectsField extends LiteElement {
       this._reopenPromptFocusedButton = 'open'
       // Set up keyboard listener for the prompt
       setTimeout(() => {
-        const openBtn = this.shadowRoot?.querySelector(
-          '.projects-reopen-actions custom-button'
-        ) as HTMLElement | null
+        const openBtn = this.shadowRoot?.querySelector('.projects-reopen-actions custom-button') as HTMLElement | null
         openBtn?.focus()
       }, 0)
     }
@@ -269,7 +271,12 @@ export class ProjectsField extends LiteElement {
 
   async _rename(id: string, currentName: string | null) {
     const fallback = this.projects.find(([projectId]) => projectId === id)?.[1] ?? ''
-    const nextName = window.prompt('Project name', currentName ?? fallback)?.trim()
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Rename project',
+      submitLabel: 'Rename project',
+      fields: [{ name: 'name', label: 'Project name', value: currentName ?? fallback, required: true }]
+    })
+    const nextName = values?.name
     if (!nextName || nextName === fallback) return
 
     await renameProject(id, nextName)
@@ -588,9 +595,15 @@ export class ProjectsField extends LiteElement {
               <p>Pick up where you left off, or start something new.</p>
             </header>
             <div class="actions-row">
-            <custom-button type="outlined" label="Upload" @click=${() => upload()}></custom-button>
+              <custom-button
+                type="outlined"
+                label="Upload"
+                @click=${() => upload()}></custom-button>
               <flex-it></flex-it>
-            <custom-button type="filled" label="Create" @click=${() => (location.hash = '#!/create-project')}></custom-button>
+              <custom-button
+                type="filled"
+                label="Create"
+                @click=${() => (location.hash = '#!/create-project')}></custom-button>
             </div>
             ${this.showReopenPreviousProjectPrompt
               ? html`
@@ -604,21 +617,19 @@ export class ProjectsField extends LiteElement {
                         type="filled"
                         label="Open"
                         @click=${this.#openPreviousProjectFromPrompt}
-                        ?data-focused=${this._reopenPromptFocusedButton === 'open'}
-                      ></custom-button>
+                        ?data-focused=${this._reopenPromptFocusedButton === 'open'}></custom-button>
                       <custom-button
                         type="outlined"
                         label="Dismiss"
                         @click=${this.#dismissPreviousProjectPrompt}
-                        ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}
-                      ></custom-button>
+                        ?data-focused=${this._reopenPromptFocusedButton === 'dismiss'}></custom-button>
                     </div>
                   </section>
                 `
               : ''}
             ${this.projects?.length > 0 ? this.#projectsTemplate : ''}
           </flex-container>
-          ${this.projectsLoaded && this.projects?.length === 0
+          ${this.projectsLoaded
             ? html`<aside
                 class="welcome-spark"
                 aria-label="Cadle spark">
@@ -628,7 +639,7 @@ export class ProjectsField extends LiteElement {
                   >✦</span
                 >
                 <div>
-                  <strong>A little spark before you start</strong>
+                  <strong>A little spark</strong>
                   <p><span>${spark.setup}</span> ${spark.punchline}</p>
                 </div>
               </aside>`

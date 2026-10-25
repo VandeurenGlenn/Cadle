@@ -1,4 +1,5 @@
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
+import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextLayer } from '../symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../../editor/model/types.js'
@@ -128,12 +129,11 @@ const rectTransform = (
 }
 
 const resolveExportAssetHref = (path: string): string => {
-  // For symbols in export, try to use absolute URL if possible
   if (path.startsWith('symbols/')) {
     if (typeof window !== 'undefined' && window.location) {
-      return `${window.location.origin}/www/${path}`
+      return new URL(path, document.baseURI).toString()
     }
-    return `http://localhost:5173/www/${path}`
+    return `/${path}`
   }
   return path
 }
@@ -290,12 +290,13 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
       const textFillAttr = `fill="${escapeHtml(shape.fill ?? '#000000')}"`
       const textStrokeAttr = shape.stroke ? ` stroke="${escapeHtml(shape.stroke)}"` : ' stroke="none"'
       const fontFamilyStyle = shape.fontFamily ? `font-family: ${shape.fontFamily}; ` : ''
+      const fontWeightStyle = typeof shape.fontWeight === 'number' ? `font-weight: ${shape.fontWeight}; ` : ''
       const letterSpacingStyle =
         typeof shape.letterSpacing === 'number' ? `letter-spacing: ${shape.letterSpacing}px; ` : ''
       const textStyle =
         typeof shape.strokeWidth === 'number'
-          ? `${fontFamilyStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px; stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;`
-          : `${fontFamilyStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px;`
+          ? `${fontFamilyStyle}${fontWeightStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px; stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;`
+          : `${fontFamilyStyle}${fontWeightStyle}${letterSpacingStyle}font-size: ${18 * (shape.scale ?? 1)}px;`
       return `
           <text
             class="shape shape-text ${extraClass}"
@@ -309,7 +310,7 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
             y="${shape.position.y}">${escapeHtml(shape.text)}</text>
         `
     case 'symbol': {
-      const size = 24 * Math.max(0.4, shape.scale)
+      const size = 24 * renderedSymbolScale(shape.path, shape.scale)
       const x = shape.position.x - size / 2
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)

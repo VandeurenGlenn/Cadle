@@ -1,8 +1,6 @@
-import type { OneWirePresetConfig } from '../constants.js'
-import type { LineShape, Point, Shape, TextShape, SymbolShape } from '../../editor/model/types.js'
-import { inferSymbolScale } from '../../editor/model/model.js'
-
-const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
+import { ONE_WIRE_SOCKET_SYMBOL_PATH, type OneWirePresetConfig } from '../constants.js'
+import type { LineShape, Point, Shape, TextShape, SymbolShape } from '../model/types.js'
+import { oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
 
 export type BuildOneWireCircuitResult = {
   shapes: Shape[]
@@ -14,6 +12,7 @@ const createText = (id: string, position: Point, text: string, bindingId: string
   kind: 'text',
   position,
   text,
+  fontWeight: 400,
   bindingId,
   groupId
 })
@@ -25,7 +24,7 @@ const createSymbol = (
   path: string,
   bindingId: string,
   groupId: string,
-  kind: 'breaker' | 'switch' | 'load'
+  _kind: 'breaker' | 'switch' | 'load'
 ): SymbolShape => ({
   id,
   kind: 'symbol',
@@ -33,10 +32,8 @@ const createSymbol = (
   name,
   path,
   bindingId,
-  scale:
-    kind === 'breaker'
-      ? Math.max(0.4, inferSymbolScale(path))
-      : Math.max(0.55, inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER),
+  scale: oneWireSymbolScaleFor(path) ?? 1.35,
+  strokeWidth: oneWireSymbolStrokeWidthFor(path, oneWireSymbolScaleFor(path) ?? 1.35),
   groupId
 })
 
@@ -44,7 +41,7 @@ const RESIDENTIAL_BREAKER_SYMBOL_PATH = 'symbols/Protection devices/Automaat.svg
 const RESIDENTIAL_SWITCH_SYMBOL_PATH = 'symbols/Switches/Switch general symbol.svg'
 
 const loadSymbolPathForPreset = (preset: OneWirePresetConfig): string => {
-  if (preset.label === 'Sockets') return 'symbols/Socket outlets/Electrical wall outlet.svg'
+  if (preset.label === 'Sockets') return ONE_WIRE_SOCKET_SYMBOL_PATH
   if (preset.label === 'Motor') return 'symbols/Consumption appliances/Motor.svg'
   return 'symbols/Consumption appliances/Lighting.svg'
 }
@@ -85,7 +82,7 @@ const createLoadSymbol = (
 ]
 
 // Vertical gap between components inside a circuit column.
-const COMPONENT_GAP = 44
+const COMPONENT_GAP = 24
 
 /**
  * Builds a single one-wire circuit column.

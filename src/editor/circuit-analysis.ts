@@ -11,12 +11,7 @@ import {
 } from '../editor/model/electrical.js'
 import type { ElectricalProjectProfile, ProjectCircuitSpecification } from '../types.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from './circuit-defaults.js'
-import {
-  matchVerifiedProducts,
-  type ProductKind,
-  type ProductMatch,
-  type VerifiedProduct
-} from './product-catalog.js'
+import { matchVerifiedProducts, type ProductKind, type ProductMatch, type VerifiedProduct } from './product-catalog.js'
 import { namedRoomRegions, roomNameAtPoint, shapeAnchorPoint } from './room-regions.js'
 
 export type CircuitComponentRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
@@ -124,9 +119,7 @@ export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
   // Older/custom catalog entries can carry the legacy neutral/"Other" role.
   // Do not let that stale fallback hide an otherwise recognisable socket,
   // switch, load or protection device from one-wire generation.
-  return shape.electrical?.role && shape.electrical.role !== 'neutral'
-    ? shape.electrical.role
-    : inferredRole
+  return shape.electrical?.role && shape.electrical.role !== 'neutral' ? shape.electrical.role : inferredRole
 }
 
 const suggestedSpecification = (
@@ -143,26 +136,23 @@ const suggestedSpecification = (
   const defaults = circuitDefaults(circuitType)
   const phaseConfiguration = explicit.phaseConfiguration ?? profile?.phaseConfiguration ?? 'single-phase'
   const manufacturer = explicit.manufacturer?.trim() || 'Schneider Electric'
-  const neutralPosition =
-    explicit.neutralPosition
-    ?? neutralPositionForManufacturer(manufacturer)
-    ?? 'right'
+  const neutralPosition = explicit.neutralPosition ?? neutralPositionForManufacturer(manufacturer) ?? 'right'
   const cableConductors =
     explicit.cableConductors ??
-    (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N'
-      ? 5
-      : defaults.cableConductors)
+    (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 5 : defaults.cableConductors)
   return {
     circuitType,
     breakerCurrentA: explicit.breakerCurrentA ?? defaults.breakerCurrentA,
     cableSectionMm2: explicit.cableSectionMm2 ?? defaults.cableSectionMm2,
     cableConductors,
-    hasProtectiveConductor:
-      explicit.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
+    hasProtectiveConductor: explicit.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
     cableType: explicit.cableType ?? defaults.cableType,
     cableInstallation: explicit.cableInstallation ?? defaults.cableInstallation,
     showCableInstallation: explicit.showCableInstallation ?? true,
-    poles: explicit.poles ?? profile?.defaultPoles ?? (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 4 : 2),
+    poles:
+      explicit.poles ??
+      profile?.defaultPoles ??
+      (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 4 : 2),
     phaseConfiguration,
     manufacturer,
     ...(explicit.productSeries ? { productSeries: explicit.productSeries } : {}),
@@ -204,6 +194,7 @@ export const analyzeCircuits = (
   const grouped = new Map<string, CircuitComponent[]>()
   const issues: CircuitIssue[] = []
   const roomRegions = namedRoomRegions(shapes)
+  const seenLogicalDevices = new Set<string>()
 
   for (const shape of shapes) {
     if (shape.groupId?.startsWith('onewire-')) continue
@@ -216,10 +207,14 @@ export const analyzeCircuits = (
       issues.push({
         bindingId: shape.bindingId.trim().toUpperCase(),
         severity: 'error',
-        message: 'Binding ID must be a short circuit code, optionally followed by a point number, for example A, ALSB or A1.'
+        message:
+          'Binding ID must be a short circuit code, optionally followed by a point number, for example A, ALSB or A1.'
       })
       continue
     }
+    const logicalDeviceKey = shape.groupId ? `group:${shape.groupId}` : `shape:${shape.id}`
+    if (seenLogicalDevices.has(logicalDeviceKey)) continue
+    seenLogicalDevices.add(logicalDeviceKey)
     const component: CircuitComponent = {
       shapeId: shape.id,
       ...binding,
@@ -235,8 +230,8 @@ export const analyzeCircuits = (
     if (shape.kind === 'symbol') {
       const metadata = shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path)
       component.manufacturer =
-        metadata.manufacturer
-        ?? defaultManufacturerForDevice(metadata.role, metadata.circuitType, shape.name, shape.path)
+        metadata.manufacturer ??
+        defaultManufacturerForDevice(metadata.role, metadata.circuitType, shape.name, shape.path)
       component.productSeries = metadata.productSeries
       component.productReference = metadata.productReference
       component.ratedCurrentA = metadata.ratedCurrentA ?? metadata.breakerCurrentA
@@ -265,8 +260,7 @@ export const analyzeCircuits = (
       const hasDistributionBoard = components.some(
         (component) => component.path && isDistributionBoardDevice(component.name, component.path)
       )
-      const explicitSpecification =
-        circuitSpecifications[first.family] ?? circuitSpecifications[bindingId] ?? {}
+      const explicitSpecification = circuitSpecifications[first.family] ?? circuitSpecifications[bindingId] ?? {}
       return {
         bindingId,
         family: first.family,
@@ -345,12 +339,12 @@ export type BomProductSelection = {
 }
 
 const isSocketComponent = (component: CircuitComponent): boolean =>
-  component.circuitType === 'sockets'
-  || /\b(?:socket|outlet|stopcontact)\b/iu.test(`${component.name} ${component.path ?? ''}`)
+  component.circuitType === 'sockets' ||
+  /\b(?:socket|outlet|stopcontact)\b/iu.test(`${component.name} ${component.path ?? ''}`)
 
 const isLightingComponent = (component: CircuitComponent): boolean =>
-  component.circuitType === 'lighting'
-  || /\b(?:lighting|lamp|light|spot|lichtpunt|verlichting)\b/iu.test(`${component.name} ${component.path ?? ''}`)
+  component.circuitType === 'lighting' ||
+  /\b(?:lighting|lamp|light|spot|lichtpunt|verlichting)\b/iu.test(`${component.name} ${component.path ?? ''}`)
 
 const productKindForComponent = (component: CircuitComponent): ProductKind | undefined => {
   if (component.role === 'switch') return 'switch'
@@ -370,11 +364,7 @@ const poleDescription = (
   return undefined
 }
 
-const selectionFromMatch = (
-  material: string,
-  quantity: number,
-  match: ProductMatch
-): BomProductSelection => ({
+const selectionFromMatch = (material: string, quantity: number, match: ProductMatch): BomProductSelection => ({
   material,
   quantity,
   status: match.status === 'none' ? 'unmatched' : match.status,
@@ -384,13 +374,12 @@ const selectionFromMatch = (
   missing: match.missing
 })
 
-const addProductSelection = (
-  selections: BomProductSelection[],
-  next: BomProductSelection
-): void => {
+const addProductSelection = (selections: BomProductSelection[], next: BomProductSelection): void => {
   const key = `${next.material}\u0000${next.status}\u0000${next.references.join('|')}\u0000${next.missing.join('|')}`
-  const existing = selections.find((selection) =>
-    `${selection.material}\u0000${selection.status}\u0000${selection.references.join('|')}\u0000${selection.missing.join('|')}` === key
+  const existing = selections.find(
+    (selection) =>
+      `${selection.material}\u0000${selection.status}\u0000${selection.references.join('|')}\u0000${selection.missing.join('|')}` ===
+      key
   )
   if (existing) existing.quantity += next.quantity
   else selections.push(next)
@@ -398,8 +387,12 @@ const addProductSelection = (
 
 export const circuitBomRows = (analysis: CircuitAnalysis): BomRow[] =>
   analysis.groups.map((group) => {
-    const sockets = group.components.filter((component) => component.role === 'load' && isSocketComponent(component)).length
-    const lightingPoints = group.components.filter((component) => component.role === 'load' && isLightingComponent(component)).length
+    const sockets = group.components.filter(
+      (component) => component.role === 'load' && isSocketComponent(component)
+    ).length
+    const lightingPoints = group.components.filter(
+      (component) => component.role === 'load' && isLightingComponent(component)
+    ).length
     const appliances = Math.max(0, group.loads - sockets - lightingPoints)
     const hasDistributionBoard = group.components.some(
       (component) => component.path && isDistributionBoardDevice(component.name, component.path)
@@ -425,18 +418,20 @@ export const circuitBomRows = (analysis: CircuitAnalysis): BomRow[] =>
           })
         : undefined
       if (match) addProductSelection(productSelections, selectionFromMatch(material, 1, match))
-      const suffix = match?.status === 'exact'
-        ? ` · ref. ${match.products[0].reference}`
-        : component.productReference
-          ? ` · ref. ${component.productReference} (niet geverifieerd)`
-          : ''
+      const suffix =
+        match?.status === 'exact'
+          ? ` · ref. ${match.products[0].reference}`
+          : component.productReference
+            ? ` · ref. ${component.productReference} (niet geverifieerd)`
+            : ''
       const key = `${material}${suffix}`
       componentCounts[key] = (componentCounts[key] ?? 0) + 1
     }
     if (!hasDistributionBoard && group.protection === 0) {
-      const curve = group.specification.breakerCurve && group.specification.breakerCurve !== 'other'
-        ? group.specification.breakerCurve
-        : ''
+      const curve =
+        group.specification.breakerCurve && group.specification.breakerCurve !== 'other'
+          ? group.specification.breakerCurve
+          : ''
       const material = `${group.specification.manufacturer} · Automaat ${curve}${group.specification.breakerCurrentA}A ${group.specification.poles}P`
       const match = matchVerifiedProducts({
         kind: 'breaker',
@@ -448,11 +443,12 @@ export const circuitBomRows = (analysis: CircuitAnalysis): BomRow[] =>
         curve: group.specification.breakerCurve === 'other' ? undefined : group.specification.breakerCurve
       })
       addProductSelection(productSelections, selectionFromMatch(material, 1, match))
-      const key = match.status === 'exact'
-        ? `${material} · ref. ${match.products[0].reference}`
-        : group.specification.productReference
-          ? `${material} · ref. ${group.specification.productReference} (niet geverifieerd)`
-          : material
+      const key =
+        match.status === 'exact'
+          ? `${material} · ref. ${match.products[0].reference}`
+          : group.specification.productReference
+            ? `${material} · ref. ${group.specification.productReference} (niet geverifieerd)`
+            : material
       componentCounts[key] = (componentCounts[key] ?? 0) + 1
     }
     const other = group.neutral
@@ -465,7 +461,7 @@ export const circuitBomRows = (analysis: CircuitAnalysis): BomRow[] =>
       other,
       total,
       components: Object.entries(componentCounts)
-        .map(([name, count]) => count > 1 ? `${name} ×${count}` : name)
+        .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
         .join('; '),
       sockets,
       lightingPoints,
@@ -483,22 +479,41 @@ export const bomRowsToCsv = (rows: readonly BomRow[]): string => {
     return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
   }
   const header = [
-    'Binding ID', 'Family', 'Switches', 'Loads', 'Other', 'Total', 'Components',
-    'Sockets', 'Lighting points', 'Appliances', 'Protection devices', 'Junctions/boards'
+    'Binding ID',
+    'Family',
+    'Switches',
+    'Loads',
+    'Other',
+    'Total',
+    'Components',
+    'Sockets',
+    'Lighting points',
+    'Appliances',
+    'Protection devices',
+    'Junctions/boards'
   ]
-  const totals = rows.reduce((sum, row) => ({
-    switches: sum.switches + row.switches,
-    sockets: sum.sockets + row.sockets,
-    lightingPoints: sum.lightingPoints + row.lightingPoints,
-    appliances: sum.appliances + row.appliances,
-    protections: sum.protections + row.protections,
-    junctions: sum.junctions + row.junctions,
-    other: sum.other + row.other,
-    total: sum.total + row.total
-  }), {
-    switches: 0, sockets: 0, lightingPoints: 0, appliances: 0,
-    protections: 0, junctions: 0, other: 0, total: 0
-  })
+  const totals = rows.reduce(
+    (sum, row) => ({
+      switches: sum.switches + row.switches,
+      sockets: sum.sockets + row.sockets,
+      lightingPoints: sum.lightingPoints + row.lightingPoints,
+      appliances: sum.appliances + row.appliances,
+      protections: sum.protections + row.protections,
+      junctions: sum.junctions + row.junctions,
+      other: sum.other + row.other,
+      total: sum.total + row.total
+    }),
+    {
+      switches: 0,
+      sockets: 0,
+      lightingPoints: 0,
+      appliances: 0,
+      protections: 0,
+      junctions: 0,
+      other: 0,
+      total: 0
+    }
+  )
   const materialTotals = new Map<string, number>()
   const productSelections: BomProductSelection[] = []
   for (const row of rows) {
@@ -521,8 +536,18 @@ export const bomRowsToCsv = (rows: readonly BomRow[]): string => {
     header.join(','),
     ...rows.map((row) =>
       [
-        row.bindingId, row.family, row.switches, row.loads, row.other, row.total, row.components,
-        row.sockets, row.lightingPoints, row.appliances, row.protections, row.junctions
+        row.bindingId,
+        row.family,
+        row.switches,
+        row.loads,
+        row.other,
+        row.total,
+        row.components,
+        row.sockets,
+        row.lightingPoints,
+        row.appliances,
+        row.protections,
+        row.junctions
       ]
         .map(escape)
         .join(',')
@@ -539,14 +564,18 @@ export const bomRowsToCsv = (rows: readonly BomRow[]): string => {
     'PRODUCT SELECTIONS,Required quantity,Status,References,Products,Missing specifications,Official sources',
     ...productSelections
       .sort((left, right) => left.material.localeCompare(right.material, 'nl-BE'))
-      .map((selection) => [
-        selection.material,
-        selection.quantity,
-        selection.status,
-        selection.references.join(' / '),
-        selection.products.join(' / '),
-        selection.missing.join(' / '),
-        selection.officialSources.join(' / ')
-      ].map(escape).join(','))
+      .map((selection) =>
+        [
+          selection.material,
+          selection.quantity,
+          selection.status,
+          selection.references.join(' / '),
+          selection.products.join(' / '),
+          selection.missing.join(' / '),
+          selection.officialSources.join(' / ')
+        ]
+          .map(escape)
+          .join(',')
+      )
   ].join('\n')
 }

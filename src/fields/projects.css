@@ -7,8 +7,16 @@
   padding: clamp(24px, 5vw, 72px);
   box-sizing: border-box;
   background:
-    radial-gradient(circle at 14% 18%, color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent), transparent 34%),
-    radial-gradient(circle at 86% 80%, color-mix(in srgb, var(--md-sys-color-tertiary) 10%, transparent), transparent 32%),
+    radial-gradient(
+      circle at 14% 18%,
+      color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 86% 80%,
+      color-mix(in srgb, var(--md-sys-color-tertiary) 10%, transparent),
+      transparent 32%
+    ),
     var(--md-sys-color-background);
 }
 :host::before,
@@ -127,14 +135,30 @@
   stroke-width: 2.2;
   opacity: 0.72;
 }
-.s1 { animation-delay: 0.12s; }
-.s2 { animation-delay: 0.3s; }
-.s3 { animation-delay: 0.48s; }
-.s4 { animation-delay: 0.66s; }
-.s5 { animation-delay: 0.84s; }
-.s6 { animation-delay: 1.02s; }
-.s7 { animation-delay: 1.16s; }
-.s8 { animation-delay: 1.3s; }
+.s1 {
+  animation-delay: 0.12s;
+}
+.s2 {
+  animation-delay: 0.3s;
+}
+.s3 {
+  animation-delay: 0.48s;
+}
+.s4 {
+  animation-delay: 0.66s;
+}
+.s5 {
+  animation-delay: 0.84s;
+}
+.s6 {
+  animation-delay: 1.02s;
+}
+.s7 {
+  animation-delay: 1.16s;
+}
+.s8 {
+  animation-delay: 1.3s;
+}
 .circuit-wire {
   fill: none;
   stroke: var(--md-sys-color-primary);
@@ -162,10 +186,18 @@
   stroke-width: 2;
   stroke-linecap: round;
 }
-.d1 { animation-delay: 1.85s; }
-.d2 { animation-delay: 2.03s; }
-.d3 { animation-delay: 2.21s; }
-.d4 { animation-delay: 2.39s; }
+.d1 {
+  animation-delay: 1.85s;
+}
+.d2 {
+  animation-delay: 2.03s;
+}
+.d3 {
+  animation-delay: 2.21s;
+}
+.d4 {
+  animation-delay: 2.39s;
+}
 .current-dot {
   fill: var(--md-sys-color-primary);
   filter: drop-shadow(0 0 6px var(--md-sys-color-primary));
@@ -452,24 +484,37 @@ custom-icon-button {
 }
 
 @keyframes draw-plan {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes reveal-circuit {
-  to { opacity: 1; }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes circuit-flow {
-  to { stroke-dashoffset: -0.1; }
+  to {
+    stroke-dashoffset: -0.1;
+  }
 }
 
 @keyframes pop-device {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes show-status {
-  to { opacity: 1; transform: translateY(0); }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 900px) {
@@ -503,7 +548,7 @@ custom-icon-button {
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 560px), (max-width: 900px) and (max-height: 700px) {
   :host {
     padding: 20px 16px 32px;
   }

@@ -2,16 +2,15 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './styles/catalog.css' with { type: 'css' }
 import './category.js'
 import './catalog-editor.js'
+import '@vandeurenglenn/lite-elements/icon.js'
 import type { Catalog } from '../../types.js'
 import {
   ensureCustomCatalogLoaded,
   moveCustomCatalogCategory,
   moveCustomCatalogSymbol
-} from '../../shell/custom-symbols.js'
-import {
-  applyCatalogSymbolOverrides,
-  ensureCatalogSymbolOverridesLoaded
-} from '../../shell/catalog-symbol-overrides.js'
+} from '../../catalog/custom-symbols.js'
+import { applyCatalogSymbolOverrides, ensureCatalogSymbolOverridesLoaded } from '../../catalog/symbol-overrides.js'
+import pubsub from '../../pubsub.js'
 import './../search.js'
 
 const RECENT_SYMBOLS_KEY = 'cadle.catalog.recentSymbols'
@@ -41,6 +40,9 @@ export class CatalogElement extends LiteElement {
   @property({ attribute: false, consumes: 'catalog' })
   accessor catalog: Catalog = []
 
+  @property({ type: Boolean, attribute: 'browse-mode' })
+  accessor browseMode = false
+
   @property()
   private accessor _searchQuery = ''
 
@@ -50,7 +52,15 @@ export class CatalogElement extends LiteElement {
   @property({ type: Boolean })
   private accessor _editorOpen = false
 
+  @property({ type: String })
+  private accessor _browsedCategoryKey = ''
+
   static styles = [styles]
+
+  connectedCallback() {
+    super.connectedCallback()
+    pubsub.subscribe('catalog.open-editor', this.#openEditor)
+  }
 
   async firstRender() {
     await Promise.all([ensureCustomCatalogLoaded(), ensureCatalogSymbolOverridesLoaded()])
@@ -60,6 +70,11 @@ export class CatalogElement extends LiteElement {
     this.addListener('drop', this.#drop)
     this.addListener('catalog-move-request', this.#onCatalogMoveRequest as EventListener)
     this.addListener('catalog-symbol-picked', this.#onSymbolPicked as EventListener)
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    pubsub.unsubscribe('catalog.open-editor', this.#openEditor)
   }
 
   #readRecentSymbols(): RecentSymbolEntry[] {
@@ -232,6 +247,104 @@ export class CatalogElement extends LiteElement {
     return this.#visibleCatalog.reduce((count, item) => count + item.symbols.length, 0)
   }
 
+  get #catalogCategoryCount() {
+    return this.browseMode ? this.#browseSections.length : this.#visibleCatalog.length
+  }
+
+  #categoryKey(section: CatalogSection) {
+    return `${section.folder ?? ''}::${section.category}`
+  }
+
+  get #browseSections(): CatalogSection[] {
+    return this.#visibleCatalog.filter((section) => section.symbols.length > 0)
+  }
+
+  #openBrowseCategory = (event: Event) => {
+    this._browsedCategoryKey = (event.currentTarget as HTMLElement).dataset.categoryKey ?? ''
+  }
+
+  #closeBrowseCategory = () => {
+    this._browsedCategoryKey = ''
+  }
+
+  #renderSymbolGrid(sections: CatalogSection[]) {
+    return html`
+      <div class="browse-symbol-grid">
+        ${sections.map((section) =>
+          section.symbols.map(
+            (symbol) => html`
+              <catalog-item
+                tabindex="0"
+                .category=${section.category}
+                .folder=${section.folder ?? ''}
+                .symbol=${symbol}
+                .headline=${symbol.name}
+                .image=${symbol.path}></catalog-item>
+            `
+          )
+        )}
+      </div>
+    `
+  }
+
+  #renderBrowseCatalog() {
+    if (this._searchQuery) return this.#renderSymbolGrid(this.#filteredCatalog)
+
+    const activeSection = this.#browseSections.find(
+      (section) => this.#categoryKey(section) === this._browsedCategoryKey
+    )
+    if (activeSection) {
+      return html`
+        <div class="browse-header">
+          <button
+            class="browse-back"
+            type="button"
+            @click=${this.#closeBrowseCategory}>
+            <span aria-hidden="true">&larr;</span>
+            Back
+          </button>
+          <div>
+            <strong>${activeSection.category}</strong>
+            <span>${activeSection.symbols.length} symbols</span>
+          </div>
+        </div>
+        ${this.#renderSymbolGrid([activeSection])}
+      `
+    }
+
+    return html`
+      ${this.#filteredRecentSymbols.length > 0
+        ? html`
+            <section class="browse-recent">
+              <div class="browse-section-title">
+                <strong>Recent symbols</strong>
+                <span>${this.#filteredRecentSymbols.length}</span>
+              </div>
+              ${this.#renderSymbolGrid([{ category: 'Recent symbols', symbols: this.#filteredRecentSymbols }])}
+            </section>
+          `
+        : ''}
+      <div class="browse-categories">
+        ${this.#browseSections.map(
+          (section) => html`
+            <button
+              class="browse-category"
+              type="button"
+              data-category-key=${this.#categoryKey(section)}
+              @click=${this.#openBrowseCategory}>
+              <span class="browse-category-copy">
+                <strong>${section.category}</strong>
+                ${section.folder ? html`<span>${section.folder}</span>` : ''}
+              </span>
+              <span class="browse-category-count">${section.symbols.length}</span>
+              <custom-icon icon="tree_closed"></custom-icon>
+            </button>
+          `
+        )}
+      </div>
+    `
+  }
+
   get #filteredRecentSymbols() {
     const query = this._searchQuery.trim().toLowerCase()
     const recentEntries = query
@@ -327,15 +440,9 @@ export class CatalogElement extends LiteElement {
       <div class="catalog-tools">
         <div class="catalog-header-row">
           <div class="catalog-meta">
-            <span>${this.#visibleCatalog.length} categories</span>
+            <span>${this.#catalogCategoryCount} categories</span>
             <span>${this.#catalogSymbolCount} symbols</span>
           </div>
-          <button
-            type="button"
-            class="editor-button"
-            @click=${this.#openEditor}>
-            Edit catalog
-          </button>
         </div>
         <search-element
           @search=${this.#search}
@@ -347,16 +454,20 @@ export class CatalogElement extends LiteElement {
             </div>`
           : ''}
       </div>
-      ${this.#filteredRecentSymbols.length > 0
-        ? html`<catalog-category
-            .category=${'Recent symbols'}
-            .symbols=${this.#filteredRecentSymbols}
-            .searchActive=${Boolean(this._searchQuery)}
-            .matchCount=${this.#filteredRecentSymbols.length}
-            .open=${true}
-            .openedOnce=${true}></catalog-category>`
-        : ''}
-      <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
+      ${this.browseMode
+        ? this.#renderBrowseCatalog()
+        : html`
+            ${this.#filteredRecentSymbols.length > 0
+              ? html`<catalog-category
+                  .category=${'Recent symbols'}
+                  .symbols=${this.#filteredRecentSymbols}
+                  .searchActive=${Boolean(this._searchQuery)}
+                  .matchCount=${this.#filteredRecentSymbols.length}
+                  .open=${true}
+                  .openedOnce=${true}></catalog-category>`
+              : ''}
+            <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
+          `}
       <catalog-editor
         .catalog=${this.catalog ?? []}
         .open=${this._editorOpen}

@@ -16,6 +16,7 @@ type Device = {
   role: ElectricalRole
   circuitType: ElectricalCircuitType
   roomName?: string
+  bindingId?: string
 }
 
 type DeviceCluster = Device[]
@@ -139,15 +140,48 @@ const electricalDevice = (shape: Shape, roomName?: string): Device | null => {
   }
 }
 
+const logicalDeviceKey = (shape: Shape): string =>
+  shape.groupId && !shape.groupId.startsWith('onewire-') ? `group:${shape.groupId}` : `shape:${shape.id}`
+
+const collapseGroupedDevices = (devices: Device[], shapes: readonly Shape[]): Device[] => {
+  const bindingByKey = new Map<string, string>()
+  for (const shape of shapes) {
+    const bindingId = shape.bindingId?.trim().toUpperCase()
+    if (bindingId && !bindingByKey.has(logicalDeviceKey(shape))) {
+      bindingByKey.set(logicalDeviceKey(shape), bindingId)
+    }
+  }
+
+  const grouped = new Map<string, Device[]>()
+  for (const device of devices) {
+    const key = logicalDeviceKey(device.shape)
+    const members = grouped.get(key)
+    if (members) members.push(device)
+    else grouped.set(key, [device])
+  }
+
+  return [...grouped.entries()].map(([key, members]) => {
+    const representative = members[0]
+    return {
+      ...representative,
+      point: centroid(members),
+      bindingId: bindingByKey.get(key)
+    }
+  })
+}
+
 export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitCount: number): AutomaticBindingPlan => {
   const requestedLightingCircuits = Math.max(1, Math.floor(lightingCircuitCount))
   const rooms = namedRoomRegions(shapes)
-  const devices = shapes.flatMap((shape) => {
-    const point = shapeAnchorPoint(shape)
-    const roomName = point ? roomNameAtPoint(rooms, point) : undefined
-    const device = electricalDevice(shape, roomName)
-    return device ? [device] : []
-  })
+  const devices = collapseGroupedDevices(
+    shapes.flatMap((shape) => {
+      const point = shapeAnchorPoint(shape)
+      const roomName = point ? roomNameAtPoint(rooms, point) : undefined
+      const device = electricalDevice(shape, roomName)
+      return device ? [device] : []
+    }),
+    shapes
+  )
   const assignments = new Map<string, string>()
   const usedFamilies = new Set(
     shapes.map((shape) => bindingFamily(shape.bindingId)).filter((family): family is string => Boolean(family))
@@ -168,7 +202,7 @@ export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitC
     return family
   }
 
-  const unlabeled = devices.filter((device) => !device.shape.bindingId?.trim())
+  const unlabeled = devices.filter((device) => !device.bindingId)
   const lightingLoads = unlabeled.filter((device) => device.role === 'load' && device.circuitType === 'lighting')
   const lightingClusters = lightingLoads.length
     ? mergeToCount(lightingLoads, Math.min(requestedLightingCircuits, lightingLoads.length))
@@ -179,7 +213,7 @@ export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitC
     (device) =>
       device.role === 'load' &&
       device.circuitType === 'lighting' &&
-      (device.shape.bindingId?.trim() || assignments.has(device.shape.id))
+      (device.bindingId || assignments.has(device.shape.id))
   )
   const switches = unlabeled.filter((device) => device.role === 'switch')
   for (const device of switches) {
@@ -189,9 +223,7 @@ export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitC
         ? candidate
         : nearest
     }, null)
-    const lightBinding = nearestLight
-      ? (assignments.get(nearestLight.shape.id) ?? nearestLight.shape.bindingId?.trim().toUpperCase())
-      : undefined
+    const lightBinding = nearestLight ? (assignments.get(nearestLight.shape.id) ?? nearestLight.bindingId) : undefined
     if (lightBinding) assignments.set(device.shape.id, lightBinding)
     else assignCluster([device])
   }

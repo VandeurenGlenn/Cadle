@@ -1,26 +1,31 @@
 import { LiteElement, html, property, customElement, query, listen } from '@vandeurenglenn/lite'
-import { shellStyles } from './shell/styles.js'
-import { parseHash } from './shell/routing.js'
-import { PresenceController } from './shell/presence.js'
-import { iconSetTemplate } from './shell/icon-set.js'
+import { shellStyles } from './styles.js'
+import { parseHash } from './routing.js'
+import { PresenceController } from '../sharing/presence.js'
+import { iconSetTemplate } from '../ui/icon-set.js'
 import {
   ensureCustomCatalogLoaded,
   getStoredCustomSymbols,
   setStoredCustomSymbols,
   getCustomCatalogSections
-} from './shell/custom-symbols.js'
+} from '../catalog/custom-symbols.js'
 import '@vandeurenglenn/lite-elements/pages.js'
 import '@vandeurenglenn/lite-elements/button.js'
-import './elements/header.js'
-import pubsub from './pubsub.js'
-import type { ValidationReport } from './elements/modals/validation-report.js'
-import './elements/modals/page-operation-dialog.js'
-import type { PageOperationSubmitDetail } from './elements/modals/page-operation-dialog.js'
-import './elements/modals/color-picker-dialog.js'
+import '../elements/header.js'
+import pubsub from '../pubsub.js'
+import type { ValidationReport } from '../elements/modals/validation-report.js'
+import '../elements/modals/page-operation-dialog.js'
+import type { PageOperationSubmitDetail } from '../elements/modals/page-operation-dialog.js'
+import '../elements/modals/color-picker-dialog.js'
+import '../elements/modals/dossier-preview.js'
+import type { DossierPreviewMaterial, DossierPreviewPage } from '../elements/modals/dossier-preview.js'
+import '../elements/modals/input-form-dialog.js'
+import type { InputFormDialog, InputFormRequest } from '../elements/modals/input-form-dialog.js'
+import '../elements/modals/symbol-picker-dialog.js'
 import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
-import state from './state.js'
-import { Color } from './symbols/default-options.js'
+import state from '../state.js'
+import { Color } from '../symbols/default-options.js'
 import {
   Project,
   type Projects,
@@ -29,17 +34,19 @@ import {
   type JsonValue,
   type OneWireTopologyPlan,
   type CircuitScheduleLayout
-} from './types.js'
-import { addPage, getProjectData, getProjects, projectStore, setProjectData } from './api/project.js'
-import { circuitTemplates } from './templates/circuit-templates.js'
-import { type BomRow, type CircuitAnalysis } from './editor/circuit-analysis.js'
-import { ensureOneWirePage } from './shell/page-operations.js'
-import { clonePageSchema } from './shell/page-schema.js'
-import { downloadBom, downloadDataUrl } from './shell/export-commands.js'
-import { evaluateOneWirePreflight } from './shell/onewire-preflight.js'
-import { validateOneWireTopology } from './editor/onewire-topology-schema.js'
-import { storeOneWireTrainingExample } from './editor/onewire-training-data.js'
-import type { CircuitScheduleEditorItem } from './editor/circuit-schedule-page.js'
+} from '../types.js'
+import { addPage, getProjectData, getProjects, projectStore, setProjectData } from '../api/project.js'
+import { circuitTemplates } from '../templates/circuit-templates.js'
+import { type BomRow, type CircuitAnalysis } from '../editor/circuit-analysis.js'
+import { ensureOneWirePage } from '../data/page-operations.js'
+import { clonePageSchema } from '../data/page-schema.js'
+import { downloadBom, downloadDataUrl } from '../editor/export/export-commands.js'
+import { evaluateOneWirePreflight } from '../editor/onewire-preflight.js'
+import { validateOneWireTopology } from '../editor/onewire-topology-schema.js'
+import { storeOneWireTrainingExample } from '../editor/onewire-training-data.js'
+import type { CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
+import { nativeStateForProjectPage } from '../data/project-document.js'
 
 type A4Orientation = 'portrait' | 'landscape'
 type A4ExportResult = {
@@ -81,6 +88,8 @@ type NativeAppElement = HTMLElement & {
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
   flushPendingCircuitUpdates?: () => Promise<void>
+  focusBinding?: (bindingId: string) => boolean
+  loadReadOnlyPage?: (projectKey: string, pageKey: string) => Promise<void>
 }
 
 type KeyboardShortcutsElement = HTMLElement & {
@@ -114,6 +123,21 @@ export class AppShell extends LiteElement {
 
   @property({ type: Boolean, attribute: false })
   accessor mobileDrawerOpen = false
+
+  @property({ type: Boolean, attribute: false })
+  accessor symbolPickerOpen = false
+
+  @property({ type: Boolean, attribute: false })
+  accessor objectInspectorOpen = false
+
+  @property({ type: Number, attribute: false })
+  accessor selectedObjectCount = 0
+
+  @property({ type: Boolean, attribute: false })
+  accessor splitViewOpen = false
+
+  @property({ type: String, attribute: false })
+  accessor selectedBindingId = ''
 
   _currentColor: string = ''
 
@@ -149,6 +173,34 @@ export class AppShell extends LiteElement {
     return Object.entries(this.projectPages)
   }
 
+  get linkedPageKey(): string {
+    const currentType = this.currentPage?.pageType
+    const targetType = currentType === 'groundplan' ? 'onewire' : currentType === 'onewire' ? 'groundplan' : null
+    if (!targetType) return ''
+    if (targetType === 'onewire' && this.selectedBindingId && this.project) {
+      const matchingPage = this.projectPageEntries.find(([pageKey, page]) => {
+        if (page.pageType !== 'onewire') return false
+        const state = nativeStateForProjectPage(this.project!, pageKey as UUID)
+        return state?.shapes.some(
+          (shape) =>
+            shape.bindingId?.trim().toUpperCase() === this.selectedBindingId ||
+            shape.sourceLink?.id?.trim().toUpperCase() === this.selectedBindingId
+        )
+      })
+      if (matchingPage) return matchingPage[0]
+    }
+    if (targetType === 'onewire' && this.project) {
+      const circuitPage = this.projectPageEntries.find(([pageKey, page]) => {
+        if (page.pageType !== 'onewire') return false
+        return nativeStateForProjectPage(this.project!, pageKey as UUID)?.shapes.some((shape) =>
+          Boolean(shape.bindingId)
+        )
+      })
+      if (circuitPage) return circuitPage[0]
+    }
+    return this.projectPageEntries.find(([, page]) => page.pageType === targetType)?.[0] ?? ''
+  }
+
   get projectPageCount(): number {
     return Object.keys(this.projectPages).length
   }
@@ -167,6 +219,21 @@ export class AppShell extends LiteElement {
 
   @property({ type: Boolean })
   accessor validationReportOpen = false
+
+  @property({ type: Boolean })
+  accessor dossierPreviewOpen = false
+
+  @property({ attribute: false })
+  accessor dossierPreviewPages: DossierPreviewPage[] = []
+
+  @property({ attribute: false })
+  accessor dossierPreviewWarnings: string[] = []
+
+  @property({ attribute: false })
+  accessor dossierPreviewMaterials: DossierPreviewMaterial[] = []
+
+  #dossierFilename = ''
+  #dossierExportResolver: ((exported: boolean) => void) | null = null
 
   @property({ attribute: false })
   accessor validationReportData: ValidationReport | null = null
@@ -231,6 +298,12 @@ export class AppShell extends LiteElement {
     this.projectPane?.select?.(view)
   }
 
+  openCatalogEditor = async () => {
+    this.#selectRailView('symbols')
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    pubsub.publish('catalog.open-editor', undefined, true)
+  }
+
   set showMeasurements(value) {
     this._showMeasurements = value
     pubsub.publish('shell.measurements', !!value)
@@ -287,23 +360,22 @@ export class AppShell extends LiteElement {
 
   #ensureNativeEditorLoaded(): Promise<unknown> {
     this.#nativeEditorModules ??= Promise.all([
-      import('./app.js'),
-      import('./elements/design-mode-toggle.js'),
-      import('./elements/panes/project-pane.js'),
-      import('./elements/panes/object-pane.js'),
-      import('./elements/status-bar.js'),
-      import('./elements/actions/actions.js'),
-      import('./elements/actions/project-actions.js'),
-      import('./elements/actions/onewire-actions.js'),
-      import('./elements/modals/validation-report.js'),
-      import('./elements/modals/template-library.js'),
-      import('./elements/modals/project-details-dialog.js'),
-      import('./elements/modals/circuit-schedule-dialog.js'),
-      import('./fields/circuit-schedule.js'),
-      import('./elements/modals/onewire-prompt-dialog.js'),
-      import('./elements/modals/project-share-dialog.js'),
-      import('./elements/panels/history-panel.js'),
-      import('./elements/panels/onewire-training-panel.js')
+      import('../editor/cadle-app.js'),
+      import('../elements/panes/project-pane.js'),
+      import('../elements/panes/object-pane.js'),
+      import('../elements/status-bar.js'),
+      import('../elements/actions/actions.js'),
+      import('../elements/actions/project-actions.js'),
+      import('../elements/actions/onewire-actions.js'),
+      import('../elements/modals/validation-report.js'),
+      import('../elements/modals/template-library.js'),
+      import('../elements/modals/project-details-dialog.js'),
+      import('../elements/modals/circuit-schedule-dialog.js'),
+      import('../fields/circuit-schedule.js'),
+      import('../elements/modals/onewire-prompt-dialog.js'),
+      import('../elements/modals/project-share-dialog.js'),
+      import('../elements/panels/history-panel.js'),
+      import('../elements/panels/onewire-training-panel.js')
     ])
     return this.#nativeEditorModules
   }
@@ -348,9 +420,60 @@ export class AppShell extends LiteElement {
     this.mobileDrawerOpen = false
   }
 
+  #openSymbolPicker = () => {
+    this.mobileDrawerOpen = false
+    this.objectInspectorOpen = false
+    this.symbolPickerOpen = true
+  }
+
+  #closeSymbolPicker = () => {
+    this.symbolPickerOpen = false
+  }
+
+  #toggleObjectInspector = () => {
+    this.objectInspectorOpen = !this.objectInspectorOpen
+  }
+
+  #closeObjectInspector = () => {
+    this.objectInspectorOpen = false
+  }
+
+  #openObjectInspectorAfterPlacement = () => {
+    if (window.matchMedia('(min-width: 721px)').matches) this.objectInspectorOpen = true
+  }
+
+  #focusSelection = () => {
+    pubsub.publish('editor.controls.command', { action: 'focus-selection' })
+  }
+
+  #toggleSplitView = () => {
+    if (!this.linkedPageKey) return
+    this.splitViewOpen = !this.splitViewOpen
+  }
+
+  #onEditorSelectionChanged = (payload: {
+    selectionCount?: number
+    pageKey?: string
+    shape?: { bindingId?: string }
+  }) => {
+    this.selectedObjectCount = Math.max(0, Number(payload?.selectionCount) || 0)
+    const bindingId = payload.shape?.bindingId?.trim()
+    if (payload.pageKey !== this.loadedPage || !bindingId) return
+    this.selectedBindingId = bindingId.toUpperCase()
+    if (!this.splitViewOpen) return
+    requestAnimationFrame(async () => {
+      const linkedApp = this.shadowRoot?.querySelector('.linked-editor-pane cadle-app') as NativeAppElement | null
+      if (!linkedApp || !this.projectKey) return
+      await linkedApp.loadReadOnlyPage?.(this.projectKey, this.linkedPageKey)
+      linkedApp.focusBinding?.(bindingId)
+    })
+  }
+
   @listen('keydown', { target: 'window' })
   onWindowKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && this.mobileDrawerOpen) this.#closeMobileDrawer()
+    if (event.key === 'Escape' && this.symbolPickerOpen) this.#closeSymbolPicker()
+    else if (event.key === 'Escape' && this.mobileDrawerOpen) this.#closeMobileDrawer()
+    else if (event.key === 'Escape' && this.objectInspectorOpen) this.#closeObjectInspector()
   }
 
   #openPreviousProjectFromPrompt = async () => {
@@ -407,6 +530,43 @@ export class AppShell extends LiteElement {
       pageEntry = Object.entries(this.project.pages).find(([, page]) => page.pageType === 'circuit-schedule')
     }
     if (pageEntry) await this.loadPage(pageEntry[0])
+  }
+
+  async #addScheduleBoard(name: string) {
+    if (!this.projectKey || !this.project) return
+    const profile = normalizeElectricalProfile(this.project.electricalProfile)
+    const baseId =
+      name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'verdeelbord'
+    const ids = new Set(profile.boards.map((board) => board.id))
+    let id = baseId
+    for (let suffix = 2; ids.has(id); suffix += 1) id = `${baseId}-${suffix}`
+    profile.boards.push({ id, name, rails: [{ id: 'rail-1', name: 'Rail 1' }] })
+    this.project = { ...this.project, electricalProfile: profile }
+    await setProjectData(this.projectKey, this.project)
+  }
+
+  async #assignCircuitBoard(circuitId: string, boardId: string) {
+    if (!this.projectKey || !this.project) return
+    this.project = {
+      ...this.project,
+      circuitSpecifications: {
+        ...this.project.circuitSpecifications,
+        [circuitId]: {
+          ...this.project.circuitSpecifications?.[circuitId],
+          boardId,
+          railId: 'rail-1'
+        }
+      }
+    }
+    this.circuitScheduleItems = this.circuitScheduleItems.map((item) =>
+      item.id === circuitId ? { ...item, boardId } : item
+    )
+    await setProjectData(this.projectKey, this.project)
   }
 
   openProjectShareDialog() {
@@ -572,13 +732,33 @@ export class AppShell extends LiteElement {
 
     const markup = await file.text()
     const fallbackName = file.name.replace(/\.svg$/i, '')
-    const name = globalThis.prompt('Symbol name', fallbackName)?.trim()
-    if (!name) return
-    const folder = globalThis.prompt('Catalog folder (optional)', '')?.trim() || undefined
-    const category = globalThis.prompt('Catalog category', 'My Symbols')?.trim() || 'My Symbols'
-    const bindingRole = (globalThis.prompt('Binding role (switch, load, neutral)', 'neutral')?.trim().toLowerCase() ||
-      'neutral') as 'switch' | 'load' | 'neutral'
-    const situationElementType = globalThis.prompt('Situation element type (optional)', '')?.trim() || undefined
+    const values = await this.requestInput({
+      title: 'Import custom symbol',
+      description: 'Choose where the symbol belongs and how it behaves in a circuit.',
+      submitLabel: 'Import symbol',
+      fields: [
+        { name: 'name', label: 'Symbol name', value: fallbackName, required: true },
+        { name: 'folder', label: 'Catalog folder', description: 'Optional' },
+        { name: 'category', label: 'Catalog category', value: 'My Symbols', required: true },
+        {
+          name: 'bindingRole',
+          label: 'Circuit role',
+          value: 'neutral',
+          options: [
+            { label: 'Neutral', value: 'neutral' },
+            { label: 'Switch', value: 'switch' },
+            { label: 'Load', value: 'load' }
+          ]
+        },
+        { name: 'situationElementType', label: 'Situation element type', description: 'Optional' }
+      ]
+    })
+    if (!values) return
+    const name = values.name
+    const folder = values.folder || undefined
+    const category = values.category || 'My Symbols'
+    const bindingRole = values.bindingRole as 'switch' | 'load' | 'neutral'
+    const situationElementType = values.situationElementType || undefined
     const path = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
     const symbols = getStoredCustomSymbols()
     symbols.push({
@@ -595,6 +775,13 @@ export class AppShell extends LiteElement {
     })
     await setStoredCustomSymbols(symbols)
     this.#refreshBoundOneLineCatalog()
+  }
+
+  async requestInput(request: InputFormRequest): Promise<Record<string, string> | null> {
+    await this.rendered
+    const dialog = this.shadowRoot?.querySelector('input-form-dialog') as InputFormDialog | null
+    if (!dialog) return null
+    return dialog.show(request)
   }
 
   async loadTemplate(templateId: string) {
@@ -646,7 +833,7 @@ export class AppShell extends LiteElement {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return
 
     try {
-      const registration = await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), {
+      const registration = await navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), {
         scope: './',
         updateViaCache: 'none'
       })
@@ -731,6 +918,8 @@ export class AppShell extends LiteElement {
     }
 
     window.addEventListener('hashchange', this.#onhashchange)
+    pubsub.subscribe('editor.selection.changed', this.#onEditorSelectionChanged)
+    pubsub.subscribe('editor.symbol.placed', this.#openObjectInspectorAfterPlacement)
     if (this.showReopenPreviousProjectPrompt) {
       pubsub.publish('shell.reopen-previous-project-prompt', {
         open: true,
@@ -743,6 +932,8 @@ export class AppShell extends LiteElement {
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
     window.removeEventListener('hashchange', this.#onhashchange)
+    pubsub.unsubscribe('editor.selection.changed', this.#onEditorSelectionChanged)
+    pubsub.unsubscribe('editor.symbol.placed', this.#openObjectInspectorAfterPlacement)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
 
@@ -872,10 +1063,54 @@ export class AppShell extends LiteElement {
     return nativeApp.exportA4PNG(orientation)
   }
 
-  async exportProjectPdf(filename?: string): Promise<void> {
+  async exportProjectPdf(filename?: string): Promise<boolean> {
     const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
     if (!nativeApp?.exportProjectPdf) throw new Error('Project PDF export is unavailable')
-    await nativeApp.exportProjectPdf(filename)
+    const report = nativeApp.analyzeBindings?.()
+    const materialTotals = new Map<string, number>()
+    for (const row of nativeApp.getBOMRows?.() ?? []) {
+      for (const [name, quantity] of Object.entries(row.componentCounts)) {
+        materialTotals.set(name, (materialTotals.get(name) ?? 0) + quantity)
+      }
+    }
+    const orderedPages = this.projectPageEntries
+      .sort(([, a], [, b]) => {
+        const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
+        const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
+        return orderA - orderB || a.creationTime - b.creationTime
+      })
+      .filter(([, page]) => page.pageType !== 'circuit-schedule')
+      .map(([, page]) => ({ name: page.name, type: page.pageType ?? 'groundplan' }))
+    this.dossierPreviewPages = [
+      { name: 'Dossier cover', type: 'cover' },
+      { name: 'Circuit overview', type: 'schedule' },
+      ...orderedPages
+    ]
+    this.dossierPreviewWarnings = report?.issues.map((issue) => `${issue.bindingId}: ${issue.message}`) ?? []
+    this.dossierPreviewMaterials = [...materialTotals]
+      .map(([name, quantity]) => ({ name, quantity }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    this.#dossierFilename = filename ?? ''
+    this.dossierPreviewOpen = true
+    this.#dossierExportResolver?.(false)
+    return new Promise<boolean>((resolve) => {
+      this.#dossierExportResolver = resolve
+    })
+  }
+
+  #closeDossierPreview = () => {
+    this.dossierPreviewOpen = false
+    this.#dossierExportResolver?.(false)
+    this.#dossierExportResolver = null
+  }
+
+  #confirmDossierExport = async () => {
+    const nativeApp = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    if (!nativeApp?.exportProjectPdf) return
+    this.dossierPreviewOpen = false
+    await nativeApp.exportProjectPdf(this.#dossierFilename || undefined)
+    this.#dossierExportResolver?.(true)
+    this.#dossierExportResolver = null
   }
 
   async toPNG() {
@@ -897,6 +1132,8 @@ export class AppShell extends LiteElement {
   }
 
   async loadPage(key: string) {
+    this.splitViewOpen = false
+    this.selectedBindingId = ''
     this.loadedPage = key
     if (this.projectKey) {
       localStorage.setItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE, this.projectKey)
@@ -1011,9 +1248,24 @@ export class AppShell extends LiteElement {
       return
     }
 
-    const input = globalThis.prompt('How many lighting circuits should be used?', '1')
-    if (input === null) return
-    const lightingCircuitCount = Number(input.trim())
+    const values = await this.requestInput({
+      title: 'Auto-number circuits',
+      description: 'Lighting circuits are assigned first; remaining circuits follow automatically.',
+      submitLabel: 'Number circuits',
+      fields: [
+        {
+          name: 'lightingCircuitCount',
+          label: 'Number of lighting circuits',
+          type: 'number',
+          value: '1',
+          min: 1,
+          max: 20,
+          required: true
+        }
+      ]
+    })
+    if (!values) return
+    const lightingCircuitCount = Number(values.lightingCircuitCount)
     if (!Number.isInteger(lightingCircuitCount) || lightingCircuitCount < 1 || lightingCircuitCount > 20) {
       globalThis.alert('Enter a whole number between 1 and 20.')
       return
@@ -1067,7 +1319,7 @@ export class AppShell extends LiteElement {
   }
 
   showShortcuts = async () => {
-    if (!customElements.get('keyboard-shortcuts')) await import('./screens/keyboard-shortcuts.js')
+    if (!customElements.get('keyboard-shortcuts')) await import('../screens/keyboard-shortcuts.js')
     const shortcuts = this.shadowRoot?.querySelector('keyboard-shortcuts') as KeyboardShortcutsElement | null
     if (shortcuts) shortcuts.open = true
   }
@@ -1133,6 +1385,7 @@ export class AppShell extends LiteElement {
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
+      <input-form-dialog></input-form-dialog>
       <main class="route-only">${routeContent}</main>
     `
   }
@@ -1143,15 +1396,29 @@ export class AppShell extends LiteElement {
 
     return html`
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
+      <input-form-dialog></input-form-dialog>
       <color-picker-dialog></color-picker-dialog>
       <validation-report
         .open=${this.validationReportOpen}
         .report=${this.validationReportData}
-        .projectName=${this.projectName ?? this.project?.name ?? ''}
+        .projectName=${this.projectName || this.project?.name || ''}
         @close=${() => (this.validationReportOpen = false)}
+        @generate-one-wire=${() => {
+          this.validationReportOpen = false
+          void this.generateAutoOneWireSchema()
+        }}
         @focus-binding=${(event: CustomEvent<{ bindingId: string }>) =>
           this.#focusBindingGroup(event.detail.bindingId)}>
       </validation-report>
+      <dossier-preview
+        .open=${this.dossierPreviewOpen}
+        .projectName=${this.projectName || this.project?.name || ''}
+        .pages=${this.dossierPreviewPages}
+        .warnings=${this.dossierPreviewWarnings}
+        .materials=${this.dossierPreviewMaterials}
+        @close=${this.#closeDossierPreview}
+        @export-pdf=${this.#confirmDossierExport}>
+      </dossier-preview>
       <template-library
         .open=${this.templateLibraryOpen}
         .templates=${circuitTemplates.map(({ id, name, description, category, highlights }) => ({
@@ -1260,28 +1527,6 @@ export class AppShell extends LiteElement {
                 <custom-icon icon="format_shapes"></custom-icon>
               </button>
             </custom-selector>
-            ${this.showReopenPreviousProjectPrompt
-              ? html`
-                  <div class="reopen-previous-project-bubble">
-                    <div class="reopen-previous-project-title">Open previous project?</div>
-                    <div class="reopen-previous-project-text">${this.previousProjectName}</div>
-                    <div class="reopen-previous-project-actions">
-                      <button
-                        class="reopen-previous-project-btn"
-                        type="button"
-                        @click=${this.#openPreviousProjectFromPrompt}>
-                        Open
-                      </button>
-                      <button
-                        class="reopen-previous-project-btn reopen-previous-project-btn-subtle"
-                        type="button"
-                        @click=${this.#dismissReopenPreviousProjectPrompt}>
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                `
-              : ''}
             <project-pane
               .manifest=${this.manifest}
               .project=${this.project}
@@ -1298,30 +1543,81 @@ export class AppShell extends LiteElement {
                 @click=${this.#toggleMobileDrawer}>
                 <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
               </button>
-              ${circuitSchedulePage ? '' : html`<cadle-actions></cadle-actions><onewire-actions></onewire-actions>`}
+              ${circuitSchedulePage
+                ? ''
+                : html`
+                    <div class="editor-actions">
+                      ${this.currentPage?.pageType === 'onewire' ? html`<onewire-actions></onewire-actions>` : ''}
+                      <cadle-actions></cadle-actions>
+                    </div>
+                  `}
               ${this.loadedPage && this.project?.pages?.[this.loadedPage]
                 ? html`<span style="font-size: 14px; color: var(--md-sys-color-on-surface-variant);"
                     >${this.project.pages[this.loadedPage].name}</span
                   >`
                 : ''}
-              ${circuitSchedulePage ? '' : html`<design-mode-toggle></design-mode-toggle>`}
+              ${circuitSchedulePage
+                ? ''
+                : html`
+                    <button
+                      class="split-view-toggle"
+                      type="button"
+                      title=${this.linkedPageKey
+                        ? this.splitViewOpen
+                          ? 'Close linked view'
+                          : 'Compare with linked page'
+                        : 'No linked page available'}
+                      aria-label=${this.splitViewOpen ? 'Close linked view' : 'Compare with linked page'}
+                      aria-pressed=${this.splitViewOpen ? 'true' : 'false'}
+                      ?disabled=${!this.linkedPageKey}
+                      @click=${this.#toggleSplitView}>
+                      <custom-icon icon="splitscreen"></custom-icon>
+                    </button>
+                  `}
             </div>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
               <div
                 data-route="editor/model"
-                style="width:100%;height:100%;min-height:0;">
-                <cadle-app style=${circuitSchedulePage ? 'display:none' : ''}></cadle-app>
+                class="editor-workspace"
+                data-split=${this.splitViewOpen && this.linkedPageKey ? 'true' : 'false'}>
+                <div
+                  class="editor-pane primary-editor-pane"
+                  style=${circuitSchedulePage ? 'display:none' : ''}>
+                  ${this.splitViewOpen && this.linkedPageKey
+                    ? html`<div class="editor-pane-label">${this.currentPageName}</div>`
+                    : ''}
+                  <cadle-app></cadle-app>
+                </div>
+                ${!circuitSchedulePage && this.splitViewOpen && this.linkedPageKey
+                  ? html`
+                      <div class="editor-pane linked-editor-pane">
+                        <div class="editor-pane-label">
+                          ${this.project?.pages?.[this.linkedPageKey]?.name ?? 'Linked page'}
+                          <span>Linked view</span>
+                        </div>
+                        <cadle-app
+                          read-only
+                          project-key=${this.projectKey}
+                          page-key=${this.linkedPageKey}></cadle-app>
+                      </div>
+                    `
+                  : ''}
                 ${circuitSchedulePage
                   ? html`
                       <circuit-schedule-field
                         .items=${this.circuitScheduleItems}
+                        .boards=${normalizeElectricalProfile(this.project?.electricalProfile).boards}
                         .layout=${this.project?.circuitScheduleLayout ?? {}}
                         @schedule-layout-changed=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
                           if (!this.projectKey || !this.project) return
                           this.project = { ...this.project, circuitScheduleLayout: event.detail.layout }
                           await setProjectData(this.projectKey, this.project)
-                        }}>
+                        }}
+                        @schedule-board-added=${(event: CustomEvent<{ name: string }>) =>
+                          this.#addScheduleBoard(event.detail.name)}
+                        @circuit-board-changed=${(event: CustomEvent<{ circuitId: string; boardId: string }>) =>
+                          this.#assignCircuitBoard(event.detail.circuitId, event.detail.boardId)}>
                       </circuit-schedule-field>
                     `
                   : ''}
@@ -1331,8 +1627,64 @@ export class AppShell extends LiteElement {
               <create-project-field data-route="create-project"></create-project-field>
               <settings-field data-route="settings"></settings-field>
             </custom-pages>
+            ${circuitSchedulePage
+              ? ''
+              : html`
+                  <nav
+                    class="object-action-rail"
+                    data-inspector-open=${this.objectInspectorOpen ? 'true' : 'false'}
+                    aria-label="Selection tools">
+                    <button
+                      class="symbol-picker-toggle"
+                      type="button"
+                      title="Add symbol"
+                      aria-label="Add symbol"
+                      aria-expanded=${this.symbolPickerOpen ? 'true' : 'false'}
+                      @click=${this.#openSymbolPicker}>
+                      <custom-icon icon="category"></custom-icon>
+                    </button>
+                    <button
+                      type="button"
+                      title="Object properties"
+                      aria-label="Object properties"
+                      aria-expanded=${this.objectInspectorOpen ? 'true' : 'false'}
+                      @click=${this.#toggleObjectInspector}>
+                      <custom-icon icon="edit"></custom-icon>
+                      ${this.selectedObjectCount
+                        ? html`<span class="selection-badge">${this.selectedObjectCount}</span>`
+                        : ''}
+                    </button>
+                    <button
+                      type="button"
+                      title="Focus selection"
+                      aria-label="Focus selection"
+                      ?disabled=${this.selectedObjectCount === 0}
+                      @click=${this.#focusSelection}>
+                      <custom-icon icon="filter_center_focus"></custom-icon>
+                    </button>
+                  </nav>
+                `}
           </main>
-          ${circuitSchedulePage ? '' : html`<aside class="right-rail"><object-pane></object-pane></aside>`}
+          ${circuitSchedulePage
+            ? ''
+            : html`
+                <aside
+                  id="object-inspector"
+                  class="right-rail"
+                  data-open=${this.objectInspectorOpen ? 'true' : 'false'}>
+                  <header class="object-inspector-header">
+                    <strong>Object properties</strong>
+                    <button
+                      type="button"
+                      title="Close properties"
+                      aria-label="Close properties"
+                      @click=${this.#closeObjectInspector}>
+                      <custom-icon icon="close"></custom-icon>
+                    </button>
+                  </header>
+                  <object-pane></object-pane>
+                </aside>
+              `}
           <button
             class="mobile-drawer-backdrop"
             type="button"
@@ -1342,6 +1694,10 @@ export class AppShell extends LiteElement {
         </section>
         <status-bar></status-bar>
       </div>
+      <symbol-picker-dialog
+        .open=${this.symbolPickerOpen}
+        .catalog=${this.catalog}
+        @close=${this.#closeSymbolPicker}></symbol-picker-dialog>
       <keyboard-shortcuts></keyboard-shortcuts>
     `
   }

@@ -1,6 +1,7 @@
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
+import { renderedSymbolScale } from './model/symbol-scale.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextLayer } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
@@ -251,13 +252,14 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
     }
     case 'text':
       const textStrokeWidthStyle = typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;` : ''
+      const fontWeightStyle = typeof shape.fontWeight === 'number' ? `font-weight: ${shape.fontWeight};` : ''
       return svg`
         <text
           class=${shapeClass}
           data-shape-id=${shape.id}
           data-selected=${selectedAttr}
           transform=${shapeTransform(shape)}
-          style=${`font-size: ${18 * (shape.scale ?? 1)}px; ${textStrokeWidthStyle}`}
+          style=${`font-size: ${18 * (shape.scale ?? 1)}px; ${fontWeightStyle} ${textStrokeWidthStyle}`}
           fill=${shape.fill ?? 'var(--cadle-ink)'}
           stroke=${shape.stroke ?? nothing}
           text-anchor=${shape.textAnchor ?? 'start'}
@@ -265,7 +267,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
           y=${shape.position.y}>${shape.text}</text>
       `
     case 'symbol': {
-      const size = 24 * Math.max(0.4, shape.scale)
+      const size = 24 * renderedSymbolScale(shape.path, shape.scale)
       const x = shape.position.x - size / 2
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
@@ -273,6 +275,11 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         ? applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         : ''
       const metadataText = symbolTextLayer(shape.path, shape.symbolTextOverrides)
+      const nonScalingStroke =
+        shape.sourceLink?.role === 'breaker' ||
+        shape.sourceLink?.role === 'cable-installation' ||
+        shape.sourceLink?.role === 'switch' ||
+        shape.sourceLink?.role === 'load'
       const symbolStyle =
         `${shape.fill ? `--symbol-fill:${shape.fill};` : ''}` +
         `${shape.stroke ? `--symbol-stroke:${shape.stroke};` : ''}` +
@@ -281,7 +288,7 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
+              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}${nonScalingStroke ? 'vector-effect:non-scaling-stroke;' : ''}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
               : nothing
           }
         </g>

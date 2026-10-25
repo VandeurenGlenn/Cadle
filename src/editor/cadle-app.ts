@@ -3,8 +3,14 @@ import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { repeat } from 'lit/directives/repeat.js'
 import type jsPDFType from 'jspdf'
-import styles from './app.css' with { type: 'css' }
-import { loadNativeState, saveNativeState, type NativeDocumentState } from './data/project-document.js'
+import styles from './cadle-app.css' with { type: 'css' }
+import {
+  loadNativeState,
+  migrateOneWireProjectPages,
+  nativeStateForProjectPage,
+  saveNativeState,
+  type NativeDocumentState
+} from '../data/project-document.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
   DEFAULT_WORLD_HEIGHT,
@@ -14,16 +20,13 @@ import {
   ONE_WIRE_CIRCUIT_SPACING,
   ONE_WIRE_NODE_SIZE,
   ONE_WIRE_PRESETS,
+  ONE_WIRE_SOCKET_SYMBOL_PATH,
   PAPER_PRESETS,
   paperWorldSize,
   nextOneWireBindingId,
   type OneWirePreset
-} from './editor/constants.js'
-import {
-  getNativeHotkeyAction,
-  isEditableKeyboardEvent,
-  type NativeHotkeyAction
-} from './controllers/keyboard/hotkeys.js'
+} from './constants.js'
+import { getNativeHotkeyAction, isEditableKeyboardEvent, type NativeHotkeyAction } from './keyboard/hotkeys.js'
 import {
   cloneShape,
   cloneShapes,
@@ -33,8 +36,8 @@ import {
   samePoint,
   sanitizeShapes,
   shapeBounds
-} from './editor/model/model.js'
-import { parseHash } from './shell/routing.js'
+} from './model/model.js'
+import { parseHash } from '../shell/routing.js'
 import type {
   DraftShape,
   DragState,
@@ -47,33 +50,26 @@ import type {
   SymbolShape,
   TextShape,
   Tool
-} from './editor/model/types.js'
-import type { Project, UUID } from './types.js'
-import {
-  electricalMetadataFromCatalog,
-  isDistributionBoardDevice,
-  neutralPositionForManufacturer,
-  rcdTypeLabel,
-  shouldShowPhaseLabel,
-  type ElectricalDeviceMetadata
-} from './editor/model/electrical.js'
-import { setProjectData } from './api/project.js'
-import pubsub from './pubsub.js'
-import { downloadTextFile } from './editor/export/downloads.js'
-import { buildSvgDocument, safeAreaRect } from './editor/export/svg-export.js'
-import { pagePixelSize, rasterizePageSvgToPng, rasterizeSvgToPng } from './editor/export/rasterize-svg.js'
+} from './model/types.js'
+import type { Project, UUID } from '../types.js'
+import { electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
+import { setProjectData } from '../api/project.js'
+import pubsub from '../pubsub.js'
+import { downloadTextFile } from './export/downloads.js'
+import { buildSvgDocument, safeAreaRect } from './export/svg-export.js'
+import { pagePixelSize, rasterizePageSvgToPng, rasterizeSvgToPng } from './export/rasterize-svg.js'
 import {
   buildProjectTitleBlockMarkup,
   getProjectLogoBounds,
   isProjectLogoVisible,
   PROJECT_LOGO_SHAPE_ID
-} from './editor/layout/project-title-block.js'
-import { buildIntroPageSvg } from './editor/intro-page.js'
+} from './layout/project-title-block.js'
+import { buildIntroPageSvg } from './intro-page.js'
 import {
   buildCircuitScheduleSvgs,
   circuitScheduleEditorItems,
   type CircuitScheduleEditorItem
-} from './editor/circuit-schedule-page.js'
+} from './circuit-schedule-page.js'
 import {
   bindingLabelsTemplate,
   hasWallOpeningMask,
@@ -86,83 +82,101 @@ import {
   roomLabelsTemplate,
   wallChainPreviewTemplate,
   wallMaskTemplate
-} from './editor/svg-templates.js'
-import { translateShape } from './editor/interaction/shape-transforms.js'
+} from './svg-templates.js'
+import { translateShape } from './interaction/shape-transforms.js'
 import {
   buildKamrailCircuitBundle,
-  oneWireCableLabelText,
-  oneWireCableInstallationPath,
-  oneWirePhaseLabelText,
+  ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
   oneWireProtectionSymbolPath
-} from './editor/layout/onewire-helpers.js'
-import { buildOneWireTopology } from './editor/layout/onewire-topology.js'
-import { fitLegacyGroundPlanToPrintArea, scaleShapesBetweenPages } from './editor/layout/page-scaling.js'
-import { assessOneWireCapacity } from './editor/onewire-capacity.js'
+} from './layout/onewire-helpers.js'
+import {
+  applyOneWireCircuitPresentation,
+  circuitKeyForShape,
+  effectiveCircuitElectrical,
+  effectiveStandaloneCircuitElectrical,
+  updateCircuitSpecifications,
+  type CircuitPropertyUpdate
+} from './layout/onewire-circuit-presentation.js'
+import { buildOneWireTopology } from './layout/onewire-topology.js'
+import {
+  ONE_WIRE_FIRST_ROW_OFFSET_Y,
+  oneWireRailYForRows
+} from './layout/onewire-layout-plan.js'
+import { fitLegacyGroundPlanToPrintArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { assessOneWireCapacity } from './onewire-capacity.js'
 import {
   oneWireSymbolNodeInfo,
   oneWireSymbolRotationFor,
-  oneWireSymbolScaleFor
-} from './editor/layout/onewire-symbol-nodes.js'
-import { nextPanFromPointer } from './editor/interaction/pointer-pan.js'
-import { canCommitDraft, resolvePointerUpPhase } from './editor/interaction/pointer-up.js'
+  oneWireSymbolScaleFor,
+  oneWireSymbolTerminalInfo
+} from './layout/onewire-symbol-nodes.js'
+import { nextPanFromPointer } from './interaction/pointer-pan.js'
+import { canCommitDraft, resolvePointerUpPhase } from './interaction/pointer-up.js'
 import {
   resolveSelectPointerDownState,
   resolveOneWirePointerDown,
   resolveWallPointerDown
-} from './editor/interaction/pointer-down.js'
+} from './interaction/pointer-down.js'
 import {
   applyDragMove,
   snapSymbolToWallOffset,
   snapWallSymbolNextToSymbol,
   updateDraftShapeEnd,
   updateWallChainPreview
-} from './editor/interaction/pointer-move.js'
+} from './interaction/pointer-move.js'
 import {
   allowsExistingShapeSelection,
   dragIdsForSelectedShape,
   expandSelectionWithGroup,
   shouldSelectExistingOneWireShape
-} from './editor/interaction/pointer-select.js'
-import { snapPasteTranslation } from './editor/interaction/clipboard-placement.js'
-import { resolveNativeEscapeAction } from './editor/interaction/keyboard.js'
-import { convertWallsToRoom, createRoomWalls } from './editor/interaction/room-rectangle.js'
-import { bindOpeningToNearestWall } from './editor/interaction/opening-wall.js'
+} from './interaction/pointer-select.js'
+import { snapPasteTranslation } from './interaction/clipboard-placement.js'
+import { resolveNativeEscapeAction } from './interaction/keyboard.js'
+import { convertWallsToRoom, createRoomWalls } from './interaction/room-rectangle.js'
+import { bindOpeningToNearestWall } from './interaction/opening-wall.js'
 import {
   createDraftShape,
   createSymbolShape,
   createTextShape,
   resolveCatalogSymbolScale
-} from './editor/interaction/pointer-down-builders.js'
-import { createNativeSelectionChangedPayload } from './editor/interaction/selection-payload.js'
-import { transformShapeForSelection, type SelectionTransformAction } from './editor/interaction/selection-transforms.js'
-import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './editor/symbol-svg-cache.js'
-import { isEscape } from './controllers/keyboard/commands/escape.js'
-import { isPanKeyDown, isPanKeyUp } from './controllers/keyboard/commands/pan.js'
+} from './interaction/pointer-down-builders.js'
+import { createNativeSelectionChangedPayload } from './interaction/selection-payload.js'
+import { transformShapeForSelection, type SelectionTransformAction } from './interaction/selection-transforms.js'
+import { getCachedSymbolSvg, isSymbolSvgLoading, preloadSymbolSvg } from './symbol-svg-cache.js'
+import { isEscape } from './keyboard/commands/escape.js'
+import { isPanKeyDown, isPanKeyUp } from './keyboard/commands/pan.js'
 import {
   ensureCustomCatalogLoaded,
   getStoredCustomCategories,
   getStoredCustomFolders,
   getStoredCustomSymbols,
   setStoredCustomSymbols
-} from './shell/custom-symbols.js'
-import { getCatalogSymbolStyleDefaults, setStoredCatalogSymbolStyleDefaults } from './shell/catalog-symbol-overrides.js'
+} from '../catalog/custom-symbols.js'
+import { getCatalogSymbolStyleDefaults, setStoredCatalogSymbolStyleDefaults } from '../catalog/symbol-overrides.js'
 import {
   circuitBomRows,
   type CircuitAnalysis,
   type CircuitComponent,
   type CircuitGroup,
   type BomRow
-} from './editor/circuit-analysis.js'
-import { circuitDefaults, defaultHasProtectiveConductor } from './editor/circuit-defaults.js'
-import { ViewportController } from './editor/controllers/viewport-controller.js'
-import { ToolController } from './editor/controllers/tool-controller.js'
-import { CanvasDocumentController } from './editor/controllers/canvas-document-controller.js'
-import { OneWireController } from './editor/controllers/onewire-controller.js'
-import { CatalogController } from './editor/controllers/catalog-controller.js'
-import { symbolContentBounds } from './editor/layout/symbol-layout.js'
-import { updateSelectionProperties, type SelectionPropertyUpdate } from './editor/interaction/selection-properties.js'
-import { planAutomaticBindings } from './editor/auto-bindings.js'
-import { applyCircuitOperation, type CircuitOperationKind } from './editor/circuit-operations.js'
+} from './circuit-analysis.js'
+import { defaultHasProtectiveConductor } from './circuit-defaults.js'
+import { ViewportController } from './controllers/viewport-controller.js'
+import { ToolController } from './controllers/tool-controller.js'
+import { CanvasDocumentController } from './controllers/canvas-document-controller.js'
+import { OneWireController } from './controllers/onewire-controller.js'
+import { CatalogController } from './controllers/catalog-controller.js'
+import { PersistenceQueue } from './controllers/persistence-queue.js'
+import { symbolContentBounds } from './layout/symbol-layout.js'
+import { migrateOneWireCircuitGeometry } from './layout/onewire-circuit-migration.js'
+import { updateSelectionProperties, type SelectionPropertyUpdate } from './interaction/selection-properties.js'
+import { planAutomaticBindings } from './auto-bindings.js'
+import { applyCircuitOperation, type CircuitOperationKind } from './circuit-operations.js'
+import {
+  DEFAULT_SYMBOL_STROKE_WIDTH,
+  readSymbolStrokeWidth,
+  writeSymbolStrokeWidth
+} from '../preferences/symbol-stroke-width.js'
 
 type SnapIndicatorKind = 'wall' | 'electrical' | 'onewire'
 type CatalogDialogMode = 'add' | 'replace'
@@ -190,15 +204,26 @@ const WHEEL_GESTURE_IDLE_MS = 180
 // Minimum drag distance (scene units) before a symbol placement gesture starts rotating.
 const SYMBOL_PLACEMENT_ROTATE_THRESHOLD = 6
 const KAMRAIL_HALF_LENGTH = 420
-const KAMRAIL_STROKE_WIDTH = 10
+const KAMRAIL_STROKE_WIDTH = 4
 const KAMRAIL_ATTACH_OFFSET = 20
-const ONEWIRE_SYMBOL_SCALE_MULTIPLIER = 1.7
-const ONEWIRE_ROW_SYMBOL_SCALE = 0.9
 const ONEWIRE_BRANCH_STROKE = '#000000'
+const MOBILE_ONEWIRE_MIN_ZOOM = 0.3
 
 @customElement('cadle-app')
 export class CadleApp extends LiteElement {
   static styles = [styles]
+
+  get projectKeyOverride(): string {
+    return this.getAttribute('project-key') ?? ''
+  }
+
+  get pageKeyOverride(): string {
+    return this.getAttribute('page-key') ?? ''
+  }
+
+  get readOnly(): boolean {
+    return this.hasAttribute('read-only')
+  }
 
   #tools = new ToolController()
   #document = new CanvasDocumentController()
@@ -220,12 +245,12 @@ export class CadleApp extends LiteElement {
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
   #resizeObserver: ResizeObserver | null = null
+  #panelSize: { width: number; height: number } | null = null
   #projectKey: UUID | null = null
   #pageKey: UUID | null = null
   #project: Project | null = null
-  #persistPromise: Promise<void> = Promise.resolve()
+  #persistence = new PersistenceQueue()
   #circuitUpdatePromise: Promise<void> = Promise.resolve()
-  #persistError: unknown = null
   #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
   #documentSizeMigrated = false
@@ -262,7 +287,7 @@ export class CadleApp extends LiteElement {
   #oneWireAnchor: Point | null = null
   #oneWireLastPoint: Point | null = null
   #oneWireBusBarId: string | null = null
-  #symbolStrokeWidth = 0.65
+  #symbolStrokeWidth = DEFAULT_SYMBOL_STROKE_WIDTH
   #wheelTransformSession: {
     mode: 'rotate' | 'scale'
     lastAt: number
@@ -285,22 +310,24 @@ export class CadleApp extends LiteElement {
   connectedCallback() {
     super.connectedCallback()
     this.#connected = true
-    this.#loadSymbolStrokeWidth()
+    this.#symbolStrokeWidth = readSymbolStrokeWidth()
     this.#bindResizeObserver()
     this.shadowRoot?.addEventListener('wheel', this.#onWheel, { passive: false })
-    window.addEventListener('hashchange', this.#onHashChange)
-    window.addEventListener('keydown', this.#onKeyDown)
-    window.addEventListener('keyup', this.#onKeyUp)
-    pubsub.subscribe('shell.action', this.#onShellAction)
-    pubsub.subscribe('shell.snap', this.#onShellSnap)
-    pubsub.subscribe('native.catalog.pick', this.#onNativeCatalogPick)
-    pubsub.subscribe('editor.object.update', this.#onNativeObjectUpdate)
-    pubsub.subscribe('editor.circuit.operation', this.#onCircuitOperation)
-    pubsub.subscribe('editor.object.delete', this.#onNativeObjectDelete)
-    pubsub.subscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
-    pubsub.subscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
-    pubsub.subscribe('editor.controls.command', this.#onNativeControlsCommand)
-    pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
+    if (!this.readOnly) {
+      window.addEventListener('hashchange', this.#onHashChange)
+      window.addEventListener('keydown', this.#onKeyDown)
+      window.addEventListener('keyup', this.#onKeyUp)
+      pubsub.subscribe('shell.action', this.#onShellAction)
+      pubsub.subscribe('shell.snap', this.#onShellSnap)
+      pubsub.subscribe('native.catalog.pick', this.#onNativeCatalogPick)
+      pubsub.subscribe('editor.object.update', this.#onNativeObjectUpdate)
+      pubsub.subscribe('editor.circuit.operation', this.#onCircuitOperation)
+      pubsub.subscribe('editor.object.delete', this.#onNativeObjectDelete)
+      pubsub.subscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
+      pubsub.subscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
+      pubsub.subscribe('editor.controls.command', this.#onNativeControlsCommand)
+      pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
+    }
     this.#startInitialize()
   }
 
@@ -346,6 +373,7 @@ export class CadleApp extends LiteElement {
     widthPx: number
     heightPx: number
   }> {
+    await this.#ensureSymbolMarkupReady()
     const paper = this.#paperMeta()
     const resolvedOrientation =
       orientation === 'auto' ? (paper.widthMm >= paper.heightMm ? 'landscape' : 'portrait') : orientation
@@ -372,29 +400,10 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
-  #loadSymbolStrokeWidth = () => {
-    try {
-      const stored = localStorage.getItem('cadle-symbol-stroke-width')
-      if (stored) {
-        const value = Number(stored)
-        if (Number.isFinite(value) && value > 0) {
-          this.#symbolStrokeWidth = value
-        }
-      }
-    } catch {
-      // localStorage not available
-    }
-  }
-
   #setSymbolStrokeWidth = (value: number) => {
-    const clamped = Math.max(0.1, Math.min(3.0, value))
-    if (clamped === this.#symbolStrokeWidth) return
-    this.#symbolStrokeWidth = clamped
-    try {
-      localStorage.setItem('cadle-symbol-stroke-width', String(clamped))
-    } catch {
-      // localStorage not available
-    }
+    const normalized = writeSymbolStrokeWidth(value)
+    if (normalized === this.#symbolStrokeWidth) return
+    this.#symbolStrokeWidth = normalized
     this.#render()
   }
 
@@ -651,7 +660,7 @@ export class CadleApp extends LiteElement {
     const isTopologyProtection = Boolean(
       isProtectionSymbol && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
     )
-    const standaloneCircuitKey = selectedShape ? this.#circuitKeyForShape(selectedShape) : null
+    const standaloneCircuitKey = selectedShape ? circuitKeyForShape(selectedShape) : null
     if (payload.electrical && isTopologyProtection) {
       const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
         selectedIds: this.#document.selectedIds,
@@ -768,14 +777,9 @@ export class CadleApp extends LiteElement {
             ? selectedShape.sourceLink.id
             : (circuitGroup?.bindingId ?? standaloneCircuitKey)
         if (!circuitTarget) return
-        this.#circuitUpdatePromise = this.#circuitUpdatePromise
-          .catch((error) => {
-            console.error('Previous circuit update failed', error)
-          })
-          .then(() => this.#updateCircuitProperties(circuitTarget, circuitProperties))
-          .catch((error) => {
-            console.error('Failed to update circuit properties', error)
-          })
+        this.#circuitUpdatePromise = this.#updateCircuitProperties(circuitTarget, circuitProperties).catch((error) => {
+          console.error('Failed to update circuit properties', error)
+        })
         return
       }
       void role
@@ -944,9 +948,16 @@ export class CadleApp extends LiteElement {
     return this.#pageKey === pageKey
   }
 
+  async loadReadOnlyPage(projectKey: string, pageKey: string): Promise<void> {
+    if (!this.readOnly) return
+    this.setAttribute('project-key', projectKey)
+    this.setAttribute('page-key', pageKey)
+    this.#startInitialize()
+    await this.#initializePromise
+  }
+
   async flushPendingSave(): Promise<void> {
-    await this.#persistPromise
-    if (this.#persistError) throw this.#persistError
+    await this.#persistence.flush()
   }
 
   async flushPendingCircuitUpdates(): Promise<void> {
@@ -954,29 +965,35 @@ export class CadleApp extends LiteElement {
   }
 
   #persist() {
+    if (this.readOnly) return
     const payload = this.#nativeDocumentState()
 
     if (!this.#projectKey || !this.#pageKey) return
     const projectKey = this.#projectKey
     const pageKey = this.#pageKey
-
-    this.#persistPromise = this.#persistPromise.then(async () => {
-      try {
-        await saveNativeState(projectKey, pageKey, payload)
-        this.#persistError = null
-      } catch (error) {
-        this.#persistError = error
+    const page = this.#project?.pages[pageKey]
+    if (page) {
+      page.schema = {
+        version: 'native-svg-1',
+        objects: [{ kind: 'cadle-native-svg-document', payload }]
       }
-    })
+    }
+
+    void this.#persistence.enqueue(() => saveNativeState(projectKey, pageKey, payload))
   }
 
   async #persistProjectMetadata() {
     if (!this.#projectKey || !this.#project) return
-    await setProjectData(this.#projectKey, this.#project)
+    const projectKey = this.#projectKey
+    const project = structuredClone(this.#project)
+    await this.#persistence.enqueue(() => setProjectData(projectKey, project))
   }
 
   async #restore() {
-    const loaded = await loadNativeState()
+    const loaded = await loadNativeState({
+      ...(this.projectKeyOverride ? { projectKey: this.projectKeyOverride as UUID } : {}),
+      ...(this.pageKeyOverride ? { pageKey: this.pageKeyOverride as UUID } : {})
+    })
     if (!loaded) {
       this.#projectKey = '' as UUID
       this.#pageKey = '' as UUID
@@ -994,14 +1011,39 @@ export class CadleApp extends LiteElement {
     this.#pageKey = loaded.pageKey
     const shell = globalThis as unknown as { cadleShell?: { project?: Project | null } }
     this.#project = loaded.project
-    if (shell.cadleShell) shell.cadleShell.project = loaded.project
+    if (shell.cadleShell && !this.readOnly) shell.cadleShell.project = loaded.project
 
-    if (loaded.state) {
-      this.#applyPersistedState(loaded.state)
+    if (!this.readOnly) await this.#migrateOneWirePagesOnProjectLoad()
+
+    const restoredState = nativeStateForProjectPage(this.#project, this.#pageKey)
+    if (restoredState) {
+      this.#applyPersistedState(restoredState)
       return
     }
 
     this.#resetPageState()
+  }
+
+  async #migrateOneWirePagesOnProjectLoad(): Promise<void> {
+    if (!this.#projectKey || !this.#project) return
+    const requestedPageKey = this.#pageKey
+    let changed = false
+
+    try {
+      changed = migrateOneWireProjectPages(this.#project, this.#oneWireController.layoutVersion, (state, pageKey) => {
+        this.#pageKey = pageKey
+        this.#documentSizeMigrated = false
+        return this.#applyPersistedState(state) ? this.#nativeDocumentState() : null
+      })
+    } finally {
+      this.#pageKey = requestedPageKey
+      this.#documentSizeMigrated = false
+    }
+
+    if (changed) {
+      const project = structuredClone(this.#project)
+      await this.#persistence.enqueue(() => setProjectData(this.#projectKey!, project))
+    }
   }
 
   #onHashChange = () => {
@@ -1011,7 +1053,8 @@ export class CadleApp extends LiteElement {
     this.#startInitialize()
   }
 
-  #applyPersistedState(parsed: Partial<NativeDocumentState>) {
+  #applyPersistedState(parsed: Partial<NativeDocumentState>): boolean {
+    let migrationComplete = true
     this.#resetPageState()
     if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes)
     this.#rebindAllOpeningsToWalls()
@@ -1036,6 +1079,46 @@ export class CadleApp extends LiteElement {
     this.#worldWidth = target.width
     this.#worldHeight = target.height
     const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
+    if (pageType === 'onewire' && oneWireLayoutVersion < this.#oneWireController.layoutVersion) {
+      this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {
+        nextShapeId,
+        oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
+        oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
+        symbolContentBounds,
+        branchStroke: '#000000',
+        minimumRowY: this.#safeAreaRect().y
+      })
+      const families = new Set(
+        this.#document.shapes.flatMap((shape) => (shape.sourceLink?.role === 'breaker' ? [shape.sourceLink.id] : []))
+      )
+      const analysis = this.analyzeBindings()
+      for (const family of families) {
+        const stored = this.#project?.circuitSpecifications?.[family]
+        const groupSpecification = analysis.groups.find((group) => group.family === family)?.specification
+        if (!stored && !groupSpecification) continue
+        this.#document.shapes = applyOneWireCircuitPresentation({
+          shapes: this.#document.shapes,
+          circuitKey: family,
+          stored,
+          groupSpecification,
+          profile: this.#project?.electricalProfile
+        }).shapes
+      }
+      const hasOneWireShapes = this.#document.shapes.some((shape) => shape.groupId?.startsWith('onewire-'))
+      const hasCircuitLayout =
+        this.#document.shapes.some((shape) => shape.kind === 'line' && this.#isKamrailShape(shape)) &&
+        this.#document.shapes.some(
+          (shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker' && Boolean(shape.generationKey)
+        )
+      let migrated = this.#rebuildExistingOneWireTopology()
+      if (!migrated && hasCircuitLayout) {
+        this.#compactExistingOneWireRail()
+        migrated = true
+      }
+      migrationComplete = migrated || !hasOneWireShapes
+      if (migrationComplete) this.#documentSizeMigrated = true
+    }
     if (parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
       const paper = PAPER_PRESETS[this.#paperPreset]
       const fitted = fitLegacyGroundPlanToPrintArea(this.#document.shapes, {
@@ -1050,6 +1133,7 @@ export class CadleApp extends LiteElement {
         this.#documentSizeMigrated = true
       }
     }
+    return migrationComplete
   }
 
   #resetPageState() {
@@ -1117,7 +1201,10 @@ export class CadleApp extends LiteElement {
   #syncWorldSize() {
     const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
     if (!panel) return
-    this.#autoCenterView()
+    const rect = panel.getBoundingClientRect()
+    const nextSize = { width: rect.width, height: rect.height }
+    if (this.#panelSize) this.#viewport.preserveCenter(this.#panelSize, nextSize)
+    this.#panelSize = nextSize
     this.#render()
   }
 
@@ -1161,6 +1248,47 @@ export class CadleApp extends LiteElement {
     if (this.#viewport.zoomAt({ x: px, y: py }, factor)) this.#render()
   }
 
+  #zoomFromCenter = (factor: number) => {
+    const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+    if (!panel) return
+    const rect = panel.getBoundingClientRect()
+    this.#zoomAt(rect.width / 2, rect.height / 2, factor)
+  }
+
+  #zoomIn = () => this.#zoomFromCenter(1.2)
+
+  #zoomOut = () => this.#zoomFromCenter(1 / 1.2)
+
+  #fitViewport = () => {
+    this.#fitPageView()
+    this.#render()
+  }
+
+  #focusSelection() {
+    const center = this.#selectionCenter()
+    const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+    if (!center || !panel) return
+    const rect = panel.getBoundingClientRect()
+    const { zoom } = this.#viewport.state
+    this.#viewport.setPan(rect.width / 2 - center.x * zoom, rect.height / 2 - center.y * zoom)
+    this.#render()
+  }
+
+  focusBinding(bindingId: string): boolean {
+    const normalizedBindingId = bindingId.trim().toUpperCase()
+    if (!normalizedBindingId) return false
+    const match = this.#document.shapes.find((shape) => {
+      const shapeBindingId = shape.bindingId?.trim().toUpperCase()
+      const sourceBindingId = shape.sourceLink?.id?.trim().toUpperCase()
+      return shapeBindingId === normalizedBindingId || sourceBindingId === normalizedBindingId
+    })
+    if (!match) return false
+    this.#document.selectedId = match.id
+    this.#document.selectedIds = new Set([match.id])
+    this.#focusSelection()
+    return true
+  }
+
   #autoCenterView() {
     const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
     if (!panel) return
@@ -1168,8 +1296,51 @@ export class CadleApp extends LiteElement {
     const rect = panel.getBoundingClientRect()
     if (!rect.width || !rect.height) return
 
-    // Fit the page (world) so the safe-area dashed boundary, grid and content
-    // are shown coherently — like a print preview.
+    const pageType = this.#project?.pages?.[this.#pageKey ?? '']?.pageType
+    const hasGeneratedOneWireDrawing = this.#document.shapes.some(
+      (shape) =>
+        shape.groupId?.startsWith('onewire-') ||
+        shape.sourceLink?.role === 'breaker' ||
+        shape.sourceLink?.role?.startsWith('rail:')
+    )
+    const useContentFit = pageType === 'onewire' || hasGeneratedOneWireDrawing
+    const fitShapes = useContentFit
+      ? this.#document.shapes.filter(
+          (shape) =>
+            !shape.sourceLink?.role?.startsWith('sheet-reference') &&
+            (Boolean(shape.generationKey) ||
+              shape.groupId?.startsWith('onewire-') ||
+              shape.sourceLink?.kind === 'board')
+        )
+      : []
+    if (useContentFit && fitShapes.length) {
+      const bounds = fitShapes.map((shape) => shapeBounds(shape))
+      const left = Math.min(...bounds.map((item) => item.x))
+      const top = Math.min(...bounds.map((item) => item.y))
+      const right = Math.max(...bounds.map((item) => item.x + item.width))
+      const bottom = Math.max(...bounds.map((item) => item.y + item.height))
+      if (
+        this.#viewport.fitBounds(
+          { width: rect.width, height: rect.height },
+          { x: left, y: top, width: right - left, height: bottom - top },
+          32,
+          MOBILE_ONEWIRE_MIN_ZOOM
+        )
+      ) {
+        return
+      }
+    }
+
+    this.#fitPageView()
+  }
+
+  #fitPageView() {
+    const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
+    if (!panel) return
+
+    const rect = panel.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+
     this.#viewport.fit(
       { width: rect.width, height: rect.height },
       { width: this.#worldWidth, height: this.#worldHeight }
@@ -1734,7 +1905,7 @@ export class CadleApp extends LiteElement {
     this.#openStageContextMenu(event.clientX, event.clientY)
   }
 
-  #onStageDoubleClick = (event: MouseEvent) => {
+  #onStageDoubleClick = async (event: MouseEvent) => {
     const point = this.#pointFromEvent(event as PointerEvent)
     if (!point) return
 
@@ -1758,7 +1929,12 @@ export class CadleApp extends LiteElement {
     if (!shape) return
 
     if (shape.kind === 'text') {
-      const nextText = window.prompt('Text', shape.text)?.trim()
+      const values = await globalThis.cadleShell.requestInput({
+        title: 'Edit text',
+        submitLabel: 'Update text',
+        fields: [{ name: 'text', label: 'Text', value: shape.text, required: true }]
+      })
+      const nextText = values?.text
       if (!nextText || nextText === shape.text) {
         this.#document.selectedId = shape.id
         this.#document.selectedIds = new Set([shape.id])
@@ -1930,23 +2106,32 @@ export class CadleApp extends LiteElement {
     if (!ids.size) return false
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const circuitTargets = new Set<string>()
+    const affectedRailIds = new Set<string>()
     if (currentPageType === 'onewire') {
       for (const shape of this.#document.shapes) {
         if (!ids.has(shape.id) || !shape.groupId?.startsWith('onewire-')) continue
+        if (shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker') {
+          const terminal = oneWireSymbolTerminalInfo(shape.path, shape.scale)?.bottom
+          const terminalPoint = {
+            x: shape.position.x + (terminal?.x ?? 0),
+            y: shape.position.y + (terminal?.y ?? 0)
+          }
+          const railId = shape.oneWireRailId ?? this.#nearestKamrail(terminalPoint)?.rail.id
+          if (railId) affectedRailIds.add(railId)
+        }
         if (shape.sourceLink?.kind === 'board' || shape.sourceLink?.kind === 'circuit') {
           circuitTargets.add(shape.sourceLink.id)
         }
       }
     }
     this.#document.shapes = this.#document.shapes.filter((shape) => !ids.has(shape.id))
+    for (const railId of affectedRailIds) this.#resizeOneWireRailsToBreakers(railId, false)
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
     this.#pushHistory()
     this.#render()
     if (circuitTargets.size) {
-      const clearedOneWireProperties: Partial<{
-        [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null
-      }> = {
+      const clearedOneWireProperties: CircuitPropertyUpdate = {
         breakerCurrentA: null,
         cableSectionMm2: null,
         cableConductors: null,
@@ -1965,14 +2150,13 @@ export class CadleApp extends LiteElement {
         notes: null
       }
       for (const circuitTarget of circuitTargets) {
-        this.#circuitUpdatePromise = this.#circuitUpdatePromise
-          .catch((error) => {
-            console.error('Previous circuit update failed', error)
-          })
-          .then(() => this.#updateCircuitProperties(circuitTarget, clearedOneWireProperties, false))
-          .catch((error) => {
-            console.error('Failed to clear deleted one-wire circuit data', error)
-          })
+        this.#circuitUpdatePromise = this.#updateCircuitProperties(
+          circuitTarget,
+          clearedOneWireProperties,
+          false
+        ).catch((error) => {
+          console.error('Failed to clear deleted one-wire circuit data', error)
+        })
       }
     }
     return true
@@ -2265,9 +2449,20 @@ export class CadleApp extends LiteElement {
     const bounds = symbolContentBounds(shape)
     const centerX = bounds.x + bounds.width / 2
     const centerY = bounds.y + bounds.height / 2
+    const terminals = oneWireSymbolTerminalInfo(shape.path, shape.scale)
     return [
-      { side: 'top', point: { x: centerX, y: bounds.y } },
-      { side: 'bottom', point: { x: centerX, y: bounds.y + bounds.height } },
+      {
+        side: 'top',
+        point: terminals?.top
+          ? { x: shape.position.x + terminals.top.x, y: shape.position.y + terminals.top.y }
+          : { x: centerX, y: bounds.y }
+      },
+      {
+        side: 'bottom',
+        point: terminals?.bottom
+          ? { x: shape.position.x + terminals.bottom.x, y: shape.position.y + terminals.bottom.y }
+          : { x: centerX, y: bounds.y + bounds.height }
+      },
       { side: 'left', point: { x: bounds.x, y: centerY } },
       { side: 'right', point: { x: bounds.x + bounds.width, y: centerY } }
     ]
@@ -2452,7 +2647,7 @@ export class CadleApp extends LiteElement {
     if (kind === 'switch') return { name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg' }
     if (kind === 'kamrail') return { name: 'Kamrail', path: 'symbols/Protection devices/Kamrail.svg' }
     if (this.#oneWirePreset === 'sockets') {
-      return { name: 'Socket outlet', path: 'symbols/Socket outlets/Electrical wall outlet.svg' }
+      return { name: 'Socket outlet', path: ONE_WIRE_SOCKET_SYMBOL_PATH }
     }
     if (this.#oneWirePreset === 'motor') {
       return { name: 'Motor', path: 'symbols/Consumption appliances/Motor.svg' }
@@ -2460,21 +2655,224 @@ export class CadleApp extends LiteElement {
     return { name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' }
   }
 
-  #oneWireSymbolScale(path: string, kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
-    if (kind === 'breaker' || /protection devices\/(?:automaat|residual-current circuit breaker)\.svg$/i.test(path)) {
-      return oneWireSymbolScaleFor(path) ?? Math.max(0.4, inferSymbolScale(path))
+  #oneWireSymbolScale(path: string, _kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
+    return oneWireSymbolScaleFor(path) ?? inferSymbolScale(path)
+  }
+
+  #rebuildExistingOneWireTopology(): boolean {
+    const bus = this.#document.shapes.find(
+      (shape): shape is LineShape => shape.kind === 'line' && shape.generationKey === 'board:main:topology:bus'
+    )
+    const topology = this.#project?.oneWireTopology
+    if (!bus || !topology) return false
+
+    const busWidth = Math.min(620, this.#worldWidth - 240)
+    const busY = this.#worldHeight * 0.64
+    const freshBus: LineShape = {
+      ...bus,
+      id: nextShapeId(),
+      start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
+      end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
+      strokeWidth: KAMRAIL_STROKE_WIDTH
     }
-    if (/socket outlets\//i.test(path)) return ONEWIRE_ROW_SYMBOL_SCALE
-    // Node-normalized scale keeps every switch circle the same rendered size.
-    const nodeScale = oneWireSymbolScaleFor(path)
-    if (nodeScale !== null) return nodeScale * ONEWIRE_ROW_SYMBOL_SCALE
-    return Math.max(0.5, inferSymbolScale(path) * ONEWIRE_SYMBOL_SCALE_MULTIPLIER * ONEWIRE_ROW_SYMBOL_SCALE)
+    const analysis = this.analyzeBindings()
+    const evGroup = analysis.groups.find((group) =>
+      group.components.some((component) =>
+        /(?:elektrische\s+(?:wagen|auto)|laadpaal|wallbox|\bev\b)/i.test(`${component.name} ${component.path ?? ''}`)
+      )
+    )
+    const evComponent = evGroup?.components.find(
+      (component) =>
+        Boolean(component.path) &&
+        /(?:elektrische\s+(?:wagen|auto)|laadpaal|wallbox|\bev\b)/i.test(`${component.name} ${component.path}`)
+    )
+    const previous = this.#document.shapes.filter(
+      (shape) => shape.id === bus.id || shape.groupId?.startsWith('onewire-topology-')
+    )
+    const retained = this.#document.shapes.filter(
+      (shape) => shape.id !== bus.id && !shape.groupId?.startsWith('onewire-topology-')
+    )
+    const fresh: Shape[] = [
+      freshBus,
+      ...buildOneWireTopology(topology, freshBus, nextShapeId, {
+        gridProtectionCurrentA: this.#project?.mainFuseA,
+        defaultPoles: this.#project?.electricalProfile?.defaultPoles,
+        phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
+        protectionManufacturer: 'Schneider Electric',
+        ...(evGroup && evComponent?.path
+          ? {
+              ev: {
+                bindingId: evGroup.bindingId,
+                name: evComponent.name,
+                path: evComponent.path,
+                scale: oneWireSymbolScaleFor(evComponent.path) ?? 1.35
+              }
+            }
+          : {})
+      })
+    ]
+    const reconciled = this.#oneWireController.reconcile(previous, fresh)
+    this.#document.shapes = [...retained, ...reconciled.shapes]
+    return true
+  }
+
+  #resizeOneWireRailsToBreakers(targetRailId?: string, preserveExisting = Boolean(targetRailId)): boolean {
+    let changed = false
+    this.#document.shapes = this.#document.shapes.map((shape) => {
+      if (shape.kind !== 'line' || !this.#isKamrailShape(shape)) return shape
+      if (targetRailId && shape.id !== targetRailId) return shape
+      const anchorXs = this.#document.shapes.flatMap((candidate) => {
+        if (candidate.kind !== 'symbol' || candidate.sourceLink?.role !== 'breaker') return []
+        if (candidate.oneWireRailId) {
+          if (candidate.oneWireRailId !== shape.id) return []
+        }
+        const terminal = oneWireSymbolTerminalInfo(candidate.path, candidate.scale)?.bottom
+        const y = candidate.position.y + (terminal?.y ?? 0)
+        if (
+          !candidate.oneWireRailId &&
+          Math.abs(y - shape.start.y) > KAMRAIL_ATTACH_OFFSET + (shape.strokeWidth ?? KAMRAIL_STROKE_WIDTH)
+        ) {
+          return []
+        }
+        return [candidate.position.x + (terminal?.x ?? 0)]
+      })
+      if (!anchorXs.length) return shape
+      const span = this.#oneWireController.railSpanForAnchors(
+        anchorXs,
+        { startX: shape.start.x, endX: shape.end.x },
+        preserveExisting
+      )
+      if (!span) return shape
+      const { startX, endX } = span
+      if (Math.abs(shape.start.x - startX) < 0.01 && Math.abs(shape.end.x - endX) < 0.01) return shape
+      changed = true
+      return { ...shape, start: { ...shape.start, x: startX }, end: { ...shape.end, x: endX } }
+    })
+    return changed
+  }
+
+  #compactExistingOneWireRail(): boolean {
+    const rails = this.#document.shapes.filter(
+      (shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape)
+    )
+    if (!rails.length) return false
+
+    const nearestRail = (y: number): LineShape =>
+      rails.reduce((nearest, candidate) =>
+        Math.abs(candidate.start.y - y) < Math.abs(nearest.start.y - y) ? candidate : nearest
+      )
+    const anchors = this.#document.shapes.flatMap((shape) => {
+      if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker' || !shape.generationKey) return []
+      const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
+      if (!family) return []
+      const bottom = oneWireSymbolTerminalInfo(shape.path, shape.scale)?.bottom
+      const y = shape.position.y + (bottom?.y ?? 0)
+      const persistedRail = shape.oneWireRailId ? rails.find((rail) => rail.id === shape.oneWireRailId) : undefined
+      const rail = persistedRail ?? nearestRail(y)
+      return [
+        {
+          id: shape.id,
+          groupId: shape.groupId,
+          railId: rail.id,
+          family,
+          x: shape.position.x + (bottom?.x ?? 0),
+          y
+        }
+      ]
+    })
+    if (!anchors.length) return false
+
+    const shapePoint = (shape: Shape): Point => {
+      if ('start' in shape && 'end' in shape) {
+        return { x: (shape.start.x + shape.end.x) / 2, y: Math.max(shape.start.y, shape.end.y) }
+      }
+      return shape.position
+    }
+    const anchorForShape = (shape: Shape, family: string) => {
+      const matching = anchors.filter((anchor) => anchor.family === family)
+      if (!matching.length) return undefined
+      if (shape.oneWireRailId) {
+        const onPersistedRail = matching.filter((anchor) => anchor.railId === shape.oneWireRailId)
+        if (onPersistedRail.length === 1) return onPersistedRail[0]
+        if (onPersistedRail.length > 1) matching.splice(0, matching.length, ...onPersistedRail)
+      }
+      const grouped = matching.find((anchor) => anchor.groupId && anchor.groupId === shape.groupId)
+      if (grouped) return grouped
+      const point = shapePoint(shape)
+      return matching.reduce((nearest, candidate) => {
+        const nearestDistance = Math.hypot(nearest.x - point.x, nearest.y - point.y)
+        const candidateDistance = Math.hypot(candidate.x - point.x, candidate.y - point.y)
+        return candidateDistance < nearestDistance ? candidate : nearest
+      })
+    }
+
+    const anchorOffsets = new Map<string, number>()
+    const railUpdates = new Map<string, LineShape>()
+    for (const rail of rails) {
+      const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id).sort((a, b) => a.x - b.x)
+      if (!railAnchors.length) continue
+      const familyBounds = railAnchors.map((anchor) => {
+        const xs = this.#document.shapes.flatMap((shape) => {
+          if (
+            shape.groupId?.startsWith('onewire-kamrail-') ||
+            !shape.groupId?.startsWith('onewire-') ||
+            this.#normalizeBindingFamily(shape.bindingId ?? '') !== anchor.family ||
+            anchorForShape(shape, anchor.family)?.id !== anchor.id
+          ) {
+            return []
+          }
+          if (shape.kind === 'line') return [shape.start.x, shape.end.x]
+          if (shape.kind === 'symbol') return [shape.position.x - 24, shape.position.x + 24]
+          return []
+        })
+        return {
+          family: anchor.id,
+          anchorX: anchor.x,
+          minX: xs.length ? Math.min(...xs) : anchor.x,
+          maxX: xs.length ? Math.max(...xs) : anchor.x
+        }
+      })
+      const safeArea = this.#safeAreaRect()
+      const geometry = this.#oneWireController.packFamilies(
+        familyBounds,
+        Math.round((safeArea.x + safeArea.width / 2) / GRID_SIZE) * GRID_SIZE
+      )
+      railAnchors.forEach((anchor) => {
+        const targetX = geometry.familyXs.get(anchor.id)
+        if (typeof targetX === 'number') anchorOffsets.set(anchor.id, targetX - anchor.x)
+      })
+      railUpdates.set(rail.id, {
+        ...rail,
+        start: { ...rail.start, x: geometry.startX },
+        end: { ...rail.end, x: geometry.endX }
+      })
+    }
+    if (!anchorOffsets.size) return false
+
+    let changed = false
+    this.#document.shapes = this.#document.shapes.map((shape) => {
+      const rail = railUpdates.get(shape.id)
+      if (rail) {
+        if (shape.kind !== 'line' || rail.start.x !== shape.start.x || rail.end.x !== shape.end.x) changed = true
+        return rail
+      }
+      const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
+      const anchor = family ? anchorForShape(shape, family) : undefined
+      const dx = anchor ? anchorOffsets.get(anchor.id) : undefined
+      if (!anchor || typeof dx !== 'number') return shape
+      const translated = Math.abs(dx) < 0.01 ? shape : translateShape(shape, dx, 0)
+      if (translated.oneWireRailId === anchor.railId && translated === shape) return shape
+      changed = true
+      return { ...translated, oneWireRailId: anchor.railId }
+    })
+    return changed
   }
 
   // Trikker-style cleanup for existing one-wire groups: symbols are centered on
   // their row axis and each horizontal wire is re-cut into segments that stop at
   // the visible edges of the symbols sitting on it. Wires never cross symbols.
   #realignExistingOneWire(): boolean {
+    const compacted = this.#compactExistingOneWireRail()
     const isOneWire = (shape: Shape) => typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')
     const groupedOneWireShapes = this.#document.shapes.filter(
       (shape) => isOneWire(shape) && !shape.groupId!.startsWith('onewire-kamrail-')
@@ -2485,21 +2883,27 @@ export class CadleApp extends LiteElement {
       return typeof shape.bindingId === 'string' && shape.bindingId.trim().length > 0
     })
     const oneWireShapes = groupedOneWireShapes.length ? groupedOneWireShapes : bindingFallbackShapes
-    if (!oneWireShapes.length) return false
+    if (!oneWireShapes.length) return compacted
 
     const symbols = oneWireShapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol')
     const horizontalWires = oneWireShapes.filter(
       (shape): shape is LineShape => shape.kind === 'line' && Math.abs(shape.end.y - shape.start.y) < 1
     )
-    if (!horizontalWires.length && !symbols.length) return false
+    if (!horizontalWires.length && !symbols.length) return compacted
 
     const AXIS_RADIUS = 20
     const updatedShapes = new Map<string, Shape>()
     const removedIds = new Set<string>()
     const addedShapes: Shape[] = []
 
+    for (const shape of oneWireShapes) {
+      if (shape.kind === 'line' && shape.strokeWidth !== ONE_WIRE_CONDUCTOR_STROKE_WIDTH) {
+        updatedShapes.set(shape.id, { ...shape, strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH })
+      }
+    }
+
     const nodeOffsetFor = (symbol: SymbolShape): Point =>
-      oneWireSymbolNodeInfo(symbol.path, symbol.scale)?.offset ?? { x: 0, y: 0 }
+      oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation)?.offset ?? { x: 0, y: 0 }
 
     // 1. Snap each symbol's electrical node onto the nearest horizontal wire axis.
     const axisForSymbol = (symbol: SymbolShape): number | null => {
@@ -2555,7 +2959,7 @@ export class CadleApp extends LiteElement {
       for (const symbol of alignedSymbols) {
         if (runGroupId && symbol.groupId !== runGroupId) continue
         if (!runGroupId && runBindingId && symbol.bindingId !== runBindingId) continue
-        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale)
+        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation)
         const offset = node?.offset ?? { x: 0, y: 0 }
         const nodeY = symbol.position.y + offset.y
         if (Math.abs(nodeY - y) >= 1) continue
@@ -2624,12 +3028,20 @@ export class CadleApp extends LiteElement {
           ...cloneShape(wires[0]),
           id: nextShapeId(),
           start: { x: segment.from, y },
-          end: { x: segment.to, y }
+          end: { x: segment.to, y },
+          strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH
         } as LineShape)
       }
     }
 
-    if (!updatedShapes.size && !removedIds.size) return false
+    if (!updatedShapes.size && !removedIds.size) {
+      if (!compacted) return false
+      this.#document.selectedId = null
+      this.#document.selectedIds = new Set()
+      this.#pushHistory()
+      this.#render()
+      return true
+    }
 
     this.#document.shapes = this.#document.shapes
       .filter((shape) => !removedIds.has(shape.id))
@@ -2643,15 +3055,11 @@ export class CadleApp extends LiteElement {
   }
 
   #isKamrailShape(shape: Shape | null): shape is LineShape {
-    return Boolean(shape && shape.kind === 'line' && shape.groupId?.startsWith('onewire-kamrail-'))
+    return this.#oneWireController.isRail(shape)
   }
 
   #normalizeBindingFamily(value: string | null): string | null {
-    const cleaned = String(value ?? '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '')
-    return cleaned || null
+    return this.#oneWireController.familyKey(value)
   }
 
   #nextUnlabeledBreakerKey(): string {
@@ -2763,8 +3171,8 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    const previousGenerated = this.#document.shapes.filter((shape) => shape.groupId?.startsWith('onewire-'))
-    const retainedShapes = this.#document.shapes.filter((shape) => !shape.groupId?.startsWith('onewire-'))
+    const { generated: previousGenerated, retained: retainedShapes } =
+      this.#oneWireController.partitionRegenerationShapes(this.#document.shapes)
     const previousShapes = this.#document.shapes
     const previousSelectedId = this.#document.selectedId
     const previousSelectedIds = this.#document.selectedIds
@@ -2775,18 +3183,37 @@ export class CadleApp extends LiteElement {
       const railStartX = (this.#worldWidth - railWidth) / 2
       const railEndX = railStartX + railWidth
       const usableWidth = Math.max(1, railEndX - railStartX)
+      const safeArea = this.#safeAreaRect()
+      const usableHeight = Math.max(ONE_WIRE_FIRST_ROW_OFFSET_Y, safeArea.height)
       const layoutPlan = this.#oneWireController.plan(
-        analysis.families.map((family) => ({
-          family,
-          circuitCount: analysis.groups.filter((group) => group.family === family).length
-        })),
+        analysis.families.map((family) => {
+          const groups = analysis.groups.filter((group) => group.family === family)
+          const boardIds = new Set(groups.map((group) => group.specification.boardId).filter(Boolean))
+          const railIds = new Set(groups.map((group) => group.specification.railId).filter(Boolean))
+          const boardId = boardIds.size === 1 ? [...boardIds][0] : undefined
+          const railId = railIds.size === 1 ? [...railIds][0] : undefined
+          return {
+            family,
+            circuitCount: groups.length,
+            requiredWidth: this.#oneWireFamilyRequiredWidth(family),
+            ...(boardId ? { boardId } : {}),
+            ...(railId ? { railId } : {})
+          }
+        }),
         usableWidth,
-        Math.max(320, this.#worldHeight - 160)
+        usableHeight
       )
       const topology = this.#project?.oneWireTopology
       const topologyPage = Boolean(topology) && pageIndex === 0
       const circuitPageIndex = topology ? pageIndex - 1 : pageIndex
       const totalPageCount = layoutPlan.pageCount + (topology ? 1 : 0)
+      const electricalSheetNumber = (layoutPageIndex: number) => layoutPageIndex + (topology ? 2 : 1)
+      const destinationSheetLabels = Object.fromEntries(
+        layoutPlan.placements.map((placement) => [
+          `${placement.boardId ?? 'main'}::${placement.railId ?? '__unassigned__'}`,
+          `E${electricalSheetNumber(placement.pageIndex)}`
+        ])
+      )
       const visiblePlacements = topologyPage
         ? []
         : layoutPlan.placements.filter((placement) => placement.pageIndex === circuitPageIndex)
@@ -2804,16 +3231,11 @@ export class CadleApp extends LiteElement {
       if (topologyPage && topology) {
         const busWidth = Math.min(620, this.#worldWidth - 240)
         const busY = this.#worldHeight * 0.64
-        const previousTopologyBus = previousGenerated.find(
-          (shape): shape is LineShape => shape.kind === 'line' && shape.generationKey === 'board:main:topology:bus'
-        )
         const topologyBus: LineShape = {
           id: nextShapeId(),
           kind: 'line',
-          start: previousTopologyBus
-            ? { ...previousTopologyBus.start }
-            : { x: (this.#worldWidth - busWidth) / 2, y: busY },
-          end: previousTopologyBus ? { ...previousTopologyBus.end } : { x: (this.#worldWidth + busWidth) / 2, y: busY },
+          start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
+          end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
           stroke: '#111111',
           strokeWidth: KAMRAIL_STROKE_WIDTH,
           groupId: `onewire-topology-${nextShapeId()}`,
@@ -2839,13 +3261,14 @@ export class CadleApp extends LiteElement {
             defaultPoles: this.#project?.electricalProfile?.defaultPoles,
             phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
             protectionManufacturer: 'Schneider Electric',
+            destinationSheetLabels,
             ...(evGroup && evComponent?.path
               ? {
                   ev: {
                     bindingId: evGroup.bindingId,
                     name: evComponent.name,
                     path: evComponent.path,
-                    scale: inferSymbolScale(evComponent.path)
+                    scale: oneWireSymbolScaleFor(evComponent.path) ?? 1.35
                   }
                 }
               : {})
@@ -2853,7 +3276,16 @@ export class CadleApp extends LiteElement {
         )
       } else {
         for (const railIndex of new Set(visiblePlacements.map((placement) => placement.railIndex))) {
-          const railY = Math.max(220, this.#worldHeight - 180 - railIndex * 320)
+          const placement = visiblePlacements.find((candidate) => candidate.railIndex === railIndex)
+          const boardId = placement?.boardId ?? 'main'
+          const railId = placement?.railId
+          const destinationId = railId ? `${boardId}:${railId}` : boardId
+          const railPlacements = visiblePlacements.filter((candidate) => candidate.railIndex === railIndex)
+          const rows = Math.max(
+            1,
+            ...railPlacements.map((candidate) => Math.ceil(candidate.circuitCount / 2))
+          )
+          const railY = oneWireRailYForRows(rows, safeArea)
           const rail: LineShape = {
             id: nextShapeId(),
             kind: 'line',
@@ -2862,11 +3294,57 @@ export class CadleApp extends LiteElement {
             stroke: '#111111',
             strokeWidth: KAMRAIL_STROKE_WIDTH,
             groupId: `onewire-kamrail-${nextShapeId()}`,
-            generationKey: `board:main:rail:${railIndex}`,
-            sourceLink: { kind: 'board', id: 'main', role: `rail-${railIndex + 1}` }
+            generationKey: `board:${boardId}:rail:${railId ?? railIndex}`,
+            sourceLink: {
+              kind: 'board',
+              id: boardId,
+              role: railId ? `rail:${destinationId}` : `board:${destinationId}`
+            }
           }
           rails.set(railIndex, rail)
           this.#document.shapes.push(rail)
+          const destinationPages = [
+            ...new Set(
+              layoutPlan.placements
+                .filter(
+                  (candidate) =>
+                    (candidate.boardId ?? 'main') === boardId &&
+                    (candidate.railId ?? '__unassigned__') === (railId ?? '__unassigned__')
+                )
+                .map((candidate) => electricalSheetNumber(candidate.pageIndex))
+            )
+          ].sort((a, b) => a - b)
+          const currentSheet = pageIndex + 1
+          const previousSheet = destinationPages.filter((sheet) => sheet < currentSheet).at(-1) ?? (topology ? 1 : null)
+          const nextSheet = destinationPages.find((sheet) => sheet > currentSheet)
+          const boardLabel = boardId
+            .replace(/^(?:kast|board)[-\s]*/i, '')
+            .replace(/-/g, ' ')
+            .toUpperCase()
+          const railLabel = railId
+            ?.replace(/^(?:rij|rail)[-\s]*/i, '')
+            .replace(/-/g, ' ')
+            .toUpperCase()
+          const references = [
+            `KAST ${boardLabel || 'MAIN'}`,
+            railLabel ? `RIJ ${railLabel}` : '',
+            `BLAD E${currentSheet}`,
+            previousSheet ? `VAN E${previousSheet}` : '',
+            nextSheet ? `VERVOLG E${nextSheet}` : ''
+          ].filter(Boolean)
+          const sheetReference: TextShape = {
+            id: nextShapeId(),
+            kind: 'text',
+            position: { x: rail.start.x, y: rail.start.y + 42 },
+            text: references.join(' · '),
+            scale: 0.52,
+            fill: '#000000',
+            stroke: 'none',
+            groupId: rail.groupId,
+            generationKey: `board:${destinationId}:sheet-reference`,
+            sourceLink: { kind: 'board', id: boardId, role: `sheet-reference:${destinationId}` }
+          }
+          this.#document.shapes.push(sheetReference)
         }
       }
 
@@ -2875,7 +3353,7 @@ export class CadleApp extends LiteElement {
         const family = placement.family
         const rail = rails.get(placement.railIndex)
         if (!rail) throw new Error(`Missing one-wire rail ${placement.railIndex}.`)
-        const x = rail.start.x + (usableWidth * (placement.slotIndex + 0.5)) / layoutPlan.slotsPerRail
+        const x = rail.start.x + placement.centerOffset - placement.requiredWidth / 2 + 30
         const familyGroups = analysis.groups
           .filter((group) => group.family === family)
           .sort((a, b) => a.bindingId.localeCompare(b.bindingId, undefined, { numeric: true }))
@@ -2919,10 +3397,13 @@ export class CadleApp extends LiteElement {
       if (generatedFamilies !== visiblePlacements.length) {
         throw new Error('One-wire regeneration produced an incomplete result.')
       }
+      this.#compactExistingOneWireRail()
 
       const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
       const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
       this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
+      this.#document.selectedId = null
+      this.#document.selectedIds = new Set()
 
       this.#pushHistory()
       this.#render()
@@ -3033,6 +3514,7 @@ export class CadleApp extends LiteElement {
       bindingIds?: string[]
     }
   ): boolean {
+    const requestedX = Math.round(anchorX / GRID_SIZE) * GRID_SIZE
     const includedBindings = options.bindingIds?.length ? new Set(options.bindingIds) : null
     const familyComponents = options.autoIncludeFamily
       ? this.#groundplanComponentsForFamily(options.family).filter(
@@ -3051,9 +3533,10 @@ export class CadleApp extends LiteElement {
     }
     const result = buildKamrailCircuitBundle({
       rail,
-      anchorX,
+      anchorX: requestedX,
       options,
       familyComponents,
+      minimumRowY: this.#safeAreaRect().y,
       nextShapeId,
       oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
       oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
@@ -3062,11 +3545,76 @@ export class CadleApp extends LiteElement {
     })
 
     if (!result) return false
-    this.#document.shapes.push(...result.shapes)
+    const horizontalPoints = (shapes: readonly Shape[]): number[] =>
+      shapes.flatMap((shape) => {
+        if (shape.kind === 'line') return [shape.start.x, shape.end.x]
+        if (shape.kind === 'symbol') return [shape.position.x - 24, shape.position.x + 24]
+        return []
+      })
+    const bundledShapes = result.shapes.map((shape): Shape => ({ ...shape, oneWireRailId: rail.id }))
+    const newPoints = horizontalPoints(bundledShapes)
+    const railFamilies = new Set(
+      this.#document.shapes.flatMap((shape) => {
+        if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker') return []
+        const terminal = oneWireSymbolTerminalInfo(shape.path, shape.scale)?.bottom
+        const terminalY = shape.position.y + (terminal?.y ?? 0)
+        const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
+        return family && Math.abs(terminalY - rail.start.y) <= (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH)
+          ? [family]
+          : []
+      })
+    )
+    const occupiedPoints = horizontalPoints(
+      this.#document.shapes.filter((shape) => {
+        if (!shape.groupId?.startsWith('onewire-') || this.#isKamrailShape(shape)) return false
+        if (shape.oneWireRailId) return shape.oneWireRailId === rail.id
+        const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
+        return Boolean(family && railFamilies.has(family))
+      })
+    )
+    const dx =
+      occupiedPoints.length && newPoints.length
+        ? this.#oneWireController.appendFamilyOffset(Math.min(...newPoints), Math.max(...occupiedPoints))
+        : 0
+    const placedShapes = dx ? bundledShapes.map((shape) => translateShape(shape, dx, 0)) : bundledShapes
+    this.#document.shapes.push(...placedShapes)
+    this.#resizeOneWireRailsToBreakers(rail.id)
     this.#document.selectedId = result.selectedId
     this.#document.selectedIds = new Set(result.createdIds)
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     return true
+  }
+
+  #oneWireFamilyRequiredWidth(family: string): number {
+    const familyComponents = this.#groundplanComponentsForFamily(family)
+    const rows = new Map<string, typeof familyComponents>()
+    for (const component of familyComponents) {
+      const row = rows.get(component.bindingId)
+      if (row) row.push(component)
+      else rows.set(component.bindingId, [component])
+    }
+    let widestRow = 180
+    for (const components of rows.values()) {
+      let rowWidth = 84
+      for (const component of components) {
+        if (component.kind === 'empty') continue
+        const fallback = this.#oneWireComponentSymbol(component.kind)
+        const path = component.sourcePath ?? fallback.path
+        const name = component.sourceName ?? fallback.name
+        const scale = this.#oneWireSymbolScale(path, component.kind)
+        const bounds = symbolContentBounds({
+          id: 'measure',
+          kind: 'symbol',
+          position: { x: 0, y: 0 },
+          name,
+          path,
+          scale
+        })
+        rowWidth += bounds.width + 20
+      }
+      widestRow = Math.max(widestRow, rowWidth)
+    }
+    return widestRow + 40
   }
 
   #nearestKamrail(point: Point): { rail: LineShape; point: Point } | null {
@@ -3076,7 +3624,7 @@ export class CadleApp extends LiteElement {
 
     for (const shape of this.#document.shapes) {
       if (shape.kind !== 'line') continue
-      if (!shape.groupId?.startsWith('onewire-kamrail-')) continue
+      if (!this.#isKamrailShape(shape)) continue
       const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
       const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
       if (distance >= bestDistance) continue
@@ -3131,7 +3679,12 @@ export class CadleApp extends LiteElement {
     const component = this.#oneWireComponentSymbol(this.#oneWireComposeKind)
     const scale = this.#oneWireSymbolScale(component.path, this.#oneWireComposeKind)
     const placeBelowRail = false
-    const center: Point = {
+    const rotation = oneWireSymbolRotationFor(component.path)
+    const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
+    const breakerTerminal =
+      this.#oneWireComposeKind === 'breaker' ? oneWireSymbolTerminalInfo(component.path, scale)?.bottom : undefined
+    const attachmentOffset = breakerTerminal ?? node?.offset
+    const targetNode: Point = {
       x: railAnchor.point.x,
       y: railAnchor.point.y + (placeBelowRail ? KAMRAIL_ATTACH_OFFSET : -KAMRAIL_ATTACH_OFFSET)
     }
@@ -3142,29 +3695,48 @@ export class CadleApp extends LiteElement {
     const symbol: SymbolShape = {
       id: nextShapeId(),
       kind: 'symbol',
-      position: center,
+      position: attachmentOffset
+        ? { x: targetNode.x - attachmentOffset.x, y: targetNode.y - attachmentOffset.y }
+        : targetNode,
       name: component.name,
       path: component.path,
       scale,
       bindingId,
-      groupId
+      groupId,
+      oneWireRailId: rail.id
     }
+    if (typeof rotation === 'number') symbol.rotation = rotation
+    symbol.sourceLink = { kind: 'circuit', id: bindingId, role: this.#oneWireComposeKind }
     const contentBounds = symbolContentBounds(symbol)
 
-    // Wire stops at the visible symbol edge.
+    const cutHalfWidth = node?.cutHalfWidth
+    const connectorEndY = breakerTerminal
+      ? targetNode.y
+      : placeBelowRail
+        ? cutHalfWidth === null
+          ? targetNode.y
+          : targetNode.y - (cutHalfWidth ?? 0)
+        : cutHalfWidth === null
+          ? targetNode.y
+          : targetNode.y + (cutHalfWidth ?? 0)
     const connector: LineShape = {
       id: nextShapeId(),
       kind: 'line',
-      start: { x: center.x, y: railAnchor.point.y },
-      end: { x: center.x, y: placeBelowRail ? contentBounds.y + contentBounds.height : contentBounds.y },
+      start: {
+        x: targetNode.x,
+        y: railAnchor.point.y + ((placeBelowRail ? 1 : -1) * (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH)) / 2
+      },
+      end: { x: targetNode.x, y: connectorEndY },
       stroke: ONEWIRE_BRANCH_STROKE,
-      strokeWidth: 1.25,
+      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
       bindingId,
-      groupId
+      groupId,
+      oneWireRailId: rail.id,
+      sourceLink: { kind: 'circuit', id: bindingId, role: 'connector' }
     }
 
     const labelText = bindingId
-    const label = {
+    const label: TextShape = {
       ...createTextShape(
         nextShapeId(),
         {
@@ -3177,7 +3749,9 @@ export class CadleApp extends LiteElement {
       ),
       fill: '#000000',
       bindingId,
-      groupId
+      groupId,
+      oneWireRailId: rail.id,
+      sourceLink: { kind: 'circuit', id: bindingId, role: 'label' }
     }
 
     this.#document.shapes.push(connector, symbol, label)
@@ -3236,8 +3810,8 @@ export class CadleApp extends LiteElement {
 
     const bindingId = anchor.hostSymbol.bindingId ?? this.#oneWireBindingId
     const groupId = anchor.hostSymbol.groupId ?? `onewire-${nextShapeId()}`
-    const node = oneWireSymbolNodeInfo(component.path, scale)
     const rotation = oneWireSymbolRotationFor(component.path)
+    const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
     const newSymbol: SymbolShape = {
       id: nextShapeId(),
       kind: 'symbol',
@@ -3246,7 +3820,8 @@ export class CadleApp extends LiteElement {
       path: component.path,
       scale,
       bindingId,
-      groupId
+      groupId,
+      oneWireRailId: anchor.hostSymbol.oneWireRailId
     }
     if (typeof rotation === 'number') newSymbol.rotation = rotation
     newSymbol.sourceLink = { kind: 'circuit', id: bindingId, role: this.#oneWireComposeKind }
@@ -3267,7 +3842,8 @@ export class CadleApp extends LiteElement {
       start: attachPoint,
       end: connectorEnd,
       bindingId,
-      groupId
+      groupId,
+      oneWireRailId: anchor.hostSymbol.oneWireRailId
     }
 
     this.#document.shapes.push(connector, newSymbol)
@@ -3371,240 +3947,44 @@ export class CadleApp extends LiteElement {
     return null
   }
 
-  #circuitKeyForShape(shape: Shape): string | null {
-    if (shape.sourceLink?.kind === 'board' || shape.sourceLink?.kind === 'circuit') {
-      const linked = shape.sourceLink.id.trim().toUpperCase()
-      if (linked) return linked
-    }
-    const binding = shape.bindingId?.trim().toUpperCase()
-    if (!binding) return null
-    return this.#normalizeBindingFamily(binding) ?? binding
-  }
-
-  #effectiveStandaloneCircuitElectrical(shape: SymbolShape): ElectricalDeviceMetadata {
-    const base = shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path)
-    const circuitKey = this.#circuitKeyForShape(shape)
-    const stored = circuitKey ? (this.#project?.circuitSpecifications?.[circuitKey] ?? {}) : {}
-    const defaults = circuitDefaults(stored.circuitType ?? base.circuitType)
-    const cableConductors = stored.cableConductors ?? base.cableConductors ?? defaults.cableConductors
-    return {
-      ...defaults,
-      ...base,
-      ...stored,
-      role: 'protection',
-      oneWireEligible: true,
-      cableConductors,
-      hasProtectiveConductor:
-        stored.hasProtectiveConductor ?? base.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
-      showCableInstallation: stored.showCableInstallation ?? base.showCableInstallation ?? true,
-      phaseConfiguration:
-        stored.phaseConfiguration ??
-        this.#project?.electricalProfile?.phaseConfiguration ??
-        defaults.phaseConfiguration,
-      manufacturer: stored.manufacturer ?? base.manufacturer ?? 'Schneider Electric',
-      neutralPosition:
-        stored.neutralPosition ??
-        base.neutralPosition ??
-        neutralPositionForManufacturer(stored.manufacturer ?? base.manufacturer ?? 'Schneider Electric') ??
-        'right',
-      showPhaseLabel: stored.showPhaseLabel ?? base.showPhaseLabel ?? true,
-      poles: stored.poles ?? this.#project?.electricalProfile?.defaultPoles ?? defaults.poles
-    }
-  }
-
-  #effectiveCircuitElectrical(shape: Shape, group: CircuitGroup): ElectricalDeviceMetadata {
-    const component =
-      shape.sourceLink?.kind === 'device'
-        ? group.components.find((item) => item.shapeId === shape.sourceLink?.id)
-        : undefined
-    const base =
-      shape.kind === 'symbol'
-        ? (shape.electrical ?? electricalMetadataFromCatalog(undefined, shape.name, shape.path))
-        : { role: component?.role ?? 'neutral', oneWireEligible: true }
-    return {
-      ...base,
-      role: component?.role ?? (shape.sourceLink?.role === 'breaker' ? 'protection' : base.role),
-      oneWireEligible: true,
-      circuitType: group.specification.circuitType,
-      breakerCurrentA: group.specification.breakerCurrentA,
-      cableSectionMm2: group.specification.cableSectionMm2,
-      cableConductors: group.specification.cableConductors,
-      hasProtectiveConductor: group.specification.hasProtectiveConductor,
-      cableType: group.specification.cableType,
-      cableInstallation: group.specification.cableInstallation,
-      showCableInstallation: group.specification.showCableInstallation,
-      poles: group.specification.poles,
-      phaseConfiguration: group.specification.phaseConfiguration,
-      manufacturer: group.specification.manufacturer,
-      productSeries: group.specification.productSeries,
-      productReference: group.specification.productReference,
-      neutralPosition: group.specification.neutralPosition,
-      showPhaseLabel: group.specification.showPhaseLabel,
-      breakerCurve: group.specification.breakerCurve ?? 'C',
-      rcdSensitivityMa: group.specification.rcdSensitivityMa,
-      rcdType: group.specification.rcdType,
-      boardId: group.specification.boardId ?? 'main',
-      railId: group.specification.railId ?? 'rail-1',
-      notes: group.specification.notes
-    }
-  }
-
   async #updateCircuitProperties(
     bindingId: string,
-    update: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>,
+    update: CircuitPropertyUpdate,
     updateOneWirePresentation = true
   ): Promise<void> {
     if (!this.#projectKey || !this.#project) return
-    const circuitKey = bindingId.trim().toUpperCase()
-    if (!circuitKey) return
-    const specifications = {
-      ...(this.#project.circuitSpecifications ?? {})
-    }
-    const specification = {
-      ...(specifications[circuitKey] ?? {})
-    } as Record<string, unknown>
-    for (const [key, value] of Object.entries(update)) {
-      if (key === 'role' || key === 'oneWireEligible' || key === 'ratedCurrentA') continue
-      if (value === null || value === undefined) delete specification[key]
-      else specification[key] = value
-    }
-    if (Object.keys(specification).length) {
-      specifications[circuitKey] = specification
-    } else {
-      delete specifications[circuitKey]
-    }
-    this.#project.circuitSpecifications = specifications
+    const result = updateCircuitSpecifications(this.#project.circuitSpecifications, bindingId, update)
+    if (!result) return
+    const { circuitKey, circuitSpecifications } = result
+    this.#project.circuitSpecifications = circuitSpecifications
     cadleShell.project = this.#project
     const currentPageType = this.#pageKey ? this.#project.pages[this.#pageKey]?.pageType : undefined
     // Update the visible drawing synchronously. Storage can finish afterward;
     // object-pane input must never wait on IndexedDB before repainting labels.
-    if (currentPageType === 'onewire' && updateOneWirePresentation) {
-      this.#updateOneWireCircuitPresentation(circuitKey)
-    }
-    await setProjectData(this.#projectKey, this.#project)
+    const presentationChanged =
+      currentPageType === 'onewire' && updateOneWirePresentation
+        ? this.#updateOneWireCircuitPresentation(circuitKey, false)
+        : false
+    const projectKey = this.#projectKey
+    const project = structuredClone(this.#project)
+    await this.#persistence.enqueue(() => setProjectData(projectKey, project))
+    if (presentationChanged) this.#persist()
   }
 
-  #updateOneWireCircuitPresentation(circuitKey: string): void {
+  #updateOneWireCircuitPresentation(circuitKey: string, persist = true): boolean {
     const groups = this.analyzeBindings().groups.filter((group) => group.family === circuitKey)
-    const groupSpecification = groups[0]?.specification
-    const stored = this.#project?.circuitSpecifications?.[circuitKey] ?? {}
-    const defaults = circuitDefaults(stored.circuitType ?? groupSpecification?.circuitType)
-    const cableConductors = stored.cableConductors ?? groupSpecification?.cableConductors ?? defaults.cableConductors
-    const specification = {
-      circuitType: stored.circuitType ?? groupSpecification?.circuitType ?? 'other',
-      breakerCurrentA: stored.breakerCurrentA ?? groupSpecification?.breakerCurrentA ?? defaults.breakerCurrentA,
-      cableSectionMm2: stored.cableSectionMm2 ?? groupSpecification?.cableSectionMm2 ?? defaults.cableSectionMm2,
-      cableConductors,
-      hasProtectiveConductor:
-        stored.hasProtectiveConductor ??
-        groupSpecification?.hasProtectiveConductor ??
-        defaultHasProtectiveConductor(cableConductors),
-      cableType: stored.cableType ?? groupSpecification?.cableType ?? defaults.cableType,
-      cableInstallation:
-        stored.cableInstallation ?? groupSpecification?.cableInstallation ?? defaults.cableInstallation,
-      showCableInstallation: stored.showCableInstallation ?? groupSpecification?.showCableInstallation ?? true,
-      poles:
-        stored.poles ?? groupSpecification?.poles ?? this.#project?.electricalProfile?.defaultPoles ?? defaults.poles,
-      phaseConfiguration:
-        stored.phaseConfiguration ??
-        groupSpecification?.phaseConfiguration ??
-        this.#project?.electricalProfile?.phaseConfiguration ??
-        defaults.phaseConfiguration,
-      manufacturer: stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric',
-      productSeries: stored.productSeries ?? groupSpecification?.productSeries,
-      productReference: stored.productReference ?? groupSpecification?.productReference,
-      neutralPosition:
-        stored.neutralPosition ??
-        groupSpecification?.neutralPosition ??
-        neutralPositionForManufacturer(
-          stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric'
-        ) ??
-        'right',
-      showPhaseLabel: stored.showPhaseLabel ?? groupSpecification?.showPhaseLabel ?? true,
-      breakerCurve: stored.breakerCurve ?? groupSpecification?.breakerCurve ?? defaults.breakerCurve,
-      rcdSensitivityMa: stored.rcdSensitivityMa ?? groupSpecification?.rcdSensitivityMa,
-      rcdType: stored.rcdType ?? groupSpecification?.rcdType
-    }
-
-    const cableInstallation = specification.cableInstallation ?? 'conduit-recessed'
-    const labels: Record<string, string> = {
-      'breaker-poles': `${specification.poles}P`,
-      'breaker-current': `${specification.breakerCurve ?? 'C'}${specification.breakerCurrentA}A`,
-      'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-        ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
-        : '',
-      'cable-section': oneWireCableLabelText({
-        conductors: specification.cableConductors,
-        sectionMm2: specification.cableSectionMm2,
-        hasProtectiveConductor: specification.hasProtectiveConductor,
-        cableType: specification.cableType
-      })
-    }
-    let changed = false
-
-    this.#document.shapes = this.#document.shapes.map((shape) => {
-      const link = shape.sourceLink
-      const linkedBoardShape = link?.kind === 'board' && link.id === circuitKey
-
-      if (
-        shape.kind === 'symbol' &&
-        this.#circuitKeyForShape(shape) === circuitKey &&
-        link?.role !== 'breaker' &&
-        /automaat|breaker|protection devices/i.test(`${shape.name} ${shape.path}`)
-      ) {
-        const isResidualBreaker = /residual-current|differential|differentieel|\brcd\b/i.test(
-          `${shape.name} ${shape.path}`
-        )
-        changed = true
-        return {
-          ...shape,
-          electrical: {
-            ...(shape.electrical ?? { role: 'protection', oneWireEligible: true }),
-            manufacturer: specification.manufacturer,
-            neutralPosition: specification.neutralPosition
-          },
-          symbolTextOverrides: {
-            ...(shape.symbolTextOverrides ?? {}),
-            poles: `${specification.poles}P`,
-            phase: shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-              ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
-              : '',
-            'rated-current': `${specification.breakerCurrentA}A`,
-            ...(isResidualBreaker
-              ? {
-                  'residual-current': specification.rcdSensitivityMa ? `${specification.rcdSensitivityMa}mA` : '',
-                  'rcd-type': rcdTypeLabel(specification.rcdType)
-                }
-              : {})
-          }
-        }
-      }
-
-      if (!linkedBoardShape) return shape
-
-      if (shape.kind === 'text' && link.role && labels[link.role] !== undefined) {
-        const text = labels[link.role]
-        if (shape.text === text) return shape
-        changed = true
-        return { ...shape, text }
-      }
-
-      if (shape.kind === 'symbol' && link.role === 'cable-installation') {
-        const path = oneWireCableInstallationPath(cableInstallation)
-        const name = `Cable ${cableInstallation}`
-        const hidden = !specification.showCableInstallation
-        if (shape.path === path && shape.name === name && shape.scale >= 3 && Boolean(shape.hidden) === hidden)
-          return shape
-        changed = true
-        return { ...shape, path, name, scale: Math.max(3, shape.scale), hidden }
-      }
-
-      return shape
+    const result = applyOneWireCircuitPresentation({
+      shapes: this.#document.shapes,
+      circuitKey,
+      stored: this.#project?.circuitSpecifications?.[circuitKey],
+      groupSpecification: groups[0]?.specification,
+      profile: this.#project?.electricalProfile
     })
-
-    if (!changed) return
-    this.#pushHistory()
+    if (!result.changed) return false
+    this.#document.shapes = result.shapes
+    this.#pushHistory(persist)
     this.#render()
+    return true
   }
 
   #rubberBandTemplate() {
@@ -3665,28 +4045,33 @@ export class CadleApp extends LiteElement {
           ? (selectedShape.electrical ??
             electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path))
           : circuitGroup
-            ? this.#effectiveCircuitElectrical(selectedShape, circuitGroup)
-            : this.#effectiveStandaloneCircuitElectrical(selectedShape)
+            ? effectiveCircuitElectrical(selectedShape, circuitGroup)
+            : effectiveStandaloneCircuitElectrical(
+                selectedShape,
+                this.#project?.circuitSpecifications,
+                this.#project?.electricalProfile
+              )
         : undefined
-    pubsub.publish(
-      'editor.selection.changed',
-      createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
+    pubsub.publish('editor.selection.changed', {
+      ...createNativeSelectionChangedPayload(selectedShape, groupedSelection ? 1 : this.#document.selectedIds.size, {
         kindOverride: groupedSelection ? 'group' : undefined,
         bindingIdOverride: groupedSelection
           ? this.#selectedGroupBindingId()
-          : (circuitGroup?.bindingId ??
-            (selectedShape ? (this.#circuitKeyForShape(selectedShape) ?? undefined) : undefined)),
+          : (circuitGroup?.bindingId ?? (selectedShape ? (circuitKeyForShape(selectedShape) ?? undefined) : undefined)),
         electricalOverride: effectiveElectrical,
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
         canConvertToRoom
-      })
-    )
+      }),
+      pageKey: this.#pageKey
+    })
   }
 
   #nativeDocumentState(): NativeDocumentState {
+    const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     return {
       version: 2,
+      ...(pageType === 'onewire' ? { oneWireLayoutVersion: this.#oneWireController.layoutVersion } : {}),
       shapes: this.#document.shapes,
       selectedId: null,
       paperPreset: this.#paperPreset,
@@ -3798,25 +4183,7 @@ export class CadleApp extends LiteElement {
   }
 
   #nativeStateForPage(pageKey: UUID): Partial<NativeDocumentState> | null {
-    const page = this.#project?.pages?.[pageKey]
-    if (!page || typeof page !== 'object') return null
-    const schema = (page as { schema?: unknown }).schema
-    if (!schema || typeof schema !== 'object') return null
-
-    const nativeObjects = (schema as { objects?: unknown[] }).objects
-    if (Array.isArray(nativeObjects)) {
-      for (const object of nativeObjects) {
-        if (!object || typeof object !== 'object') continue
-        const candidate = object as { kind?: unknown; payload?: unknown }
-        if (candidate.kind !== 'cadle-native-svg-document') continue
-        const payload = candidate.payload
-        if (payload && typeof payload === 'object' && Array.isArray((payload as { shapes?: unknown[] }).shapes)) {
-          return payload as Partial<NativeDocumentState>
-        }
-      }
-    }
-
-    return null
+    return this.#project ? nativeStateForProjectPage(this.#project, pageKey) : null
   }
 
   #projectTitleBlockTemplate() {
@@ -3956,6 +4323,7 @@ export class CadleApp extends LiteElement {
         this.#document.selectedId = null
         this.#document.selectedIds = new Set()
         this.#pageKey = pageKey as UUID
+        await this.#ensureSymbolMarkupReady()
 
         const exportViewBox = this.#exportViewBox(this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait')
         const svgString = this.#buildSvgDocument(exportViewBox ?? undefined, false, page.name, pageKey)
@@ -4093,8 +4461,9 @@ export class CadleApp extends LiteElement {
               style=${gridStyle}></div>
             <svg
               class="stage"
-              shape-rendering="crispEdges"
-              style="cursor: ${cursor}; --symbol-stroke-width: ${this.#symbolStrokeWidth}"
+              shape-rendering="geometricPrecision"
+              style="cursor: ${cursor}; --symbol-stroke-width: ${this
+                .#symbolStrokeWidth}; shape-rendering: geometricPrecision; image-rendering: auto"
               @pointerdown=${this.#onPointerDown}
               @pointermove=${this.#onPointerMove}
               @pointerup=${this.#onPointerUp}
@@ -4116,6 +4485,33 @@ export class CadleApp extends LiteElement {
                 ${this.#committedTemplate(selectedShape)} ${this.#previewTemplate()}
               </g>
             </svg>
+            <div
+              class="zoom-controls"
+              role="group"
+              aria-label="Zoom controls">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                title="Zoom out"
+                @click=${this.#zoomOut}>
+                <custom-icon icon="zoom_out"></custom-icon>
+              </button>
+              <output aria-label="Current zoom">${Math.round(zoom * 100)}%</output>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                title="Zoom in"
+                @click=${this.#zoomIn}>
+                <custom-icon icon="zoom_in"></custom-icon>
+              </button>
+              <button
+                type="button"
+                aria-label="Fit page"
+                title="Fit page"
+                @click=${this.#fitViewport}>
+                <custom-icon icon="zoom_in_map"></custom-icon>
+              </button>
+            </div>
             ${this.#stageContextMenuOpen
               ? html`
                   <div
@@ -4559,11 +4955,14 @@ export class CadleApp extends LiteElement {
       case 'onewire-realign':
         if (!this.#realignExistingOneWire()) window.alert('No one-wire elements to realign on this page.')
         return
+      case 'focus-selection':
+        this.#focusSelection()
+        return
       case 'export-json':
         this.#download('cadle-drawing.json', this.#serialize(), 'application/json;charset=utf-8')
         return
       case 'export-pdf':
-        void this.exportProjectPdf().catch(() => window.alert('Unable to export PDF'))
+        void globalThis.cadleShell.exportProjectPdf().catch(() => window.alert('Unable to export PDF'))
         return
       case 'print-svg':
         void this.#printSvg().catch(() => window.alert('Unable to print SVG'))
@@ -4589,7 +4988,7 @@ export class CadleApp extends LiteElement {
     if (file) this.#importJson(file)
   }
 
-  #onPointerDown = (event: PointerEvent) => {
+  #onPointerDown = async (event: PointerEvent) => {
     this.#hideStageContextMenu()
     const stage = event.currentTarget as SVGSVGElement
 
@@ -4757,7 +5156,12 @@ export class CadleApp extends LiteElement {
     }
 
     if (this.#tools.current === 'text') {
-      const value = window.prompt('Text', 'Label')?.trim()
+      const values = await globalThis.cadleShell.requestInput({
+        title: 'Add text',
+        submitLabel: 'Place text',
+        fields: [{ name: 'text', label: 'Text', value: 'Label', required: true }]
+      })
+      const value = values?.text
       if (!value) return
       this.#document.shapes.push(createTextShape(nextShapeId(), rawPoint, value))
       this.#document.selectedId = this.#document.shapes[this.#document.shapes.length - 1]?.id ?? null
@@ -4787,6 +5191,28 @@ export class CadleApp extends LiteElement {
       const clickedShape = shapeId ? this.#shapeById(shapeId) : null
       const clickedShapeIsKamrail = this.#isKamrailShape(clickedShape)
       if (shapeId && shouldSelectExistingOneWireShape(clickedShape, clickedShapeIsKamrail)) {
+        if (
+          this.#oneWireMode === 'compose' &&
+          (this.#oneWireComposeKind === 'switch' || this.#oneWireComposeKind === 'load') &&
+          clickedShape?.kind === 'symbol' &&
+          this.#isElectricalSymbolPath(clickedShape.path)
+        ) {
+          const anchors = this.#symbolConnectionAnchors(clickedShape)
+          const preferredSide = clickedShape.sourceLink?.role === 'breaker' ? 'top' : 'right'
+          const anchor = anchors.find((candidate) => candidate.side === preferredSide)
+          const extensionPoint = anchor
+            ? {
+                x: anchor.point.x + (preferredSide === 'right' ? 1 : 0),
+                y: anchor.point.y - (preferredSide === 'top' ? 1 : 0)
+              }
+            : null
+          if (extensionPoint && this.#composeOneWireAt(extensionPoint, true)) {
+            this.#pushHistory()
+            this.#render()
+            return
+          }
+        }
+
         const expanded = this.#expandSelectionWithGroup(shapeId)
         this.#document.selectedIds = expanded
         this.#document.selectedId = shapeId
@@ -4807,9 +5233,20 @@ export class CadleApp extends LiteElement {
         ? clickedShape
         : (this.#nearestKamrail(rawPoint)?.rail ?? null)
       if (clickedKamrail) {
+        if (this.#oneWireComposeKind === 'kamrail') return
+        const followUpKind = this.#oneWireComposeKind === 'breaker' ? null : this.#oneWireComposeKind
+
         const defaultFamily = this.#normalizeBindingFamily(this.#oneWireBindingId) ?? 'A'
-        const familyInput = window.prompt('Breaker label family (optional; example: A, B, C)', defaultFamily)
-        if (familyInput === null) return
+        const values = await globalThis.cadleShell.requestInput({
+          title: followUpKind ? 'Add breaker first' : 'Add breaker',
+          description: followUpKind
+            ? `A ${followUpKind === 'switch' ? 'switch' : 'load'} must be connected after a breaker. Add the breaker here and Cadle will connect the selected component automatically.`
+            : 'Use a circuit family such as A, B or C. Leave it blank for an unlabelled breaker.',
+          submitLabel: 'Add breaker',
+          fields: [{ name: 'family', label: 'Circuit family', value: defaultFamily, placeholder: 'A' }]
+        })
+        const familyInput = values?.family
+        if (familyInput === undefined) return
         const hideFamilyLabel = familyInput.trim() === ''
         const family = hideFamilyLabel ? this.#nextUnlabeledBreakerKey() : this.#normalizeBindingFamily(familyInput)
         if (!family) return
@@ -4855,11 +5292,21 @@ export class CadleApp extends LiteElement {
           phaseConfiguration,
           showPhaseLabel,
           family,
-          autoIncludeFamily: !hideFamilyLabel,
+          autoIncludeFamily: followUpKind ? false : !hideFamilyLabel,
           hideFamilyLabel,
-          allowEmptyFamily: hideFamilyLabel || familyGroups.length === 0
+          allowEmptyFamily: Boolean(followUpKind) || hideFamilyLabel || familyGroups.length === 0
         })
         if (created) {
+          if (followUpKind) {
+            const breaker = this.#shapeById(this.#document.selectedId)
+            if (breaker?.kind === 'symbol') {
+              const topAnchor = this.#symbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'top')
+              if (topAnchor) this.#composeOneWireAt({ x: topAnchor.point.x, y: topAnchor.point.y - 1 }, true)
+            }
+          }
+          for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
+            this.#updateOneWireCircuitPresentation(circuitKey, false)
+          }
           this.#pushHistory()
           this.#render()
         }
@@ -4873,6 +5320,9 @@ export class CadleApp extends LiteElement {
         return
       }
       if (this.#oneWireComposeKind === 'kamrail' && this.#createKamrailAt(electricalPoint)) {
+        for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
+          this.#updateOneWireCircuitPresentation(circuitKey, false)
+        }
         this.#pushHistory()
         this.#render()
         return
@@ -5237,6 +5687,7 @@ export class CadleApp extends LiteElement {
         this.#symbolPreviewPoint = placement.anchor
         this.#snapTarget = null
         this.#pushHistory()
+        pubsub.publish('editor.symbol.placed', { shapeId: shape.id })
       }
       this.#render()
       return

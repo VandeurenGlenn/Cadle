@@ -4,7 +4,7 @@ import './signature-pad-dialog.js'
 import type { SignatureRole, SignatureSavedDetail } from './signature-pad-dialog.js'
 import type { Project, Projects, UUID } from '../../types.js'
 import { getProjectData, getProjects, set, setProjectData } from '../../api/project.js'
-import { normalizeElectricalProfile } from '../../editor/electrical-profile.js'
+import { normalizeElectricalProfile, phaseConfigurationForSupply } from '../../editor/electrical-profile.js'
 import { saveInstallerProfile } from '../../api/installer-profile.js'
 
 type ProjectDetailsSavedDetail = {
@@ -40,7 +40,13 @@ export class ProjectDetailsDialog extends LiteElement {
   @property({ type: String }) accessor distributor = ''
   @property({ type: String }) accessor supplyConfiguration: '1x230V+N' | '3x230V' | '3x400V+N' | 'other' = '1x230V+N'
   @property({ type: Number }) accessor supplyVoltageV = 230
-  @property({ type: String }) accessor phaseConfiguration: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N' = 'single-phase'
+  @property({ type: String }) accessor phaseConfiguration:
+    | 'single-phase'
+    | 'three-phase'
+    | 'L1+N'
+    | 'L2+N'
+    | 'L3+N'
+    | 'L1+L2+L3+N' = 'L1+N'
   @property({ type: String }) accessor earthingSystem: 'TT' | 'TN' | 'IT' | 'unknown' = 'unknown'
   @property({ type: Number }) accessor defaultPoles = 2
   @property({ type: String }) accessor boardName = 'Main distribution board'
@@ -162,12 +168,11 @@ export class ProjectDetailsDialog extends LiteElement {
         this.distributor = value
         break
       case 'supplyConfiguration': {
-        const configuration =
-          value === '3x230V' || value === '3x400V+N' || value === 'other' ? value : '1x230V+N'
+        const configuration = value === '3x230V' || value === '3x400V+N' || value === 'other' ? value : '1x230V+N'
         this.supplyConfiguration = configuration
         if (configuration !== 'other') {
           this.supplyVoltageV = configuration === '3x400V+N' ? 400 : 230
-          this.phaseConfiguration = configuration === '1x230V+N' ? 'single-phase' : 'three-phase'
+          this.phaseConfiguration = phaseConfigurationForSupply(configuration)
           this.defaultPoles = configuration === '3x400V+N' ? 4 : configuration === '3x230V' ? 3 : 2
         }
         break
@@ -176,7 +181,16 @@ export class ProjectDetailsDialog extends LiteElement {
         this.supplyVoltageV = Math.max(1, Number(value) || 230)
         break
       case 'phaseConfiguration':
-        this.phaseConfiguration = value === 'three-phase' ? 'three-phase' : 'single-phase'
+        if (
+          value === 'single-phase' ||
+          value === 'three-phase' ||
+          value === 'L1+N' ||
+          value === 'L2+N' ||
+          value === 'L3+N' ||
+          value === 'L1+L2+L3+N'
+        ) {
+          this.phaseConfiguration = value
+        }
         break
       case 'earthingSystem':
         this.earthingSystem = value === 'TT' || value === 'TN' || value === 'IT' ? value : 'unknown'
@@ -273,7 +287,7 @@ export class ProjectDetailsDialog extends LiteElement {
       context.drawImage(image, 0, 0, width, height)
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
-          (result) => result ? resolve(result) : reject(new Error('Unable to optimize signature image')),
+          (result) => (result ? resolve(result) : reject(new Error('Unable to optimize signature image'))),
           'image/png'
         )
       })
@@ -324,9 +338,7 @@ export class ProjectDetailsDialog extends LiteElement {
   }
 
   #openSignatureFilePicker = (role: SignatureRole) => {
-    this.shadowRoot
-      ?.querySelector<HTMLInputElement>(`input[data-signature="${role}"]`)
-      ?.click()
+    this.shadowRoot?.querySelector<HTMLInputElement>(`input[data-signature="${role}"]`)?.click()
   }
 
   #onLogoColorPick = (event: Event) => {
@@ -384,6 +396,8 @@ export class ProjectDetailsDialog extends LiteElement {
     nextProject.installer.btw = this.installerBtw.trim() || undefined
     nextProject.eanCode = this.eanCode.trim() || undefined
     nextProject.mainFuseA = this.mainFuseA > 0 ? this.mainFuseA : undefined
+    const existingProfile = normalizeElectricalProfile(nextProject.electricalProfile)
+    const existingMainBoard = existingProfile.boards[0]
     nextProject.electricalProfile = normalizeElectricalProfile({
       standard: 'AREI',
       edition: this.electricalEdition,
@@ -393,15 +407,22 @@ export class ProjectDetailsDialog extends LiteElement {
       phaseConfiguration: this.phaseConfiguration,
       earthingSystem: this.earthingSystem,
       defaultPoles: this.defaultPoles,
-      boards: [{
-        id: 'main',
-        name: this.boardName.trim() || 'Main distribution board',
-        rails: [{ id: 'rail-1', name: 'Rail 1' }],
-        mainDifferential: {
-          id: 'main-rcd', ratedCurrentA: this.mainRcdCurrentA, sensitivityMa: this.mainRcdSensitivityMa,
-          poles: this.mainRcdPoles, type: this.mainRcdType
-        }
-      }]
+      boards: [
+        {
+          ...existingMainBoard,
+          id: existingMainBoard?.id ?? 'main',
+          name: this.boardName.trim() || 'Main distribution board',
+          rails: existingMainBoard?.rails?.length ? existingMainBoard.rails : [{ id: 'rail-1', name: 'Rail 1' }],
+          mainDifferential: {
+            id: 'main-rcd',
+            ratedCurrentA: this.mainRcdCurrentA,
+            sensitivityMa: this.mainRcdSensitivityMa,
+            poles: this.mainRcdPoles,
+            type: this.mainRcdType
+          }
+        },
+        ...existingProfile.boards.slice(1)
+      ]
     })
 
     await setProjectData(this.projectKey, nextProject)
@@ -585,7 +606,9 @@ export class ProjectDetailsDialog extends LiteElement {
               <strong>Installateur</strong>
               <div class="signature-preview">
                 ${this.installerSignatureUrl
-                  ? html`<img src=${this.installerSignatureUrl} alt="Handtekening installateur" />`
+                  ? html`<img
+                      src=${this.installerSignatureUrl}
+                      alt="Handtekening installateur" />`
                   : html`<span>Geen handtekening toegevoegd</span>`}
               </div>
               <input
@@ -595,10 +618,17 @@ export class ProjectDetailsDialog extends LiteElement {
                 data-signature="installer"
                 @change=${this.#onSignatureFilePicked} />
               <div class="signature-card-actions">
-                <button type="button" class="primary" @click=${() => this.#openSignaturePad('installer')}>
+                <button
+                  type="button"
+                  class="primary"
+                  @click=${() => this.#openSignaturePad('installer')}>
                   ${this.installerSignatureUrl ? 'Opnieuw tekenen' : 'Tekenen'}
                 </button>
-                <button type="button" @click=${() => this.#openSignatureFilePicker('installer')}>Uploaden</button>
+                <button
+                  type="button"
+                  @click=${() => this.#openSignatureFilePicker('installer')}>
+                  Uploaden
+                </button>
                 <button
                   type="button"
                   ?disabled=${!this.installerSignatureUrl}
@@ -611,7 +641,9 @@ export class ProjectDetailsDialog extends LiteElement {
               <strong>Eigenaar</strong>
               <div class="signature-preview">
                 ${this.customerSignatureUrl
-                  ? html`<img src=${this.customerSignatureUrl} alt="Handtekening eigenaar" />`
+                  ? html`<img
+                      src=${this.customerSignatureUrl}
+                      alt="Handtekening eigenaar" />`
                   : html`<span>Geen handtekening toegevoegd</span>`}
               </div>
               <input
@@ -621,10 +653,17 @@ export class ProjectDetailsDialog extends LiteElement {
                 data-signature="customer"
                 @change=${this.#onSignatureFilePicked} />
               <div class="signature-card-actions">
-                <button type="button" class="primary" @click=${() => this.#openSignaturePad('customer')}>
+                <button
+                  type="button"
+                  class="primary"
+                  @click=${() => this.#openSignaturePad('customer')}>
                   ${this.customerSignatureUrl ? 'Opnieuw tekenen' : 'Tekenen'}
                 </button>
-                <button type="button" @click=${() => this.#openSignatureFilePicker('customer')}>Uploaden</button>
+                <button
+                  type="button"
+                  @click=${() => this.#openSignatureFilePicker('customer')}>
+                  Uploaden
+                </button>
                 <button
                   type="button"
                   ?disabled=${!this.customerSignatureUrl}
@@ -638,14 +677,26 @@ export class ProjectDetailsDialog extends LiteElement {
             <strong>Elektrisch profiel</strong>
             <span>AREI-georiënteerde projectdefaults; controleer de actuele uitgave en installatiegegevens.</span>
           </div>
-          <label><span>Norm</span><input value="AREI" disabled /></label>
+          <label
+            ><span>Norm</span
+            ><input
+              value="AREI"
+              disabled
+          /></label>
           <label>
             <span>Distributienetbeheerder</span>
-            <input .value=${this.distributor} data-field="distributor" @input=${this.#onMetaInput} placeholder="bv. Fluvius" />
+            <input
+              .value=${this.distributor}
+              data-field="distributor"
+              @input=${this.#onMetaInput}
+              placeholder="bv. Fluvius" />
           </label>
           <label>
             <span>Netaansluiting</span>
-            <select .value=${this.supplyConfiguration} data-field="supplyConfiguration" @change=${this.#onMetaInput}>
+            <select
+              .value=${this.supplyConfiguration}
+              data-field="supplyConfiguration"
+              @change=${this.#onMetaInput}>
               <option value="1x230V+N">1 × 230 V (L + N)</option>
               <option value="3x230V">3 × 230 V (L1 + L2 + L3)</option>
               <option value="3x400V+N">3 × 400 V + N (L1 + L2 + L3 + N)</option>
@@ -654,35 +705,103 @@ export class ProjectDetailsDialog extends LiteElement {
           </label>
           <label>
             <span>Uitgave / referentie</span>
-            <input .value=${this.electricalEdition} data-field="electricalEdition" @input=${this.#onMetaInput} />
+            <input
+              .value=${this.electricalEdition}
+              data-field="electricalEdition"
+              @input=${this.#onMetaInput} />
           </label>
           <label>
             <span>Netspanning (V)</span>
-            <input type="number" min="1" .value=${String(this.supplyVoltageV)} data-field="supplyVoltageV" @input=${this.#onMetaInput} />
+            <input
+              type="number"
+              min="1"
+              .value=${String(this.supplyVoltageV)}
+              data-field="supplyVoltageV"
+              @input=${this.#onMetaInput} />
           </label>
           <label>
             <span>Fasen</span>
-            <select .value=${this.phaseConfiguration} data-field="phaseConfiguration" @change=${this.#onMetaInput}>
-              <option value="single-phase">Monofasig</option><option value="three-phase">Driefasig</option>
+            <select
+              .value=${this.phaseConfiguration}
+              data-field="phaseConfiguration"
+              @change=${this.#onMetaInput}>
+              <option value="L1+N">L1 + N</option>
+              <option value="L2+N">L2 + N</option>
+              <option value="L3+N">L3 + N</option>
+              <option value="three-phase">3F (L1 + L2 + L3)</option>
+              <option value="L1+L2+L3+N">3F + N (L1 + L2 + L3 + N)</option>
             </select>
           </label>
           <label>
             <span>Aardingsstelsel</span>
-            <select .value=${this.earthingSystem} data-field="earthingSystem" @change=${this.#onMetaInput}>
-              <option value="unknown">Nog te bevestigen</option><option value="TT">TT</option>
-              <option value="TN">TN</option><option value="IT">IT</option>
+            <select
+              .value=${this.earthingSystem}
+              data-field="earthingSystem"
+              @change=${this.#onMetaInput}>
+              <option value="unknown">Nog te bevestigen</option>
+              <option value="TT">TT</option>
+              <option value="TN">TN</option>
+              <option value="IT">IT</option>
             </select>
           </label>
           <label>
             <span>Standaard aantal polen</span>
-            <input type="number" min="1" step="1" .value=${String(this.defaultPoles)} data-field="defaultPoles" @input=${this.#onMetaInput} />
+            <input
+              type="number"
+              min="1"
+              step="1"
+              .value=${String(this.defaultPoles)}
+              data-field="defaultPoles"
+              @input=${this.#onMetaInput} />
           </label>
           <div class="form-section"><strong>Verdeelbord en hoofddifferentieel</strong></div>
-          <label><span>Naam bord</span><input .value=${this.boardName} data-field="boardName" @input=${this.#onMetaInput} /></label>
-          <label><span>Nominale stroom (A)</span><input type="number" min="1" .value=${String(this.mainRcdCurrentA)} data-field="mainRcdCurrentA" @input=${this.#onMetaInput} /></label>
-          <label><span>Gevoeligheid (mA)</span><input type="number" min="1" .value=${String(this.mainRcdSensitivityMa)} data-field="mainRcdSensitivityMa" @input=${this.#onMetaInput} /></label>
-          <label><span>Polen</span><input type="number" min="1" .value=${String(this.mainRcdPoles)} data-field="mainRcdPoles" @input=${this.#onMetaInput} /></label>
-          <label><span>Type</span><select .value=${this.mainRcdType} data-field="mainRcdType" @change=${this.#onMetaInput}><option value="AC">AC</option><option value="A">A</option><option value="F">F</option><option value="B">B</option><option value="other">Andere</option></select></label>
+          <label
+            ><span>Naam bord</span
+            ><input
+              .value=${this.boardName}
+              data-field="boardName"
+              @input=${this.#onMetaInput}
+          /></label>
+          <label
+            ><span>Nominale stroom (A)</span
+            ><input
+              type="number"
+              min="1"
+              .value=${String(this.mainRcdCurrentA)}
+              data-field="mainRcdCurrentA"
+              @input=${this.#onMetaInput}
+          /></label>
+          <label
+            ><span>Gevoeligheid (mA)</span
+            ><input
+              type="number"
+              min="1"
+              .value=${String(this.mainRcdSensitivityMa)}
+              data-field="mainRcdSensitivityMa"
+              @input=${this.#onMetaInput}
+          /></label>
+          <label
+            ><span>Polen</span
+            ><input
+              type="number"
+              min="1"
+              .value=${String(this.mainRcdPoles)}
+              data-field="mainRcdPoles"
+              @input=${this.#onMetaInput}
+          /></label>
+          <label
+            ><span>Type</span
+            ><select
+              .value=${this.mainRcdType}
+              data-field="mainRcdType"
+              @change=${this.#onMetaInput}>
+              <option value="AC">AC</option>
+              <option value="A">A</option>
+              <option value="F">F</option>
+              <option value="B">B</option>
+              <option value="other">Andere</option>
+            </select></label
+          >
         </div>
         <div class="footer">
           <button

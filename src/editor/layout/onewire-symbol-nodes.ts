@@ -1,13 +1,18 @@
 import type { Point } from '../../editor/model/types.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
 
 // One canonical rendered size for every Automaat.svg, independent of where it
-// appears in the one-wire topology. Keeping this value here prevents topology,
-// circuit and composed breakers from silently drifting to different scales.
+// appears in the one-wire topology. The breaker is intentionally the visual
+// anchor, while the rest of the row stays smaller so the feeder and cable labels
+// remain legible and proportionate to the electrical reference.
+export const ONE_WIRE_DEFAULT_SCALE = 0.68
 export const ONE_WIRE_BREAKER_SCALE = 2.8
 
 // The RCD asset has a much wider viewBox than the breaker asset. It therefore
-// needs a larger numeric scale to reach the same visible device height.
-export const ONE_WIRE_RCD_SCALE = 3.6
+// needs a slightly larger numeric scale to reach the same visible device height
+// without competing with the dominant breaker treatment.
+export const ONE_WIRE_RCD_SCALE = 2.2
+export const ONE_WIRE_RENDERED_STROKE_WIDTH = 2
 
 // Trikker-style wire connection metadata for the built-in one-wire symbols.
 // node — not the bounding box — lands on the wire axis, and defines how wide
@@ -42,8 +47,71 @@ const SWITCH_NODE_RADIUS = 2.83465
 
 const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   {
+    match: /wires\/underground cable\.svg$/i,
+    spec: {
+      viewBox: { width: 24, height: 54 },
+      node: { x: 14, y: 52 },
+      cutRadius: null,
+      oneWireScale: 2.25
+    }
+  },
+  {
+    match:
+      /wires\/(?:cable (?:in conduit(?: recessed in wall)?|without conduit|on wall|recessed in wall)|underground cable)\.svg$/i,
+    spec: {
+      viewBox: { width: 24, height: 54 },
+      node: { x: 12, y: 52 },
+      cutRadius: null,
+      oneWireScale: 2.25
+    }
+  },
+  {
+    match: /socket outlets\/.*for floorplan\.svg$/i,
+    spec: {
+      viewBox: { width: 8.5115, height: 11.5955 },
+      node: { x: 0.12, y: 5.8 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /socket outlets\/.*\.svg$/i,
+    spec: {
+      viewBox: { width: 4.96819, height: 11.5955 },
+      node: { x: 0.12, y: 5.8 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     match: /switches\/switch general symbol\.svg$/i,
     spec: { viewBox: { width: 6.82076, height: 13.368 }, node: { x: 2.955, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
+  },
+  {
+    match: /switches\/(?:illuminated )?push button\.svg$/i,
+    spec: {
+      viewBox: { width: 8.74394, height: 8.74394 },
+      node: { x: 4.37197, y: 4.37197 },
+      cutRadius: 4.25197
+    }
+  },
+  {
+    match: /switches\/double push button\.svg$/i,
+    spec: {
+      viewBox: { width: 13.68, height: 8.74394 },
+      node: { x: 6.9, y: 4.13197 },
+      cutRadius: 5.5,
+      oneWireScale: 1.425
+    }
+  },
+  {
+    match: /switches\/push switch with safety cover\.svg$/i,
+    spec: {
+      viewBox: { width: 10.1613, height: 20.2715 },
+      node: { x: 4.37197, y: 10.04123 },
+      cutRadius: 4.25197,
+      oneWireScale: 0.95
+    }
   },
   {
     match: /switches\/single pole switch with indicator light\.svg$/i,
@@ -56,7 +124,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: { viewBox: { width: 11.6776, height: 20.8268 }, node: { x: 5.835, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
-    match: /Custom breaker\.svg$/i,
+    match: /(?:Custom breaker|protection devices\/automaat)\.svg$/i,
     spec: {
       viewBox: { width: 28.783, height: 28.8265 },
       node: { x: 15.3836, y: 28.47 },
@@ -82,8 +150,16 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: { viewBox: { width: 6.82076, height: 13.368 }, node: { x: 2.955, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
-    match: /switches\/single pole (delayed|pull) switch\.svg$/i,
+    match: /switches\/(?:single pole (?:delayed|pull)|double pole(?: illuminated)?|triple pole) switch\.svg$/i,
     spec: { viewBox: { width: 8.79345, height: 13.368 }, node: { x: 2.955, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
+  },
+  {
+    match: /switches\/dimmer switch\.svg$/i,
+    spec: { viewBox: { width: 9.00472, height: 13.368 }, node: { x: 2.955, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
+  },
+  {
+    match: /switches\/dual switch, single casing\.svg$/i,
+    spec: { viewBox: { width: 12.0176, height: 13.2972 }, node: { x: 6.005, y: 10.34 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
     match: /switches\/double pole change over switch\.svg$/i,
@@ -98,14 +174,32 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: { viewBox: { width: 11.6776, height: 20.8268 }, node: { x: 5.835, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
+    match: /switches\/(?:impulse relay|time switch|electric lock or guard tour control device|thermostat|timer)\.svg$/i,
+    spec: {
+      viewBox: { width: 20.0825, height: 8.74394 },
+      node: { x: 10.04125, y: 4.37197 },
+      cutRadius: 9.92125,
+      oneWireScale: 0.67473017
+    }
+  },
+  {
+    match: /switches\/niko home control dimmer\.svg$/i,
+    spec: {
+      viewBox: { width: 20, height: 10 },
+      node: { x: 10, y: 5 },
+      cutRadius: 9.5,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     // Plain X cross — drawn over the wire, no interruption. Lamps render
     // noticeably smaller than switch assemblies.
     match: /consumption appliances\/lighting\.svg$/i,
     spec: {
       viewBox: { width: 11.6358, height: 11.6358 },
-      node: { x: 2, y: 5.8179 },
+      node: { x: 5.8179, y: 5.8179 },
       cutRadius: null,
-      oneWireScale: 1.15
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
   {
@@ -115,7 +209,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 13.2, height: 13.2 },
       node: { x: 2, y: 6.6 },
       cutRadius: null,
-      oneWireScale: 0.82
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
   {
@@ -125,20 +219,18 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 16, height: 16 },
       node: { x: 1, y: 8 },
       cutRadius: null,
-      oneWireScale: 1
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
   {
-    // Wall light is rotated to stand upright on horizontal one-wire branches.
+    // The wall line forms the symbol's electrical base. Anchor its left end to
+    // the branch so the lamp remains upright and entirely above the conductor.
     match: /consumption appliances\/wall light\.svg$/i,
     spec: {
       viewBox: { width: 22.9172, height: 14.4132 },
-      // Keep wall light centered on the branch axis and let the branch pass
-      // through to avoid asymmetric edge-cut artifacts after rotation.
-      node: { x: 6, y: 7.2066 },
+      node: { x: 0.12, y: 14.2932 },
       cutRadius: null,
-      oneWireScale: 1.7,
-      rotation: 90
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
   {
@@ -149,7 +241,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 26.5538, height: 24.5211 },
       node: { x: 4, y: 12.26056 },
       cutRadius: null,
-      oneWireScale: 1.3
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
   {
@@ -158,9 +250,9 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /consumption appliances\/fluorescent lamp\.svg$/i,
     spec: {
       viewBox: { width: 22.9172, height: 5.90929 },
-      node: { x: 11.58, y: 2.83 },
-      cutRadius: 2.955,
-      oneWireScale: 1.5,
+      node: { x: 11.46, y: 2.95 },
+      cutRadius: 0.12,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE,
       rotation: 90
     }
   },
@@ -169,7 +261,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /protection devices\/automaat\.svg$/i,
     spec: {
       viewBox: { width: 28.783, height: 28.8265 },
-      node: { x: 15.0236, y: 28.47 },
+      node: { x: 15.3836, y: 28.47 },
       cutRadius: 2.83465,
       oneWireScale: ONE_WIRE_BREAKER_SCALE
     }
@@ -181,7 +273,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 11.5886, height: 11.5886 },
       node: { x: 5.7943, y: 5.7943 },
       cutRadius: 5.66929,
-      oneWireScale: 0.7
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   }
 ]
@@ -255,12 +347,26 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
   }
 ]
 
-// Rendered node radius shared by every switch on a wire (matches the two-way /
-// intermediate switch look the user approved).
-const TARGET_NODE_RADIUS = 5.6
-const NODE_CUT_MARGIN = 0.35
+// Rendered node radius shared by every switch on a wire; the node itself must
+// stay at the same electrical width no matter how the body is scaled. This keeps
+// the visual balance right without disturbing the branch connection geometry.
+const TARGET_NODE_RADIUS = 5.8
+const MAX_NODE_NORMALIZED_SCALE = 0.85
 
 const findSpec = (path: string): NodeSpec | null => NODE_SPECS.find(({ match }) => match.test(path))?.spec ?? null
+
+export const oneWireSymbolBounds = (shape: { path: string; scale: number; position: Point; rotation?: number }) => {
+  const spec = findSpec(shape.path)
+  if (!spec) return null
+  const svgScale =
+    (24 * renderedSymbolScale(shape.path, shape.scale)) / Math.max(spec.viewBox.width, spec.viewBox.height)
+  const radians = ((shape.rotation ?? 0) * Math.PI) / 180
+  const cos = Math.abs(Math.cos(radians))
+  const sin = Math.abs(Math.sin(radians))
+  const width = svgScale * (spec.viewBox.width * cos + spec.viewBox.height * sin)
+  const height = svgScale * (spec.viewBox.width * sin + spec.viewBox.height * cos)
+  return { x: shape.position.x - width / 2, y: shape.position.y - height / 2, width, height }
+}
 
 const pointOffset = (viewBox: { width: number; height: number }, point: Point, scale: number): Point => {
   const size = 24 * Math.max(0.4, scale)
@@ -275,20 +381,27 @@ const pointOffset = (viewBox: { width: number; height: number }, point: Point, s
 
 // Maps the node from viewBox coordinates into the rendered 24×scale box
 // (inner <svg> uses preserveAspectRatio "xMidYMid meet").
-export const oneWireSymbolNodeInfo = (path: string, scale: number): OneWireNodeInfo | null => {
+export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0): OneWireNodeInfo | null => {
   const spec = findSpec(path)
   if (!spec) return null
   const { viewBox, node, cutRadius } = spec
-  const size = 24 * Math.max(0.4, scale)
+  const size = 24 * renderedSymbolScale(path, scale)
   const svgScale = size / Math.max(viewBox.width, viewBox.height)
   const xOff = (size - viewBox.width * svgScale) / 2
   const yOff = (size - viewBox.height * svgScale) / 2
+  const rawOffset = {
+    x: xOff + node.x * svgScale - size / 2,
+    y: yOff + node.y * svgScale - size / 2
+  }
+  const radians = (rotation * Math.PI) / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
   return {
     offset: {
-      x: xOff + node.x * svgScale - size / 2,
-      y: yOff + node.y * svgScale - size / 2
+      x: rawOffset.x * cos - rawOffset.y * sin,
+      y: rawOffset.x * sin + rawOffset.y * cos
     },
-    cutHalfWidth: cutRadius === null ? null : cutRadius * svgScale + NODE_CUT_MARGIN
+    cutHalfWidth: cutRadius === null ? null : cutRadius * svgScale
   }
 }
 
@@ -308,11 +421,19 @@ export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireT
 // scales. Returns null for unknown symbols (caller keeps its heuristic).
 export const oneWireSymbolScaleFor = (path: string): number | null => {
   const spec = findSpec(path)
-  if (!spec) return null
+  if (!spec) return ONE_WIRE_DEFAULT_SCALE
   if (typeof spec.oneWireScale === 'number') return spec.oneWireScale
-  if (spec.cutRadius === null) return null
+  if (spec.cutRadius === null) return ONE_WIRE_DEFAULT_SCALE
   const maxViewBox = Math.max(spec.viewBox.width, spec.viewBox.height)
-  return (TARGET_NODE_RADIUS * maxViewBox) / (24 * spec.cutRadius)
+  return Math.min(MAX_NODE_NORMALIZED_SCALE, (TARGET_NODE_RADIUS * maxViewBox) / (24 * spec.cutRadius))
+}
+
+export const oneWireSymbolStrokeWidthFor = (path: string, scale: number): number => {
+  const spec = findSpec(path)
+  if (!spec) return 0.65
+  const size = 24 * renderedSymbolScale(path, scale)
+  const svgScale = size / Math.max(spec.viewBox.width, spec.viewBox.height)
+  return ONE_WIRE_RENDERED_STROKE_WIDTH / svgScale
 }
 
 // Inline placement rotation (e.g. TL bars stand upright on horizontal wires).

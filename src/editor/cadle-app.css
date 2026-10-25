@@ -6,6 +6,17 @@
   box-sizing: border-box;
 }
 
+input,
+select,
+textarea,
+output,
+[contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
 :host {
   --cadle-accent: #a85427;
   --cadle-surface: color-mix(in srgb, var(--md-sys-color-surface, #f6f1eb) 88%, white);
@@ -78,8 +89,8 @@
   width: 100%;
   height: 100%;
   touch-action: none;
-  image-rendering: crisp-edges;
-  shape-rendering: crispEdges;
+  image-rendering: auto;
+  shape-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   will-change: transform;
@@ -87,6 +98,53 @@
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
+}
+
+.zoom-controls {
+  position: absolute;
+  left: var(--cadle-space-3);
+  bottom: var(--cadle-space-3);
+  z-index: 19;
+  display: flex;
+  align-items: center;
+  padding: var(--cadle-space-1);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-md);
+  background: var(--cadle-glass-bg-strong);
+  box-shadow: var(--cadle-glass-shadow);
+  backdrop-filter: blur(var(--cadle-glass-blur));
+  -webkit-backdrop-filter: blur(var(--cadle-glass-blur));
+}
+
+.zoom-controls button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: var(--cadle-control-height);
+  height: var(--cadle-control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-surface);
+  background: transparent;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.zoom-controls button:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+
+.zoom-controls output {
+  min-width: calc(var(--cadle-control-height) * 1.4);
+  text-align: center;
+  font: var(--md-sys-typescale-label-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .stage-context-menu {
@@ -428,7 +486,7 @@
 /* ── Window: glass pane + jamb markers ── */
 .shape-window-glass {
   fill: none;
-  stroke: rgba(100, 190, 240, 0.92);
+  stroke: var(--cadle-window-glass);
   stroke-width: 12;
   stroke-linecap: butt;
   vector-effect: non-scaling-stroke;
@@ -489,6 +547,7 @@
 .onewire-generated-label {
   pointer-events: none;
   user-select: none;
+  stroke: none;
 }
 
 .onewire-energy-pulse {
@@ -609,4 +668,15 @@
   stroke-dasharray: 10 6;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .zoom-controls button {
+    width: var(--cadle-control-height-compact);
+    height: var(--cadle-control-height-compact);
+  }
+
+  .zoom-controls output {
+    display: none;
+  }
 }

@@ -35,6 +35,7 @@ const wrap = (value: string, max = 24, lines = 3): string[] => {
 
 export type ScheduleCircuit = {
   id: string
+  boardId: string
   protection: string
   poles: string
   cable: string
@@ -47,6 +48,7 @@ export type ScheduleCircuit = {
 
 export type CircuitScheduleEditorItem = {
   id: string
+  boardId: string
   title: string
   subtitle: string
   kind: 'differential' | 'circuit'
@@ -55,11 +57,16 @@ export type CircuitScheduleEditorItem = {
 
 const circuitCategory = (type: CircuitGroup['specification']['circuitType']): string => {
   switch (type) {
-    case 'lighting': return 'Verlichting'
-    case 'sockets': return 'Stopcontacten'
-    case 'motor': return 'Motor'
-    case 'mixed': return 'Gemengde kring'
-    default: return ''
+    case 'lighting':
+      return 'Verlichting'
+    case 'sockets':
+      return 'Stopcontacten'
+    case 'motor':
+      return 'Motor'
+    case 'mixed':
+      return 'Gemengde kring'
+    default:
+      return ''
   }
 }
 
@@ -86,18 +93,23 @@ export const circuitScheduleRows = (analysis: CircuitAnalysis): ScheduleCircuit[
   }
   return [...families.entries()].map(([id, groups]) => {
     const specification = groups[0].specification
-    const curve = specification.breakerCurve && specification.breakerCurve !== 'other'
-      ? specification.breakerCurve
-      : ''
+    const curve = specification.breakerCurve && specification.breakerCurve !== 'other' ? specification.breakerCurve : ''
     const cableType = specification.cableType === 'none' ? '' : ` ${specification.cableType}`
     const conductor = specification.hasProtectiveConductor ? 'G' : 'x'
     return {
       id,
+      boardId: specification.boardId ?? 'main',
       protection: `${curve}${specification.breakerCurrentA}A`,
       poles: `${specification.poles}P`,
       cable: `${specification.cableConductors}${conductor}${specification.cableSectionMm2} mm²${cableType}`,
       consumers: countedNames(groups),
-      rooms: [...new Set(groups.flatMap((group) => group.components.map((component) => component.roomName).filter((name): name is string => Boolean(name))))],
+      rooms: [
+        ...new Set(
+          groups.flatMap((group) =>
+            group.components.map((component) => component.roomName).filter((name): name is string => Boolean(name))
+          )
+        )
+      ],
       category: circuitCategory(specification.circuitType),
       modules: Math.max(1, specification.poles),
       ...(specification.notes ? { note: specification.notes } : {})
@@ -105,12 +117,9 @@ export const circuitScheduleRows = (analysis: CircuitAnalysis): ScheduleCircuit[
   })
 }
 
-const ROWS = 5
 const PAGE_X = 8
 const PAGE_Y = 28
 const PAGE_W = 194
-const PAGE_H = 247
-const CELL_H = PAGE_H / ROWS
 
 const differentialRows = (project: Project | null): ScheduleCircuit[] => {
   const boards = project?.electricalProfile?.boards ?? []
@@ -121,6 +130,7 @@ const differentialRows = (project: Project | null): ScheduleCircuit[] => {
     ]
     return protections.map((protection, index) => ({
       id: protection.main ? `DIFF:${board.id}:MAIN` : `DIFF:${board.id}:${protection.id || index}`,
+      boardId: board.id,
       protection: `${protection.ratedCurrentA}A / ${protection.sensitivityMa}mA`,
       poles: `${protection.poles}P`,
       cable: protection.type ? `TYPE ${protection.type}` : '',
@@ -145,94 +155,92 @@ const configuredRows = (
     byId.delete(item.id)
   }
   ordered.push(...byId.values())
-  const gapById = new Map((layout?.items ?? []).map((item) => [item.id, Math.max(0, Math.min(24, item.gapBefore ?? 0))]))
+  const gapById = new Map(
+    (layout?.items ?? []).map((item) => [item.id, Math.max(0, Math.min(24, item.gapBefore ?? 0))])
+  )
   return ordered.map((circuit) => ({ circuit, gapBefore: gapById.get(circuit.id) ?? 0 }))
 }
 
-export const circuitScheduleEditorItems = (project: Project | null, analysis: CircuitAnalysis): CircuitScheduleEditorItem[] =>
+export const circuitScheduleEditorItems = (
+  project: Project | null,
+  analysis: CircuitAnalysis
+): CircuitScheduleEditorItem[] =>
   [...differentialRows(project), ...circuitScheduleRows(analysis)].map((row) => ({
     id: row.id,
+    boardId: row.boardId,
     title: row.category || row.id,
     subtitle: `${row.id} · ${row.protection}`,
     kind: row.id.startsWith('DIFF:') ? 'differential' : 'circuit',
     modules: row.modules
   }))
 
-type SchedulePlacement = { circuit: ScheduleCircuit; page: number; row: number; module: number }
+const ROWS_PER_PAGE = 30
+const TABLE_Y = 34
+const TABLE_ROW_H = 8
 
-const placeSchedule = (
-  entries: Array<{ circuit: ScheduleCircuit; gapBefore: number }>,
-  modulesPerRow: number
-): SchedulePlacement[] => {
-  const placements: SchedulePlacement[] = []
-  let absoluteRow = 0
-  let cursor = 0
-  for (const entry of entries) {
-    const span = Math.min(modulesPerRow, Math.max(1, entry.circuit.modules))
-    let start = cursor + entry.gapBefore
-    if (start + span > modulesPerRow) {
-      absoluteRow += 1
-      cursor = 0
-      start = Math.min(entry.gapBefore, Math.max(0, modulesPerRow - span))
-    }
-    placements.push({
-      circuit: entry.circuit,
-      page: Math.floor(absoluteRow / ROWS),
-      row: absoluteRow % ROWS,
-      module: start
-    })
-    cursor = start + span
-    if (cursor >= modulesPerRow) {
-      absoluteRow += 1
-      cursor = 0
-    }
-  }
-  return placements
-}
+const scheduleTableHeader = (): string => `<g>
+  <rect x="${PAGE_X}" y="${PAGE_Y}" width="${PAGE_W}" height="6" fill="#f1ebe7"/>
+  ${text(12, 32, 'KRING', { size: 2.4, weight: 700, fill: '#756a63' })}
+  ${text(30, 32, 'TYPE', { size: 2.4, weight: 700, fill: '#756a63' })}
+  ${text(72, 32, 'BEVEILIGING', { size: 2.4, weight: 700, fill: '#756a63' })}
+  ${text(100, 32, 'KABEL', { size: 2.4, weight: 700, fill: '#756a63' })}
+  ${text(137, 32, 'VERBRUIKERS / OPMERKING', { size: 2.4, weight: 700, fill: '#756a63' })}
+  ${text(181, 32, 'RUIMTE', { size: 2.4, weight: 700, fill: '#756a63' })}
+</g>`
 
-const cell = (placement: SchedulePlacement, modulesPerRow: number): string => {
-  const { circuit, row, module } = placement
-  const moduleWidth = PAGE_W / modulesPerRow
-  const cellWidth = Math.max(moduleWidth, circuit.modules * moduleWidth)
-  const x = PAGE_X + module * moduleWidth
-  const y = PAGE_Y + row * CELL_H
-  const center = x + cellWidth / 2
-  const consumerLabel = circuit.category || circuit.consumers.join(' · ') || 'Reserve'
-  const roomLabel = circuit.rooms.length ? ` · ${circuit.rooms.join(', ')}` : ''
-  const title = circuit.note?.trim() || `${consumerLabel}${roomLabel}`
-  const titleLines = wrap(title.toUpperCase(), 22, 3)
+const scheduleTableRow = (circuit: ScheduleCircuit, rowIndex: number): string => {
+  const y = TABLE_Y + rowIndex * TABLE_ROW_H
+  const consumers = circuit.note?.trim() || circuit.consumers.join(', ') || 'Reserve'
   return `<g>
-    <rect x="${x}" y="${y}" width="${cellWidth}" height="${CELL_H}" fill="${row % 2 ? '#fdfbf9' : '#ffffff'}" stroke="#d8cec7" stroke-width="0.35"/>
-    ${text(x + 3, y + 7, circuit.id, { size: 4.2, weight: 750, fill: '#a85427' })}
-    ${text(x + cellWidth - 3, y + 7, circuit.poles, { size: 2.4, weight: 600, anchor: 'end', fill: '#756a63' })}
-    ${text(center, y + 17, circuit.protection, { size: 4, weight: 700, anchor: 'middle' })}
-    ${text(center, y + 23, circuit.cable, { size: 2.25, weight: 500, anchor: 'middle', fill: '#756a63' })}
-    <line x1="${x + 5}" y1="${y + 28}" x2="${x + cellWidth - 5}" y2="${y + 28}" stroke="#eadfd8" stroke-width="0.35"/>
-    ${titleLines.map((line, lineIndex) => text(center, y + 38 + lineIndex * 5, line, { size: 2.8, weight: lineIndex === 0 ? 650 : 500, anchor: 'middle' })).join('')}
+    <rect x="${PAGE_X}" y="${y}" width="${PAGE_W}" height="${TABLE_ROW_H}" fill="${rowIndex % 2 ? '#fdfbf9' : '#ffffff'}" stroke="#e4dad4" stroke-width="0.3"/>
+    ${text(12, y + 5, circuit.id, { size: 3, weight: 750, fill: '#a85427' })}
+    ${text(30, y + 5, circuit.category || 'Overig', { size: 2.6, weight: 600 })}
+    ${text(72, y + 5, `${circuit.poles} · ${circuit.protection}`, { size: 2.6, weight: 650 })}
+    ${text(100, y + 5, circuit.cable, { size: 2.45, fill: '#4d433d' })}
+    ${text(137, y + 5, wrap(consumers, 27, 1)[0] ?? '', { size: 2.45 })}
+    ${text(181, y + 5, wrap(circuit.rooms.join(', '), 16, 1)[0] ?? '', { size: 2.35, fill: '#756a63' })}
   </g>`
 }
 
+const scheduleBoards = (project: Project | null, rows: readonly ScheduleCircuit[]) => {
+  const boards = (project?.electricalProfile?.boards ?? []).map(({ id, name }) => ({ id, name }))
+  const known = new Set(boards.map((board) => board.id))
+  for (const row of rows) {
+    if (known.has(row.boardId)) continue
+    boards.push({ id: row.boardId, name: row.boardId === 'main' ? 'Hoofdverdeelbord' : row.boardId })
+    known.add(row.boardId)
+  }
+  return boards.length ? boards : [{ id: 'main', name: 'Hoofdverdeelbord' }]
+}
+
 export const buildCircuitScheduleSvgs = (project: Project | null, analysis: CircuitAnalysis): string[] => {
-  const modulesPerRow = project?.circuitScheduleLayout?.modulesPerRow === 18 ? 18 : 24
-  const entries = configuredRows(
-    [...differentialRows(project), ...circuitScheduleRows(analysis)],
-    project?.circuitScheduleLayout
-  )
-  if (!entries.length) return []
-  const placements = placeSchedule(entries, modulesPerRow)
-  const pages = Math.max(1, ...placements.map((placement) => placement.page + 1))
-  return Array.from({ length: pages }, (_, pageIndex) => {
-    const pageCircuits = placements.filter((placement) => placement.page === pageIndex)
+  const rows = [...differentialRows(project), ...circuitScheduleRows(analysis)]
+  const pages = scheduleBoards(project, rows).flatMap((board) => {
+    const entries = configuredRows(
+      rows.filter((row) => row.boardId === board.id),
+      project?.circuitScheduleLayout
+    )
+    const pageCount = Math.max(1, Math.ceil(entries.length / ROWS_PER_PAGE))
+    return Array.from({ length: pageCount }, (_, boardPageIndex) => ({
+      board,
+      boardPageIndex,
+      boardPageCount: pageCount,
+      circuits: entries.slice(boardPageIndex * ROWS_PER_PAGE, (boardPageIndex + 1) * ROWS_PER_PAGE)
+    }))
+  })
+  return pages.map(({ board, boardPageIndex, boardPageCount, circuits }, pageIndex) => {
     const projectName = project?.name?.trim() || 'Cadle project'
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" width="2480" height="3508">
       <rect width="210" height="297" fill="#ffffff"/>
       <rect x="8" y="7" width="194" height="15" rx="1.5" fill="#2d231c"/>
-      ${text(13, 16.5, 'VERDEELBORD · KRINGENOVERZICHT', { size: 4, weight: 750, fill: '#ffffff' })}
+      ${text(13, 13.5, 'VERDEELBORD', { size: 2.4, weight: 650, fill: '#dacbc1' })}
+      ${text(13, 18, board.name.toUpperCase(), { size: 4, weight: 750, fill: '#ffffff' })}
       ${text(197, 13.5, projectName.toUpperCase(), { size: 2.5, weight: 600, anchor: 'end', fill: '#dacbc1' })}
-      ${text(197, 18, `${pageIndex + 1}/${pages}`, { size: 2.4, weight: 600, anchor: 'end', fill: '#ffffff' })}
-      ${pageCircuits.map((placement) => cell(placement, modulesPerRow)).join('')}
+      ${text(197, 18, `${boardPageIndex + 1}/${boardPageCount} · ${pageIndex + 1}/${pages.length}`, { size: 2.4, weight: 600, anchor: 'end', fill: '#ffffff' })}
+      ${scheduleTableHeader()}
+      ${circuits.map((entry, rowIndex) => scheduleTableRow(entry.circuit, rowIndex)).join('')}
       ${text(8, 291, 'Automatisch gegenereerd uit de kringgegevens van het project', { size: 2.2, fill: '#8b7e76' })}
-      ${text(202, 291, `${analysis.families.length} kringen`, { size: 2.2, weight: 600, anchor: 'end', fill: '#8b7e76' })}
+      ${text(202, 291, `${circuits.filter((entry) => !entry.circuit.id.startsWith('DIFF:')).length} kringen`, { size: 2.2, weight: 600, anchor: 'end', fill: '#8b7e76' })}
     </svg>`
   })
 }

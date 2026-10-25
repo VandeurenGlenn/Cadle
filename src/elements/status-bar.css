@@ -33,7 +33,7 @@
   font-weight: 500;
 }
 .item.tool .value {
-  color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-surface);
   font-weight: 600;
 }
 .mono {
@@ -69,7 +69,10 @@ button {
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
-  transition: all var(--cadle-motion-fast);
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast),
+    box-shadow var(--cadle-motion-fast);
 }
 button:hover {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
@@ -78,14 +81,6 @@ button:hover {
 button:focus-visible {
   outline: none;
   box-shadow: var(--cadle-focus-ring);
-}
-button:active {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
-  color: var(--md-sys-color-primary);
-}
-button[aria-pressed='true'] {
-  color: var(--md-sys-color-primary);
-  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
 }
 button:active {
   background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
@@ -120,10 +115,25 @@ button[aria-pressed='true'] {
   transform: translateY(0);
 }
 .status-pill.saved {
-  color: var(--md-sys-color-primary);
-  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+  color: var(--cadle-color-success);
+  background: color-mix(in srgb, var(--cadle-color-success) 10%, transparent);
 }
 .status-pill.unsaved {
   color: var(--md-sys-color-error);
   background: color-mix(in srgb, var(--md-sys-color-error) 10%, transparent);
+}
+
+@media (max-width: 720px) {
+  :host {
+    gap: var(--cadle-space-1);
+    padding: 0 var(--cadle-space-2);
+  }
+
+  .cursor-detail {
+    display: none;
+  }
+
+  .item .label {
+    display: none;
+  }
 }

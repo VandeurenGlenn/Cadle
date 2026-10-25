@@ -1,0 +1,113 @@
+:host {
+  position: fixed;
+  z-index: 13020;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: var(--cadle-space-4);
+  background: rgb(0 0 0 / 42%);
+}
+
+:host([data-open]) {
+  display: grid;
+}
+
+form {
+  display: grid;
+  gap: var(--cadle-space-4);
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  padding: var(--cadle-space-4);
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-lg);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--cadle-elevation-3);
+}
+
+h2,
+p {
+  margin: 0;
+}
+
+h2 {
+  font: var(--md-sys-typescale-title-large);
+}
+
+p,
+small {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.fields {
+  display: grid;
+  gap: var(--cadle-space-3);
+}
+
+label {
+  display: grid;
+  gap: var(--cadle-space-1);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large);
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--cadle-space-3);
+  box-sizing: border-box;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container);
+  font: var(--md-sys-typescale-body-large);
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  box-shadow: var(--cadle-focus-ring);
+}
+
+.error {
+  color: var(--md-sys-color-error);
+  font: var(--md-sys-typescale-body-small);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cadle-space-2);
+}
+
+button {
+  min-height: 40px;
+  padding: 0 var(--cadle-space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-surface);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+}
+
+@media (max-width: 560px) {
+  :host {
+    align-items: end;
+    padding: 0;
+  }
+
+  form {
+    width: 100%;
+    border-radius: var(--cadle-radius-lg) var(--cadle-radius-lg) 0 0;
+  }
+}

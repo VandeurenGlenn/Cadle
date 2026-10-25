@@ -1,5 +1,6 @@
 import { shapeBounds } from '../../editor/model/model.js'
 import type { Shape } from '../../editor/model/types.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
 import { getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextLayer } from '../symbol-metadata.js'
 import { getBoundedCache, setBoundedCache } from '../../helpers/bounded-cache.js'
@@ -108,7 +109,7 @@ export const symbolOpticalMetrics = (path: string): OpticalMetrics | null => {
 }
 
 export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) => {
-  const size = 24 * Math.max(0.4, shape.scale)
+  const size = 24 * renderedSymbolScale(shape.path, shape.scale)
   const x = shape.position.x - size / 2
   const y = shape.position.y - size / 2
   const fullBox = { x, y, width: size, height: size }

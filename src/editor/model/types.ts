@@ -24,6 +24,7 @@ export type OneWireSourceLink = {
 type GeneratedShapeMetadata = {
   generationKey?: string
   sourceLink?: OneWireSourceLink
+  oneWireRailId?: string
   hidden?: boolean
   locked?: boolean
 }
@@ -80,6 +81,7 @@ export type TextShape = GeneratedShapeMetadata & {
   flipX?: boolean
   flipY?: boolean
   fontFamily?: string
+  fontWeight?: number
   letterSpacing?: number
   textAnchor?: 'start' | 'middle' | 'end'
   bindingId?: string

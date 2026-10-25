@@ -3,7 +3,7 @@ import styles from './create-project.css' with { type: 'css' }
 import '@vandeurenglenn/lite-elements/button.js'
 import { create } from '../api/project.js'
 import { ProjectInput } from '../types.js'
-import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
+import { normalizeElectricalProfile, phaseConfigurationForSupply } from '../editor/electrical-profile.js'
 import { getInstallerProfile, saveInstallerProfile } from '../api/installer-profile.js'
 @customElement('create-project-field')
 export class CreateProjectField extends LiteElement {
@@ -26,8 +26,9 @@ export class CreateProjectField extends LiteElement {
   }
 
   #fieldValue(label: string): string {
-    const field = [...(this.shadowRoot?.querySelectorAll<HTMLInputElement>('input[data-field]') ?? [])]
-      .find((input) => input.dataset.field === label)
+    const field = [...(this.shadowRoot?.querySelectorAll<HTMLInputElement>('input[data-field]') ?? [])].find(
+      (input) => input.dataset.field === label
+    )
     return (field?.value ?? '').trim()
   }
 
@@ -70,11 +71,7 @@ export class CreateProjectField extends LiteElement {
     const mainRcdCurrentA = Number(this.#fieldValue('Main RCD current (A)')) || 40
     const mainRcdSensitivityMa = Number(this.#fieldValue('Main RCD sensitivity (mA)')) || 300
     const mainRcdPoles = Number(this.#fieldValue('Main RCD poles')) || 2
-    const supplyConfiguration = this.#selectValue('supplyConfiguration') as
-      | '1x230V+N'
-      | '3x230V'
-      | '3x400V+N'
-      | 'other'
+    const supplyConfiguration = this.#selectValue('supplyConfiguration') as '1x230V+N' | '3x230V' | '3x400V+N' | 'other'
     const earthingSystem = this.#selectValue('earthingSystem') as 'TT' | 'TN' | 'IT' | 'unknown'
     const mainRcdType = this.#selectValue('mainRcdType') as 'AC' | 'A' | 'F' | 'B' | 'other'
     if (!projectName || !pageName) {
@@ -114,21 +111,23 @@ export class CreateProjectField extends LiteElement {
         distributor,
         supplyConfiguration,
         supplyVoltageV,
-        phaseConfiguration: supplyConfiguration === '1x230V+N' ? 'single-phase' : 'three-phase',
+        phaseConfiguration: phaseConfigurationForSupply(supplyConfiguration),
         earthingSystem,
         defaultPoles,
-        boards: [{
-          id: 'main',
-          name: boardName,
-          rails: [{ id: 'rail-1', name: 'Rail 1' }],
-          mainDifferential: {
-            id: 'main-rcd',
-            ratedCurrentA: mainRcdCurrentA,
-            sensitivityMa: mainRcdSensitivityMa,
-            poles: mainRcdPoles,
-            type: mainRcdType
+        boards: [
+          {
+            id: 'main',
+            name: boardName,
+            rails: [{ id: 'rail-1', name: 'Rail 1' }],
+            mainDifferential: {
+              id: 'main-rcd',
+              ratedCurrentA: mainRcdCurrentA,
+              sensitivityMa: mainRcdSensitivityMa,
+              poles: mainRcdPoles,
+              type: mainRcdType
+            }
           }
-        }]
+        ]
       })
     }
     this.creating = true
@@ -161,46 +160,55 @@ export class CreateProjectField extends LiteElement {
           <div class="sections">
             <section class="block">
               <h4>Project</h4>
-              ${this.#textField('Project name', '', 'text', true)}
-              ${this.#textField('Page name', '', 'text', true)}
+              ${this.#textField('Project name', '', 'text', true)} ${this.#textField('Page name', '', 'text', true)}
             </section>
             <section class="block">
               <h4>Customer</h4>
-              ${this.#textField('Customer name')}
-              ${this.#textField('Customer last name')}
+              ${this.#textField('Customer name')} ${this.#textField('Customer last name')}
             </section>
             <section class="block">
               <h4>Installer</h4>
-              ${this.#textField('Name', this.installerName)}
-              ${this.#textField('Last name', this.installerLastName)}
+              ${this.#textField('Name', this.installerName)} ${this.#textField('Last name', this.installerLastName)}
               ${this.#textField('Company', this.installerCompany)}
               ${this.#textField('VAT / company number', this.installerBtw)}
             </section>
             <section class="block">
               <h4>Address</h4>
               ${this.#textField('Street')}
-              <div class="address-row">
-                ${this.#textField('House number')}
-                ${this.#textField('Postal code')}
-              </div>
+              <div class="address-row">${this.#textField('House number')} ${this.#textField('Postal code')}</div>
               ${this.#textField('City')}
             </section>
             <section class="block block-wide">
               <h4>Technical installation details</h4>
               <div class="field-grid">
-                ${this.#textField('EAN code')}
-                ${this.#textField('Main fuse (A)', '', 'number')}
+                ${this.#textField('EAN code')} ${this.#textField('Main fuse (A)', '', 'number')}
                 ${this.#textField('Distributor', 'Fluvius')}
-                <label class="select-field"><span>Supply</span><select name="supplyConfiguration">
-                  <option value="1x230V+N">1 × 230 V (L + N)</option>
-                  <option value="3x230V">3 × 230 V</option>
-                  <option value="3x400V+N" selected>3 × 400 V + N</option>
-                  <option value="other">Other</option>
-                </select></label>
-                <label class="select-field"><span>Earthing system</span><select name="earthingSystem">
-                  <option value="unknown">Not confirmed</option><option value="TT" selected>TT</option>
-                  <option value="TN">TN</option><option value="IT">IT</option>
-                </select></label>
+                <label class="select-field"
+                  ><span>Supply</span
+                  ><select name="supplyConfiguration">
+                    <option value="1x230V+N">1 × 230 V (L + N)</option>
+                    <option value="3x230V">3 × 230 V</option>
+                    <option
+                      value="3x400V+N"
+                      selected>
+                      3 × 400 V + N
+                    </option>
+                    <option value="other">Other</option>
+                  </select></label
+                >
+                <label class="select-field"
+                  ><span>Earthing system</span
+                  ><select name="earthingSystem">
+                    <option value="unknown">Not confirmed</option>
+                    <option
+                      value="TT"
+                      selected>
+                      TT
+                    </option>
+                    <option value="TN">TN</option>
+                    <option value="IT">IT</option>
+                  </select></label
+                >
               </div>
             </section>
             <section class="block block-wide">
@@ -210,15 +218,29 @@ export class CreateProjectField extends LiteElement {
                 ${this.#textField('Main RCD current (A)', '40', 'number')}
                 ${this.#textField('Main RCD sensitivity (mA)', '300', 'number')}
                 ${this.#textField('Main RCD poles', '4', 'number')}
-                <label class="select-field"><span>RCD type</span><select name="mainRcdType">
-                  <option value="AC">AC</option><option value="A" selected>A</option>
-                  <option value="F">F</option><option value="B">B</option><option value="other">Other</option>
-                </select></label>
+                <label class="select-field"
+                  ><span>RCD type</span
+                  ><select name="mainRcdType">
+                    <option value="AC">AC</option>
+                    <option
+                      value="A"
+                      selected>
+                      A
+                    </option>
+                    <option value="F">F</option>
+                    <option value="B">B</option>
+                    <option value="other">Other</option>
+                  </select></label
+                >
               </div>
             </section>
           </div>
           ${this.formError
-            ? html`<p class="form-error" role="alert">${this.formError}</p>`
+            ? html`<p
+                class="form-error"
+                role="alert">
+                ${this.formError}
+              </p>`
             : ''}
           <div class="actions">
             <span class="required-note">* Required fields</span>

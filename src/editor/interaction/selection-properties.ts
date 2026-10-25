@@ -1,5 +1,5 @@
 import { cloneShape, shapeBounds } from '../../editor/model/model.js'
-import type { Point, Shape } from '../../editor/model/types.js'
+import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
@@ -42,7 +42,7 @@ export type SelectionUpdateContext = {
   groupedSelection: boolean
 }
 
-const isLineShape = (shape: Shape) =>
+const isLineShape = (shape: Shape): shape is LineShape =>
   shape.kind === 'wall' ||
   shape.kind === 'line' ||
   shape.kind === 'door' ||

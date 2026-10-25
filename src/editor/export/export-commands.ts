@@ -1,8 +1,6 @@
-import { bomRowsToCsv, type BomRow } from '../editor/circuit-analysis.js'
-import { downloadTextFile } from '../editor/export/downloads.js'
-
-export const safeExportName = (name: string): string =>
-  (name || 'cadle-project').replace(/[^a-z0-9_-]+/gi, '-')
+import { bomRowsToCsv, type BomRow } from '../circuit-analysis.js'
+import { safeExportName } from '../../helpers/export-name.js'
+import { downloadTextFile } from './downloads.js'
 
 export const downloadDataUrl = (dataUrl: string, filename: string): void => {
   const anchor = document.createElement('a')

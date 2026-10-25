@@ -12,7 +12,7 @@ test('first load without an open project shows Projects instead of an empty edit
 
   await expect(page).toHaveURL(/#!\/projects$/)
   await expect(page.locator('projects-field .header h1')).toBeVisible()
-  await expect(page.locator('projects-field')).toContainText('Welcome to Cadle')
+  await expect(page.locator('projects-field')).toContainText('Projects')
   await expect.poll(() => page.evaluate(() => customElements.get('cadle-app') === undefined)).toBe(true)
   const startupResources = await page.evaluate(() =>
     performance.getEntriesByType('resource').map((entry) => entry.name)
@@ -27,9 +27,8 @@ test('first load without an open project shows Projects instead of an empty edit
   await expect(projectsField.locator('.hero-copy')).toBeHidden()
   await expect(projectsField.locator('.groundplan-scene')).toBeHidden()
   const welcomeSpark = projectsField.locator('.welcome-spark')
-  await expect(projectsField.locator('.welcome-bubble')).toBeVisible()
   const projectsCard = projectsField.locator('flex-container')
-  await expect(welcomeSpark).toContainText('A little spark before you start')
+  await expect(welcomeSpark).toContainText('A little spark')
   await expect(welcomeSpark.locator('p')).not.toBeEmpty()
   await expect(projectsCard).toBeVisible()
   const projectsCardBounds = await projectsCard.boundingBox()

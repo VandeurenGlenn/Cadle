@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ensureOneWirePage } from '../src/shell/page-operations.ts'
-import { clonePageSchema } from '../src/shell/page-schema.ts'
+import { ensureOneWirePage } from '../src/data/page-operations.ts'
+import { clonePageSchema } from '../src/data/page-schema.ts'
 import type { Project, UUID } from '../src/types.ts'
 
 test('clones page schemas without sharing object references', () => {

@@ -136,9 +136,9 @@ export class CatalogCategory extends LiteElement {
             <flex-column class=${`items ${this.childrenOnly ? 'children-only' : ''}`}>
               ${map(
                 this.symbols,
-                (symbol, i) => html`
+                (symbol) => html`
                   <catalog-item
-                    tabindex=${i + 1}
+                    tabindex="0"
                     .category=${this.category}
                     .folder=${this.folder}
                     .symbol=${symbol}

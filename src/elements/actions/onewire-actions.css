@@ -14,19 +14,22 @@
 }
 
 .onewire-action-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: var(--cadle-space-1);
+  min-width: var(--cadle-touch-target);
+  height: var(--cadle-touch-target);
+  padding: 0 var(--cadle-space-2);
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface);
   cursor: pointer;
-  border-radius: 0.25rem;
-  transition: background-color 150ms ease;
+  border-radius: var(--cadle-radius-sm);
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast);
   font-family: inherit;
-  width: 2rem;
-  height: 2rem;
 }
 
 .onewire-action-btn:hover {
@@ -37,6 +40,16 @@
   background-color: var(--md-sys-color-surface-variant);
 }
 
+.onewire-action-btn[aria-pressed='true'] {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.onewire-action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+
 .onewire-action-btn custom-icon {
   width: 1.25rem;
   height: 1.25rem;
@@ -44,4 +57,23 @@
   align-items: center;
   justify-content: center;
   color: var(--md-sys-color-primary);
+}
+
+.onewire-action-btn[aria-pressed='true'] custom-icon {
+  color: currentColor;
+}
+
+.onewire-action-btn span {
+  font: var(--md-sys-typescale-label-medium);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .onewire-action-btn {
+    padding: 0;
+  }
+
+  .onewire-action-btn span {
+    display: none;
+  }
 }

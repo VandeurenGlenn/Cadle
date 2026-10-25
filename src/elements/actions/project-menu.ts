@@ -4,7 +4,7 @@ export type ProjectMenuAction = {
   icon: string
 }
 
-export type ProjectMenuGroupId = 'new' | 'import' | 'export' | 'onewire' | 'tools'
+export type ProjectMenuGroupId = 'new' | 'import' | 'export'
 
 export type ProjectMenuGroup = {
   id: ProjectMenuGroupId
@@ -13,7 +13,8 @@ export type ProjectMenuGroup = {
 }
 
 export const PROJECT_MENU_PRIMARY_ACTIONS: ProjectMenuAction[] = [
-  { title: 'Open project', action: 'open', icon: 'folder_open' }
+  { title: 'Open project', action: 'open', icon: 'folder_open' },
+  { title: 'Project details', action: 'edit-project-details', icon: 'edit' }
 ]
 
 export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
@@ -31,8 +32,7 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
     items: [
       { title: 'Import old plan from PDF', action: 'import-pdf', icon: 'picture_as_pdf' },
       { title: 'Upload project', action: 'upload', icon: 'upload_file' },
-      { title: 'Import drawing JSON', action: 'import-json', icon: 'data_object' },
-      { title: 'Import custom symbol', action: 'import-custom-symbol', icon: 'category' }
+      { title: 'Import drawing JSON', action: 'import-json', icon: 'data_object' }
     ]
   },
   {
@@ -45,26 +45,6 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
       { title: 'Print drawing', action: 'print-svg', icon: 'print' },
       { title: 'Export BOM', action: 'export-bom', icon: 'table_view' },
       { title: 'Share project', action: 'share', icon: 'share' }
-    ]
-  },
-  {
-    id: 'onewire',
-    title: 'One-wire',
-    items: [
-      { title: 'Auto name circuits', action: 'auto-name-electrical', icon: 'auto_fix_high' },
-      { title: 'Validate bindings', action: 'validate-bindings', icon: 'check' },
-      { title: 'Describe structure', action: 'describe-one-wire', icon: 'account_tree' },
-      { title: 'Generate schema', action: 'generate-one-wire', icon: 'output' }
-    ]
-  },
-  {
-    id: 'tools',
-    title: 'Project tools',
-    items: [
-      { title: 'Edit project details', action: 'edit-project-details', icon: 'edit' },
-      { title: 'Edit circuit overview', action: 'edit-circuit-schedule', icon: 'table_view' },
-      { title: 'History panel', action: 'toggle-history-panel', icon: 'menu' },
-      { title: 'One-wire training data', action: 'open-onewire-training-data', icon: 'dataset' }
     ]
   }
 ]

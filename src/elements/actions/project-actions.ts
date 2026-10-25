@@ -1,11 +1,9 @@
 import { LiteElement, html, customElement, query } from '@vandeurenglenn/lite'
 import styles from './project-actions.css' with { type: 'css' }
-import '@vandeurenglenn/lite-elements/button.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
-import '@vandeurenglenn/flex-elements/row.js'
 
 import { CustomDropdown } from '@vandeurenglenn/lite-elements/dropdown.js'
 import { download, share, upload, importPlan } from '../../api/project.js'
@@ -26,18 +24,20 @@ export class ProjectActions extends LiteElement {
       { title: 'A3 landscape', action: 'draw-paper-a3-landscape', icon: 'width' },
       { title: 'Margin +1 mm', action: 'draw-margin-inc', icon: 'swap-horiz' },
       { title: 'Margin -1 mm', action: 'draw-margin-dec', icon: 'swap-horiz' },
-      { title: 'Add breaker', action: 'draw-onewire-compose-breaker', icon: 'electric_bolt' },
-      { title: 'Add switch', action: 'draw-onewire-compose-switch', icon: 'add' },
-      { title: 'Add kamrail', action: 'draw-onewire-compose-kamrail', icon: 'linear_scale' },
-      { title: 'Add load', action: 'draw-onewire-compose-load', icon: 'add' },
       { title: 'Clear drawing', action: 'draw-clear', icon: 'delete' }
     ],
-    help: [
-      {
-        title: 'keyboard shortcuts',
-        action: 'showShortcuts',
-        icon: 'keyboard'
-      }
+    catalog: [
+      { title: 'Import custom symbol', action: 'import-custom-symbol', icon: 'upload_file' },
+      { title: 'Manage catalog', action: 'manage-catalog', icon: 'settings' }
+    ],
+    more: [
+      { title: 'Set distribution structure', action: 'describe-one-wire', icon: 'account_tree' },
+      { title: 'Auto-number circuits', action: 'auto-name-electrical', icon: 'format_list_numbered' },
+      { title: 'Check circuit data', action: 'validate-bindings', icon: 'check' },
+      { title: 'Create one-wire diagram', action: 'generate-one-wire', icon: 'output' },
+      { title: 'Edit circuit overview', action: 'edit-circuit-schedule', icon: 'table_view' },
+      { title: 'History', action: 'toggle-history-panel', icon: 'menu' },
+      { title: 'Keyboard shortcuts', action: 'showShortcuts', icon: 'keyboard' }
     ]
   }
 
@@ -45,7 +45,7 @@ export class ProjectActions extends LiteElement {
 
   @query('custom-dropdown') accessor dropdown!: CustomDropdown
 
-  #openMenu(kind: 'file' | 'draw' | 'help', target: HTMLElement) {
+  #openMenu(kind: 'file' | 'draw' | 'catalog' | 'more', target: HTMLElement) {
     const { left, bottom } = target.getBoundingClientRect()
     this.dropdown.style.position = 'fixed'
     this.dropdown.style.left = `${left}px`
@@ -56,8 +56,10 @@ export class ProjectActions extends LiteElement {
       render(this._fileDropDownTemplate(), this.dropdown)
     } else if (kind === 'draw') {
       render(this._drawDropDownTemplate(), this.dropdown)
+    } else if (kind === 'catalog') {
+      render(this._actionMenuTemplate(this.actions.catalog), this.dropdown)
     } else {
-      render(this._helpDropDownTemplate(), this.dropdown)
+      render(this._actionMenuTemplate(this.actions.more), this.dropdown)
     }
 
     this.dropdown.open = true
@@ -74,6 +76,9 @@ export class ProjectActions extends LiteElement {
         break
       case 'import-custom-symbol':
         cadleShell.openCustomSymbolImport()
+        break
+      case 'manage-catalog':
+        cadleShell.openCatalogEditor()
         break
       case 'validate-bindings':
         cadleShell.validateBindingsForOneWire()
@@ -166,7 +171,7 @@ export class ProjectActions extends LiteElement {
 
   #toggleMenu = (event: Event) => {
     const target = event.currentTarget as HTMLElement | null
-    const action = target?.getAttribute('data-action') as 'file' | 'draw' | 'help' | null
+    const action = target?.getAttribute('data-action') as 'file' | 'draw' | 'catalog' | 'more' | null
     if (!target || !action) return
     if (this.dropdown.open && this.lastAction === action) {
       this.dropdown.open = false
@@ -210,14 +215,6 @@ export class ProjectActions extends LiteElement {
         return html`<custom-icon
           slot="start"
           icon="download"></custom-icon>`
-      case 'onewire':
-        return html`<custom-icon
-          slot="start"
-          icon="output"></custom-icon>`
-      case 'tools':
-        return html`<custom-icon
-          slot="start"
-          icon="edit"></custom-icon>`
     }
   }
 
@@ -283,11 +280,11 @@ export class ProjectActions extends LiteElement {
     `
   }
 
-  _helpDropDownTemplate() {
+  _actionMenuTemplate(actions: Array<{ title: string; action: string; icon: string }>) {
     return html`
       <custom-menu>
         ${map(
-          this.actions.help,
+          actions,
           (action, i) => html`
             <custom-list-item
               title=${action.title}
@@ -312,10 +309,6 @@ export class ProjectActions extends LiteElement {
         items: this.actions.draw.filter(
           (entry) => entry.action.startsWith('draw-paper') || entry.action.startsWith('draw-margin')
         )
-      },
-      {
-        label: 'One-wire',
-        items: this.actions.draw.filter((entry) => entry.action.startsWith('draw-onewire'))
       },
       {
         label: 'Drawing',
@@ -351,23 +344,42 @@ export class ProjectActions extends LiteElement {
 
   render() {
     return html`
-      <flex-row>
-        <custom-button
-          type="text"
-          label="File"
+      <nav
+        class="menu-actions"
+        aria-label="Project menus">
+        <button
+          type="button"
+          title="File"
+          aria-label="File"
           data-action="file"
-          @click=${this.#toggleMenu}></custom-button>
-        <custom-button
-          type="text"
-          label="Draw"
+          @click=${this.#toggleMenu}>
+          <custom-icon icon="folder_open"></custom-icon>
+        </button>
+        <button
+          type="button"
+          title="Drawing settings"
+          aria-label="Drawing settings"
           data-action="draw"
-          @click=${this.#toggleMenu}></custom-button>
-        <custom-button
-          type="text"
-          label="Help"
-          data-action="help"
-          @click=${this.#toggleMenu}></custom-button>
-      </flex-row>
+          @click=${this.#toggleMenu}>
+          <custom-icon icon="draw"></custom-icon>
+        </button>
+        <button
+          type="button"
+          title="Catalog"
+          aria-label="Catalog"
+          data-action="catalog"
+          @click=${this.#toggleMenu}>
+          <custom-icon icon="format_shapes"></custom-icon>
+        </button>
+        <button
+          type="button"
+          title="More"
+          aria-label="More"
+          data-action="more"
+          @click=${this.#toggleMenu}>
+          <custom-icon icon="more_vert"></custom-icon>
+        </button>
+      </nav>
       <custom-dropdown>
         <custom-elevation level="1"></custom-elevation>
       </custom-dropdown>

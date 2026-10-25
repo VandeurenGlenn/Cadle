@@ -57,10 +57,32 @@ const parseNativeFromSchema = (schema: unknown): NativeDocumentState | null => {
   return null
 }
 
-const parseNativeFromProject = (project: Project, pageKey: UUID): NativeDocumentState | null => {
+export const nativeStateForProjectPage = (project: Project, pageKey: UUID): NativeDocumentState | null => {
   const page = project.pages?.[pageKey]
   if (!page || typeof page !== 'object') return null
   return parseNativeFromSchema((page as { schema?: unknown }).schema)
+}
+
+export const migrateOneWireProjectPages = (
+  project: Project,
+  layoutVersion: number,
+  migrate: (state: NativeDocumentState, pageKey: UUID) => NativeDocumentState | null
+): boolean => {
+  let changed = false
+  for (const [rawPageKey, page] of Object.entries(project.pages ?? {})) {
+    if (page.pageType !== 'onewire') continue
+    const pageKey = rawPageKey as UUID
+    const state = nativeStateForProjectPage(project, pageKey)
+    if (!state || (state.oneWireLayoutVersion ?? 0) >= layoutVersion) continue
+    const migrated = migrate(state, pageKey)
+    if (!migrated) continue
+    page.schema = {
+      version: 'native-svg-1',
+      objects: [{ kind: 'cadle-native-svg-document', payload: migrated } as NativeSchemaObject]
+    }
+    changed = true
+  }
+  return changed
 }
 
 const createDefaultProject = (): Project => ({
@@ -137,10 +159,10 @@ const hashKeys = (): { projectKey?: UUID; pageKey?: UUID } => {
   return { projectKey, pageKey }
 }
 
-export const loadNativeState = async (): Promise<NativeLoadResult> => {
+export const loadNativeState = async (overrides?: { projectKey?: UUID; pageKey?: UUID }): Promise<NativeLoadResult> => {
   const { projectKey: hashProjectKey, pageKey: hashPageKey } = hashKeys()
-  const projectKey = hashProjectKey ?? DEFAULT_PROJECT_KEY
-  const requestedPageKey = hashPageKey ?? DEFAULT_PAGE_KEY
+  const projectKey = overrides?.projectKey ?? hashProjectKey ?? DEFAULT_PROJECT_KEY
+  const requestedPageKey = overrides?.pageKey ?? hashPageKey ?? DEFAULT_PAGE_KEY
 
   await ensureProjectExists(projectKey)
   const project = await getProjectData(projectKey)
@@ -156,7 +178,7 @@ export const loadNativeState = async (): Promise<NativeLoadResult> => {
     projectKey,
     pageKey,
     project,
-    state: parseNativeFromProject(project, pageKey)
+    state: nativeStateForProjectPage(project, pageKey)
   }
 }
 

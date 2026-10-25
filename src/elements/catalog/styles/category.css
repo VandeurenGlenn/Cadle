@@ -2,13 +2,13 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  gap: var(--cadle-space-1);
+  gap: 2px;
 }
 
 .items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: var(--cadle-space-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--cadle-space-1);
   box-sizing: border-box;
   padding: 0 0 var(--cadle-space-1);
   width: 100%;
@@ -74,37 +74,42 @@
   font: var(--md-sys-typescale-label-small);
 }
 .category-header {
-  min-height: 34px;
-  height: 34px;
+  min-height: var(--cadle-control-height-compact);
+  height: var(--cadle-control-height-compact);
   width: 100%;
   display: inline-flex;
   align-items: center;
   gap: var(--cadle-space-1);
   padding: 0 var(--cadle-space-2);
-  background: color-mix(in srgb, var(--md-sys-color-primary) 10%, var(--md-sys-color-surface-container));
-  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 28%, var(--md-sys-color-outline-variant));
-  border-radius: var(--cadle-radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cadle-radius-xs);
   margin: 0;
-  color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-title-small);
   font-weight: 600;
   letter-spacing: 0.02em;
   font-size: 13px;
   cursor: pointer;
   text-align: left;
-  transition: all var(--cadle-motion-standard);
+  transition:
+    background-color var(--cadle-motion-fast),
+    border-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast);
 }
 .category-header:hover {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-container));
-  border-color: color-mix(in srgb, var(--md-sys-color-primary) 40%, var(--md-sys-color-outline-variant));
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent);
+  background: var(--md-sys-color-surface-container-high);
+  border-color: var(--md-sys-color-outline-variant);
 }
 .category-header:focus-visible {
   outline: none;
-  box-shadow:
-    var(--cadle-focus-ring),
-    0 4px 12px color-mix(in srgb, var(--md-sys-color-shadow) 8%, transparent);
+  box-shadow: var(--cadle-focus-ring);
   border-color: var(--md-sys-color-primary);
+}
+:host([open]) .category-header {
+  color: var(--md-sys-color-primary);
+  background: var(--cadle-selected-bg);
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, var(--md-sys-color-outline-variant));
 }
 .category-header:active {
   background: color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-surface-container));

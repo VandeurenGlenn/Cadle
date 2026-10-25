@@ -10,8 +10,10 @@ a generated but editable projection of that data.
 
 ## Current architecture
 
-- `src/shell.ts` owns projects, pages, menus, dialogs, export entry points, and navigation.
-- `src/app.ts` is the native SVG editor and currently owns most drawing and interaction behavior.
+- `src/shell/app-shell.ts` owns projects, pages, menus, dialogs, export entry points, and navigation.
+- `src/editor/cadle-app.ts` is the native SVG editor composition root and still owns too much drawing and interaction
+   orchestration.
+- `src/catalog/` owns custom symbols, catalog structure, and symbol defaults independently of the application shell.
 - `src/editor/model/` contains the canonical shape model, sanitization, geometry, and transforms.
 - `src/editor/` contains focused canvas helpers, export, one-wire layout, and circuit analysis.
 - Editor documents are persisted through `src/data/project-document.ts` using the canonical editor model.
@@ -45,7 +47,7 @@ Success means the generated one-wire diagram never silently invents a regulatory
 
 ## Priority 2 — one-wire layout and round-trip editing
 
-1. Extract one-wire layout from `src/app.ts` into a pure layout engine with fixture-based tests.
+1. Extract one-wire layout from `src/editor/cadle-app.ts` into a pure layout engine with fixture-based tests.
 2. Give generated objects stable source references instead of relying only on `groupId` and `bindingId`.
 3. Regenerate incrementally: preserve manual placement while updating changed circuit contents.
 4. Support distribution boards, RCD hierarchy, multi-pole breakers, multiple rails, three-phase circuits, and subpanels.
@@ -55,13 +57,15 @@ Success means changing a floor-plan circuit updates the corresponding one-wire b
 
 ## Priority 3 — simplify the editor architecture
 
-`src/app.ts` is still too large. Extract behavior without changing the custom-element public API:
+`src/editor/cadle-app.ts` is still too large. Extract behavior without changing the custom-element public API:
 
 1. `CanvasDocumentController` — shapes, selection, history, persistence
 2. `ViewportController` — zoom, pan, coordinate transforms, fit-to-page
 3. `ToolController` — pointer lifecycle and active tool state
 4. `OneWireController` — compose and generation commands
 5. `CatalogController` — placement, defaults, and custom-symbol workflows
+6. `PersistenceQueue` — ordered page/project writes with observable failure handling
+7. Shared preferences — validated storage outside UI components
 
 Each extraction must add tests before moving the next responsibility. Avoid a large rewrite.
 

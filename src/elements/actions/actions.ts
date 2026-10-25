@@ -130,6 +130,7 @@ export class CadleActions extends LiteElement {
             class="tool"
             title=${tool.title}
             aria-label=${tool.title}
+            aria-pressed=${this.#isToolActive(tool) ? 'true' : 'false'}
             ?active=${this.#isToolActive(tool)}
             @click=${() => this.#pickTool(tool)}>
             <custom-icon icon=${tool.icon}></custom-icon>
@@ -151,6 +152,7 @@ export class CadleActions extends LiteElement {
         class="tool"
         title="Toggle measurements"
         aria-label="Toggle measurements"
+        aria-pressed=${this.measurements ? 'true' : 'false'}
         ?active=${this.measurements}
         @click=${this.#toggleMeasurements}>
         <custom-icon icon="measuring_tape"></custom-icon>

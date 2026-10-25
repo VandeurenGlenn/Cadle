@@ -11,23 +11,26 @@ declare global {
 }
 
 type OneWireAction = {
-  action: string
+  kind: OneWireComposeKind
   icon: string
   title: string
   label: string
 }
+
+type OneWireComposeKind = 'breaker' | 'switch' | 'kamrail' | 'load'
 
 @customElement('onewire-actions')
 export class OneWireActions extends LiteElement {
   static styles = [styles]
 
   @property({ type: Boolean }) accessor isVisible = false
+  @property({ type: String }) accessor activeKind: OneWireComposeKind = 'switch'
 
   #actions: OneWireAction[] = [
-    { action: 'draw-onewire-compose-kamrail', icon: 'power_input', title: 'Add kamrail', label: 'KamRail' },
-    { action: 'draw-onewire-compose-breaker', icon: 'electric_bolt', title: 'Add breaker', label: 'Breaker' },
-    { action: 'draw-onewire-compose-switch', icon: 'toggle_off', title: 'Add switch', label: 'Switch' },
-    { action: 'draw-onewire-compose-load', icon: 'power', title: 'Add load', label: 'Load' }
+    { kind: 'kamrail', icon: 'power_input', title: 'Add kamrail', label: 'Kamrail' },
+    { kind: 'breaker', icon: 'electric_bolt', title: 'Add breaker', label: 'Breaker' },
+    { kind: 'switch', icon: 'toggle_off', title: 'Add switch', label: 'Switch' },
+    { kind: 'load', icon: 'power', title: 'Add load', label: 'Load' }
   ]
 
   firstRender(): void {
@@ -35,11 +38,13 @@ export class OneWireActions extends LiteElement {
     // happened, so initialize visibility from the current route as well.
     this.isVisible = location.hash.includes('#!/editor/model')
     pubsub.subscribe('shell.action', this.#onActionChange)
+    pubsub.subscribe('editor.controls.state', this.#onControlsState)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     pubsub.unsubscribe('shell.action', this.#onActionChange)
+    pubsub.unsubscribe('editor.controls.state', this.#onControlsState)
   }
 
   #onActionChange = (_action: string) => {
@@ -47,26 +52,17 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
+  #onControlsState = (state: { oneWireComposeKind?: OneWireComposeKind }) => {
+    if (state.oneWireComposeKind) this.activeKind = state.oneWireComposeKind
+  }
+
   @listen('hashchange', { target: 'window' })
   onHashChange() {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
-  #handleAction = (action: string) => {
-    switch (action) {
-      case 'draw-onewire-compose-breaker':
-        pubsub.publish('editor.controls.command', { onewireCompose: 'breaker' })
-        break
-      case 'draw-onewire-compose-switch':
-        pubsub.publish('editor.controls.command', { onewireCompose: 'switch' })
-        break
-      case 'draw-onewire-compose-kamrail':
-        pubsub.publish('editor.controls.command', { onewireCompose: 'kamrail' })
-        break
-      case 'draw-onewire-compose-load':
-        pubsub.publish('editor.controls.command', { onewireCompose: 'load' })
-        break
-    }
+  #handleAction = (kind: OneWireComposeKind) => {
+    pubsub.publish('editor.controls.command', { onewireCompose: kind })
   }
 
   render() {
@@ -80,8 +76,10 @@ export class OneWireActions extends LiteElement {
               class="onewire-action-btn"
               title="${action.title}"
               aria-label="${action.title}"
-              @click="${() => this.#handleAction(action.action)}">
+              aria-pressed=${this.activeKind === action.kind ? 'true' : 'false'}
+              @click="${() => this.#handleAction(action.kind)}">
               <custom-icon icon="${action.icon}"></custom-icon>
+              <span>${action.label}</span>
             </button>
           `
         )}

@@ -4,9 +4,17 @@ import { jsPDF } from 'jspdf'
 const createProject = async (page: import('@playwright/test').Page, name: string) => {
   await page.goto('/#!/create-project')
   const values: Record<string, string> = {
-    'Project name': name, 'Page name': 'Existing plan', 'Customer name': 'Ada',
-    'Customer last name': 'Tester', Name: 'E2E', 'Last name': 'Installer', Company: 'Cadle Test',
-    Street: 'Teststraat', 'House number': '1', 'Postal code': '1000', City: 'Brussel'
+    'Project name': name,
+    'Page name': 'Existing plan',
+    'Customer name': 'Ada',
+    'Customer last name': 'Tester',
+    Name: 'E2E',
+    'Last name': 'Installer',
+    Company: 'Cadle Test',
+    Street: 'Teststraat',
+    'House number': '1',
+    'Postal code': '1000',
+    City: 'Brussel'
   }
   for (const [label, value] of Object.entries(values)) {
     await page.locator(`create-project-field input[data-field="${label}"]`).fill(value)
@@ -16,7 +24,7 @@ const createProject = async (page: import('@playwright/test').Page, name: string
 }
 
 const choosePdf = async (page: import('@playwright/test').Page, name: string, buffer: Buffer) => {
-  await page.locator('project-actions custom-button[label="File"]').click()
+  await page.locator('project-actions').getByRole('button', { name: 'File' }).click()
   await page.locator('project-actions custom-list-item[data-group="import"]').click()
   const chooserPromise = page.waitForEvent('filechooser')
   await page.locator('project-actions custom-list-item[data-action="import-pdf"]').click()
@@ -63,7 +71,11 @@ test('imports a real vector PDF as reviewed editable Cadle objects', async ({ pa
     retainedProcessedCanvas: Boolean(element.pages[0]?.analysis?.processedCanvas),
     previewPixels: element.pages[0]?.width * element.pages[0]?.height
   }))
-  expect(reviewedMemory).toEqual({ retainedCanvas: false, retainedProcessedCanvas: false, previewPixels: initialMemory.previewPixels })
+  expect(reviewedMemory).toEqual({
+    retainedCanvas: false,
+    retainedProcessedCanvas: false,
+    previewPixels: initialMemory.previewPixels
+  })
   await expect(primaryAction).toContainText('Create 1 Page')
   await primaryAction.click()
   await expect(importer).toHaveCount(0)

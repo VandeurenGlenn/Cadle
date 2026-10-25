@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { evaluateOneWirePreflight } from '../src/shell/onewire-preflight.ts'
+import { evaluateOneWirePreflight } from '../src/editor/onewire-preflight.ts'
 
 test('requires bound ground-plan circuits before one-wire generation', () => {
   assert.deepEqual(evaluateOneWirePreflight({ totalGroups: 0, errorCount: 0, valid: false }), {

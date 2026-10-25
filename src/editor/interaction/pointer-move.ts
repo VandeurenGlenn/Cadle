@@ -1,7 +1,8 @@
 import { connectedWallIds, dragEndpointSnapDelta, translateShape, updateConnectedWalls } from './shape-transforms.js'
 import { oneWireSymbolNodeInfo } from '../layout/onewire-symbol-nodes.js'
 import { symbolContentBounds } from '../layout/symbol-layout.js'
-import type { DraftShape, DragState, Point, Shape } from '../../editor/model/types.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
+import type { DraftShape, DragState, LineShape, Point, Shape, SymbolShape } from '../../editor/model/types.js'
 
 const closestPointOnSegment = (point: Point, start: Point, end: Point): Point => {
   const dx = end.x - start.x
@@ -12,17 +13,19 @@ const closestPointOnSegment = (point: Point, start: Point, end: Point): Point =>
   return { x: start.x + dx * position, y: start.y + dy * position }
 }
 
-const isWallSymbol = (shape: Shape): shape is Extract<Shape, { kind: 'symbol' }> =>
+const isWallSymbol = (shape: Shape): shape is SymbolShape =>
   shape.kind === 'symbol' && /\/(?:switches|socket outlets)\//i.test(shape.path)
 
-type WallShape = Extract<Shape, { kind: 'wall' }>
+type WallShape = LineShape & { kind: 'wall' }
+
+const isWallShape = (shape: Shape): shape is WallShape => shape.kind === 'wall'
 
 const symbolWallOffsetPoint = (
   point: Point,
   symbolHalfExtent: number,
   wall: WallShape,
   zoom: number,
-  symbol: Extract<Shape, { kind: 'symbol' }> | null = null
+  symbol: SymbolShape | null = null
 ): Point | null => {
   const closest = closestPointOnSegment(point, wall.start, wall.end)
   const dx = wall.end.x - wall.start.x
@@ -58,7 +61,7 @@ const mountedWallForSymbol = (
   let bestWall: WallShape | null = null
   let bestDistance = Number.POSITIVE_INFINITY
   for (const candidate of shapes) {
-    if (candidate.kind !== 'wall') continue
+    if (!isWallShape(candidate)) continue
     const closest = closestPointOnSegment(shape.position, candidate.start, candidate.end)
     const distance = Math.hypot(shape.position.x - closest.x, shape.position.y - closest.y)
     if (distance >= bestDistance) continue
@@ -71,7 +74,7 @@ const mountedWallForSymbol = (
 
 const isClearOfWalls = (point: Point, symbolHalfExtent: number, shapes: readonly Shape[], zoom: number): boolean =>
   shapes.every((shape) => {
-    if (shape.kind !== 'wall') return true
+    if (!isWallShape(shape)) return true
     const closest = closestPointOnSegment(point, shape.start, shape.end)
     const wallStrokePx = typeof shape.strokeWidth === 'number' ? shape.strokeWidth : 6
     const wallHalfThickness = wallStrokePx / (2 * Math.max(zoom, 0.1))
@@ -97,20 +100,20 @@ const directionalExtent = (
 
 export const snapWallSymbolNextToSymbol = (
   point: Point,
-  sourceShape: Extract<Shape, { kind: 'symbol' }>,
+  sourceShape: SymbolShape,
   shapes: readonly Shape[],
   excludedIds: ReadonlySet<string> = new Set(),
   zoom = 1,
   wall: WallShape | null = null
 ): { point: Point; snapped: boolean } => {
   const snapRadius = 18 / Math.max(zoom, 0.1)
-  const sourceHalfExtent = (24 * Math.max(0.4, sourceShape.scale)) / 2
+  const sourceHalfExtent = (24 * renderedSymbolScale(sourceShape.path, sourceShape.scale)) / 2
   let bestPoint: Point | null = null
   let bestDistance = snapRadius
 
   for (const shape of shapes) {
     if (excludedIds.has(shape.id) || !isWallSymbol(shape)) continue
-    const targetHalfExtent = (24 * Math.max(0.4, shape.scale)) / 2
+    const targetHalfExtent = (24 * renderedSymbolScale(shape.path, shape.scale)) / 2
     const sourceBounds = symbolContentBounds({ ...sourceShape, position: point })
     const targetBounds = symbolContentBounds(shape)
     const targetWall = wall ?? mountedWallForSymbol(shape, targetHalfExtent, shapes, zoom)
@@ -168,7 +171,7 @@ export const snapSymbolToWallOffset = (
   symbolHalfExtent: number,
   shapes: readonly Shape[],
   zoom = 1,
-  symbol: Extract<Shape, { kind: 'symbol' }> | null = null
+  symbol: SymbolShape | null = null
 ): { point: Point; snapped: boolean; wall: WallShape | null } => {
   const snapRadius = symbolHalfExtent * 2
   let bestPoint: Point | null = null
@@ -176,7 +179,7 @@ export const snapSymbolToWallOffset = (
   let bestDistance = snapRadius
 
   for (const shape of shapes) {
-    if (shape.kind !== 'wall') continue
+    if (!isWallShape(shape)) continue
     const closest = closestPointOnSegment(point, shape.start, shape.end)
     const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
     if (distance >= bestDistance) continue
@@ -266,7 +269,7 @@ export const applyDragMove = (
 
   const wallSymbol = finalShapes.find(isWallSymbol)
   if (wallSymbol?.kind === 'symbol') {
-    const halfExtent = (24 * Math.max(0.4, wallSymbol.scale)) / 2
+    const halfExtent = (24 * renderedSymbolScale(wallSymbol.path, wallSymbol.scale)) / 2
     const wallSnap = snapSymbolToWallOffset(wallSymbol.position, halfExtent, allShapes, zoom, wallSymbol)
     if (wallSnap.snapped) {
       finalShapes = finalShapes.map((shape) =>
@@ -299,11 +302,11 @@ export const applyDragMove = (
     if (shape.kind !== 'symbol') return false
     return (
       /protection devices|automaat|breaker|differential|differentieel|\brcd\b/i.test(`${shape.name} ${shape.path}`) &&
-      oneWireSymbolNodeInfo(shape.path, shape.scale) !== null
+      oneWireSymbolNodeInfo(shape.path, shape.scale, shape.rotation) !== null
     )
   })
   if (electricalSymbol?.kind === 'symbol') {
-    const node = oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale)
+    const node = oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale, electricalSymbol.rotation)
     if (node) {
       const anchor = {
         x: electricalSymbol.position.x + node.offset.x,

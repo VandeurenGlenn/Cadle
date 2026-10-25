@@ -16,6 +16,73 @@ test('ignores persisted selection ids so restored documents start unselected', (
   assert.equal(state?.selectedId, null)
 })
 
+test('preserves a valid one-wire layout version and treats missing versions as legacy', () => {
+  const base = {
+    version: 2,
+    shapes: [],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 0,
+    worldWidth: 1000,
+    worldHeight: 1000
+  }
+
+  assert.equal(asNativeState({ ...base, oneWireLayoutVersion: 1 })?.oneWireLayoutVersion, 1)
+  assert.equal(asNativeState(base)?.oneWireLayoutVersion, undefined)
+  assert.equal(asNativeState({ ...base, oneWireLayoutVersion: -1 })?.oneWireLayoutVersion, undefined)
+  assert.equal(asNativeState({ ...base, oneWireLayoutVersion: 1.5 })?.oneWireLayoutVersion, undefined)
+})
+
+test('preserves one-wire rail ownership for generated shapes', () => {
+  const state = asNativeState({
+    version: 2,
+    oneWireLayoutVersion: 11,
+    shapes: [
+      {
+        id: 'breaker-a',
+        kind: 'symbol',
+        position: { x: 100, y: 200 },
+        name: 'Automaat',
+        path: 'symbols/Protection devices/Automaat.svg',
+        scale: 2.8,
+        bindingId: 'BRK1',
+        groupId: 'onewire-breaker-a',
+        oneWireRailId: 'rail-a'
+      }
+    ],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 10,
+    worldWidth: 1000,
+    worldHeight: 700
+  })
+
+  assert.equal(state?.shapes[0]?.oneWireRailId, 'rail-a')
+})
+
+test('preserves generated label weight after reopening a document', () => {
+  const state = asNativeState({
+    version: 2,
+    shapes: [
+      {
+        id: 'label-a',
+        kind: 'text',
+        position: { x: 100, y: 200 },
+        text: 'A1',
+        scale: 1,
+        fontWeight: 600
+      }
+    ],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 10,
+    worldWidth: 1000,
+    worldHeight: 700
+  })
+
+  assert.equal(state?.shapes[0]?.kind === 'text' ? state.shapes[0].fontWeight : undefined, 600)
+})
+
 test('rejects malformed document dimensions and paper presets', () => {
   const base = {
     version: 1,

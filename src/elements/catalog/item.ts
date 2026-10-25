@@ -4,6 +4,7 @@ import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import type { JsonValue } from '../../types.js'
 import state from '../../state.js'
 import pubsub from '../../pubsub.js'
+import { createCatalogSvgPreview } from './svg-preview.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
@@ -23,6 +24,9 @@ type SymbolMetadata = Record<string, JsonValue> & {
   oneLineEligible?: boolean
   situationMetadata?: JsonValue
 }
+
+const MAGNIFIER_WIDTH = 216
+const MAGNIFIER_HEIGHT = 184
 
 @customElement('catalog-item')
 export class CatalogItem extends LiteElement {
@@ -49,13 +53,14 @@ export class CatalogItem extends LiteElement {
   accessor loadedPage = ''
 
   private _svgPreview = ''
+  private _cardSvgPreview = ''
   private _menuOpen = false
   private _menuX = 0
   private _menuY = 0
   private static _magnifierElement?: HTMLDivElement
   set headline(value: string) {
-    // this.title = value
-    this._headline = value.length > 28 ? `${value.slice(0, 28)} ...` : value
+    this._headline = value
+    this.setAttribute('aria-label', `Place ${value}`)
     this.requestRender()
   }
 
@@ -68,7 +73,7 @@ export class CatalogItem extends LiteElement {
   static styles = [styles]
 
   #openMagnifier = (event: MouseEvent | PointerEvent) => {
-    if (window.matchMedia('(hover: none)').matches) return
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
     if (!this._svgPreview && !this.symbol?.path && !this.image) return
     const row =
       (event.currentTarget as HTMLElement | null) ?? (this.shadowRoot?.querySelector('.row') as HTMLElement | null)
@@ -85,8 +90,11 @@ export class CatalogItem extends LiteElement {
     if (CatalogItem._magnifierElement?.isConnected) return CatalogItem._magnifierElement
     const element = document.createElement('div')
     element.style.position = 'fixed'
-    element.style.width = '170px'
-    element.style.height = '130px'
+    element.style.width = `${MAGNIFIER_WIDTH}px`
+    element.style.height = `${MAGNIFIER_HEIGHT}px`
+    element.style.display = 'none'
+    element.style.gridTemplateRows = 'minmax(0, 1fr) auto'
+    element.style.gap = '6px'
     element.style.borderRadius = '14px'
     element.style.border = '1px solid var(--cadle-glass-border)'
     element.style.background = 'var(--cadle-glass-bg-strong)'
@@ -95,7 +103,6 @@ export class CatalogItem extends LiteElement {
     element.style.boxSizing = 'border-box'
     element.style.pointerEvents = 'none'
     element.style.zIndex = '2147483647'
-    element.style.display = 'none'
     element.style.backdropFilter = 'blur(var(--cadle-glass-blur))'
     ;(element.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
       'blur(var(--cadle-glass-blur))'
@@ -107,19 +114,20 @@ export class CatalogItem extends LiteElement {
   #renderMagnifierContent(target: HTMLDivElement) {
     const previewSource = this.symbol?.path ?? this.image
     target.style.color = getComputedStyle(this).color
+    const preview = document.createElement('div')
+    preview.style.display = 'grid'
+    preview.style.placeItems = 'center'
+    preview.style.minHeight = '0'
+    preview.style.overflow = 'hidden'
     if (this._svgPreview) {
-      target.innerHTML = this._svgPreview
-      const svg = target.querySelector('svg') as SVGElement | null
+      preview.innerHTML = this._svgPreview
+      const svg = preview.querySelector('svg') as SVGElement | null
       if (svg) {
         svg.style.display = 'block'
         svg.style.width = '100%'
         svg.style.height = '100%'
       }
-      return
-    }
-
-    if (previewSource) {
-      target.innerHTML = ''
+    } else if (previewSource) {
       const image = document.createElement('img')
       image.src = previewSource
       image.alt = ''
@@ -127,29 +135,52 @@ export class CatalogItem extends LiteElement {
       image.style.width = '100%'
       image.style.height = '100%'
       image.style.objectFit = 'contain'
-      target.append(image)
-      return
+      preview.append(image)
     }
 
-    target.innerHTML = ''
+    const label = document.createElement('div')
+    label.textContent = this.symbol?.name ?? this._headline
+    label.style.display = '-webkit-box'
+    label.style.setProperty('-webkit-box-orient', 'vertical')
+    label.style.setProperty('-webkit-line-clamp', '2')
+    label.style.overflow = 'hidden'
+    label.style.textAlign = 'center'
+    label.style.textOverflow = 'ellipsis'
+    label.style.whiteSpace = 'normal'
+    label.style.lineHeight = '1.2'
+    label.style.maxHeight = '2.4em'
+    label.style.overflowWrap = 'anywhere'
+    label.style.font = 'var(--md-sys-typescale-label-medium)'
+    label.style.fontWeight = '600'
+    target.replaceChildren(preview, label)
   }
 
   #showMagnifier(row: HTMLElement | null) {
     const target = this.#getMagnifierElement()
     this.#renderMagnifierContent(target)
     this.#positionMagnifier(row)
-    target.style.display = 'block'
+    target.style.display = 'grid'
   }
 
   #positionMagnifier(row: HTMLElement | null) {
     const target = this.#getMagnifierElement()
     const anchorRect = (row ?? this).getBoundingClientRect()
+    let composedParent: Node | null = this
+    let railRect: DOMRect | undefined
+    while (composedParent) {
+      if (composedParent instanceof HTMLElement && composedParent.classList.contains('left-rail')) {
+        railRect = composedParent.getBoundingClientRect()
+        break
+      }
+      const root = composedParent.getRootNode()
+      composedParent = composedParent.parentNode ?? (root instanceof ShadowRoot ? root.host : null)
+    }
     const gap = 16
-    const magnifierWidth = 170
-    const magnifierHeight = 130
+    const magnifierWidth = MAGNIFIER_WIDTH
+    const magnifierHeight = MAGNIFIER_HEIGHT
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
-    let left = anchorRect.right + gap
+    let left = (railRect?.right ?? anchorRect.right) + gap
     const top = anchorRect.top + (anchorRect.height - magnifierHeight) / 2
     if (left + magnifierWidth > viewportWidth - gap) {
       left = anchorRect.left - magnifierWidth - gap
@@ -163,6 +194,17 @@ export class CatalogItem extends LiteElement {
 
   #closeMagnifier = () => {
     if (CatalogItem._magnifierElement) CatalogItem._magnifierElement.style.display = 'none'
+  }
+
+  #onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    void this.#click()
+  }
+
+  #onFocus = () => {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
+    this.#showMagnifier(this)
   }
 
   #closeContextMenu = () => {
@@ -194,15 +236,18 @@ export class CatalogItem extends LiteElement {
     const sourcePath = this.symbol?.path ?? this.image
     if (!sourcePath) {
       this._svgPreview = ''
+      this._cardSvgPreview = ''
       return
     }
 
     try {
       const markup = await this.#loadSvgMarkup(sourcePath)
-      this._svgPreview = this.#themeSvgMarkup(markup)
+      this._svgPreview = createCatalogSvgPreview(markup, sourcePath, false)
+      this._cardSvgPreview = createCatalogSvgPreview(markup, sourcePath, true)
       this.requestRender()
     } catch {
       this._svgPreview = ''
+      this._cardSvgPreview = ''
       this.requestRender()
     }
   }
@@ -226,60 +271,6 @@ export class CatalogItem extends LiteElement {
     }
 
     throw new Error(`Failed to fetch SVG markup for ${sourcePath}`)
-  }
-
-  #themeSvgMarkup(markup: string) {
-    const themedMarkup = this.#replaceBlackColorTokens(markup)
-    const doc = new DOMParser().parseFromString(themedMarkup, 'image/svg+xml')
-    const svg = doc.documentElement
-    if (!svg || svg.nodeName.toLowerCase() !== 'svg') return ''
-    svg.setAttribute('width', '100%')
-    svg.setAttribute('height', '100%')
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-    const elements = svg.querySelectorAll('*')
-    for (const element of elements) {
-      this.#applyThemeColor(element, 'fill')
-      this.#applyThemeColor(element, 'stroke')
-      this.#replaceInlineStyleColor(element)
-    }
-    return new XMLSerializer().serializeToString(svg)
-  }
-
-  #replaceBlackColorTokens(markup: string) {
-    return markup
-      .replace(/(#000000|#000|black|#111111|#111|#222222|#222)(?![\w-])/gi, 'currentColor')
-      .replace(/rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)/gi, 'currentColor')
-      .replace(/rgb\(\s*17\s*,\s*17\s*,\s*17\s*\)/gi, 'currentColor')
-      .replace(/rgb\(\s*34\s*,\s*34\s*,\s*34\s*\)/gi, 'currentColor')
-  }
-
-  #applyThemeColor(element: Element, attribute: 'fill' | 'stroke') {
-    const value = element.getAttribute(attribute)
-    if (!value) return
-    const normalized = value.trim().toLowerCase()
-    if (normalized === 'none' || normalized === 'transparent') return
-    if (
-      normalized === '#000' ||
-      normalized === '#000000' ||
-      normalized === 'black' ||
-      normalized === '#111' ||
-      normalized === '#111111' ||
-      normalized === '#222' ||
-      normalized === '#222222'
-    ) {
-      element.setAttribute(attribute, 'currentColor')
-    }
-  }
-
-  #replaceInlineStyleColor(element: Element) {
-    const style = element.getAttribute('style')
-    if (!style) return
-    element.setAttribute(
-      'style',
-      style
-        .replace(/fill\s*:\s*(#000000|#000|black|#111111|#111|#222222|#222)/gi, 'fill: currentColor')
-        .replace(/stroke\s*:\s*(#000000|#000|black|#111111|#111|#222222|#222)/gi, 'stroke: currentColor')
-    )
   }
 
   #normalizeBindingId(value) {
@@ -417,7 +408,11 @@ export class CatalogItem extends LiteElement {
   }
 
   firstRender(): void {
+    this.setAttribute('role', 'button')
     this.addListener('click', this.#click)
+    this.addListener('keydown', this.#onKeyDown)
+    this.addListener('focus', this.#onFocus)
+    this.addListener('blur', this.#closeMagnifier)
     this.addListener('dragstart', this.#onDragStart)
     this.addListener('contextmenu', this.#openContextMenu)
   }
@@ -427,6 +422,7 @@ export class CatalogItem extends LiteElement {
     return html`
       <div
         class="row"
+        aria-label=${this.headline}
         draggable="true"
         @mouseenter=${this.#openMagnifier}
         @mousemove=${this.#moveMagnifier}
@@ -435,8 +431,8 @@ export class CatalogItem extends LiteElement {
           <span
             class="preview"
             aria-hidden="true"
-            >${this._svgPreview
-              ? unsafeSVG(this._svgPreview)
+            >${this._cardSvgPreview
+              ? unsafeSVG(this._cardSvgPreview)
               : previewSource
                 ? html`<img
                     class="magnifier-image"
@@ -445,7 +441,6 @@ export class CatalogItem extends LiteElement {
                 : ''}</span
           >
         </slot>
-        <span class="headline">${this.headline}</span>
       </div>
       <custom-dropdown
         class="symbol-contextmenu"

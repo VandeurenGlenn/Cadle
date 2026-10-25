@@ -7,6 +7,7 @@ export type ViewportState = Readonly<{
 }>
 
 export type Size = Readonly<{ width: number; height: number }>
+export type Bounds = Readonly<{ x: number; y: number; width: number; height: number }>
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 8
@@ -49,6 +50,13 @@ export class ViewportController {
     if (Number.isFinite(panY)) this.#panY = panY
   }
 
+  preserveCenter(previous: Size, next: Size): boolean {
+    if (previous.width <= 0 || previous.height <= 0 || next.width <= 0 || next.height <= 0) return false
+    this.#panX += (next.width - previous.width) / 2
+    this.#panY += (next.height - previous.height) / 2
+    return true
+  }
+
   fit(container: Size, world: Size, margin = 12): boolean {
     if (container.width <= 0 || container.height <= 0 || world.width <= 0 || world.height <= 0) return false
     const availableWidth = Math.max(1, container.width - margin * 2)
@@ -56,6 +64,18 @@ export class ViewportController {
     this.#zoom = this.#clampZoom(Math.min(1, availableWidth / world.width, availableHeight / world.height))
     this.#panX = (container.width - world.width * this.#zoom) / 2
     this.#panY = (container.height - world.height * this.#zoom) / 2
+    return true
+  }
+
+  fitBounds(container: Size, bounds: Bounds, margin = 32, minimumZoom = MIN_ZOOM): boolean {
+    if (container.width <= 0 || container.height <= 0 || bounds.width <= 0 || bounds.height <= 0) return false
+    const availableWidth = Math.max(1, container.width - margin * 2)
+    const availableHeight = Math.max(1, container.height - margin * 2)
+    this.#zoom = this.#clampZoom(
+      Math.max(minimumZoom, Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height))
+    )
+    this.#panX = (container.width - bounds.width * this.#zoom) / 2 - bounds.x * this.#zoom
+    this.#panY = (container.height - bounds.height * this.#zoom) / 2 - bounds.y * this.#zoom
     return true
   }
 

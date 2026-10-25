@@ -29,9 +29,9 @@ const browserBuiltins = () => ({
 export default [
   {
     input: [
-      './src/shell.ts',
+      './src/shell/app-shell.ts',
       './src/bootstrap.ts',
-      './src/app.ts',
+      './src/editor/cadle-app.ts',
       './src/sw.ts',
       './src/fields/projects.ts',
       './src/fields/settings.ts',
@@ -44,9 +44,8 @@ export default [
       // Browser crypto/stream shims intentionally contain CommonJS cycles.
       // Suppress only dependency-only cycles; any cycle touching Cadle source
       // still reaches Rollup's normal warning handler.
-      const dependencyOnlyCycle = warning.code === 'CIRCULAR_DEPENDENCY' && ids.length > 0 && ids.every(
-        (id) => id.includes('/node_modules/')
-      )
+      const dependencyOnlyCycle =
+        warning.code === 'CIRCULAR_DEPENDENCY' && ids.length > 0 && ids.every((id) => id.includes('/node_modules/'))
       if (!dependencyOnlyCycle) warn(warning)
     },
     output: [
@@ -65,11 +64,26 @@ export default [
           { from: 'src/assets', to: 'www/assets' },
           { from: 'src/themes', to: 'www/themes' },
           { from: 'node_modules/tesseract.js/dist/worker.min.js', to: 'www/ocr/worker.min.js' },
-          { from: 'node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js', to: 'www/ocr/core/tesseract-core-lstm.wasm.js' },
-          { from: 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js', to: 'www/ocr/core/tesseract-core-simd-lstm.wasm.js' },
-          { from: 'node_modules/tesseract.js-core/tesseract-core-relaxedsimd-lstm.wasm.js', to: 'www/ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js' },
-          { from: 'node_modules/@tesseract.js-data/nld/4.0.0_best_int/nld.traineddata.gz', to: 'www/ocr/lang/nld.traineddata.gz' },
-          { from: 'node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz', to: 'www/ocr/lang/eng.traineddata.gz' }
+          {
+            from: 'node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js',
+            to: 'www/ocr/core/tesseract-core-lstm.wasm.js'
+          },
+          {
+            from: 'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
+            to: 'www/ocr/core/tesseract-core-simd-lstm.wasm.js'
+          },
+          {
+            from: 'node_modules/tesseract.js-core/tesseract-core-relaxedsimd-lstm.wasm.js',
+            to: 'www/ocr/core/tesseract-core-relaxedsimd-lstm.wasm.js'
+          },
+          {
+            from: 'node_modules/@tesseract.js-data/nld/4.0.0_best_int/nld.traineddata.gz',
+            to: 'www/ocr/lang/nld.traineddata.gz'
+          },
+          {
+            from: 'node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz',
+            to: 'www/ocr/lang/eng.traineddata.gz'
+          }
         ]
       }),
       materialSymbols({

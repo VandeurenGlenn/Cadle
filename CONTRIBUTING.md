@@ -31,8 +31,8 @@ output created only while validating a source change.
 - Keep custom elements focused on translating events and state into controller calls and rendered templates.
 - Add Node tests for pure logic under `test/`, named after the module they exercise.
 
-Read `ARCHITECTURE.md` before changing `src/app.ts` or `src/shell.ts`. Those files are composition roots; prefer a
-small tested extraction when new behavior would make either one larger.
+Read `ARCHITECTURE.md` before changing `src/editor/cadle-app.ts` or `src/shell/app-shell.ts`. Those files are
+composition roots; prefer a small tested extraction when new behavior would make either one larger.
 
 ## Change style
 

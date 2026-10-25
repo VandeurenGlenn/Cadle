@@ -41,8 +41,9 @@ test('normalizes ground-plan protection symbols to their one-wire variants', () 
   )
   assert.ok((oneWireSymbolScaleFor('symbols/Protection devices/Automaat.svg') ?? 0) > 2.5)
   assert.ok((oneWireSymbolScaleFor('symbols/Protection devices/Residual-current circuit breaker.svg') ?? 0) > 1.8)
-  assert.ok((oneWireSymbolScaleFor('symbols/Switches/Switch general symbol.svg') ?? 1) <= 0.85)
-  assert.ok((oneWireSymbolScaleFor('symbols/Socket outlets/Wall outlet with grounding.svg') ?? 1) <= 0.7)
+  const switchScale = oneWireSymbolScaleFor('symbols/Switches/Switch general symbol.svg')!
+  assert.ok(Math.abs(oneWireSymbolNodeInfo('symbols/Switches/Switch general symbol.svg', switchScale)!.cutHalfWidth! * 2 / 8 - 2) < 1e-6)
+  assert.equal(oneWireSymbolScaleFor('symbols/Socket outlets/Wall outlet with grounding.svg')! * 24 / 8, 4)
   assert.equal(ONE_WIRE_SOCKET_SYMBOL_PATH, 'symbols/Socket outlets/Wall outlet with grounding.svg')
 })
 
@@ -80,15 +81,15 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 4.2 && node.cutHalfWidth <= 6.2)
+    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 4.2 && node.cutHalfWidth <= 8.001)
   }
 
   for (const path of classicSwitchPaths) {
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 2.2 && node.cutHalfWidth <= 5.2)
-    assert.ok(scale! >= 0.5 && scale! <= 0.85)
+    assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth * 2 / 8 - 2) < 1e-6)
+    assert.ok(scale! > 0 && scale! <= 3)
   }
 
   for (const path of deviceSwitchPaths) {
@@ -125,7 +126,7 @@ test('connects row wires directly to symbol node edges', () => {
   const scale = oneWireSymbolScaleFor(path) ?? 1
   const node = oneWireSymbolNodeInfo(path, scale)
   assert.ok(node)
-  assert.ok(node.cutHalfWidth !== null && node.cutHalfWidth > 3 && node.cutHalfWidth < 6)
+  assert.ok(node.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 8) < 1e-6)
   const lamp = oneWireSymbolNodeInfo('symbols/Consumption appliances/Lighting.svg', 1.35)
   assert.deepEqual(lamp, { offset: { x: 0, y: 0 }, cutHalfWidth: null })
   const fluorescent = oneWireSymbolNodeInfo('symbols/Consumption appliances/Fluorescent lamp.svg', 1.35, 90)
@@ -312,8 +313,8 @@ test('anchors readable breaker annotations to the conductor like the reference d
   assert.equal(cable.position.x, 418)
   assert.equal(cable.position.y, section.breakerContentTopY - 12)
   assert.equal(cable.rotation, -90)
-  assert.equal(cable.scale, 0.7)
-  assert.equal(cable.fontWeight, 300)
+  assert.equal(18 * cable.scale! / 8, 2.5)
+  assert.equal(cable.fontWeight, 400)
   const node = oneWireSymbolNodeInfo(installation.path, installation.scale)!
   assert.equal(installation.position.x + node.offset.x, 400)
   assert.equal(installation.position.x, 400)
@@ -385,7 +386,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   assert.equal(phase?.kind === 'text' ? phase.textAnchor : null, 'end')
   assert.ok(cableSection?.kind === 'text' && cableSection.position.x === 418)
   assert.equal(cableSection?.kind === 'text' ? cableSection.textAnchor : null, undefined)
-  assert.equal(cableSection?.kind === 'text' ? cableSection.scale : null, 0.7)
+  assert.equal(cableSection?.kind === 'text' ? 18 * cableSection.scale! / 8 : null, 2.5)
   assert.equal(cableSection?.kind === 'text' ? cableSection.rotation : null, -90)
   assert.ok(cableInstallationLabel?.kind === 'text' && cableInstallationLabel.position.x === 432)
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.textAnchor : null, undefined)
@@ -820,7 +821,7 @@ test('wraps a 22-point manually inserted family into readable columns', () => {
   assert.ok(
     result.shapes
       .filter((shape): shape is Extract<Shape, { kind: 'text' }> => shape.kind === 'text' && /^\d+$/.test(shape.text))
-      .every((shape) => shape.fontWeight === 300)
+      .every((shape) => shape.fontWeight === 500 && 18 * shape.scale! / 8 >= 2.75)
   )
   assert.ok(
     result.shapes
@@ -828,7 +829,7 @@ test('wraps a 22-point manually inserted family into readable columns', () => {
         (shape): shape is Extract<Shape, { kind: 'text' }> =>
           shape.kind === 'text' && ['2P', 'C16A', '3G1.5 mm² VOB'].includes(shape.text)
       )
-      .every((shape) => shape.fontWeight === 300)
+      .every((shape) => shape.fontWeight === 400 && 18 * shape.scale! / 8 >= 2.5)
   )
   const trunkXs = result.shapes
     .filter(

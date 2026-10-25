@@ -1,12 +1,14 @@
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
 import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
-import { symbolTextLayer } from '../symbol-metadata.js'
+import { symbolTextPresentation } from '../symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import type { PaperPresetConfig } from '../constants.js'
 import type { Project } from '../../types.js'
 import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
-import { bindingLabelsMarkup } from '../svg-templates.js'
+import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
+import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
+import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -37,14 +39,14 @@ const openingMatchesWall = (opening: LineShape, walls: LineShape[], tolerance = 
 }
 
 const EXPORT_STYLE_BLOCK = `
-  .shape { vector-effect: non-scaling-stroke; }
+  .shape { vector-effect: none; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
   .shape-wall { stroke: #3b2c20; stroke-width: 6; }
   .shape-line { stroke-width: 2; }
 
   .binding-label-text {
     fill: #2f241a;
-    font: 700 11px 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font: 700 ${PAPER_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
     letter-spacing: 0.03em;
     dominant-baseline: middle;
     stroke: rgba(255, 255, 255, 0.88);
@@ -73,14 +75,14 @@ const EXPORT_STYLE_BLOCK = `
 `
 
 const EXPORT_STYLE_BLOCK_MONO = `
-  .shape { vector-effect: non-scaling-stroke; }
+  .shape { vector-effect: none; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
   .shape-wall { stroke: #101010; stroke-width: 6; }
   .shape-line { stroke: #151515; stroke-width: 2.4; }
 
   .binding-label-text {
     fill: #151515;
-    font: 700 11px 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font: 700 ${PAPER_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
     letter-spacing: 0.03em;
     dominant-baseline: middle;
     stroke: rgba(255, 255, 255, 0.92);
@@ -316,14 +318,15 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
       const symbolSvg = getCachedSymbolSvg(shape.path)
       if (symbolSvg) {
         const symbolInner = applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
-        const metadataText = symbolTextLayer(shape.path, shape.symbolTextOverrides)
+        const metadataText = symbolTextPresentation(shape)
+        const normalizedStrokeWidth = symbolStrokeWidthForViewBox(symbolSvg.viewBox, size, DEFAULT_SYMBOL_STROKE_WIDTH)
         const symbolStyle =
           `${shape.fill ? `--symbol-fill:${escapeHtml(shape.fill)};` : ''}` +
           `${shape.stroke ? `--symbol-stroke:${escapeHtml(shape.stroke)};` : ''}` +
-          `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
+          `--symbol-stroke-width:${typeof shape.strokeWidth === 'number' ? shape.strokeWidth : normalizedStrokeWidth};`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText}</svg>
+            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText.inner}</svg>${metadataText.annotations}
           </g>
         `
       }
@@ -398,7 +401,7 @@ export const buildWallMask = (shapes: Shape[], worldWidth: number, worldHeight: 
   const openingStrokes = openings
     .map(
       (shape) =>
-        `<line x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}" stroke="black" stroke-width="${openingMaskWidth}" stroke-linecap="butt" vector-effect="non-scaling-stroke"/>`
+        `<line x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}" stroke="black" stroke-width="${openingMaskWidth}" stroke-linecap="butt"/>`
     )
     .join('')
   return `<mask id="wall-opening-mask" x="${maskX}" y="${maskY}" width="${maskWidth}" height="${maskHeight}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" style="mask-type: luminance">
@@ -418,7 +421,7 @@ const buildWallOpeningCuts = (shapes: Shape[], cutColor: string): string => {
   return openings
     .map(
       (shape) =>
-        `<line class="wall-opening-cut" x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}" stroke="${cutColor}" stroke-width="${openingCutWidth}" stroke-linecap="butt" vector-effect="non-scaling-stroke"/>`
+        `<line class="wall-opening-cut" x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}" stroke="${cutColor}" stroke-width="${openingCutWidth}" stroke-linecap="butt"/>`
     )
     .join('')
 }
@@ -432,7 +435,7 @@ export const buildSvgDocument = (options: {
   project?: Project | null
   pageName?: string
   pageKey?: string
-  pageOverlayScale?: number
+  printMargin?: number
   viewBox?: { x: number; y: number; width: number; height: number }
   monochrome?: boolean
 }): string => {
@@ -474,7 +477,7 @@ export const buildSvgDocument = (options: {
     options.shapes.filter((shape) => shape.kind !== 'wall' && shape.kind !== 'symbol')
   )
   const symbolMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'symbol'))
-  const labelMarkup = bindingLabelsMarkup(options.shapes)
+  const labelMarkup = roomLabelsMarkup(options.shapes) + bindingLabelsMarkup(options.shapes)
   const shell =
     typeof window !== 'undefined'
       ? (window as unknown as {
@@ -485,19 +488,16 @@ export const buildSvgDocument = (options: {
   const project = options.project ?? shell.cadleShell?.project ?? null
   const pageName = options.pageName ?? shell.cadleShell?.currentPageName ?? ''
   const pageKey = options.pageKey ?? shell.cadleShell?.loadedPage ?? ''
-  const pageOverlayScale =
-    typeof options.pageOverlayScale === 'number' && Number.isFinite(options.pageOverlayScale)
-      ? options.pageOverlayScale
-      : 1
   const titleBlockMarkup = buildProjectTitleBlockMarkup(
     project,
     pageName,
-    viewBox.width,
-    viewBox.height,
+    options.worldWidth,
+    options.worldHeight,
     pageKey,
-    pageOverlayScale,
-    viewBox.x,
-    viewBox.y
+    1,
+    0,
+    0,
+    options.printMargin
   )
   const markup = `${wallMarkup}${wallOpeningCuts}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
   const exportStyle = options.monochrome ? EXPORT_STYLE_BLOCK_MONO : EXPORT_STYLE_BLOCK
@@ -507,7 +507,6 @@ export const buildSvgDocument = (options: {
         <defs>${defs}</defs>
         <rect width="100%" height="100%" fill="#ffffff"></rect>
         ${markup}
-        ${selectedOutlineMarkup(options.selectedShape)}
       </svg>
     `.trim()
 }
@@ -518,14 +517,5 @@ export const safeAreaRect = (
   worldWidth: number,
   worldHeight: number
 ) => {
-  const marginX = (printMargin / paper.widthMm) * worldWidth
-  const marginY = (printMargin / paper.heightMm) * worldHeight
-  const width = Math.max(0, worldWidth - marginX * 2)
-  const height = Math.max(0, worldHeight - marginY * 2)
-  return {
-    x: marginX,
-    y: marginY,
-    width,
-    height
-  }
+  return pageLayout(worldWidth, worldHeight, printMargin, worldWidth / paper.widthMm).content
 }

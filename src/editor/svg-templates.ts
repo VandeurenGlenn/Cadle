@@ -2,8 +2,9 @@ import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { renderedSymbolScale } from './model/symbol-scale.js'
+import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
-import { symbolTextLayer } from './symbol-metadata.js'
+import { symbolTextPresentation } from './symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 import { symbolContentBounds, symbolOpticalMetrics } from './layout/symbol-layout.js'
 import {
@@ -13,6 +14,7 @@ import {
   oneWireEnergyFlowSegments
 } from './onewire-energy-flow.js'
 import { namedRoomRegions } from './room-regions.js'
+import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -70,7 +72,12 @@ const rectTransform = (
   return rotate || scale ? `translate(${cx} ${cy})${rotate}${scale} translate(${-cx} ${-cy})` : ''
 }
 
-export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') => {
+export const shapeTemplate = (
+  shape: Shape,
+  selected: boolean,
+  extraClass = '',
+  symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH
+) => {
   if (shape.hidden) return nothing
   const selectedAttr = selected ? 'true' : 'false'
   const generatedLabelClass =
@@ -274,21 +281,19 @@ export const shapeTemplate = (shape: Shape, selected: boolean, extraClass = '') 
       const symbolInner = symbolSvg
         ? applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         : ''
-      const metadataText = symbolTextLayer(shape.path, shape.symbolTextOverrides)
-      const nonScalingStroke =
-        shape.sourceLink?.role === 'breaker' ||
-        shape.sourceLink?.role === 'cable-installation' ||
-        shape.sourceLink?.role === 'switch' ||
-        shape.sourceLink?.role === 'load'
+      const metadataText = symbolTextPresentation(shape)
+      const normalizedStrokeWidth = symbolSvg
+        ? symbolStrokeWidthForViewBox(symbolSvg.viewBox, size, symbolStrokeWidthPreference)
+        : symbolStrokeWidthPreference
       const symbolStyle =
         `${shape.fill ? `--symbol-fill:${shape.fill};` : ''}` +
         `${shape.stroke ? `--symbol-stroke:${shape.stroke};` : ''}` +
-        `${typeof shape.strokeWidth === 'number' ? `--symbol-stroke-width:${shape.strokeWidth};` : ''}`
+        `--symbol-stroke-width:${typeof shape.strokeWidth === 'number' ? shape.strokeWidth : normalizedStrokeWidth};`
       return svg`
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}${nonScalingStroke ? 'vector-effect:non-scaling-stroke;' : ''}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText)}</svg>`
+              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText.inner)}</svg>${unsafeSVG(metadataText.annotations)}`
               : nothing
           }
         </g>
@@ -337,26 +342,28 @@ export const bindingLabelsTemplate = (shapes: Shape[]) => {
   return placements.map(
     (placement) => svg`
     <g class="binding-label" data-shape-id=${placement.shapeId}>
-      <text class="binding-label-text" x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
+      <text class="binding-label-text" style=${`font-size:${PAPER_LABEL_FONT_SIZE}px`} x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
     </g>
   `
   )
 }
 
-export const roomLabelsTemplate = (shapes: Shape[]) =>
+export const roomLabelsMarkup = (shapes: Shape[]) =>
   namedRoomRegions(shapes).map(
-    (room) => svg`<text
+    (room) => `<text
       class="room-label"
-      x=${room.x + room.width / 2}
-      y=${room.y + room.height / 2}
+      x="${room.x + room.width / 2}"
+      y="${room.y + room.height / 2}"
       text-anchor="middle"
       dominant-baseline="middle"
       fill="#2d2926"
       font-family="Segoe UI,Arial,sans-serif"
-      font-size="14"
+      font-size="${PAPER_LABEL_FONT_SIZE}"
       font-weight="600"
-      pointer-events="none">${room.name}</text>`
-  )
+      pointer-events="none">${escapeBindingLabelText(room.name)}</text>`
+  ).join('')
+
+export const roomLabelsTemplate = (shapes: Shape[]) => unsafeSVG(roomLabelsMarkup(shapes))
 
 const escapeBindingLabelText = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -445,8 +452,8 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     const bindingId = 'bindingId' in base ? normalizeBindingId(base.bindingId) : undefined
     if (!bindingId) continue
 
-    const labelWidth = Math.max(14, bindingId.length * 7.2)
-    const labelHeight = 12
+    const labelWidth = Math.max(PAPER_LABEL_FONT_SIZE, bindingId.length * PAPER_LABEL_FONT_SIZE * 0.68)
+    const labelHeight = PAPER_LABEL_FONT_SIZE * 1.1
     const margin = 5
     const anchorShape =
       groupedShapes.find((shape) => shape.kind === 'symbol') ??
@@ -562,7 +569,7 @@ export const bindingLabelsMarkup = (shapes: Shape[]): string =>
   resolveBindingLabelPlacements(shapes)
     .map(
       (placement) =>
-        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
+        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="font-size:${PAPER_LABEL_FONT_SIZE}px" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
     )
     .join('')
 
@@ -731,8 +738,7 @@ export const wallMaskTemplate = (shapes: Shape[], worldWidth: number, worldHeigh
             y2=${shape.end.y}
             stroke="black"
             stroke-width=${openingMaskWidth}
-            stroke-linecap="butt"
-            vector-effect="non-scaling-stroke"></line>
+            stroke-linecap="butt"></line>
         `
       )}
     </mask>

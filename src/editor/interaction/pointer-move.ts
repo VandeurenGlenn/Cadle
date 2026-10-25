@@ -24,7 +24,6 @@ const symbolWallOffsetPoint = (
   point: Point,
   symbolHalfExtent: number,
   wall: WallShape,
-  zoom: number,
   symbol: SymbolShape | null = null
 ): Point | null => {
   const closest = closestPointOnSegment(point, wall.start, wall.end)
@@ -37,7 +36,7 @@ const symbolWallOffsetPoint = (
   const sideByPointer = Math.sign((point.x - closest.x) * nx + (point.y - closest.y) * ny)
   const side = sideByPointer === 0 ? 1 : sideByPointer
   const wallStrokePx = typeof wall.strokeWidth === 'number' ? wall.strokeWidth : 6
-  const wallHalfThickness = wallStrokePx / (2 * Math.max(zoom, 0.1))
+  const wallHalfThickness = wallStrokePx / 2
   const switchExtent =
     symbol && /\/switches\//i.test(symbol.path)
       ? directionalExtent(symbolContentBounds({ ...symbol, position: point }), point, nx, ny, side === 1 ? -1 : 1)
@@ -72,12 +71,12 @@ const mountedWallForSymbol = (
   return bestWall
 }
 
-const isClearOfWalls = (point: Point, symbolHalfExtent: number, shapes: readonly Shape[], zoom: number): boolean =>
+const isClearOfWalls = (point: Point, symbolHalfExtent: number, shapes: readonly Shape[]): boolean =>
   shapes.every((shape) => {
     if (!isWallShape(shape)) return true
     const closest = closestPointOnSegment(point, shape.start, shape.end)
     const wallStrokePx = typeof shape.strokeWidth === 'number' ? shape.strokeWidth : 6
-    const wallHalfThickness = wallStrokePx / (2 * Math.max(zoom, 0.1))
+    const wallHalfThickness = wallStrokePx / 2
     return Math.hypot(point.x - closest.x, point.y - closest.y) >= wallHalfThickness + symbolHalfExtent
   })
 
@@ -155,7 +154,7 @@ export const snapWallSymbolNextToSymbol = (
       ]
     }
     for (const anchor of anchors) {
-      if (!isClearOfWalls(anchor, sourceHalfExtent, shapes, zoom)) continue
+      if (!isClearOfWalls(anchor, sourceHalfExtent, shapes)) continue
       const distance = Math.hypot(point.x - anchor.x, point.y - anchor.y)
       if (distance >= bestDistance) continue
       bestPoint = anchor
@@ -170,7 +169,7 @@ export const snapSymbolToWallOffset = (
   point: Point,
   symbolHalfExtent: number,
   shapes: readonly Shape[],
-  zoom = 1,
+  _zoom = 1,
   symbol: SymbolShape | null = null
 ): { point: Point; snapped: boolean; wall: WallShape | null } => {
   const snapRadius = symbolHalfExtent * 2
@@ -183,7 +182,7 @@ export const snapSymbolToWallOffset = (
     const closest = closestPointOnSegment(point, shape.start, shape.end)
     const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
     if (distance >= bestDistance) continue
-    const offsetPoint = symbolWallOffsetPoint(point, symbolHalfExtent, shape, zoom, symbol)
+    const offsetPoint = symbolWallOffsetPoint(point, symbolHalfExtent, shape, symbol)
     if (!offsetPoint) continue
     bestPoint = offsetPoint
     bestWall = shape

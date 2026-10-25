@@ -1,6 +1,7 @@
 import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
-import { oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { paperTextScale } from './page-layout.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { neutralPositionForManufacturer, phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 
@@ -10,13 +11,13 @@ const INVERTER_PATH = 'symbols/Photovoltaic devices (≠AREI)/Inverter.svg'
 const SOLAR_PANEL_PATH = 'symbols/Photovoltaic devices (≠AREI)/Solar panel.svg'
 const EARTH_PATH = 'symbols/Protection devices/Earth electrode.svg'
 const BREAKER_PATH = 'symbols/Protection devices/Automaat.svg'
-const BREAKER_SCALE = 2
-const RCD_SCALE = 1.75
+const BREAKER_SCALE = ONE_WIRE_BREAKER_SCALE
+const RCD_SCALE = ONE_WIRE_RCD_SCALE
 const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 18
+const TOPOLOGY_GEOMETRY_VERSION = 19
 
 type TopologyRail = Pick<LineShape, 'start' | 'end'>
 
@@ -163,7 +164,7 @@ export const buildOneWireTopology = (
         kind: 'text',
         position: { x: tx, y: ty },
         text: value,
-        scale,
+        scale: Math.max(scale, paperTextScale(2.5)),
         fontWeight: 400,
         fill: '#000000',
         stroke: 'none',
@@ -264,7 +265,7 @@ export const buildOneWireTopology = (
       text(
         'incoming-cable-label',
         `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`,
-        meter.position.x + 38,
+        meter.position.x + 100,
         meter.position.y + 24,
         0.58,
         -90
@@ -275,14 +276,14 @@ export const buildOneWireTopology = (
     const mainDifferentialTitle = text(
       'main-differential-title',
       'Hoofddiff.',
-      mainDifferential.position.x - 34,
+      mainDifferential.position.x - 80,
       mainDifferential.position.y + 5,
       0.62
     )
     mainDifferentialTitle.textAnchor = 'end'
     shapes.push(mainDifferentialTitle)
   }
-  shapes.push(text('main-switch-title', 'Hoofdautomaat', mainSwitch.position.x + 50, mainSwitch.position.y + 12, 0.58))
+  shapes.push(text('main-switch-title', 'Hoofdautomaat', mainSwitch.position.x + 120, mainSwitch.position.y + 12, 0.58))
 
   const earthTap = busTap(0.06)
   const earthRailY = earthTap.y + 24
@@ -331,7 +332,7 @@ export const buildOneWireTopology = (
     if (capacity.status === 'overload') status.fill = '#b3261e'
     shapes.push(status)
     shapes.push(
-      text('secondary-busbar-capacity-detail', capacity.detail, upperRail.start.x + 8, upperRail.start.y + 42, 0.43)
+      text('secondary-busbar-capacity-detail', capacity.detail, upperRail.start.x + 8, upperRail.start.y + 56, 0.43)
     )
   } else if (plan.solar && (plan.consumers || additional.length)) {
     const directTap = busTap(0.16)
@@ -352,7 +353,7 @@ export const buildOneWireTopology = (
       'secondary-busbar-capacity-detail',
       capacity.detail,
       distributionRail.start.x + 8,
-      distributionRail.start.y + 42,
+      distributionRail.start.y + 56,
       0.43
     )
     detail.fill = warning.fill
@@ -402,7 +403,7 @@ export const buildOneWireTopology = (
         downstreamSource
       )
     )
-    shapes.push(text('residual-breaker-label', 'remautomaat', breaker.position.x + 34, breaker.position.y + 18, 0.58))
+    shapes.push(text('residual-breaker-label', 'remautomaat', breaker.position.x + 120, breaker.position.y + 18, 0.58))
   }
 
   const evDifferentials = additional.filter((item) => item.purpose === 'ev')

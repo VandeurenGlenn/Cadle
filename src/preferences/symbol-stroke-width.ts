@@ -2,6 +2,25 @@ export const DEFAULT_SYMBOL_STROKE_WIDTH = 0.65
 export const MIN_SYMBOL_STROKE_WIDTH = 0.1
 export const MAX_SYMBOL_STROKE_WIDTH = 3
 
+export const symbolStrokeWidthForViewBox = (
+  viewBox: string,
+  renderedSize: number,
+  renderedStrokeWidth: number
+): number => {
+  const dimensions = viewBox.trim().split(/[\s,]+/).map(Number)
+  if (
+    dimensions.length !== 4 ||
+    dimensions.some((value) => !Number.isFinite(value)) ||
+    dimensions[2] <= 0 ||
+    dimensions[3] <= 0 ||
+    !Number.isFinite(renderedSize) ||
+    renderedSize <= 0
+  ) {
+    return renderedStrokeWidth
+  }
+  return renderedStrokeWidth * (Math.max(dimensions[2], dimensions[3]) / renderedSize)
+}
+
 const STORAGE_KEY = 'cadle-symbol-stroke-width'
 
 type StorageReader = Pick<Storage, 'getItem'>

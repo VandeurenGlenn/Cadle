@@ -17,8 +17,9 @@ test('fits an imported page inside the printable paper area', () => {
   assert.equal(fitted.worldWidth, 1680)
   assert.equal(fitted.worldHeight, 2376)
   assert.ok(fitted.width <= 1520)
-  assert.ok(fitted.height <= 2216)
-  assert.deepEqual(fitted.position, { x: 840, y: 1188 })
+  assert.ok(fitted.height <= 1936)
+  assert.deepEqual(fitted.position, { x: 840, y: 1048 })
+  assert.ok(fitted.position.y + fitted.height / 2 <= 2016)
 })
 
 test('uses the PDF filename and adds page numbers only when needed', () => {

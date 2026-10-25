@@ -3,13 +3,13 @@ import { extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const ROOT = resolve('www/symbols')
-const VISIO_MARKERS = /xmlns:ev=|color-interpolation-filters="sRGB"|Microsoft Visio|v:/
+const VISIO_MARKERS = /xmlns:ev=|color-interpolation-filters=["']sRGB["']|Microsoft Visio|xmlns:v=/
 const CADLE_MARKER = /\bdata-cadle-symbol=(?:"1"|'1')/
 const FORBIDDEN_NATIVE = [
-  [/<(?:style|defs|text|script|foreignObject)\b/i, 'contains unsupported embedded content'],
+  [/<(?:style|text|desc|script|foreignObject)\b/i, 'contains unsupported embedded content'],
   [/\b(?:xmlns:xlink|xmlns:ev|xmlns:v)=/i, 'contains a legacy namespace'],
   [/\b(?:width|height)=["'][^"']+["']/i, 'sets a fixed root dimension'],
-  [/\btransform=["']/i, 'contains an unflattened transform'],
+  [/\bclass=["']/i, 'contains a global CSS class'],
   [/var\(--symbol-(?:stroke|fill|stroke-width)/i, 'pre-wraps a style already handled by the Cadle loader'],
   [/\b(?:href|xlink:href)=["'](?:https?:|data:)/i, 'contains an external or embedded resource']
 ]
@@ -65,9 +65,10 @@ const main = async () => {
     for (const result of invalid) {
       for (const error of result.errors) console.error(`${result.file}: ${error}`)
     }
-    console.log(`Validated ${native.length} Cadle-native SVG symbols.`)
+    for (const result of legacy) console.error(`${result.file}: still contains Visio-export markup`)
+    console.log(`Validated ${native.length} Cadle-native SVG symbols (${legacy.length} Visio exports remaining).`)
   }
-  if (invalid.length) process.exitCode = 1
+  if (invalid.length || (!process.argv.includes('--audit') && legacy.length)) process.exitCode = 1
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) await main()

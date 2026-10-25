@@ -1,166 +1,69 @@
 import { ONE_WIRE_SOCKET_SYMBOL_PATH, type OneWirePresetConfig } from '../constants.js'
 import type { LineShape, Point, Shape, TextShape, SymbolShape } from '../model/types.js'
-import { oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
+import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
+import { oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './onewire-connections.js'
+import { paperTextScale } from './page-layout.js'
 
 export type BuildOneWireCircuitResult = {
   shapes: Shape[]
   primarySelection: string[]
 }
 
-const createText = (id: string, position: Point, text: string, bindingId: string, groupId: string): TextShape => ({
-  id,
-  kind: 'text',
-  position,
-  text,
-  fontWeight: 400,
-  bindingId,
-  groupId
-})
-
-const createSymbol = (
-  id: string,
-  position: Point,
-  name: string,
-  path: string,
-  bindingId: string,
-  groupId: string,
-  _kind: 'breaker' | 'switch' | 'load'
-): SymbolShape => ({
-  id,
-  kind: 'symbol',
-  position,
-  name,
-  path,
-  bindingId,
-  scale: oneWireSymbolScaleFor(path) ?? 1.35,
-  strokeWidth: oneWireSymbolStrokeWidthFor(path, oneWireSymbolScaleFor(path) ?? 1.35),
-  groupId
-})
-
-const RESIDENTIAL_BREAKER_SYMBOL_PATH = 'symbols/Protection devices/Automaat.svg'
-const RESIDENTIAL_SWITCH_SYMBOL_PATH = 'symbols/Switches/Switch general symbol.svg'
-
-const loadSymbolPathForPreset = (preset: OneWirePresetConfig): string => {
-  if (preset.label === 'Sockets') return ONE_WIRE_SOCKET_SYMBOL_PATH
-  if (preset.label === 'Motor') return 'symbols/Consumption appliances/Motor.svg'
-  return 'symbols/Consumption appliances/Lighting.svg'
-}
-
-// Use existing residential symbol for breaker
-const createBreakerSymbol = (
-  nextId: () => string,
-  center: Point,
-  _boxW: number,
-  _boxH: number,
-  bindingId: string,
-  groupId: string
-): SymbolShape[] => [
-  createSymbol(nextId(), center, 'Automaat', RESIDENTIAL_BREAKER_SYMBOL_PATH, bindingId, groupId, 'breaker')
-]
-
-// Use existing residential symbol for switch
-const createSwitchSymbol = (
-  nextId: () => string,
-  center: Point,
-  _size: number,
-  bindingId: string,
-  groupId: string
-): SymbolShape[] => [
-  createSymbol(nextId(), center, 'Switch', RESIDENTIAL_SWITCH_SYMBOL_PATH, bindingId, groupId, 'switch')
-]
-
-// Use preset-specific residential symbol for load
-const createLoadSymbol = (
-  nextId: () => string,
-  center: Point,
-  _size: number,
-  preset: OneWirePresetConfig,
-  bindingId: string,
-  groupId: string
-): SymbolShape[] => [
-  createSymbol(nextId(), center, 'Load', loadSymbolPathForPreset(preset), bindingId, groupId, 'load')
-]
-
-// Vertical gap between components inside a circuit column.
-const COMPONENT_GAP = 24
-
-/**
- * Builds a single one-wire circuit column.
- * `point` is the BOTTOM connection point (the bus bar).
- * Components stack upward: breaker nearest the bus bar, then switch, load at top.
- * Reading bottom→top: Bus → Breaker → Switch → Load (IEC order).
- * `breakerWidth` is the VERTICAL height of the breaker box;
- * `nodeSize` is the width of the breaker box and size of switch/load.
- */
+/** Build upward from the bus using the rendered symbols' actual contact points. */
 export const buildOneWireCircuit = (
   point: Point,
   bindingId: string,
   preset: OneWirePresetConfig,
   nextId: () => string,
-  breakerWidth: number,
-  nodeSize: number
+  _breakerWidth: number,
+  _nodeSize: number
 ): BuildOneWireCircuitResult => {
   const groupId = `onewire-${nextId()}`
-
-  // Build upward from point (bus bar at bottom)
-  const breakerBottom = point.y - COMPONENT_GAP
-  const breakerCenterY = breakerBottom - breakerWidth / 2
-  const breakerTop = breakerBottom - breakerWidth
-
-  const switchBottom = breakerTop - COMPONENT_GAP
-  const switchCenterY = switchBottom - nodeSize / 2
-  const switchTop = switchBottom - nodeSize
-
-  const loadBottom = switchTop - COMPONENT_GAP
-  const loadCenterY = loadBottom - nodeSize / 2
-  const x = point.x
-  const breakerCenter: Point = { x, y: breakerCenterY }
-  const switchCenter: Point = { x, y: switchCenterY }
-  const loadCenter: Point = { x, y: loadCenterY }
-
-  // Labels sit to the right of each component
-  const labelX = x + nodeSize / 2 + 8
-
-  const breakerShapes = createBreakerSymbol(nextId, breakerCenter, nodeSize, breakerWidth, bindingId, groupId)
-  const switchShapes = createSwitchSymbol(nextId, switchCenter, nodeSize, bindingId, groupId)
-  const loadShapes = createLoadSymbol(nextId, loadCenter, nodeSize, preset, bindingId, groupId)
-
-  const shapes: Shape[] = [
-    // Binding-ID label to the left of the busbar connection point
-    createText(nextId(), { x: x - 28, y: point.y + 3 }, bindingId, bindingId, groupId),
-    // Feed line: bus bar → breaker bottom
-    { id: nextId(), kind: 'line', start: point, end: { x, y: breakerBottom }, bindingId, groupId } as LineShape,
-    ...breakerShapes,
-    // Line: breaker top → switch bottom
-    {
-      id: nextId(),
-      kind: 'line',
-      start: { x, y: breakerTop },
-      end: { x, y: switchBottom },
-      bindingId,
-      groupId
-    } as LineShape,
-    ...switchShapes,
-    // Line: switch top → load bottom
-    {
-      id: nextId(),
-      kind: 'line',
-      start: { x, y: switchTop },
-      end: { x, y: loadBottom },
-      bindingId,
-      groupId
-    } as LineShape,
-    ...loadShapes,
-    // Component labels (right side)
-    createText(nextId(), { x: labelX, y: breakerCenterY + 4 }, preset.breaker, bindingId, groupId),
-    createText(nextId(), { x: labelX, y: switchCenterY + 4 }, preset.switchLabel, bindingId, groupId),
-    createText(nextId(), { x: labelX, y: loadCenterY + 4 }, preset.load, bindingId, groupId),
-    // Wire section label in the gap between switch top and load bottom
-    createText(nextId(), { x: x + 8, y: switchTop - COMPONENT_GAP / 2 - 2 }, preset.wireSection, bindingId, groupId)
+  const loadPath = preset.label === 'Sockets' ? ONE_WIRE_SOCKET_SYMBOL_PATH
+    : preset.label === 'Motor' ? 'symbols/Consumption appliances/Motor.svg'
+    : 'symbols/Consumption appliances/Lighting.svg'
+  const components = [
+    { name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' },
+    { name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg' },
+    { name: 'Load', path: loadPath, rotation: preset.label === 'Sockets' ? -90 : undefined }
   ]
-
-  return {
-    shapes,
-    primarySelection: shapes.map((shape) => shape.id)
+  const shapes: Shape[] = []
+  const symbols: SymbolShape[] = []
+  let from = point
+  let host: SymbolShape | undefined
+  for (const [index, component] of components.entries()) {
+    const scale = oneWireSymbolScaleFor(component.path)!
+    const placed = positionOneWireSymbolForConnection({
+      id: nextId(), kind: 'symbol', position: { x: 0, y: 0 }, ...component,
+      scale, bindingId, groupId,
+      strokeWidth: oneWireSymbolStrokeWidthFor(component.path, scale),
+      ...(index === 0 ? { symbolTextOverrides: { poles: '', phase: '', 'rated-current': '' } } : {})
+    }, from, 'top', host)
+    const wire: LineShape = {
+      id: nextId(), kind: 'line', start: { ...from }, end: placed.connection,
+      stroke: '#000000', strokeWidth: 2, bindingId, groupId
+    }
+    shapes.push(wire, placed.symbol)
+    symbols.push(placed.symbol)
+    host = placed.symbol
+    from = oneWireSymbolConnectionAnchors(host).find((anchor) => anchor.side === 'top')!.point
   }
+  const labelX = Math.max(...symbols.map((symbol) => {
+    const bounds = oneWireSymbolBounds(symbol)!
+    return bounds.x + bounds.width
+  })) + 12
+  const text = (position: Point, value: string): TextShape => ({
+    id: nextId(), kind: 'text', position, text: value, scale: paperTextScale(2.5),
+    fontWeight: 400, fill: '#000000', stroke: 'none', bindingId, groupId
+  })
+  shapes.push(text({ x: point.x - 32, y: point.y + 6 }, bindingId))
+  for (const [index, label] of [preset.breaker, preset.switchLabel, preset.load].entries()) {
+    const symbol = symbols[index]
+    const contacts = oneWireSymbolConnectionAnchors(symbol)
+    const centerY = (Math.min(...contacts.map(({ point }) => point.y)) + Math.max(...contacts.map(({ point }) => point.y))) / 2
+    shapes.push(text({ x: labelX, y: centerY + 6 }, label))
+  }
+  const loadWire = shapes[4] as LineShape
+  shapes.push(text({ x: labelX, y: (loadWire.start.y + loadWire.end.y) / 2 + 6 }, preset.wireSection))
+  return { shapes, primarySelection: shapes.map((shape) => shape.id) }
 }

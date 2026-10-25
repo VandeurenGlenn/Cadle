@@ -5,6 +5,7 @@ import type { PaperPreset, Shape } from './types.js'
 export type NativeDocumentState = {
   version: 1 | 2
   oneWireLayoutVersion?: number
+  paperLayoutVersion?: number
   shapes: Shape[]
   selectedId: UUID | null
   paperPreset: PaperPreset
@@ -45,6 +46,7 @@ export const asNativeState = (value: unknown): NativeDocumentState | null => {
   return {
     version: candidate.version === 2 ? 2 : 1,
     ...(typeof oneWireLayoutVersion === 'number' ? { oneWireLayoutVersion } : {}),
+    ...(candidate.paperLayoutVersion === 1 ? { paperLayoutVersion: 1 } : {}),
     shapes: sanitizeShapes(candidate.shapes),
     selectedId: null,
     paperPreset: candidate.paperPreset,

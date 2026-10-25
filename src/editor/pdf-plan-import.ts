@@ -1,9 +1,9 @@
 import {
   PAPER_PRESETS,
-  PAPER_WORLD_UNITS_PER_MM,
   paperWorldSize
 } from './constants.js'
 import type { PaperPreset } from './model/types.js'
+import { pageLayout } from './layout/page-layout.js'
 
 const PDF_POINTS_PER_MM = 72 / 25.4
 
@@ -49,9 +49,9 @@ export const fitPdfPageToPaper = (
   marginMm = 10
 ) => {
   const world = paperWorldSize(preset)
-  const margin = Math.max(0, marginMm) * PAPER_WORLD_UNITS_PER_MM
-  const availableWidth = Math.max(1, world.width - margin * 2)
-  const availableHeight = Math.max(1, world.height - margin * 2)
+  const area = pageLayout(world.width, world.height, marginMm).content
+  const availableWidth = Math.max(1, area.width)
+  const availableHeight = Math.max(1, area.height)
   const scale = Math.min(availableWidth / sourceWidth, availableHeight / sourceHeight)
   const width = sourceWidth * scale
   const height = sourceHeight * scale
@@ -60,7 +60,7 @@ export const fitPdfPageToPaper = (
     worldHeight: world.height,
     width,
     height,
-    position: { x: world.width / 2, y: world.height / 2 }
+    position: { x: area.x + area.width / 2, y: area.y + area.height / 2 }
   }
 }
 

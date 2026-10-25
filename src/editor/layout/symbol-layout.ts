@@ -1,6 +1,7 @@
 import { shapeBounds } from '../../editor/model/model.js'
 import type { Shape } from '../../editor/model/types.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { PAPER_LABEL_FONT_SIZE } from './page-layout.js'
 import { getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextLayer } from '../symbol-metadata.js'
 import { getBoundedCache, setBoundedCache } from '../../helpers/bounded-cache.js'
@@ -158,8 +159,8 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
 export const bindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: number; y: number } => {
   const bounds = shape.kind === 'symbol' ? symbolContentBounds(shape) : shapeBounds(shape)
   const bindingId = 'bindingId' in shape && typeof shape.bindingId === 'string' ? shape.bindingId : ''
-  const labelWidth = Math.max(14, bindingId.length * 7.2)
-  const labelHeight = 12
+  const labelWidth = Math.max(PAPER_LABEL_FONT_SIZE, bindingId.length * PAPER_LABEL_FONT_SIZE * 0.68)
+  const labelHeight = PAPER_LABEL_FONT_SIZE * 1.1
   const nearMargin = shape.kind === 'symbol' ? 2 : 5
   const horizontalOffset = bounds.width / 2 + nearMargin + labelWidth / 2
   const verticalOffset = bounds.height / 2 + nearMargin + labelHeight / 2

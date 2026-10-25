@@ -1,17 +1,16 @@
 import type { Point } from '../../editor/model/types.js'
+import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
 
 // One canonical rendered size for every Automaat.svg, independent of where it
 // appears in the one-wire topology. The breaker is intentionally the visual
 // anchor, while the rest of the row stays smaller so the feeder and cable labels
 // remain legible and proportionate to the electrical reference.
-export const ONE_WIRE_DEFAULT_SCALE = 0.68
-export const ONE_WIRE_BREAKER_SCALE = 2.8
+export const ONE_WIRE_DEFAULT_SCALE = (4 * PAPER_WORLD_UNITS_PER_MM) / 24
+export const ONE_WIRE_BREAKER_SCALE = (8.4 * PAPER_WORLD_UNITS_PER_MM) / 24
 
-// The RCD asset has a much wider viewBox than the breaker asset. It therefore
-// needs a slightly larger numeric scale to reach the same visible device height
-// without competing with the dominant breaker treatment.
-export const ONE_WIRE_RCD_SCALE = 2.2
+// Match the 8.4 mm device height despite the RCD's wider source viewBox.
+export const ONE_WIRE_RCD_SCALE = (8.4 * PAPER_WORLD_UNITS_PER_MM * 38.5625) / (24 * 29.8893)
 export const ONE_WIRE_RENDERED_STROKE_WIDTH = 2
 
 // Trikker-style wire connection metadata for the built-in one-wire symbols.
@@ -66,6 +65,24 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
+    match: /socket outlets\/wall outlet with grounding for floorplan\.svg$/i,
+    spec: {
+      viewBox: { width: 8.50772, height: 11.5786 },
+      node: { x: 0.12, y: 5.78 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /socket outlets\/wall outlet with integrated safety shutter for floorplan\.svg$/i,
+    spec: {
+      viewBox: { width: 8.50771, height: 11.5806 },
+      node: { x: 0.12, y: 5.78 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     match: /socket outlets\/.*for floorplan\.svg$/i,
     spec: {
       viewBox: { width: 8.5115, height: 11.5955 },
@@ -75,10 +92,28 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
+    match: /socket outlets\/wall outlet with grounding\.svg$/i,
+    spec: {
+      viewBox: { width: 4.96441, height: 11.5786 },
+      node: { x: 0.12, y: 5.79 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /socket outlets\/wall outlet with integrated safety shutter\.svg$/i,
+    spec: {
+      viewBox: { width: 4.96441, height: 11.5806 },
+      node: { x: 0.11, y: 5.79 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     match: /socket outlets\/.*\.svg$/i,
     spec: {
       viewBox: { width: 4.96819, height: 11.5955 },
-      node: { x: 0.12, y: 5.8 },
+      node: { x: 0.12, y: 5.81 },
       cutRadius: null,
       oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
@@ -350,8 +385,8 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
 // Rendered node radius shared by every switch on a wire; the node itself must
 // stay at the same electrical width no matter how the body is scaled. This keeps
 // the visual balance right without disturbing the branch connection geometry.
-const TARGET_NODE_RADIUS = 5.8
-const MAX_NODE_NORMALIZED_SCALE = 0.85
+const TARGET_NODE_RADIUS = PAPER_WORLD_UNITS_PER_MM
+const MAX_NODE_NORMALIZED_SCALE = 3
 
 const findSpec = (path: string): NodeSpec | null => NODE_SPECS.find(({ match }) => match.test(path))?.spec ?? null
 

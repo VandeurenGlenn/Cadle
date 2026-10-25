@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import {
   registeredSymbolMetadataPaths,
   symbolMetadataFor,
-  symbolTextLayer
+  symbolTextLayer,
+  symbolTextPresentation
 } from '../src/editor/symbol-metadata.js'
 
 test('keeps protection text semantics outside the SVG geometry', () => {
@@ -59,4 +60,21 @@ test('renders the selected RCD classification separately from the serif I marker
 
 test('registers every SVG with metadata-backed visible text', () => {
   assert.equal(registeredSymbolMetadataPaths().length, 16)
+})
+
+test('prints editable topology protection values at 2.5 mm outside the symbol viewBox', () => {
+  const shape = {
+    id: 'protection', kind: 'symbol' as const,
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg',
+    name: 'Differential', position: { x: 300, y: 500 }, scale: 2.2,
+    generationKey: 'board:main:topology:v19:main-differential',
+    symbolTextOverrides: { poles: '2P', phase: 'N-L1', 'rated-current': '63A', 'residual-current': '30mA' }
+  }
+  const rendered = symbolTextPresentation(shape)
+  assert.doesNotMatch(rendered.inner, /63A|30mA|2P|N-L1/)
+  assert.match(rendered.inner, />I</)
+  for (const value of ['63A', '30mA', '2P', 'N-L1']) assert.ok(rendered.annotations.includes(`>${value}</text>`))
+  assert.match(rendered.annotations, /font-size="20"/)
+  const edited = symbolTextPresentation({ ...shape, symbolTextOverrides: { ...shape.symbolTextOverrides, 'rated-current': '<40&A>' } })
+  assert.match(edited.annotations, /&lt;40&amp;A&gt;/)
 })

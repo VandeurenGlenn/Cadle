@@ -126,6 +126,18 @@ test('snaps switches close enough for their visible edge to reach the wall', () 
   assert.ok(snapped.point.x < wall.start.x)
 })
 
+test('keeps the mounted symbol distance from a wall identical at every zoom', () => {
+  const wall: Shape = { id: 'wall', kind: 'wall', start: { x: 100, y: 0 }, end: { x: 100, y: 300 }, strokeWidth: 8 }
+  const shape: Extract<Shape, { kind: 'symbol' }> = {
+    id: 'switch', kind: 'symbol', name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg',
+    position: { x: 75, y: 100 }, scale: 1.3
+  }
+  const expected = snapSymbolToWallOffset(shape.position, 15.6, [wall], 1, shape)
+  for (const zoom of [0.25, 0.5, 2, 4]) {
+    assert.deepEqual(snapSymbolToWallOffset(shape.position, 15.6, [wall], zoom, shape), expected)
+  }
+})
+
 test('snaps a wall symbol above, below, left, or right of another symbol', () => {
   const stationary: Shape = {
     id: 'stationary',

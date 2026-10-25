@@ -9,9 +9,6 @@ export const ONE_WIRE_BREAKER_WIDTH = 32
 export const ONE_WIRE_NODE_SIZE = 32
 export const ONE_WIRE_CIRCUIT_SPACING = 120
 export const ONE_WIRE_SOCKET_SYMBOL_PATH = 'symbols/Socket outlets/Wall outlet with grounding.svg'
-export const PROJECT_TITLE_BLOCK_MARGIN = 28
-export const PROJECT_TITLE_BLOCK_WIDTH = 560
-export const PROJECT_TITLE_BLOCK_HEIGHT = 174
 
 export type OneWirePreset = 'lighting' | 'sockets' | 'motor'
 

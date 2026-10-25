@@ -31,7 +31,6 @@ import {
   cloneShape,
   cloneShapes,
   inferSymbolScale,
-  lineMetrics,
   nextShapeId,
   samePoint,
   sanitizeShapes,
@@ -102,12 +101,15 @@ import {
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
-import { fitLegacyGroundPlanToPrintArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { paperTextScale } from './layout/page-layout.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './layout/onewire-connections.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
 import {
   oneWireSymbolNodeInfo,
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
+  oneWireSymbolStrokeWidthFor,
   oneWireSymbolTerminalInfo
 } from './layout/onewire-symbol-nodes.js'
 import { nextPanFromPointer } from './interaction/pointer-pan.js'
@@ -207,7 +209,6 @@ const KAMRAIL_HALF_LENGTH = 420
 const KAMRAIL_STROKE_WIDTH = 4
 const KAMRAIL_ATTACH_OFFSET = 20
 const ONEWIRE_BRANCH_STROKE = '#000000'
-const MOBILE_ONEWIRE_MIN_ZOOM = 0.3
 
 @customElement('cadle-app')
 export class CadleApp extends LiteElement {
@@ -1055,6 +1056,7 @@ export class CadleApp extends LiteElement {
 
   #applyPersistedState(parsed: Partial<NativeDocumentState>): boolean {
     let migrationComplete = true
+    let dimensionsChanged = false
     this.#resetPageState()
     if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes)
     this.#rebindAllOpeningsToWalls()
@@ -1062,7 +1064,7 @@ export class CadleApp extends LiteElement {
       this.#paperPreset = parsed.paperPreset
     }
     if (typeof parsed.printMargin === 'number' && Number.isFinite(parsed.printMargin) && parsed.printMargin >= 0) {
-      this.#printMargin = parsed.printMargin
+      this.#printMargin = Math.max(DEFAULT_PRINT_MARGIN_MM, Math.min(50, parsed.printMargin))
     }
     const target = paperWorldSize(this.#paperPreset)
     const previousWidth =
@@ -1074,13 +1076,14 @@ export class CadleApp extends LiteElement {
       const offsetX = (target.width - previousWidth * scale) / 2
       const offsetY = (target.height - previousHeight * scale) / 2
       this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, scale, offsetX, offsetY)
+      dimensionsChanged = true
       this.#documentSizeMigrated = true
     }
     this.#worldWidth = target.width
     this.#worldHeight = target.height
     const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
-    if (pageType === 'onewire' && oneWireLayoutVersion < this.#oneWireController.layoutVersion) {
+    if (pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
       this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {
         nextShapeId,
         oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
@@ -1132,6 +1135,11 @@ export class CadleApp extends LiteElement {
         this.#document.shapes = fitted.shapes
         this.#documentSizeMigrated = true
       }
+    }
+    if (parsed.paperLayoutVersion !== 1) {
+      const fitted = fitShapesToContentArea(this.#document.shapes, this.#safeAreaRect())
+      this.#document.shapes = fitted.shapes
+      this.#documentSizeMigrated = true
     }
     return migrationComplete
   }
@@ -1290,47 +1298,6 @@ export class CadleApp extends LiteElement {
   }
 
   #autoCenterView() {
-    const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
-    if (!panel) return
-
-    const rect = panel.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
-
-    const pageType = this.#project?.pages?.[this.#pageKey ?? '']?.pageType
-    const hasGeneratedOneWireDrawing = this.#document.shapes.some(
-      (shape) =>
-        shape.groupId?.startsWith('onewire-') ||
-        shape.sourceLink?.role === 'breaker' ||
-        shape.sourceLink?.role?.startsWith('rail:')
-    )
-    const useContentFit = pageType === 'onewire' || hasGeneratedOneWireDrawing
-    const fitShapes = useContentFit
-      ? this.#document.shapes.filter(
-          (shape) =>
-            !shape.sourceLink?.role?.startsWith('sheet-reference') &&
-            (Boolean(shape.generationKey) ||
-              shape.groupId?.startsWith('onewire-') ||
-              shape.sourceLink?.kind === 'board')
-        )
-      : []
-    if (useContentFit && fitShapes.length) {
-      const bounds = fitShapes.map((shape) => shapeBounds(shape))
-      const left = Math.min(...bounds.map((item) => item.x))
-      const top = Math.min(...bounds.map((item) => item.y))
-      const right = Math.max(...bounds.map((item) => item.x + item.width))
-      const bottom = Math.max(...bounds.map((item) => item.y + item.height))
-      if (
-        this.#viewport.fitBounds(
-          { width: rect.width, height: rect.height },
-          { x: left, y: top, width: right - left, height: bottom - top },
-          32,
-          MOBILE_ONEWIRE_MIN_ZOOM
-        )
-      ) {
-        return
-      }
-    }
-
     this.#fitPageView()
   }
 
@@ -2432,6 +2399,7 @@ export class CadleApp extends LiteElement {
       lower.includes('/protection devices/') ||
       lower.includes('/switches/') ||
       lower.includes('/consumption appliances/') ||
+      lower.includes('/photovoltaic devices') ||
       lower.includes('/socket outlets/') ||
       lower.includes('/one-wire/')
     )
@@ -2441,31 +2409,8 @@ export class CadleApp extends LiteElement {
     return this.#symbolConnectionAnchors(shape).map((anchor) => anchor.point)
   }
 
-  #symbolConnectionAnchors(shape: SymbolShape): Array<{
-    side: 'top' | 'bottom' | 'left' | 'right'
-    point: Point
-  }> {
-    if (!this.#isElectricalSymbolPath(shape.path)) return []
-    const bounds = symbolContentBounds(shape)
-    const centerX = bounds.x + bounds.width / 2
-    const centerY = bounds.y + bounds.height / 2
-    const terminals = oneWireSymbolTerminalInfo(shape.path, shape.scale)
-    return [
-      {
-        side: 'top',
-        point: terminals?.top
-          ? { x: shape.position.x + terminals.top.x, y: shape.position.y + terminals.top.y }
-          : { x: centerX, y: bounds.y }
-      },
-      {
-        side: 'bottom',
-        point: terminals?.bottom
-          ? { x: shape.position.x + terminals.bottom.x, y: shape.position.y + terminals.bottom.y }
-          : { x: centerX, y: bounds.y + bounds.height }
-      },
-      { side: 'left', point: { x: bounds.x, y: centerY } },
-      { side: 'right', point: { x: bounds.x + bounds.width, y: centerY } }
-    ]
+  #symbolConnectionAnchors(shape: SymbolShape) {
+    return this.#isElectricalSymbolPath(shape.path) ? oneWireSymbolConnectionAnchors(shape) : []
   }
 
   #nearestElectricalAnchor(point: Point): {
@@ -2667,7 +2612,8 @@ export class CadleApp extends LiteElement {
     if (!bus || !topology) return false
 
     const busWidth = Math.min(620, this.#worldWidth - 240)
-    const busY = this.#worldHeight * 0.64
+    const safeArea = this.#safeAreaRect()
+    const busY = safeArea.y + safeArea.height * 0.55
     const freshBus: LineShape = {
       ...bus,
       id: nextShapeId(),
@@ -2807,24 +2753,31 @@ export class CadleApp extends LiteElement {
     }
 
     const anchorOffsets = new Map<string, number>()
+    const descriptionPlacements = new Map<string, Point>()
+    const familyForShape = (shape: Shape) => this.#normalizeBindingFamily(
+      shape.bindingId ?? (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : '')
+    )
     const railUpdates = new Map<string, LineShape>()
     for (const rail of rails) {
       const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id).sort((a, b) => a.x - b.x)
       if (!railAnchors.length) continue
+      const familyShapes = (anchor: typeof railAnchors[number]) => this.#document.shapes.filter((shape) =>
+        !shape.hidden && !this.#isKamrailShape(shape) &&
+        familyForShape(shape) === anchor.family && anchorForShape(shape, anchor.family)?.id === anchor.id
+      )
+      const contentTop = Math.min(...railAnchors.flatMap((anchor) => familyShapes(anchor)
+        .filter((shape) => shape.sourceLink?.role !== 'description')
+        .map((shape) => oneWireLayoutBounds(shape).y)))
       const familyBounds = railAnchors.map((anchor) => {
-        const xs = this.#document.shapes.flatMap((shape) => {
-          if (
-            shape.groupId?.startsWith('onewire-kamrail-') ||
-            !shape.groupId?.startsWith('onewire-') ||
-            this.#normalizeBindingFamily(shape.bindingId ?? '') !== anchor.family ||
-            anchorForShape(shape, anchor.family)?.id !== anchor.id
-          ) {
-            return []
-          }
-          if (shape.kind === 'line') return [shape.start.x, shape.end.x]
-          if (shape.kind === 'symbol') return [shape.position.x - 24, shape.position.x + 24]
-          return []
-        })
+        const members = familyShapes(anchor)
+        const boxes = members.filter((shape) => shape.sourceLink?.role !== 'description').map(oneWireLayoutBounds)
+        const xs = boxes.flatMap((bounds) => [bounds.x, bounds.x + bounds.width])
+        const center = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : anchor.x
+        for (const description of members.filter((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'description')) {
+          const bounds = oneWireLayoutBounds(description)
+          xs.push(center - bounds.width / 2, center + bounds.width / 2)
+          descriptionPlacements.set(description.id, { x: center, y: contentTop - 24 })
+        }
         return {
           family: anchor.id,
           anchorX: anchor.x,
@@ -2856,10 +2809,17 @@ export class CadleApp extends LiteElement {
         if (shape.kind !== 'line' || rail.start.x !== shape.start.x || rail.end.x !== shape.end.x) changed = true
         return rail
       }
-      const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
+      const family = familyForShape(shape)
       const anchor = family ? anchorForShape(shape, family) : undefined
       const dx = anchor ? anchorOffsets.get(anchor.id) : undefined
       if (!anchor || typeof dx !== 'number') return shape
+      const description = descriptionPlacements.get(shape.id)
+      if (description && shape.kind === 'text') {
+        const position = { x: description.x + dx, y: description.y }
+        if (shape.position.x === position.x && shape.position.y === position.y && shape.textAnchor === 'middle' && shape.oneWireRailId === anchor.railId) return shape
+        changed = true
+        return { ...shape, position, textAnchor: 'middle', oneWireRailId: anchor.railId }
+      }
       const translated = Math.abs(dx) < 0.01 ? shape : translateShape(shape, dx, 0)
       if (translated.oneWireRailId === anchor.railId && translated === shape) return shape
       changed = true
@@ -3230,7 +3190,7 @@ export class CadleApp extends LiteElement {
       const rails = new Map<number, LineShape>()
       if (topologyPage && topology) {
         const busWidth = Math.min(620, this.#worldWidth - 240)
-        const busY = this.#worldHeight * 0.64
+        const busY = safeArea.y + safeArea.height * 0.55
         const topologyBus: LineShape = {
           id: nextShapeId(),
           kind: 'line',
@@ -3337,7 +3297,7 @@ export class CadleApp extends LiteElement {
             kind: 'text',
             position: { x: rail.start.x, y: rail.start.y + 42 },
             text: references.join(' · '),
-            scale: 0.52,
+            scale: paperTextScale(2.5),
             fill: '#000000',
             stroke: 'none',
             groupId: rail.groupId,
@@ -3547,9 +3507,9 @@ export class CadleApp extends LiteElement {
     if (!result) return false
     const horizontalPoints = (shapes: readonly Shape[]): number[] =>
       shapes.flatMap((shape) => {
-        if (shape.kind === 'line') return [shape.start.x, shape.end.x]
-        if (shape.kind === 'symbol') return [shape.position.x - 24, shape.position.x + 24]
-        return []
+        if (shape.hidden) return []
+        const bounds = oneWireLayoutBounds(shape)
+        return [bounds.x, bounds.x + bounds.width]
       })
     const bundledShapes = result.shapes.map((shape): Shape => ({ ...shape, oneWireRailId: rail.id }))
     const newPoints = horizontalPoints(bundledShapes)
@@ -3790,57 +3750,35 @@ export class CadleApp extends LiteElement {
 
     const component = this.#oneWireComponentSymbol(this.#oneWireComposeKind)
     const scale = this.#oneWireSymbolScale(component.path, this.#oneWireComposeKind)
-    // Real render size is 24 * scale (not 40) — keep slot math on the actual size.
-    const size = 24 * Math.max(0.4, scale)
-    const gap = 24
-    const half = size / 2
-
     const hostAnchors = this.#symbolConnectionAnchors(anchor.hostSymbol)
-    const attachAnchor = hostAnchors.find((a) => a.side === side) ?? hostAnchors[0]
+    const hasFixedTerminals = Boolean(oneWireSymbolTerminalInfo(anchor.hostSymbol.path, anchor.hostSymbol.scale))
+    const attachAnchor = hasFixedTerminals ? null : hostAnchors.find((a) => a.side === side) ?? hostAnchors[0]
     const attachPoint = attachAnchor?.point ?? anchor.point
-
-    const targetNode: Point =
-      side === 'top'
-        ? { x: attachPoint.x, y: attachPoint.y - (half + gap) }
-        : side === 'bottom'
-          ? { x: attachPoint.x, y: attachPoint.y + (half + gap) }
-          : side === 'left'
-            ? { x: attachPoint.x - (half + gap), y: attachPoint.y }
-            : { x: attachPoint.x + (half + gap), y: attachPoint.y }
-
     const bindingId = anchor.hostSymbol.bindingId ?? this.#oneWireBindingId
     const groupId = anchor.hostSymbol.groupId ?? `onewire-${nextShapeId()}`
-    const rotation = oneWireSymbolRotationFor(component.path)
-    const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
-    const newSymbol: SymbolShape = {
+    const placed = positionOneWireSymbolForConnection({
       id: nextShapeId(),
       kind: 'symbol',
-      position: node ? { x: targetNode.x - node.offset.x, y: targetNode.y - node.offset.y } : targetNode,
+      position: { x: 0, y: 0 },
       name: component.name,
       path: component.path,
       scale,
+      rotation: oneWireSymbolRotationFor(component.path),
+      strokeWidth: oneWireSymbolStrokeWidthFor(component.path, scale),
       bindingId,
       groupId,
-      oneWireRailId: anchor.hostSymbol.oneWireRailId
-    }
-    if (typeof rotation === 'number') newSymbol.rotation = rotation
-    newSymbol.sourceLink = { kind: 'circuit', id: bindingId, role: this.#oneWireComposeKind }
-
-    // Wire stops at the new symbol's electrical node cut radius.
-    const cutHalfWidth = node?.cutHalfWidth
-    const connectorEnd: Point =
-      side === 'top'
-        ? { x: targetNode.x, y: cutHalfWidth === null ? targetNode.y : targetNode.y + (cutHalfWidth ?? 0) }
-        : side === 'bottom'
-          ? { x: targetNode.x, y: cutHalfWidth === null ? targetNode.y : targetNode.y - (cutHalfWidth ?? 0) }
-          : side === 'left'
-            ? { x: cutHalfWidth === null ? targetNode.x : targetNode.x + (cutHalfWidth ?? 0), y: targetNode.y }
-            : { x: cutHalfWidth === null ? targetNode.x : targetNode.x - (cutHalfWidth ?? 0), y: targetNode.y }
+      oneWireRailId: anchor.hostSymbol.oneWireRailId,
+      sourceLink: { kind: 'circuit', id: bindingId, role: this.#oneWireComposeKind }
+    }, attachPoint, side, anchor.hostSymbol)
+    const newSymbol = placed.symbol
+    const connectorEnd = placed.connection
     const connector: LineShape = {
       id: nextShapeId(),
       kind: 'line',
       start: attachPoint,
       end: connectorEnd,
+      stroke: '#000000',
+      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
       bindingId,
       groupId,
       oneWireRailId: anchor.hostSymbol.oneWireRailId
@@ -3908,7 +3846,7 @@ export class CadleApp extends LiteElement {
   }
 
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
-    return shapeTemplate(shape, selected, extraClass)
+    return shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth)
   }
 
   #bindingLabelsTemplate() {
@@ -4071,6 +4009,7 @@ export class CadleApp extends LiteElement {
     const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     return {
       version: 2,
+      paperLayoutVersion: 1,
       ...(pageType === 'onewire' ? { oneWireLayoutVersion: this.#oneWireController.layoutVersion } : {}),
       shapes: this.#document.shapes,
       selectedId: null,
@@ -4093,69 +4032,16 @@ export class CadleApp extends LiteElement {
     return PAPER_PRESETS[this.#paperPreset]
   }
 
-  #exportViewBox(
-    orientation: 'portrait' | 'landscape'
-  ): { x: number; y: number; width: number; height: number } | null {
-    if (!this.#document.shapes.length) return null
-
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-
-    for (const shape of this.#document.shapes) {
-      const bounds = shapeBounds(shape)
-      minX = Math.min(minX, bounds.x)
-      minY = Math.min(minY, bounds.y)
-      maxX = Math.max(maxX, bounds.x + bounds.width)
-      maxY = Math.max(maxY, bounds.y + bounds.height)
-
-      if (shape.kind === 'door') {
-        const { length, nx, ny } = lineMetrics(shape)
-        const side = shape.flipSide ? -1 : 1
-        const tipX = shape.start.x + nx * side * length
-        const tipY = shape.start.y + ny * side * length
-        minX = Math.min(minX, tipX)
-        minY = Math.min(minY, tipY)
-        maxX = Math.max(maxX, tipX)
-        maxY = Math.max(maxY, tipY)
-      }
-
-      if (shape.kind === 'gate') {
-        const { length, nx, ny } = lineMetrics(shape)
-        const side = shape.flipSide ? -1 : 1
-        const half = length / 2
-        const tip1X = shape.start.x + nx * side * half
-        const tip1Y = shape.start.y + ny * side * half
-        const tip2X = shape.end.x + nx * side * half
-        const tip2Y = shape.end.y + ny * side * half
-        minX = Math.min(minX, tip1X, tip2X)
-        minY = Math.min(minY, tip1Y, tip2Y)
-        maxX = Math.max(maxX, tip1X, tip2X)
-        maxY = Math.max(maxY, tip1Y, tip2Y)
-      }
+  #exportViewBox(orientation: 'portrait' | 'landscape') {
+    // Export the sheet, independent of the number or extent of its shapes.
+    const landscape = this.#worldWidth >= this.#worldHeight
+    if (landscape === (orientation === 'landscape')) {
+      return { x: 0, y: 0, width: this.#worldWidth, height: this.#worldHeight }
     }
-
-    const padding = GRID_SIZE * 3
-    let x = minX - padding
-    let y = minY - padding
-    let width = Math.max(1, maxX - minX + padding * 2)
-    let height = Math.max(1, maxY - minY + padding * 2)
-
-    const targetRatio = orientation === 'landscape' ? 3508 / 2480 : 2480 / 3508
-    const currentRatio = width / height
-
-    if (currentRatio > targetRatio) {
-      const targetHeight = width / targetRatio
-      y -= (targetHeight - height) / 2
-      height = targetHeight
-    } else if (currentRatio < targetRatio) {
-      const targetWidth = height * targetRatio
-      x -= (targetWidth - width) / 2
-      width = targetWidth
-    }
-
-    return { x, y, width, height }
+    const ratio = orientation === 'landscape' ? 297 / 210 : 210 / 297
+    const width = Math.max(this.#worldWidth, this.#worldHeight * ratio)
+    const height = Math.max(this.#worldHeight, this.#worldWidth / ratio)
+    return { x: (this.#worldWidth - width) / 2, y: (this.#worldHeight - height) / 2, width, height }
   }
 
   #buildSvgDocument(
@@ -4165,14 +4051,14 @@ export class CadleApp extends LiteElement {
     pageKey?: string
   ) {
     const buildDocument = buildSvgDocument as unknown as (options: Record<string, unknown>) => string
-    const overlayScale = viewBox ? Math.min(viewBox.width / this.#worldWidth, viewBox.height / this.#worldHeight) : 1
     const exportOptions: Record<string, unknown> = {
       shapes: this.#document.shapes,
       selectedShape: this.#shapeById(this.#document.selectedId),
       paper: this.#paperMeta(),
       worldWidth: this.#worldWidth,
       worldHeight: this.#worldHeight,
-      pageOverlayScale: overlayScale,
+      project: this.#project,
+      printMargin: this.#printMargin,
       viewBox,
       monochrome,
       pageName,
@@ -4195,7 +4081,10 @@ export class CadleApp extends LiteElement {
         this.#worldWidth,
         this.#worldHeight,
         this.#pageKey ?? '',
-        0.65
+        1,
+        0,
+        0,
+        this.#printMargin
       )
     )
   }
@@ -4265,6 +4154,7 @@ export class CadleApp extends LiteElement {
     const originalPrintMargin = this.#printMargin
     const originalWorldWidth = this.#worldWidth
     const originalWorldHeight = this.#worldHeight
+    const originalSizeMigrated = this.#documentSizeMigrated
     const projectPages = Object.entries(this.#project?.pages ?? {}).sort(([, a], [, b]) => {
       const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
       const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
@@ -4319,10 +4209,10 @@ export class CadleApp extends LiteElement {
           pageKey === (originalPageKey as string) ? originalState : this.#nativeStateForPage(pageKey as UUID)
         if (!state) continue
 
+        this.#pageKey = pageKey as UUID
         this.#applyPersistedState(state)
         this.#document.selectedId = null
         this.#document.selectedIds = new Set()
-        this.#pageKey = pageKey as UUID
         await this.#ensureSymbolMarkupReady()
 
         const exportViewBox = this.#exportViewBox(this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait')
@@ -4330,7 +4220,7 @@ export class CadleApp extends LiteElement {
         const orientation: 'landscape' | 'portrait' = this.#worldWidth >= this.#worldHeight ? 'landscape' : 'portrait'
         const dataUrl = await rasterizePageSvgToPng(svgString, orientation, `Failed to render page ${page.name}`)
 
-        pdf.addPage('a4', orientation)
+        pdf.addPage(this.#paperPreset.startsWith('a3') ? 'a3' : 'a4', orientation)
         const pageWidth = pdf.internal.pageSize.getWidth()
         const pageHeight = pdf.internal.pageSize.getHeight()
         pdf.setFillColor(255, 255, 255)
@@ -4351,8 +4241,8 @@ export class CadleApp extends LiteElement {
 
       pdf.save(filename)
     } finally {
-      this.#applyPersistedState(originalState)
       this.#pageKey = originalPageKey
+      this.#applyPersistedState(originalState)
       this.#document.selectedId = originalState.selectedId ?? null
       this.#document.selectedIds = originalSelectedIds
       this.#draft = originalDraft
@@ -4372,6 +4262,7 @@ export class CadleApp extends LiteElement {
       this.#printMargin = originalPrintMargin
       this.#worldWidth = originalWorldWidth
       this.#worldHeight = originalWorldHeight
+      this.#documentSizeMigrated = originalSizeMigrated
       this.#render()
     }
   }
@@ -4899,10 +4790,9 @@ export class CadleApp extends LiteElement {
       const previousWidth = this.#worldWidth
       const previousHeight = this.#worldHeight
       const target = paperWorldSize(paperPreset)
-      const scale = Math.min(target.width / previousWidth, target.height / previousHeight)
-      const offsetX = (target.width - previousWidth * scale) / 2
-      const offsetY = (target.height - previousHeight * scale) / 2
-      this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, scale, offsetX, offsetY)
+      const offsetX = (target.width - previousWidth) / 2
+      const offsetY = (target.height - previousHeight) / 2
+      this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, 1, offsetX, offsetY)
       this.#paperPreset = paperPreset
       this.#worldWidth = target.width
       this.#worldHeight = target.height
@@ -4937,7 +4827,7 @@ export class CadleApp extends LiteElement {
         this.#render()
         return
       case 'margin-dec':
-        this.#printMargin = Math.max(this.#printMargin - 1, 0)
+        this.#printMargin = Math.max(this.#printMargin - 1, DEFAULT_PRINT_MARGIN_MM)
         this.#persist()
         this.#render()
         return

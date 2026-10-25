@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fitLegacyGroundPlanToPrintArea, scaleShapesBetweenPages } from '../src/editor/layout/page-scaling.js'
+import { fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from '../src/editor/layout/page-scaling.js'
+import { pageLayout } from '../src/editor/layout/page-layout.js'
+import { shapeBounds } from '../src/editor/model/model.js'
 import { oneWireSymbolStrokeWidthFor } from '../src/editor/layout/onewire-symbol-nodes.js'
 import type { Shape } from '../src/editor/model/types.js'
 
@@ -12,6 +14,26 @@ const legacyPlan = (): Shape[] =>
     end: { x: 700 + index * 60, y: 1300 }
   }))
 
+test('moves an existing plan clear of the address strip once, without cumulative shrinking', () => {
+  const area = pageLayout(2376, 1680).content
+  const original: Shape[] = [
+    { id: 'plan', kind: 'rect', start: { x: 100, y: 100 }, end: { x: 2200, y: 1500 } },
+    { id: 'device', kind: 'symbol', position: { x: 500, y: 1400 }, name: 'Lamp', path: 'Lighting.svg', scale: 1 },
+    { id: 'hidden', kind: 'line', start: { x: -9000, y: 0 }, end: { x: 9000, y: 0 }, hidden: true }
+  ]
+  const fitted = fitShapesToContentArea(original, area)
+  assert.equal(fitted.changed, true)
+  for (const shape of fitted.shapes.filter((shape) => !shape.hidden)) {
+    const bounds = shapeBounds(shape)
+    assert.ok(bounds.y >= area.y)
+    assert.ok(bounds.y + bounds.height <= area.y + area.height)
+  }
+  assert.equal(original[0].kind === 'rect' && original[0].end.y, 1500)
+  const again = fitShapesToContentArea(fitted.shapes, area)
+  assert.equal(again.changed, false)
+  assert.deepEqual(again.shapes, fitted.shapes)
+})
+
 test('enlarges and centers a legacy ground plan inside the printable area', () => {
   const result = fitLegacyGroundPlanToPrintArea(legacyPlan(), {
     width: 2376,
@@ -22,13 +44,14 @@ test('enlarges and centers a legacy ground plan inside the printable area', () =
   })
 
   assert.equal(result.changed, true)
-  assert.ok(result.scale > 1.4 && result.scale < 1.6)
+  assert.ok(result.scale > 1.2 && result.scale < 1.3)
   const first = result.shapes[0]
   const last = result.shapes.at(-1)
   assert.equal(first.kind, 'wall')
   assert.equal(last?.kind, 'wall')
   assert.ok(first.start.x > 0)
-  assert.ok((last?.end.x ?? 0) < 2376)
+  assert.ok((last?.end.x ?? 0) < 2296)
+  assert.ok((last?.end.y ?? 0) <= 1320)
 })
 
 test('keeps breaker strokes equal to conductors when resizing a page', () => {

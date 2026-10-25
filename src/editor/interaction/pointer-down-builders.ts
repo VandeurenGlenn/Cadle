@@ -1,6 +1,7 @@
 import { inferSymbolScale } from '../../editor/model/model.js'
 import type { DraftShape, NativeCatalogPick, Point, SymbolShape, TextShape, Tool } from '../../editor/model/types.js'
 import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
+import { paperTextScale } from '../layout/page-layout.js'
 
 type SymbolStyleDefaults = {
   scale?: unknown
@@ -68,6 +69,7 @@ export const createTextShape = (id: string, position: Point, text: string): Text
   kind: 'text',
   position,
   text,
+  scale: paperTextScale(3),
   fill: '#000000'
 })
 

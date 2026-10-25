@@ -496,7 +496,15 @@ test('inserts a breaker before the selected component without shrinking the rail
     .locator('line.shape-line')
     .evaluateAll((lines) => lines.map((line) => line.getAttribute('data-shape-id')).filter(Boolean))
   await page.getByRole('button', { name: 'Add kamrail' }).click()
-  await page.mouse.click(stageBounds.x + stageBounds.width * 0.32, stageBounds.y + stageBounds.height * 0.62)
+  const secondRailPoint = await stage.locator('.print-safe-area').evaluate((area) => {
+    const rect = area as SVGRectElement
+    const point = rect.ownerSVGElement!.createSVGPoint()
+    point.x = rect.x.baseVal.value + rect.width.baseVal.value * 0.15
+    point.y = rect.y.baseVal.value + rect.height.baseVal.value * 0.12
+    const screen = point.matrixTransform(rect.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(secondRailPoint.x, secondRailPoint.y)
   const secondRailId = await stage.locator('line.shape-line').evaluateAll((lines, previousIds) => {
     const previous = new Set(previousIds)
     return lines.map((line) => line.getAttribute('data-shape-id')).find((id) => id && !previous.has(id))

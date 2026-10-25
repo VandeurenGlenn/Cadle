@@ -1,4 +1,5 @@
 import { GRID_SIZE } from '../constants.js'
+import { PAPER_LABEL_FONT_SIZE, paperTextScale } from './page-layout.js'
 import {
   ONE_WIRE_COLUMN_GAP_X,
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
@@ -114,10 +115,10 @@ type RowSymbolSpec = {
 const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
 const ONE_WIRE_COLUMN_SPACING_X = 200
 export const ONE_WIRE_CONDUCTOR_STROKE_WIDTH = 2
-const ONE_WIRE_LABEL_SCALE = 0.9
-const ONE_WIRE_TECHNICAL_LABEL_SCALE = 0.65
-const ONE_WIRE_LABEL_WEIGHT = 300
-const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = 300
+const ONE_WIRE_LABEL_SCALE = paperTextScale(2.75)
+const ONE_WIRE_TECHNICAL_LABEL_SCALE = paperTextScale(2.5)
+const ONE_WIRE_LABEL_WEIGHT = 500
+const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = 400
 const ONE_WIRE_BREAKER_RAIL_GAP = 40
 
 export const oneWirePhaseLabelText = (
@@ -350,7 +351,7 @@ export const buildOneWireBreakerSection = (
     text: cableDesignation,
     fill: '#000000',
     stroke: 'none',
-    scale: 0.7,
+    scale: ONE_WIRE_TECHNICAL_LABEL_SCALE,
     fontWeight: ONE_WIRE_TECHNICAL_LABEL_WEIGHT,
     rotation: -90,
     bindingId,
@@ -436,7 +437,7 @@ export const buildOneWireRowSection = (
   compactSingleCircuit = false,
   rowSpacingY = ONE_WIRE_ROW_SPACING_Y
 ): { shapes: Shape[]; ids: string[] } => {
-  const ROW_NUMBER_OFFSET_X = -24
+  const ROW_NUMBER_OFFSET_X = -12
   const ROW_FIRST_SYMBOL_OFFSET_X = 30
   const ROW_SYMBOL_MARGIN_X = 4
   const SPOT_LEADING_MARGIN_X = 0
@@ -558,7 +559,7 @@ export const buildOneWireRowSection = (
       rotation,
       leftReach: probeSlotX - bounds.x,
       symbolRightReach,
-      rightReach: symbolRightReach + (repeatCount > 1 ? 28 : 0)
+      rightReach: symbolRightReach + (repeatCount > 1 ? 6 + `x${repeatCount}`.length * PAPER_LABEL_FONT_SIZE * 0.68 : 0)
     }
   })
 
@@ -663,12 +664,13 @@ export const buildOneWireRowSection = (
     const bindingNumberMatch = /^([A-Z]+)(\d+)$/.exec(bindingId)
     const rowNumber = bindingNumberMatch ? Number(bindingNumberMatch[2]) : rowIndex + 1
     const rowNumberText = `${rowNumber}`
-    const rowNumberX = rowJunctionX + ROW_NUMBER_OFFSET_X - Math.max(0, rowNumberText.length - 1) * 7
+    const rowNumberX = rowJunctionX + ROW_NUMBER_OFFSET_X
     const rowNumberLabel: TextShape = {
       id: deps.nextShapeId(),
       kind: 'text',
       position: { x: rowNumberX, y: rowY + 5 },
       text: rowNumberText,
+      textAnchor: 'end',
       fill: '#000000',
       scale: ONE_WIRE_LABEL_SCALE,
       fontWeight: ONE_WIRE_LABEL_WEIGHT,

@@ -2,6 +2,7 @@ import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { renderedSymbolScale } from './model/symbol-scale.js'
+import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from './constants.js'
 import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextPresentation } from './symbol-metadata.js'
@@ -85,7 +86,8 @@ export const shapeTemplate = (
   const shapeClass = `shape shape-${shape.kind} ${generatedLabelClass} ${extraClass}`
   const isDraft = extraClass.includes('draft')
   const strokeWidthStyle =
-    'strokeWidth' in shape && typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;` : nothing
+    'strokeWidth' in shape && typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;`
+      : shape.kind === 'line' ? `stroke-width: ${DEFAULT_DRAW_STROKE_WIDTH}px;` : nothing
   switch (shape.kind) {
     case 'wall':
     case 'line': {
@@ -98,7 +100,7 @@ export const shapeTemplate = (
           class=${shapeClass}
           data-shape-id=${shape.id}
           data-selected=${selectedAttr}
-          stroke=${shape.stroke ?? (shape.kind === 'wall' ? '#000000' : 'var(--cadle-accent)')}
+          stroke=${shape.stroke ?? DEFAULT_DRAW_STROKE}
           style=${strokeWidthStyle}
           x1=${shape.start.x}
           y1=${shape.start.y}

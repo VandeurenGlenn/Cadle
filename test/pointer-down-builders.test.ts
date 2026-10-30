@@ -2,16 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createSymbolShape,
-  createDraftShape,
-  DEFAULT_DRAW_STROKE_WIDTH
+  createDraftShape
 } from '../src/editor/interaction/pointer-down-builders.js'
 
-test('uses a one-pixel stroke for newly drawn lines and outline shapes', () => {
+test('uses a two-pixel stroke for newly drawn lines and outline shapes', () => {
   const point = { x: 10, y: 20 }
 
   for (const tool of ['line', 'rect', 'circle', 'arc'] as const) {
     const draft = createDraftShape(tool, point, tool)
-    assert.equal(draft.strokeWidth, DEFAULT_DRAW_STROKE_WIDTH, tool)
+    assert.equal(draft.strokeWidth, 2, tool)
+    if (tool === 'line') assert.equal(draft.stroke, '#000000')
   }
 })
 

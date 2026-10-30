@@ -181,10 +181,10 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
     inner,
     annotations: [
       label('poles', leftX, centerY + 5, 'end'),
-      label('rated-current', rightX, centerY + (residual ? 18 : 5)),
-      label('residual-current', rightX, centerY - 8),
+      label('rated-current', rightX, centerY + (residual ? 36 : 5)),
+      label('residual-current', rightX, centerY + 12),
       label('phase', axisX - 12, bottomY + 24, 'end'),
-      label('rcd-type', rightX, centerY + 44)
+      label('rcd-type', rightX, centerY + 60)
     ].join('')
   }
 }

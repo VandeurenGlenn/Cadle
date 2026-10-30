@@ -4,6 +4,7 @@ import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cach
 import { symbolTextPresentation } from '../symbol-metadata.js'
 import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import type { PaperPresetConfig } from '../constants.js'
+import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import type { Project } from '../../types.js'
 import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
 import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
@@ -78,7 +79,7 @@ const EXPORT_STYLE_BLOCK_MONO = `
   .shape { vector-effect: none; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
   .shape-wall { stroke: #101010; stroke-width: 6; }
-  .shape-line { stroke: #151515; stroke-width: 2.4; }
+  .shape-line { stroke: #000000; stroke-width: 2; }
 
   .binding-label-text {
     fill: #151515;
@@ -165,9 +166,10 @@ export const shapeMarkup = (
   switch (shape.kind) {
     case 'wall':
     case 'line':
-      const lineStrokeAttr = ` stroke="${escapeHtml(shape.stroke ?? '#a85427')}"`
+      const lineStrokeAttr = ` stroke="${escapeHtml(shape.stroke ?? DEFAULT_DRAW_STROKE)}"`
       const lineStrokeWidthStyle =
-        typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+        typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"`
+          : shape.kind === 'line' ? ` style="stroke-width: ${DEFAULT_DRAW_STROKE_WIDTH}px;"` : ''
       return `
           <line
             class="shape shape-${shape.kind} ${extraClass}"

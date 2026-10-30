@@ -648,6 +648,10 @@ output,
   stroke-dasharray: 10 8;
 }
 
+.shape-line.draft {
+  opacity: 1;
+}
+
 .selected-outline {
   fill: none;
   stroke: rgba(168, 84, 39, 0.86);

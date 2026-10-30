@@ -84,16 +84,22 @@ test('editor, SVG and A4 PNG share the sheet geometry and details strip', async 
     if (name === 'topology') {
       const clearance = await app.locator('g.shape-symbol').evaluateAll((groups) => groups.flatMap((group) => {
         const svg = group.querySelector('svg')
-        const bounds = svg?.getBBox()
         const matrix = svg?.getScreenCTM()
-        if (!bounds || !matrix) return []
-        const right = new DOMPoint(bounds.x + bounds.width, bounds.y).matrixTransform(matrix).x
+        if (!svg || !matrix) return []
+        const right = new DOMPoint(15.3836, 0).matrixTransform(matrix).x
+        const geometry = [...svg.querySelectorAll('path,text')].map((node) => node.getBoundingClientRect())
         return [...group.querySelectorAll('.onewire-technical-annotation')]
           .filter((label) => label.getAttribute('text-anchor') === 'start')
-          .map((label) => label.getBoundingClientRect().left - right)
+          .map((label) => {
+            const box = label.getBoundingClientRect()
+            return {
+              gap: box.left - right,
+              overlaps: geometry.some((other) => box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top)
+            }
+          })
       }))
       expect(clearance.length).toBeGreaterThan(0)
-      expect(Math.min(...clearance)).toBeGreaterThan(0)
+      expect(clearance.every(({ gap, overlaps }) => gap > 1 && gap < 8 && !overlaps)).toBe(true)
       await expect(app.locator('.shape-text').filter({ hasText: /^AARDING$/ })).toHaveCount(0)
       const titleLayout = await app.evaluate((element) => {
         const root = element.shadowRoot!
@@ -149,12 +155,13 @@ test('editor, SVG and A4 PNG share the sheet geometry and details strip', async 
               .find((text) => text.textContent?.includes('mm²'))!
             const axis = new DOMPoint(15.3836, 28.47).matrixTransform(symbol.getScreenCTM()!).x
             const cableBox = cable.getBoundingClientRect()
+            const bodyLeft = Math.min(...[...symbol.querySelectorAll('path')].map((path) => path.getBoundingClientRect().left))
             const rowSymbols = [...root.querySelectorAll<SVGSVGElement>('g.shape-symbol svg')]
               .filter((svg) => svg !== symbol && svg.getAttribute('viewBox') !== '0 0 24 54')
               .map((svg) => svg.getBoundingClientRect())
               .filter((box) => box.bottom < symbol.getBoundingClientRect().top && box.left >= axis - 16 && box.right <= axis + 100)
             return {
-              poles: symbol.getBoundingClientRect().left - poles.getBoundingClientRect().right,
+              poles: bodyLeft - poles.getBoundingClientRect().right,
               conductor: cableBox.left - axis,
               rows: rowSymbols.length ? cableBox.top - Math.max(...rowSymbols.map((box) => box.bottom)) : 100
             }
@@ -162,7 +169,8 @@ test('editor, SVG and A4 PNG share the sheet geometry and details strip', async 
       })
       expect(gaps.length).toBeGreaterThan(0)
       for (const gap of gaps) {
-        expect(gap.poles).toBeGreaterThan(4)
+        expect(gap.poles).toBeGreaterThan(1)
+        expect(gap.poles).toBeLessThan(7)
         expect(gap.conductor).toBeGreaterThan(4)
         expect(gap.rows).toBeGreaterThan(4)
       }

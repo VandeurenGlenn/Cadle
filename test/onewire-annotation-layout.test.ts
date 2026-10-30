@@ -31,13 +31,14 @@ const checkClearance = (shapes: Shape[]) => {
   assert.ok(breaker.kind === 'symbol')
   const terminals = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!
   const axisX = breaker.position.x + terminals.bottom!.x
-  const bounds = oneWireSymbolBounds(breaker)!
+  const bodyLeft = axisX + (5.6536 - 15.3836) * 24 * breaker.scale / 28.8265
   const cable = shapes.find((shape) => shape.sourceLink?.role === 'cable-section')!
   const cableBox = oneWireLayoutBounds(cable)
   assert.ok(cableBox.x >= axisX + 12)
   for (const role of ['breaker-poles', 'breaker-current']) {
     const label = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === role)!)
-    assert.ok(role === 'breaker-poles' ? label.x + label.width <= bounds.x - 12 : label.x >= bounds.x + bounds.width + 12)
+    const gap = role === 'breaker-poles' ? bodyLeft - label.x - label.width : label.x - axisX
+    assert.ok(Math.abs(gap - (role === 'breaker-poles' ? 8 : 10)) < 1e-8)
   }
   for (const row of shapes.filter((shape) => shape.sourceLink?.kind !== 'board')) {
     const box = oneWireLayoutBounds(row)

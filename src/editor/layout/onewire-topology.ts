@@ -18,7 +18,7 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 21
+const TOPOLOGY_GEOMETRY_VERSION = 23
 
 type TopologyRail = Pick<LineShape, 'start' | 'end'>
 

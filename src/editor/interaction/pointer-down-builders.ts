@@ -2,6 +2,8 @@ import { inferSymbolScale } from '../../editor/model/model.js'
 import type { DraftShape, NativeCatalogPick, Point, SymbolShape, TextShape, Tool } from '../../editor/model/types.js'
 import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
 import { paperTextScale } from '../layout/page-layout.js'
+import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
+export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
   scale?: unknown
@@ -13,7 +15,6 @@ type SymbolStyleDefaults = {
   flipY?: unknown
 }
 
-export const DEFAULT_DRAW_STROKE_WIDTH = 1
 const FLOOR_PLAN_SWITCH_SCALE = 1.3
 const FLOOR_PLAN_PUSH_BUTTON_SCALE = 0.8
 const FLOOR_PLAN_DOUBLE_PUSH_BUTTON_SCALE = 1.25
@@ -115,5 +116,5 @@ export const createDraftShape = (
         kind: tool === 'door' ? 'door' : tool === 'window' ? 'window' : tool === 'gate' ? 'gate' : 'line',
         start: point,
         end: point,
-        ...(tool === 'line' ? { strokeWidth: DEFAULT_DRAW_STROKE_WIDTH } : {})
+        ...(tool === 'line' ? { stroke: DEFAULT_DRAW_STROKE, strokeWidth: DEFAULT_DRAW_STROKE_WIDTH } : {})
       }

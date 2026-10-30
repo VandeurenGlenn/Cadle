@@ -7,10 +7,11 @@ import { renderedSymbolScale } from '../model/symbol-scale.js'
 // anchor, while the rest of the row stays smaller so the feeder and cable labels
 // remain legible and proportionate to the electrical reference.
 export const ONE_WIRE_DEFAULT_SCALE = (4 * PAPER_WORLD_UNITS_PER_MM) / 24
-export const ONE_WIRE_BREAKER_SCALE = (8.4 * PAPER_WORLD_UNITS_PER_MM) / 24
+export const ONE_WIRE_BREAKER_SCALE = (12 * PAPER_WORLD_UNITS_PER_MM) / 24
+export const ONE_WIRE_METER_SCALE = (8 * PAPER_WORLD_UNITS_PER_MM) / 24
 
-// Match the 8.4 mm device height despite the RCD's wider source viewBox.
-export const ONE_WIRE_RCD_SCALE = (8.4 * PAPER_WORLD_UNITS_PER_MM * 38.5625) / (24 * 29.8893)
+// Match the 12 mm device height despite the RCD's wider source viewBox.
+export const ONE_WIRE_RCD_SCALE = (12 * PAPER_WORLD_UNITS_PER_MM * 38.5625) / (24 * 29.8893)
 export const ONE_WIRE_RENDERED_STROKE_WIDTH = 2
 
 // Trikker-style wire connection metadata for the built-in one-wire symbols.
@@ -35,6 +36,7 @@ type NodeSpec = {
   cutRadius: number | null
   // Exact ports for compound symbols whose contacts do not form one circle.
   connectionPorts?: Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>>
+  protectionBody?: { left: number; right: number }
   // Explicit one-wire scale for symbols without a standard node circle.
   oneWireScale?: number
   // Rotate the symbol when placed inline on a horizontal wire (e.g. TL bar).
@@ -170,6 +172,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /(?:Custom breaker|protection devices\/automaat)\.svg$/i,
     spec: {
       viewBox: { width: 28.783, height: 28.8265 },
+      protectionBody: { left: 5.6536, right: 15.3836 },
       node: { x: 15.3836, y: 28.47 },
       cutRadius: 2.83465,
       oneWireScale: ONE_WIRE_BREAKER_SCALE,
@@ -180,6 +183,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     match: /(?:Custom )?Residual-current circuit breaker\.svg$/i,
     spec: {
       viewBox: { width: 38.5625, height: 29.8893 },
+      protectionBody: { left: 5.6536, right: 15.3836 },
       node: { x: 15.3836, y: 29.5293 },
       cutRadius: 2.83465,
       // Its wide viewBox otherwise makes the visible breaker body shorter
@@ -323,6 +327,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
 
 type TerminalSpec = {
   viewBox: { width: number; height: number }
+  oneWireScale?: number
   top?: Point
   bottom?: Point
 }
@@ -332,6 +337,7 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
     match: /consumption appliances\/kwh meter\.svg$/i,
     spec: {
       viewBox: { width: 17.5861, height: 17.2479 },
+      oneWireScale: ONE_WIRE_METER_SCALE,
       top: { x: 8.8167, y: 0.12 },
       bottom: { x: 8.8167, y: 17.1279 }
     }
@@ -467,12 +473,22 @@ export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireT
   }
 }
 
-// Node-normalized one-wire scale: every switch circle renders at the same
-// radius regardless of its viewBox proportions; lamps/TL/motor use explicit
-// scales. Returns null for unknown symbols (caller keeps its heuristic).
+// Conducting body only: decorative RCD markers and legacy label space are
+// excluded so the external protection values can sit close to the switch.
+export const oneWireProtectionBodyEdges = (shape: { path: string; scale: number; position: Point }) => {
+  const spec = findSpec(shape.path)
+  if (!spec?.protectionBody) return null
+  const scale = renderedSymbolScale(shape.path, shape.scale)
+  return {
+    leftX: shape.position.x + pointOffset(spec.viewBox, { x: spec.protectionBody.left, y: 0 }, scale).x,
+    rightX: shape.position.x + pointOffset(spec.viewBox, { x: spec.protectionBody.right, y: 0 }, scale).x
+  }
+}
+
+// Normalize switch circles independently of their source viewBox proportions.
 export const oneWireSymbolScaleFor = (path: string): number | null => {
   const spec = findSpec(path)
-  if (!spec) return ONE_WIRE_DEFAULT_SCALE
+  if (!spec) return TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec.oneWireScale ?? ONE_WIRE_DEFAULT_SCALE
   if (typeof spec.oneWireScale === 'number') return spec.oneWireScale
   if (spec.cutRadius === null) return ONE_WIRE_DEFAULT_SCALE
   const maxViewBox = Math.max(spec.viewBox.width, spec.viewBox.height)

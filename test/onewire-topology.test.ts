@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
-import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
 import {
   energyScenarioOpacityValues,
@@ -81,7 +81,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v21:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v23:')))
   for (const shape of shapes) {
     if (shape.kind === 'line') {
       assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 10 : 2)
@@ -105,12 +105,14 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     const title = shapes.find((shape) => shape.sourceLink?.role === titleRole)!
     const device = shapes.find((shape) => shape.sourceLink?.role === deviceRole)!
     assert.ok(title.kind === 'text' && device.kind === 'symbol')
-    const deviceBounds = oneWireSymbolBounds(device)!
     const titleBounds = oneWireLayoutBounds(title)
-    assert.equal(title.textAnchor, 'end')
-    assert.ok(Math.abs(deviceBounds.x - title.position.x - 12) < 1e-8)
-    assert.ok(titleBounds.x + titleBounds.width <= deviceBounds.x - 12 + 1e-8)
     const terminals = oneWireSymbolTerminalInfo(device.path, device.scale)!
+    const axisX = device.position.x + terminals.bottom!.x
+    const maxViewBox = device.path.includes('Residual-current') ? 38.5625 : 28.8265
+    const bodyLeft = axisX + (5.6536 - 15.3836) * 24 * device.scale / maxViewBox
+    assert.equal(title.textAnchor, 'end')
+    assert.ok(Math.abs(bodyLeft - title.position.x - 8) < 1e-8)
+    assert.ok(titleBounds.x + titleBounds.width <= bodyLeft - 8 + 1e-8)
     const centerY = device.position.y + (terminals.top!.y + terminals.bottom!.y) / 2
     assert.equal(title.position.y, centerY - 24)
     assert.equal(18 * title.scale! / 8, 2.5)
@@ -121,6 +123,10 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const solar = shapes.find((shape) => shape.sourceLink?.role === 'solar-inverter')
   const additional = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')
   assert.ok(meter?.kind === 'symbol' && meter.position.y > busY)
+  assert.equal(meter.scale * 24 / 8, 8)
+  const solarMeter = shapes.find((shape) => shape.sourceLink?.role === 'solar-meter')
+  assert.ok(solarMeter?.kind === 'symbol')
+  assert.equal(solarMeter.scale * 24 / 8, 8)
   assert.ok(solar?.kind === 'symbol' && solar.position.y < busY)
   assert.ok(additional?.kind === 'symbol' && additional.position.y < busY)
 
@@ -168,12 +174,12 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const mainLabel = shapes.find((shape) => shape.sourceLink?.role === 'main-differential-label')
   assert.ok(earth?.kind === 'symbol' && main?.kind === 'symbol' && earth.position.x < main.position.x)
   assert.ok(mainSwitch?.kind === 'symbol')
-  assert.ok(Math.abs(mainSwitch.scale * 24 / 8 - 8.4) < 1e-6)
+  assert.ok(Math.abs(mainSwitch.scale * 24 / 8 - 12) < 1e-6)
   assert.equal(mainSwitch.electrical?.breakerCurrentA, 25)
   assert.equal(mainSwitch.symbolTextOverrides?.['rated-current'], '25A')
   assert.equal(mainLabel, undefined)
   assert.ok(main?.kind === 'symbol')
-  assert.ok(Math.abs(main.scale * 24 * 29.8893 / 38.5625 / 8 - 8.4) < 1e-6)
+  assert.ok(Math.abs(main.scale * 24 * 29.8893 / 38.5625 / 8 - 12) < 1e-6)
   assert.equal(main.electrical?.breakerCurrentA, 40)
   assert.equal(main.electrical?.rcdSensitivityMa, 300)
   assert.equal(main.electrical?.manufacturer, 'Schneider Electric')
@@ -187,9 +193,9 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     (shape) => shape.sourceLink?.role === 'additional-differential-consumers-1'
   )
   assert.ok(residualBreaker?.kind === 'symbol' && additionalDifferential?.kind === 'symbol')
-  assert.ok(Math.abs(additionalDifferential.scale * 24 * 29.8893 / 38.5625 / 8 - 8.4) < 1e-6)
+  assert.ok(Math.abs(additionalDifferential.scale * 24 * 29.8893 / 38.5625 / 8 - 12) < 1e-6)
   assert.equal(residualBreaker.electrical?.breakerCurrentA, 40)
-  assert.ok(Math.abs(residualBreaker.scale * 24 / 8 - 8.4) < 1e-6)
+  assert.ok(Math.abs(residualBreaker.scale * 24 / 8 - 12) < 1e-6)
   assert.equal(residualBreaker.electrical?.breakerCurve, 'C')
   assert.equal(residualBreaker.symbolTextOverrides?.['rated-current'], 'C40A')
   assert.equal(additionalDifferential.electrical?.breakerCurrentA, 40)
@@ -199,7 +205,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
 
   const solarBreaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
   assert.ok(solarBreaker?.kind === 'symbol')
-  assert.ok(Math.abs(solarBreaker.scale * 24 / 8 - 8.4) < 1e-6)
+  assert.ok(Math.abs(solarBreaker.scale * 24 / 8 - 12) < 1e-6)
   assert.equal(solarBreaker.electrical?.breakerCurrentA, 20)
   assert.equal(solarBreaker.electrical?.breakerCurve, 'C')
   assert.equal(solarBreaker.symbolTextOverrides?.['rated-current'], 'C20A')

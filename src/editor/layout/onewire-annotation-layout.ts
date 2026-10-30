@@ -1,8 +1,9 @@
 import type { Shape, SymbolShape, TextShape } from '../model/types.js'
 import { oneWireLayoutBounds } from './onewire-connections.js'
 import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { protectionLabelLayout } from './protection-label-layout.js'
 
-// Paper clearances: 1.5 mm around protection values, 3 mm around cable text.
+// Compact protection values beside the drawn body; 3 mm around cable text.
 export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuitKey: string) => {
   let next = [...shapes]
   let changed = false
@@ -16,6 +17,7 @@ export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuit
       (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id === circuitKey : shape.bindingId?.replace(/\d+$/, '') === circuitKey)
     const axisX = breaker.position.x + terminals.bottom.x
     const topY = breaker.position.y + terminals.top.y
+    const labels = protectionLabelLayout(breaker)!
     const positionLabel = (shape: TextShape, x: number, y: number): TextShape => {
       if (Math.abs(shape.position.x - x) < 1e-8 && Math.abs(shape.position.y - y) < 1e-8) return shape
       changed = true
@@ -24,8 +26,8 @@ export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuit
     next = next.map((shape) => {
       if (!belongs(shape) || shape.kind !== 'text') return shape
       switch (shape.sourceLink?.role) {
-        case 'breaker-poles': return positionLabel(shape, bounds.x - 12, breaker.position.y + 5)
-        case 'breaker-current': return positionLabel(shape, bounds.x + bounds.width + 12, breaker.position.y + 5)
+        case 'breaker-poles': return positionLabel(shape, labels.leftX, labels.centerY + 5)
+        case 'breaker-current': return positionLabel(shape, labels.rightX, labels.centerY + 5)
         // The rotated letters extend left of their baseline. Keep them wholly
         // to the right of the conductor rather than printing across it.
         case 'cable-section': return positionLabel(shape, axisX + 36, topY - 24)

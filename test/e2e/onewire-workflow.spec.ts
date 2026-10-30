@@ -474,7 +474,14 @@ test('inserts a breaker before the selected component without shrinking the rail
     .locator('[data-shape-id]')
     .evaluateAll((items) => new Set(items.map((item) => item.getAttribute('data-shape-id'))).size)
   await addSwitch.click()
-  await existingBreaker.click()
+  // Click the painted conductor, since the SVG viewport also contains empty
+  // space and becomes a larger click target when the device size increases.
+  const breakerPoint = await existingBreaker.locator('path').first().evaluate((path: SVGPathElement) => {
+    const point = path.getPointAtLength(2)
+    const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(breakerPoint.x, breakerPoint.y)
   await expect
     .poll(() =>
       stage
@@ -527,7 +534,12 @@ test('inserts a breaker before the selected component without shrinking the rail
     y2: Number(line.getAttribute('y2'))
   }))
   await page.getByRole('button', { name: 'Select', exact: true }).click()
-  await stage.locator(`[data-shape-id="${breakerId}"]`).click()
+  const deletePoint = await stage.locator(`[data-shape-id="${breakerId}"] path`).first().evaluate((path: SVGPathElement) => {
+    const point = path.getPointAtLength(2)
+    const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(deletePoint.x, deletePoint.y)
   await page.keyboard.press('Delete')
   await expect(secondRail).toHaveAttribute('x1', `${secondRailBeforeDelete.x1}`)
   await expect(secondRail).toHaveAttribute('x2', `${secondRailBeforeDelete.x2}`)

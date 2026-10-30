@@ -103,6 +103,7 @@ import {
 } from './layout/onewire-layout-plan.js'
 import { fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { paperTextScale } from './layout/page-layout.js'
+import { resizedSymbolStrokeWidth } from './model/symbol-scale.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './layout/onewire-connections.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
 import {
@@ -1807,7 +1808,10 @@ export class CadleApp extends LiteElement {
           this.#setShape({
             ...shape,
             position: scalePointAround(shape.position),
-            scale: Math.max(0.1, Math.min(20, shape.scale * factor))
+            scale: Math.max(0.1, Math.min(20, shape.scale * factor)),
+            ...(typeof shape.strokeWidth === 'number'
+              ? { strokeWidth: resizedSymbolStrokeWidth(shape, Math.max(0.1, Math.min(20, shape.scale * factor))) }
+              : {})
           })
           break
         case 'image':
@@ -2863,7 +2867,7 @@ export class CadleApp extends LiteElement {
     }
 
     const nodeOffsetFor = (symbol: SymbolShape): Point =>
-      oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation)?.offset ?? { x: 0, y: 0 }
+      oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation, symbol.flipX, symbol.flipY)?.offset ?? { x: 0, y: 0 }
 
     // 1. Snap each symbol's electrical node onto the nearest horizontal wire axis.
     const axisForSymbol = (symbol: SymbolShape): number | null => {
@@ -2919,7 +2923,7 @@ export class CadleApp extends LiteElement {
       for (const symbol of alignedSymbols) {
         if (runGroupId && symbol.groupId !== runGroupId) continue
         if (!runGroupId && runBindingId && symbol.bindingId !== runBindingId) continue
-        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation)
+        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation, symbol.flipX, symbol.flipY)
         const offset = node?.offset ?? { x: 0, y: 0 }
         const nodeY = symbol.position.y + offset.y
         if (Math.abs(nodeY - y) >= 1) continue
@@ -4060,6 +4064,7 @@ export class CadleApp extends LiteElement {
       project: this.#project,
       printMargin: this.#printMargin,
       viewBox,
+      symbolStrokeWidth: this.#symbolStrokeWidth,
       monochrome,
       pageName,
       pageKey

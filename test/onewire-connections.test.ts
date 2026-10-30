@@ -96,3 +96,21 @@ test('floor-plan outlet leads use the actual SVG origin and viewBox', () => {
     assert.ok(Math.abs(node.offset.y - (5.78 - 11.5786 / 2) * factor) < 1e-8)
   }
 })
+
+test('double pushbutton ports touch the actual circle edges in its source SVG', () => {
+  const path = 'symbols/Switches/Double push button.svg'
+  // Source SVG: two circles, radius 3.2, translated by (0.12, -0.12).
+  const contacts = [
+    { x: 3.32, y: 0.93197 }, { x: 3.32, y: 7.33197 },
+    { x: 0.12, y: 4.13197 }, { x: 13.68, y: 4.13197 }
+  ]
+  for (const scale of [0.2, 0.5, 1.425, 3]) {
+    const shape = symbol(path, { scale })
+    const anchors = oneWireSymbolConnectionAnchors(shape)
+    for (const [index, contact] of contacts.entries()) {
+      const factor = 24 * scale / 13.68
+      assert.ok(Math.abs(anchors[index].point.x - (100 + (contact.x - 13.68 / 2) * factor)) < 1e-8)
+      assert.ok(Math.abs(anchors[index].point.y - (200 + (contact.y - 8.74394 / 2) * factor)) < 1e-8)
+    }
+  }
+})

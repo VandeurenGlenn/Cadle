@@ -13,7 +13,7 @@ export type EditableSymbolTextField = {
 }
 
 const symbolSvgCache = new Map<string, CachedSymbolSvg>()
-const symbolSvgLoading = new Set<string>()
+const symbolSvgLoading = new Map<string, Promise<void>>()
 const MAX_SYMBOL_CACHE_ENTRIES = 256
 
 const isDataSvg = (path: string) => /^data:image\/svg\+xml/i.test(path)
@@ -319,9 +319,18 @@ export const applySymbolTextOverrides = (path: string, inner: string, overrides?
 }
 
 export const preloadSymbolSvg = async (path: string): Promise<void> => {
-  if (!path || symbolSvgCache.has(path) || symbolSvgLoading.has(path)) return
-  symbolSvgLoading.add(path)
+  if (!path || symbolSvgCache.has(path)) return
+  const pending = symbolSvgLoading.get(path)
+  if (pending) return pending
 
+  // Share the actual load, so export waits for any request already started by
+  // the editor. Defer execution until the promise has been registered below.
+  const loading = Promise.resolve().then(() => loadSymbolSvg(path))
+  symbolSvgLoading.set(path, loading)
+  return loading
+}
+
+const loadSymbolSvg = async (path: string): Promise<void> => {
   try {
     let source: string | null = null
     if (isDataSvg(path)) {

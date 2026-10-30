@@ -1,7 +1,8 @@
 import { lineMetrics, shapeBounds } from '../model/model.js'
-import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import type { Point, Shape } from '../model/types.js'
 import { pageLayout } from './page-layout.js'
+import { oneWireLayoutBounds } from './onewire-connections.js'
 
 const scaleShape = (shape: Shape, scale: number, offsetX: number, offsetY: number): Shape => {
   const point = ({ x, y }: Point): Point => ({ x: x * scale + offsetX, y: y * scale + offsetY })
@@ -32,13 +33,8 @@ const scaleShape = (shape: Shape, scale: number, offsetX: number, offsetY: numbe
     position: point(shape.position),
     scale: (shape.scale ?? 1) * scale,
     ...(shape.kind === 'symbol' &&
-    /protection devices\/automaat\.svg$/i.test(shape.path) &&
     typeof shape.strokeWidth === 'number'
-      ? {
-          strokeWidth:
-            (shape.strokeWidth * renderedSymbolScale(shape.path, shape.scale)) /
-            renderedSymbolScale(shape.path, shape.scale * scale)
-        }
+      ? { strokeWidth: resizedSymbolStrokeWidth(shape, shape.scale * scale) }
       : {}),
     ...bindingLabelOffset
   }
@@ -57,7 +53,7 @@ export const fitShapesToContentArea = (
   padding = 24
 ): { shapes: Shape[]; changed: boolean } => {
   const boxes = shapes.filter((shape) => !shape.hidden).map((shape) => {
-    const bounds = shapeBounds(shape)
+    const bounds = shape.kind === 'text' ? oneWireLayoutBounds(shape) : shapeBounds(shape)
     if (shape.kind !== 'door' && shape.kind !== 'gate') return bounds
     const { length, nx, ny } = lineMetrics(shape)
     const reach = length * (shape.kind === 'gate' ? 0.5 : 1) * (shape.flipSide ? -1 : 1)
@@ -99,7 +95,7 @@ export const fitLegacyGroundPlanToPrintArea = (
   let maxY = Number.NEGATIVE_INFINITY
   for (const shape of shapes) {
     if (shape.hidden) continue
-    const bounds = shapeBounds(shape)
+    const bounds = shape.kind === 'text' ? oneWireLayoutBounds(shape) : shapeBounds(shape)
     minX = Math.min(minX, bounds.x)
     minY = Math.min(minY, bounds.y)
     maxX = Math.max(maxX, bounds.x + bounds.width)

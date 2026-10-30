@@ -1,6 +1,6 @@
 import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
-import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { paperTextScale } from './page-layout.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { neutralPositionForManufacturer, phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
@@ -17,7 +17,7 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 19
+const TOPOLOGY_GEOMETRY_VERSION = 20
 
 type TopologyRail = Pick<LineShape, 'start' | 'end'>
 
@@ -65,7 +65,7 @@ export const buildOneWireTopology = (
     y1: number,
     x2: number,
     y2: number,
-    strokeWidth = 1.25,
+    strokeWidth = ONE_WIRE_RENDERED_STROKE_WIDTH,
     energyFlow?: LineShape['energyFlow'],
     energySource?: LineShape['energySource']
   ): LineShape =>
@@ -91,7 +91,7 @@ export const buildOneWireTopology = (
         name,
         path,
         scale,
-        strokeWidth: 0.65,
+        strokeWidth: oneWireSymbolStrokeWidthFor(path, scale),
         ...(path === RCD_PATH || path === BREAKER_PATH
           ? {
               symbolTextOverrides: {
@@ -238,7 +238,7 @@ export const buildOneWireTopology = (
       mainSwitchBottom.y,
       mainSwitchBottom.x,
       mainSwitchBottom.y + 36,
-      1.25,
+      ONE_WIRE_RENDERED_STROKE_WIDTH,
       plan.solar ? 'bidirectional' : 'reverse'
     )
   )
@@ -249,15 +249,15 @@ export const buildOneWireTopology = (
       meterBottom.y,
       mainSwitchTop.x,
       mainSwitchTop.y,
-      1.25,
+      ONE_WIRE_RENDERED_STROKE_WIDTH,
       plan.solar ? 'bidirectional' : 'reverse'
     )
   )
   shapes.push(
-    line('incoming', meterTop.x, meterTop.y, mainBottom.x, mainBottom.y, 1.25, plan.solar ? 'bidirectional' : 'forward')
+    line('incoming', meterTop.x, meterTop.y, mainBottom.x, mainBottom.y, ONE_WIRE_RENDERED_STROKE_WIDTH, plan.solar ? 'bidirectional' : 'forward')
   )
   shapes.push(
-    line('main-to-rail', mainTop.x, mainTop.y, mainTap.x, mainTap.y, 1.25, plan.solar ? 'bidirectional' : 'forward')
+    line('main-to-rail', mainTop.x, mainTop.y, mainTap.x, mainTap.y, ONE_WIRE_RENDERED_STROKE_WIDTH, plan.solar ? 'bidirectional' : 'forward')
   )
 
   if (plan.incomingCable) {
@@ -265,7 +265,7 @@ export const buildOneWireTopology = (
       text(
         'incoming-cable-label',
         `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`,
-        meter.position.x + 100,
+        meter.position.x + 190,
         meter.position.y + 24,
         0.58,
         -90
@@ -276,7 +276,7 @@ export const buildOneWireTopology = (
     const mainDifferentialTitle = text(
       'main-differential-title',
       'Hoofddiff.',
-      mainDifferential.position.x - 80,
+      mainDifferential.position.x - 120,
       mainDifferential.position.y + 5,
       0.62
     )
@@ -338,7 +338,7 @@ export const buildOneWireTopology = (
     const directTap = busTap(0.16)
     const directUpperTap = upperTapAtX(directTap.x)
     shapes.push(
-      line('unprotected-feeder', directTap.x, directTap.y, directUpperTap.x, directUpperTap.y, 1.25, 'forward', 'mixed')
+      line('unprotected-feeder', directTap.x, directTap.y, directUpperTap.x, directUpperTap.y, ONE_WIRE_RENDERED_STROKE_WIDTH, 'forward', 'mixed')
     )
     const warning = text(
       'secondary-busbar-protection-warning',
@@ -386,7 +386,7 @@ export const buildOneWireTopology = (
         feederTap.y,
         breakerBottom.x,
         breakerBottom.y,
-        1.25,
+        ONE_WIRE_RENDERED_STROKE_WIDTH,
         undefined,
         downstreamSource
       )
@@ -398,7 +398,7 @@ export const buildOneWireTopology = (
         breakerTop.y,
         feederUpperTap.x,
         feederUpperTap.y,
-        1.25,
+        ONE_WIRE_RENDERED_STROKE_WIDTH,
         undefined,
         downstreamSource
       )
@@ -464,7 +464,7 @@ export const buildOneWireTopology = (
         branchTap.y,
         branchBottom.x,
         branchBottom.y,
-        1.25,
+        ONE_WIRE_RENDERED_STROKE_WIDTH,
         undefined,
         downstreamSource
       )
@@ -478,7 +478,7 @@ export const buildOneWireTopology = (
         branchTop.y,
         outgoingEnd.x,
         outgoingEnd.y,
-        1.25,
+        ONE_WIRE_RENDERED_STROKE_WIDTH,
         undefined,
         downstreamSource
       )

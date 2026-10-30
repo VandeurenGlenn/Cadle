@@ -1,4 +1,5 @@
 import type { Point, Shape } from '../../editor/model/types.js'
+import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 
 export type SelectionTransformAction =
   | 'flip-horizontal'
@@ -42,6 +43,9 @@ const transformPoint = (point: Point, center: Point, action: SelectionTransformA
 }
 
 const nextRotation = (rotation: number | undefined, action: SelectionTransformAction): number | undefined => {
+  if (action === 'flip-horizontal' || action === 'flip-vertical') {
+    return rotation === undefined ? undefined : ((-rotation % 360) + 360) % 360
+  }
   if (action !== 'rotate-left' && action !== 'rotate-right') return rotation
   const delta = action === 'rotate-left' ? -90 : 90
   return ((((rotation ?? 0) + delta) % 360) + 360) % 360
@@ -118,6 +122,7 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
           ...shape,
           start: { x: nextCenter.x - width / 2, y: nextCenter.y - height / 2 },
           end: { x: nextCenter.x + width / 2, y: nextCenter.y + height / 2 },
+          rotation: nextRotation(shape.rotation, action),
           flipX: nextFlipX(shape.flipX, action),
           flipY: nextFlipY(shape.flipY, action)
         }
@@ -150,6 +155,7 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
         ...shape,
         position: transformPoint(shape.position, center, action),
         scale: shape.scale * scaleFactor,
+        ...(typeof shape.strokeWidth === 'number' ? { strokeWidth: resizedSymbolStrokeWidth(shape, shape.scale * scaleFactor) } : {}),
         rotation: nextRotation(shape.rotation, action),
         flipX: nextFlipX(shape.flipX, action),
         flipY: nextFlipY(shape.flipY, action)

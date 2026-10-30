@@ -33,6 +33,8 @@ type NodeSpec = {
   viewBox: { width: number; height: number }
   node: Point
   cutRadius: number | null
+  // Exact ports for compound symbols whose contacts do not form one circle.
+  connectionPorts?: Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>>
   // Explicit one-wire scale for symbols without a standard node circle.
   oneWireScale?: number
   // Rotate the symbol when placed inline on a horizontal wire (e.g. TL bar).
@@ -135,7 +137,13 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: {
       viewBox: { width: 13.68, height: 8.74394 },
       node: { x: 6.9, y: 4.13197 },
-      cutRadius: 5.5,
+      cutRadius: 6.78,
+      connectionPorts: {
+        left: { x: 0.12, y: 4.13197 },
+        right: { x: 13.68, y: 4.13197 },
+        top: { x: 3.32, y: 0.93197 },
+        bottom: { x: 3.32, y: 7.33197 }
+      },
       oneWireScale: 1.425
     }
   },
@@ -404,7 +412,7 @@ export const oneWireSymbolBounds = (shape: { path: string; scale: number; positi
 }
 
 const pointOffset = (viewBox: { width: number; height: number }, point: Point, scale: number): Point => {
-  const size = 24 * Math.max(0.4, scale)
+  const size = 24 * scale
   const svgScale = size / Math.max(viewBox.width, viewBox.height)
   const xOff = (size - viewBox.width * svgScale) / 2
   const yOff = (size - viewBox.height * svgScale) / 2
@@ -416,7 +424,7 @@ const pointOffset = (viewBox: { width: number; height: number }, point: Point, s
 
 // Maps the node from viewBox coordinates into the rendered 24×scale box
 // (inner <svg> uses preserveAspectRatio "xMidYMid meet").
-export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0): OneWireNodeInfo | null => {
+export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0, flipX = false, flipY = false): OneWireNodeInfo | null => {
   const spec = findSpec(path)
   if (!spec) return null
   const { viewBox, node, cutRadius } = spec
@@ -425,8 +433,8 @@ export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0)
   const xOff = (size - viewBox.width * svgScale) / 2
   const yOff = (size - viewBox.height * svgScale) / 2
   const rawOffset = {
-    x: xOff + node.x * svgScale - size / 2,
-    y: yOff + node.y * svgScale - size / 2
+    x: (xOff + node.x * svgScale - size / 2) * (flipX ? -1 : 1),
+    y: (yOff + node.y * svgScale - size / 2) * (flipY ? -1 : 1)
   }
   const radians = (rotation * Math.PI) / 180
   const cos = Math.cos(radians)
@@ -442,12 +450,20 @@ export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0)
 
 // Electrical terminal offsets used by generated vertical topology chains.
 // Unlike visual bounds, these points land on the actual SVG conductor ends.
+export const oneWireSymbolPortInfo = (path: string, scale: number): Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>> | null => {
+  const spec = findSpec(path)
+  if (!spec?.connectionPorts) return null
+  return Object.fromEntries(Object.entries(spec.connectionPorts).map(([side, point]) =>
+    [side, pointOffset(spec.viewBox, point, renderedSymbolScale(path, scale))]
+  ))
+}
+
 export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireTerminalInfo | null => {
   const spec = TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec
   if (!spec) return null
   return {
-    ...(spec.top ? { top: pointOffset(spec.viewBox, spec.top, scale) } : {}),
-    ...(spec.bottom ? { bottom: pointOffset(spec.viewBox, spec.bottom, scale) } : {})
+    ...(spec.top ? { top: pointOffset(spec.viewBox, spec.top, renderedSymbolScale(path, scale)) } : {}),
+    ...(spec.bottom ? { bottom: pointOffset(spec.viewBox, spec.bottom, renderedSymbolScale(path, scale)) } : {})
   }
 }
 
@@ -464,7 +480,7 @@ export const oneWireSymbolScaleFor = (path: string): number | null => {
 }
 
 export const oneWireSymbolStrokeWidthFor = (path: string, scale: number): number => {
-  const spec = findSpec(path)
+  const spec = findSpec(path) ?? TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec
   if (!spec) return 0.65
   const size = 24 * renderedSymbolScale(path, scale)
   const svgScale = size / Math.max(spec.viewBox.width, spec.viewBox.height)

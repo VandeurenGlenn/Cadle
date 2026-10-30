@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 64
+export const ONE_WIRE_LAYOUT_VERSION = 65
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20

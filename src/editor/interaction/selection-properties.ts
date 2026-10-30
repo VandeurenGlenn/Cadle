@@ -3,6 +3,7 @@ import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
+import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import {
   inferCircuitType,
   inferElectricalRole,
@@ -148,12 +149,14 @@ const mirrorShapeAround = (shape: Shape, center: Point, axis: 'X' | 'Y'): Shape 
       ...shape,
       start: { x: nextCenter.x - width / 2, y: nextCenter.y - height / 2 },
       end: { x: nextCenter.x + width / 2, y: nextCenter.y + height / 2 },
+      rotation: shape.rotation === undefined ? undefined : ((-shape.rotation % 360) + 360) % 360,
       [property]: !shape[property] || undefined
     }
   }
   return {
     ...shape,
     position: mirrorPointAround(shape.position, center, axis),
+    rotation: shape.rotation === undefined ? undefined : ((-shape.rotation % 360) + 360) % 360,
     [property]: !shape[property] || undefined
   }
 }
@@ -254,7 +257,10 @@ const applyProperties = (
 
   if (typeof payload.scale === 'number') {
     const nextScale = Math.max(0.1, Math.min(20, payload.scale))
-    if (updated.kind === 'symbol' || updated.kind === 'text') updated.scale = nextScale
+    if (updated.kind === 'symbol') {
+      if (typeof updated.strokeWidth === 'number') updated.strokeWidth = resizedSymbolStrokeWidth(updated, nextScale)
+      updated.scale = nextScale
+    } else if (updated.kind === 'text') updated.scale = nextScale
     else if (updated.kind === 'rect' || isLineShape(updated)) {
       const scalable = updated as Extract<Shape, { start: Point; end: Point }> & { scale?: number }
       const currentScale = typeof scalable.scale === 'number' && Number.isFinite(scalable.scale) ? scalable.scale : 1
@@ -280,6 +286,9 @@ const applyProperties = (
     const value = payload[property]
     if (typeof value !== 'boolean') continue
     if (context.groupedSelection && center !== null) continue
+    if (!isLineShape(updated) && (updated[property] === true) !== value && updated.rotation !== undefined) {
+      updated.rotation = ((-updated.rotation % 360) + 360) % 360
+    }
     if (isLineShape(updated)) {
       const line = updated as Extract<Shape, { start: Point; end: Point }>
       if (axis === 'X') {

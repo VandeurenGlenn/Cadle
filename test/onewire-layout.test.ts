@@ -101,7 +101,7 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
   }
 
   const doubleButton = oneWireSymbolNodeInfo('symbols/Switches/Double push button.svg', 1.425)
-  assert.ok(doubleButton?.cutHalfWidth !== null && doubleButton.cutHalfWidth > 7 && doubleButton.cutHalfWidth < 15)
+  assert.ok(doubleButton?.cutHalfWidth !== null && Math.abs(doubleButton.cutHalfWidth - 6.78 * 24 * 1.425 / 13.68) < 1e-8)
   assert.ok(classicSwitchPaths.length + pushButtonPaths.length + deviceSwitchPaths.length + 1 === 23)
 })
 

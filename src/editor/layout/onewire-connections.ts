@@ -1,7 +1,7 @@
 import type { Point, Shape, SymbolShape } from '../model/types.js'
 import { shapeBounds } from '../model/model.js'
 import { symbolContentBounds } from './symbol-layout.js'
-import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolPortInfo, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 
 export type ConnectionSide = 'top' | 'bottom' | 'left' | 'right'
 export type SymbolConnectionAnchor = { side: ConnectionSide; point: Point }
@@ -18,6 +18,7 @@ export const oneWireLayoutBounds = (shape: Shape) => {
   const x = shape.textAnchor === 'middle' ? -width / 2 : shape.textAnchor === 'end' ? -width : 0
   const radians = (shape.rotation ?? 0) * Math.PI / 180
   const corners = [{ x, y: -size }, { x: x + width, y: -size }, { x, y: size * 0.2 }, { x: x + width, y: size * 0.2 }]
+    .map((point) => ({ x: point.x * (shape.flipX ? -1 : 1), y: point.y * (shape.flipY ? -1 : 1) }))
     .map((point) => ({
       x: shape.position.x + point.x * Math.cos(radians) - point.y * Math.sin(radians),
       y: shape.position.y + point.x * Math.sin(radians) + point.y * Math.cos(radians)
@@ -60,9 +61,10 @@ export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnec
       }
     }))
   }
-  return (Object.entries(directions) as Array<[ConnectionSide, Point]>).map(([, direction]) => {
+  const ports = oneWireSymbolPortInfo(shape.path, shape.scale)
+  return (Object.entries(directions) as Array<[ConnectionSide, Point]>).map(([side, direction]) => {
     // Circle-based symbols connect at the node edge; passthroughs at the node.
-    const offset = {
+    const offset = ports?.[side] ?? {
       x: node!.offset.x + direction.x * (node!.cutHalfWidth ?? 0),
       y: node!.offset.y + direction.y * (node!.cutHalfWidth ?? 0)
     }

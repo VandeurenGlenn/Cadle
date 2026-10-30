@@ -301,11 +301,11 @@ export const applyDragMove = (
     if (shape.kind !== 'symbol') return false
     return (
       /protection devices|automaat|breaker|differential|differentieel|\brcd\b/i.test(`${shape.name} ${shape.path}`) &&
-      oneWireSymbolNodeInfo(shape.path, shape.scale, shape.rotation) !== null
+      oneWireSymbolNodeInfo(shape.path, shape.scale, shape.rotation, shape.flipX, shape.flipY) !== null
     )
   })
   if (electricalSymbol?.kind === 'symbol') {
-    const node = oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale, electricalSymbol.rotation)
+    const node = oneWireSymbolNodeInfo(electricalSymbol.path, electricalSymbol.scale, electricalSymbol.rotation, electricalSymbol.flipX, electricalSymbol.flipY)
     if (node) {
       const anchor = {
         x: electricalSymbol.position.x + node.offset.x,

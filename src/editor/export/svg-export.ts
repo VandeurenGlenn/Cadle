@@ -154,7 +154,12 @@ export const selectedOutlineMarkup = (shape: Shape | null): string => {
     `
 }
 
-export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): string => {
+export const shapeMarkup = (
+  shape: Shape,
+  selected: boolean,
+  extraClass = '',
+  symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH
+): string => {
   if (shape.hidden) return ''
   const selectedAttr = selected ? 'true' : 'false'
   switch (shape.kind) {
@@ -319,7 +324,7 @@ export const shapeMarkup = (shape: Shape, selected: boolean, extraClass = ''): s
       if (symbolSvg) {
         const symbolInner = applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
         const metadataText = symbolTextPresentation(shape)
-        const normalizedStrokeWidth = symbolStrokeWidthForViewBox(symbolSvg.viewBox, size, DEFAULT_SYMBOL_STROKE_WIDTH)
+        const normalizedStrokeWidth = symbolStrokeWidthForViewBox(symbolSvg.viewBox, size, symbolStrokeWidthPreference)
         const symbolStyle =
           `${shape.fill ? `--symbol-fill:${escapeHtml(shape.fill)};` : ''}` +
           `${shape.stroke ? `--symbol-stroke:${escapeHtml(shape.stroke)};` : ''}` +
@@ -436,6 +441,7 @@ export const buildSvgDocument = (options: {
   pageName?: string
   pageKey?: string
   printMargin?: number
+  symbolStrokeWidth?: number
   viewBox?: { x: number; y: number; width: number; height: number }
   monochrome?: boolean
 }): string => {
@@ -463,9 +469,9 @@ export const buildSvgDocument = (options: {
     return entries
       .map((entry) =>
         entry.type === 'single'
-          ? shapeMarkup(entry.shape, false)
+          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth)
           : `<g class="shape-group" data-group-id="${entry.groupId}">${entry.shapes
-              .map((shape) => shapeMarkup(shape, false))
+              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth))
               .join('')}</g>`
       )
       .join('')

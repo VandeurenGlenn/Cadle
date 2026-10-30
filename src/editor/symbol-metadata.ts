@@ -1,5 +1,5 @@
 import type { SymbolShape } from './model/types.js'
-import { oneWireSymbolTerminalInfo } from './layout/onewire-symbol-nodes.js'
+import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './layout/onewire-symbol-nodes.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 
 export type SymbolTextFieldDefinition = {
@@ -173,6 +173,9 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
   const inner = symbolTextLayer(shape.path, { ...shape.symbolTextOverrides, ...Object.fromEntries(keys.map((key) => [key, ''])) })
   const axisX = shape.position.x + terminals.bottom.x
   const centerY = shape.position.y + (terminals.top.y + terminals.bottom.y) / 2
+  const bounds = oneWireSymbolBounds({ ...shape, rotation: 0 })!
+  const rightX = Math.max(axisX + 20, bounds.x + bounds.width + 12)
+  const leftX = Math.min(axisX - 20, bounds.x - 12)
   const label = (key: string, x: number, y: number, anchor = 'start') => {
     const value = values.get(key)
     return value ? `<text class="onewire-technical-annotation" x="${x}" y="${y}" text-anchor="${anchor}" font-family="Segoe UI,Arial,sans-serif" font-size="${2.5 * PAPER_WORLD_UNITS_PER_MM}" font-weight="400" fill="#000000" stroke="none">${escapeXml(value)}</text>` : ''
@@ -181,11 +184,11 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
   return {
     inner,
     annotations: [
-      label('poles', axisX - 20, centerY + 5, 'end'),
-      label('rated-current', axisX + 20, centerY + (residual ? 18 : 5)),
-      label('residual-current', axisX + 20, centerY - 8),
+      label('poles', leftX, centerY + 5, 'end'),
+      label('rated-current', rightX, centerY + (residual ? 18 : 5)),
+      label('residual-current', rightX, centerY - 8),
       label('phase', axisX - 12, shape.position.y + terminals.bottom.y + 24, 'end'),
-      label('rcd-type', axisX + 20, centerY + 44)
+      label('rcd-type', rightX, centerY + 44)
     ].join('')
   }
 }

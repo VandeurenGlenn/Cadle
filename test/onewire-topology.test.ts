@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
 import { oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import {
@@ -77,7 +78,17 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v19:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v20:')))
+  for (const shape of shapes) {
+    if (shape.kind === 'line') {
+      assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 10 : 2)
+    } else if (shape.kind === 'symbol') {
+      const source = readFileSync(new URL(`../www/${shape.path}`, import.meta.url), 'utf8')
+      const viewBox = source.match(/viewBox="([^"]+)"/)![1].split(/\s+/).map(Number)
+      const physicalPen = shape.strokeWidth! * 24 * shape.scale / Math.max(viewBox[2], viewBox[3])
+      assert.ok(Math.abs(physicalPen - 2) < 1e-8, `${shape.name}: ${physicalPen}`)
+    }
+  }
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === '4x10 mm² EXVB'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'remautomaat'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'Hoofdautomaat'))

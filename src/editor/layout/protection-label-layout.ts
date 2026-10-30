@@ -1,0 +1,17 @@
+import type { SymbolShape } from '../model/types.js'
+import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+
+// Descriptions and technical values share the same columns beside a device.
+export const protectionLabelLayout = (shape: SymbolShape) => {
+  const terminals = oneWireSymbolTerminalInfo(shape.path, shape.scale)
+  const bounds = oneWireSymbolBounds({ ...shape, rotation: 0 })
+  if (!bounds || !terminals?.top || !terminals.bottom) return null
+  const axisX = shape.position.x + terminals.bottom.x
+  return {
+    axisX,
+    centerY: shape.position.y + (terminals.top.y + terminals.bottom.y) / 2,
+    bottomY: shape.position.y + terminals.bottom.y,
+    rightX: Math.max(axisX + 20, bounds.x + bounds.width + 12),
+    leftX: Math.min(axisX - 20, bounds.x - 12)
+  }
+}

@@ -1,4 +1,6 @@
 import { GRID_SIZE } from '../constants.js'
+import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
+import { oneWireLayoutBounds } from './onewire-connections.js'
 import { PAPER_LABEL_FONT_SIZE, paperTextScale } from './page-layout.js'
 import {
   ONE_WIRE_COLUMN_GAP_X,
@@ -347,7 +349,7 @@ export const buildOneWireBreakerSection = (
   const cableSectionLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: { x: x + 18, y: breakerContentTopY - 12 },
+    position: { x: x + 36, y: breakerContentTopY - 24 },
     text: cableDesignation,
     fill: '#000000',
     stroke: 'none',
@@ -435,14 +437,15 @@ export const buildOneWireRowSection = (
   startX: number,
   deps: OneWireBuilderDeps,
   compactSingleCircuit = false,
-  rowSpacingY = ONE_WIRE_ROW_SPACING_Y
+  rowSpacingY = ONE_WIRE_ROW_SPACING_Y,
+  firstRowOffsetY = ONE_WIRE_FIRST_ROW_OFFSET_Y
 ): { shapes: Shape[]; ids: string[] } => {
   const ROW_NUMBER_OFFSET_X = -12
   const ROW_FIRST_SYMBOL_OFFSET_X = 30
   const ROW_SYMBOL_MARGIN_X = 4
   const SPOT_LEADING_MARGIN_X = 0
   const [bindingId, entries] = row
-  const rowY = railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - rowIndex * rowSpacingY
+  const rowY = railY - firstRowOffsetY - rowIndex * rowSpacingY
   const rowJunctionX = snapToGrid(startX)
   const drawableEntryCount = entries.filter((entry) => entry.kind !== 'empty').length
   const placeDirectlyOnTrunk = compactSingleCircuit && drawableEntryCount === 1
@@ -756,8 +759,15 @@ export const buildKamrailCircuitBundle = (
   const drawableRows = orderedRows.filter(([, entries]) => entries.some((entry) => entry.kind !== 'empty'))
   const compactSingleCircuit = orderedRows.length === 1
   const railY = rail.start.y
+  const breakerSection = options.omitBreaker ? null : buildOneWireBreakerSection(
+    railY, startX, options.family, options.hideFamilyLabel ? '' : options.family, deps, options
+  )
+  const cable = breakerSection?.shapes.find((shape) => shape.sourceLink?.role === 'cable-section')
+  const firstRowOffsetY = cable
+    ? Math.max(ONE_WIRE_FIRST_ROW_OFFSET_Y, Math.ceil((railY - oneWireLayoutBounds(cable).y + 40) / GRID_SIZE) * GRID_SIZE)
+    : ONE_WIRE_FIRST_ROW_OFFSET_Y
   const availableRowSpan =
-    typeof minimumRowY === 'number' ? railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - minimumRowY : Number.POSITIVE_INFINITY
+    typeof minimumRowY === 'number' ? railY - firstRowOffsetY - minimumRowY : Number.POSITIVE_INFINITY
   const maximumRowsPerColumn = Number.isFinite(availableRowSpan)
     ? Math.max(1, Math.floor(Math.max(0, availableRowSpan) / ONE_WIRE_ROW_SPACING_Y) + 1)
     : Math.max(1, drawableRows.length)
@@ -778,7 +788,7 @@ export const buildKamrailCircuitBundle = (
     for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
       const row = drawableRows[rowOffset + rowIndex]
       if (!row) continue
-      const section = buildOneWireRowSection(rowIndex, row, railY, columnX, deps, compactSingleCircuit)
+      const section = buildOneWireRowSection(rowIndex, row, railY, columnX, deps, compactSingleCircuit, ONE_WIRE_ROW_SPACING_Y, firstRowOffsetY)
       rowSections.push(section)
       for (const shape of section.shapes) {
         if (shape.kind === 'line') rightEdge = Math.max(rightEdge, shape.start.x, shape.end.x)
@@ -799,18 +809,10 @@ export const buildKamrailCircuitBundle = (
   const shapes: Shape[] = []
 
   let trunkStartY = railY
-  if (!options.omitBreaker) {
-    const breaker = buildOneWireBreakerSection(
-      railY,
-      startX,
-      options.family,
-      options.hideFamilyLabel ? '' : options.family,
-      deps,
-      options
-    )
-    shapes.push(...breaker.shapes)
-    createdIds.push(...breaker.ids)
-    trunkStartY = breaker.breakerContentTopY
+  if (breakerSection) {
+    shapes.push(...breakerSection.shapes)
+    createdIds.push(...breakerSection.ids)
+    trunkStartY = breakerSection.breakerContentTopY
   }
 
   if (drawableRows.length > 0) {
@@ -834,7 +836,7 @@ export const buildKamrailCircuitBundle = (
 
     for (const [columnIndex, columnX] of columnXs.entries()) {
       const rowCount = rowCounts[columnIndex] ?? 0
-      const trunkTopY = railY - ONE_WIRE_FIRST_ROW_OFFSET_Y - (rowCount - 1) * ONE_WIRE_ROW_SPACING_Y
+      const trunkTopY = railY - firstRowOffsetY - (rowCount - 1) * ONE_WIRE_ROW_SPACING_Y
       const role = columnIndex === 0 ? 'trunk' : `trunk-${columnIndex + 1}`
       const trunk: LineShape = {
         id: deps.nextShapeId(),
@@ -860,7 +862,7 @@ export const buildKamrailCircuitBundle = (
 
   if (!createdIds.length) return null
   return {
-    shapes,
+    shapes: spaceOneWireCircuitAnnotations(shapes, options.family).shapes,
     createdIds,
     // Breaker sections always put their protection symbol first. Selecting it
     // keeps the object pane editable instead of focusing a generated label.

@@ -4335,8 +4335,8 @@ export class CadleApp extends LiteElement {
     const selectedShape = this.#shapeById(this.#document.selectedId)
     const { zoom, panX, panY } = this.#viewport.state
     const worldTransform = `translate(${panX} ${panY}) scale(${zoom})`
-    const minorGrid = GRID_SIZE * 2 * zoom
-    const majorGrid = GRID_SIZE * 10 * zoom
+    const minorGrid = GRID_SIZE * 4 * zoom
+    const majorGrid = GRID_SIZE * 20 * zoom
     const gridStyle =
       `left:${panX}px;top:${panY}px;width:${this.#worldWidth * zoom}px;height:${this.#worldHeight * zoom}px; ` +
       `background-position: 0 0; ` +

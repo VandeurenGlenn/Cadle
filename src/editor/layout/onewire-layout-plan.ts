@@ -5,14 +5,14 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 65
+export const ONE_WIRE_LAYOUT_VERSION = 67
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
 export const ONE_WIRE_MIN_RAIL_LENGTH = 240
 export const ONE_WIRE_MAX_CIRCUIT_COLUMNS = 2
 export const ONE_WIRE_RAIL_BOTTOM_CLEARANCE_Y = 100
-export const ONE_WIRE_FIRST_ROW_OFFSET_Y = 220
+export const ONE_WIRE_FIRST_ROW_OFFSET_Y = 360
 export const ONE_WIRE_ROW_SPACING_Y = 64
 
 export const oneWireRailYForRows = (rows: number, safeArea: { y: number; height: number }): number => {

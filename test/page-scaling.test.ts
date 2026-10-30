@@ -48,14 +48,14 @@ test('enlarges and centers a legacy ground plan inside the printable area', () =
   })
 
   assert.equal(result.changed, true)
-  assert.ok(result.scale > 1.2 && result.scale < 1.3)
+  assert.ok(result.scale > 1.3 && result.scale < 1.4)
   const first = result.shapes[0]
   const last = result.shapes.at(-1)
   assert.equal(first.kind, 'wall')
   assert.equal(last?.kind, 'wall')
   assert.ok(first.start.x > 0)
   assert.ok((last?.end.x ?? 0) < 2296)
-  assert.ok((last?.end.y ?? 0) <= 1320)
+  assert.ok((last?.end.y ?? 0) <= pageLayout(2376, 1680).content.y + pageLayout(2376, 1680).content.height)
 })
 
 test('keeps breaker strokes equal to conductors when resizing a page', () => {

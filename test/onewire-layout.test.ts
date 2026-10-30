@@ -150,7 +150,7 @@ test('connects the breaker terminal and every branch without grid rounding gaps'
         sourcePath: 'symbols/Switches/Switch general symbol.svg'
       }))
     ],
-    minimumRowY: 330,
+    minimumRowY: 190,
     nextShapeId: idSequence(),
     oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
     oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path) ?? 1.35,
@@ -310,8 +310,8 @@ test('anchors readable breaker annotations to the conductor like the reference d
   )
   const terminals = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!
   assert.ok(terminals.bottom!.y - terminals.top!.y > 35)
-  assert.equal(cable.position.x, 418)
-  assert.equal(cable.position.y, section.breakerContentTopY - 12)
+  assert.equal(cable.position.x, 436)
+  assert.equal(cable.position.y, section.breakerContentTopY - 24)
   assert.equal(cable.rotation, -90)
   assert.equal(18 * cable.scale! / 8, 2.5)
   assert.equal(cable.fontWeight, 400)
@@ -384,7 +384,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   const cableInstallationLabel = result.shapes.find((shape) => shape.sourceLink?.role === 'cable-installation-label')
   const phase = result.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')
   assert.equal(phase?.kind === 'text' ? phase.textAnchor : null, 'end')
-  assert.ok(cableSection?.kind === 'text' && cableSection.position.x === 418)
+  assert.ok(cableSection?.kind === 'text' && cableSection.position.x === 436)
   assert.equal(cableSection?.kind === 'text' ? cableSection.textAnchor : null, undefined)
   assert.equal(cableSection?.kind === 'text' ? 18 * cableSection.scale! / 8 : null, 2.5)
   assert.equal(cableSection?.kind === 'text' ? cableSection.rotation : null, -90)
@@ -781,8 +781,8 @@ test('wraps a 22-point manually inserted family into readable columns', () => {
     rail: {
       id: 'rail',
       kind: 'line',
-      start: { x: 80, y: 960 },
-      end: { x: 900, y: 960 }
+      start: { x: 80, y: 1100 },
+      end: { x: 900, y: 1100 }
     },
     anchorX: 400,
     options: {

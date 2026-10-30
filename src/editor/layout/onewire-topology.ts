@@ -2,6 +2,7 @@ import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { paperTextScale } from './page-layout.js'
+import { protectionLabelLayout } from './protection-label-layout.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { neutralPositionForManufacturer, phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 
@@ -17,7 +18,7 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 20
+const TOPOLOGY_GEOMETRY_VERSION = 21
 
 type TopologyRail = Pick<LineShape, 'start' | 'end'>
 
@@ -272,18 +273,14 @@ export const buildOneWireTopology = (
       )
     )
   }
-  if (plan.mainDifferential) {
-    const mainDifferentialTitle = text(
-      'main-differential-title',
-      'Hoofddiff.',
-      mainDifferential.position.x - 120,
-      mainDifferential.position.y + 5,
-      0.62
-    )
-    mainDifferentialTitle.textAnchor = 'end'
-    shapes.push(mainDifferentialTitle)
+  const protectionTitle = (role: string, name: string, device: SymbolShape) => {
+    const layout = protectionLabelLayout(device)!
+    const title = text(role, name, layout.leftX, layout.centerY - 24)
+    title.textAnchor = 'end'
+    shapes.push(title)
   }
-  shapes.push(text('main-switch-title', 'Hoofdautomaat', mainSwitch.position.x + 120, mainSwitch.position.y + 12, 0.58))
+  if (plan.mainDifferential) protectionTitle('main-differential-title', 'Hoofddiff.', mainDifferential)
+  protectionTitle('main-switch-title', 'Hoofdautomaat', mainSwitch)
 
   const earthTap = busTap(0.06)
   const earthRailY = earthTap.y + 24
@@ -292,7 +289,6 @@ export const buildOneWireTopology = (
   shapes.push(line('earth-rail', earthTap.x - 35, earthRailY, earthTap.x + 35, earthRailY))
   shapes.push(line('earth-drop', earthTap.x, earthRailY, earthTop.x, earthTop.y))
   shapes.push(earth)
-  shapes.push(text('earth-label', 'AARDING', earthTap.x + 44, earthRailY + 5, 0.58))
 
   const capacity = assessOneWireCapacity(plan, {
     gridProtectionCurrentA: options.gridProtectionCurrentA
@@ -403,7 +399,7 @@ export const buildOneWireTopology = (
         downstreamSource
       )
     )
-    shapes.push(text('residual-breaker-label', 'remautomaat', breaker.position.x + 120, breaker.position.y + 18, 0.58))
+    protectionTitle('residual-breaker-label', 'remautomaat', breaker)
   }
 
   const evDifferentials = additional.filter((item) => item.purpose === 'ev')
@@ -558,9 +554,6 @@ export const buildOneWireTopology = (
     shapes.push(inverter)
     shapes.push(line('solar-inverter-to-panels', inverterTop.x, inverterTop.y, panelBottom.x, panelBottom.y))
     shapes.push(panels)
-    shapes.push(
-      text('solar-label', 'zonnepanelen / omvormer', inverter.position.x + 38, inverter.position.y + 18, 0.58)
-    )
   }
 
   return shapes

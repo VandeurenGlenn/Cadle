@@ -146,10 +146,10 @@ test('compensates the wide view box of distribution boards', () => {
   )
 
   assert.equal(shape.scale, 2)
-  assert.equal(shape.strokeWidth, 1.35)
+  assert.equal(shape.strokeWidth, undefined)
 })
 
-test('uses a larger size and stronger stroke for battery banks', () => {
+test('uses a larger size and the shared paper pen for battery banks', () => {
   const shape = createSymbolShape(
     'battery-bank',
     { x: 10, y: 20 },
@@ -160,10 +160,10 @@ test('uses a larger size and stronger stroke for battery banks', () => {
   )
 
   assert.equal(shape.scale, 2)
-  assert.equal(shape.strokeWidth, 5)
+  assert.equal(shape.strokeWidth, undefined)
 })
 
-test('uses a larger size and stronger stroke for inverters', () => {
+test('uses a larger size and the shared paper pen for inverters', () => {
   const shape = createSymbolShape(
     'inverter',
     { x: 10, y: 20 },
@@ -174,7 +174,7 @@ test('uses a larger size and stronger stroke for inverters', () => {
   )
 
   assert.equal(shape.scale, 1.4)
-  assert.equal(shape.strokeWidth, 1.15)
+  assert.equal(shape.strokeWidth, undefined)
 })
 
 test('keeps an explicit catalog scale for switches', () => {

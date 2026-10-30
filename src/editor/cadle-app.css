@@ -22,8 +22,8 @@ output,
   --cadle-surface: color-mix(in srgb, var(--md-sys-color-surface, #f6f1eb) 88%, white);
   --cadle-surface-strong: color-mix(in srgb, var(--md-sys-color-surface-container-high, #efe7de) 92%, white);
   --cadle-outline: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 45%, transparent);
-  --cadle-grid-minor: color-mix(in srgb, var(--md-sys-color-outline-variant, #c8b9ad) 45%, transparent);
-  --cadle-grid-major: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 58%, transparent);
+  --cadle-grid-minor: rgba(80, 96, 112, 0.10);
+  --cadle-grid-major: rgba(80, 96, 112, 0.20);
   --cadle-ink: var(--md-sys-color-on-surface, #2b2622);
   --cadle-stage: #ffffff;
   display: flex;
@@ -416,7 +416,7 @@ output,
 }
 
 .print-safe-area {
-  fill: rgba(255, 255, 255, 0.18);
+  fill: none;
   stroke: rgba(61, 47, 37, 0.38);
   stroke-width: 2;
   stroke-dasharray: 12 8;
@@ -552,7 +552,7 @@ output,
 }
 
 .shape-symbol {
-  opacity: 0.96;
+  opacity: 1;
 }
 
 .shape-symbol.symbol-preview {

@@ -39,8 +39,8 @@ test('reads and writes symbol stroke width through an injected storage adapter',
   let stored: string | null = '1.2'
   const storage = {
     getItem: () => stored,
-    setItem: (_key: string, value: string) => {
-      stored = value
+    setItem: (key: string, value: string) => {
+      if (key === 'cadle-symbol-stroke-width') stored = value
     }
   }
 
@@ -57,4 +57,17 @@ test('falls back when symbol stroke width storage is unavailable', () => {
   }
 
   assert.equal(readSymbolStrokeWidth(storage), DEFAULT_SYMBOL_STROKE_WIDTH)
+})
+
+test('upgrades the old hairline default and preserves deliberately chosen widths', () => {
+  const values = new Map([['cadle-symbol-stroke-width', '0.65']])
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value) }
+  }
+  assert.equal(readSymbolStrokeWidth(storage), 2)
+  values.set('cadle-symbol-stroke-width', '1.4')
+  assert.equal(readSymbolStrokeWidth(storage), 1.4)
+  writeSymbolStrokeWidth(0.65, storage)
+  assert.equal(readSymbolStrokeWidth(storage), 0.65)
 })

@@ -270,12 +270,6 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
             : /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path) && raw.strokeWidth === 1.35
               ? 1.15
               : Math.max(0.5, raw.strokeWidth)
-      } else if (/\/electrical devices\/distribution board\.svg$/i.test(path)) {
-        symbol.strokeWidth = 1.35
-      } else if (/\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)) {
-        symbol.strokeWidth = 5
-      } else if (/\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)) {
-        symbol.strokeWidth = 1.15
       }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim())
         symbol.bindingId = raw.bindingId.trim().toUpperCase()

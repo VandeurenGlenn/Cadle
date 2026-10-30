@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
-import { oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
 import {
   energyScenarioOpacityValues,
   oneWireEnergyFlowSegment,
@@ -64,6 +65,8 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('earth'))
   assert.ok(roles.has('earth-rail'))
   assert.ok(roles.has('earth-drop'))
+  assert.equal(roles.has('earth-label'), false)
+  assert.equal(roles.has('solar-label'), false)
   assert.ok(roles.has('secondary-busbar'))
   assert.ok(roles.has('residual-breaker'))
   assert.ok(roles.has('solar-branch'))
@@ -78,7 +81,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v20:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v21:')))
   for (const shape of shapes) {
     if (shape.kind === 'line') {
       assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 10 : 2)
@@ -94,6 +97,24 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'Hoofdautomaat'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'BEGRENZDE RAIL · REMAUTOMAAT C40A'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'EV · U'))
+  for (const [titleRole, deviceRole] of [
+    ['main-differential-title', 'main-differential'],
+    ['main-switch-title', 'main-switch'],
+    ['residual-breaker-label', 'residual-breaker']
+  ]) {
+    const title = shapes.find((shape) => shape.sourceLink?.role === titleRole)!
+    const device = shapes.find((shape) => shape.sourceLink?.role === deviceRole)!
+    assert.ok(title.kind === 'text' && device.kind === 'symbol')
+    const deviceBounds = oneWireSymbolBounds(device)!
+    const titleBounds = oneWireLayoutBounds(title)
+    assert.equal(title.textAnchor, 'end')
+    assert.ok(Math.abs(deviceBounds.x - title.position.x - 12) < 1e-8)
+    assert.ok(titleBounds.x + titleBounds.width <= deviceBounds.x - 12 + 1e-8)
+    const terminals = oneWireSymbolTerminalInfo(device.path, device.scale)!
+    const centerY = device.position.y + (terminals.top!.y + terminals.bottom!.y) / 2
+    assert.equal(title.position.y, centerY - 24)
+    assert.equal(18 * title.scale! / 8, 2.5)
+  }
 
   const busY = 700
   const meter = shapes.find((shape) => shape.sourceLink?.role === 'meter')

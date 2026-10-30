@@ -6,6 +6,7 @@ import {
   paperPresetForPdfPage,
   pdfPreviewRenderScale
 } from '../src/editor/pdf-plan-import.ts'
+import { pageLayout } from '../src/editor/layout/page-layout.ts'
 
 test('recognizes common A4 and A3 PDF page sizes', () => {
   assert.equal(paperPresetForPdfPage(595, 842), 'a4-portrait')
@@ -16,10 +17,11 @@ test('fits an imported page inside the printable paper area', () => {
   const fitted = fitPdfPageToPaper(595, 842, 'a4-portrait', 10)
   assert.equal(fitted.worldWidth, 1680)
   assert.equal(fitted.worldHeight, 2376)
-  assert.ok(fitted.width <= 1520)
-  assert.ok(fitted.height <= 1936)
-  assert.deepEqual(fitted.position, { x: 840, y: 1048 })
-  assert.ok(fitted.position.y + fitted.height / 2 <= 2016)
+  const area = pageLayout(1680, 2376).content
+  assert.ok(fitted.width <= area.width)
+  assert.ok(fitted.height <= area.height)
+  assert.deepEqual(fitted.position, { x: area.x + area.width / 2, y: area.y + area.height / 2 })
+  assert.ok(fitted.position.y + fitted.height / 2 <= area.y + area.height)
 })
 
 test('uses the PDF filename and adds page numbers only when needed', () => {

@@ -226,7 +226,8 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(addedGeometry.rail).not.toBeNull()
   const previousRightmostFamily = Math.max(addedGeometry.a ?? 0, addedGeometry.b ?? 0)
   expect((addedGeometry.c ?? 0) - previousRightmostFamily).toBeGreaterThan(0)
-  expect((addedGeometry.c ?? 0) - previousRightmostFamily).toBeLessThan(180)
+  // Protection values now reserve clear space on both sides of each breaker.
+  expect((addedGeometry.c ?? 0) - previousRightmostFamily).toBeLessThan(220)
   expect(
     Math.max(addedGeometry.rail?.x1 ?? 0, addedGeometry.rail?.x2 ?? 0) - (addedGeometry.c ?? 0)
   ).toBeLessThanOrEqual(30)

@@ -1,8 +1,8 @@
 import { DEFAULT_PRINT_MARGIN_MM, PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 
 // All document furniture is measured on paper, never in screen pixels.
-export const PAGE_DETAILS_HEIGHT_MM = 30
-export const PAGE_DETAILS_GAP_MM = 5
+export const PAGE_DETAILS_HEIGHT_MM = 14
+export const PAGE_DETAILS_GAP_MM = 3
 export const PAPER_LABEL_FONT_SIZE = 2.75 * PAPER_WORLD_UNITS_PER_MM
 export const paperTextScale = (heightMm: number) => heightMm * PAPER_WORLD_UNITS_PER_MM / 18
 

@@ -22,11 +22,8 @@ const FLOOR_PLAN_DUAL_SWITCH_SCALE = 1.15
 const WALL_LIGHT_SCALE = 1.5
 const FLUORESCENT_LAMP_SCALE = 2
 const DISTRIBUTION_BOARD_SCALE = 2
-const DISTRIBUTION_BOARD_STROKE_WIDTH = 1.35
 const BATTERY_BANK_SCALE = 2
-const BATTERY_BANK_STROKE_WIDTH = 5
 const INVERTER_SCALE = 1.4
-const INVERTER_STROKE_WIDTH = 1.15
 
 const isBatteryBankPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)
 const isInverterPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)
@@ -91,12 +88,6 @@ export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalo
   if (typeof defaults.stroke === 'string' && defaults.stroke.trim()) shape.stroke = defaults.stroke
   if (typeof defaults.strokeWidth === 'number' && Number.isFinite(defaults.strokeWidth)) {
     shape.strokeWidth = Math.max(0.5, Math.min(40, defaults.strokeWidth))
-  } else if (isDistributionBoardPath(symbol.path)) {
-    shape.strokeWidth = DISTRIBUTION_BOARD_STROKE_WIDTH
-  } else if (isBatteryBankPath(symbol.path)) {
-    shape.strokeWidth = BATTERY_BANK_STROKE_WIDTH
-  } else if (isInverterPath(symbol.path)) {
-    shape.strokeWidth = INVERTER_STROKE_WIDTH
   }
   if (Array.isArray(symbol.shapes) && symbol.shapes.length > 0) {
     shape.catalogShapes = symbol.shapes

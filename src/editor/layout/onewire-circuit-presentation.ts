@@ -1,4 +1,5 @@
 import type { CircuitGroup, CircuitSpecification } from '../circuit-analysis.js'
+import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../circuit-defaults.js'
 import {
   electricalMetadataFromCatalog,
@@ -268,5 +269,6 @@ export const applyOneWireCircuitPresentation = ({
     return shape
   })
 
-  return { shapes: nextShapes, changed }
+  const spaced = spaceOneWireCircuitAnnotations(nextShapes, circuitKey)
+  return { shapes: spaced.shapes, changed: changed || spaced.changed }
 }

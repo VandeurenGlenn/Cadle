@@ -52,6 +52,7 @@ import type {
 } from './model/types.js'
 import type { Project, UUID } from '../types.js'
 import { electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
+import { connectionDefaults, connectionPoints, connectionSegments, isConnectionKind, type ConnectionKind } from './model/electrical-connection.js'
 import { setProjectData } from '../api/project.js'
 import pubsub from '../pubsub.js'
 import { downloadTextFile } from './export/downloads.js'
@@ -96,17 +97,21 @@ import {
   updateCircuitSpecifications,
   type CircuitPropertyUpdate
 } from './layout/onewire-circuit-presentation.js'
-import { buildOneWireTopology } from './layout/onewire-topology.js'
+import { buildOneWireTopology, oneWireTopologyRcdTypes } from './layout/onewire-topology.js'
+import { oneWireTopologyDescriptions } from './layout/protection-descriptions.js'
 import {
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
 import { fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { paperTextScale } from './layout/page-layout.js'
+import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
+import { presentConnectionLabels } from './layout/connection-label-presentation.js'
 import { resizedSymbolStrokeWidth } from './model/symbol-scale.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './layout/onewire-connections.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
 import {
+  ONE_WIRE_BUS_STROKE_WIDTH,
   oneWireSymbolNodeInfo,
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
@@ -207,7 +212,7 @@ const WHEEL_GESTURE_IDLE_MS = 180
 // Minimum drag distance (scene units) before a symbol placement gesture starts rotating.
 const SYMBOL_PLACEMENT_ROTATE_THRESHOLD = 6
 const KAMRAIL_HALF_LENGTH = 420
-const KAMRAIL_STROKE_WIDTH = 4
+const KAMRAIL_STROKE_WIDTH = ONE_WIRE_BUS_STROKE_WIDTH
 const KAMRAIL_ATTACH_OFFSET = 20
 const ONEWIRE_BRANCH_STROKE = '#000000'
 
@@ -232,6 +237,7 @@ export class CadleApp extends LiteElement {
   #oneWireController = new OneWireController()
   #catalogController = new CatalogController()
   #draft: DraftShape | null = null
+  #connectionKind: ConnectionKind | null = null
   #drag: DragState | null = null
   #logoDrag: { pointerStart: Point; initial: Point } | null = null
   #labelDrag: {
@@ -692,6 +698,7 @@ export class CadleApp extends LiteElement {
             ...(neutralPosition ? { neutralPosition } : {})
           }
         } else if (role === 'main-differential' && topology.mainDifferential) {
+          topology.mainDifferential.rcdType = updatedProtection.electrical?.rcdType ?? 'A'
           if (typeof ratedCurrentA === 'number') topology.mainDifferential.ratedCurrentA = ratedCurrentA
           if (typeof sensitivityMa === 'number') topology.mainDifferential.sensitivityMa = sensitivityMa
           if (manufacturer) topology.mainDifferential.manufacturer = manufacturer
@@ -726,6 +733,7 @@ export class CadleApp extends LiteElement {
             ]
             const target = displayedOrder[Number(additionalMatch[1]) - 1]
             if (target) {
+              target.rcdType = updatedProtection.electrical?.rcdType ?? 'A'
               if (typeof ratedCurrentA === 'number') target.ratedCurrentA = ratedCurrentA
               else delete target.ratedCurrentA
               if (typeof sensitivityMa === 'number') target.sensitivityMa = sensitivityMa
@@ -796,6 +804,31 @@ export class CadleApp extends LiteElement {
     })
     if (!nextShapes) return
     this.#document.shapes = nextShapes
+    if (payload.connection && selectedShape?.kind === 'line') {
+      const connection = (nextShapes.find((shape) => shape.id === selectedShape.id) as LineShape | undefined)?.connection
+      if (connection?.labelOwner === 'circuit' && selectedShape.sourceLink) {
+        const update: CircuitPropertyUpdate = {}
+        if ('sectionMm2' in payload.connection) update.cableSectionMm2 = connection.sectionMm2
+        if ('conductors' in payload.connection) update.cableConductors = connection.conductors
+        if ('cableType' in payload.connection) update.cableType = connection.cableType
+        if ('hasProtectiveConductor' in payload.connection) update.hasProtectiveConductor = connection.hasProtectiveConductor
+        const circuitKey = selectedShape.sourceLink.kind === 'board' ? selectedShape.sourceLink.id : circuitKeyForShape(selectedShape)
+        if (circuitKey) {
+          this.#circuitUpdatePromise = this.#updateCircuitProperties(circuitKey, update).catch((error) => console.error('Failed to update cable properties', error))
+          return
+        }
+      }
+      if (connection?.labelOwner === 'topology' && this.#project?.oneWireTopology?.incomingCable) {
+        const cable = this.#project.oneWireTopology.incomingCable
+        if (connection.sectionMm2) cable.sectionMm2 = connection.sectionMm2
+        if (connection.conductors) cable.conductors = connection.conductors
+        if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
+        this.#document.shapes = this.#document.shapes.map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'incoming-cable-label'
+          ? { ...shape, text: connection.name?.trim() || `${cable.conductors}x${cable.sectionMm2} mm² ${cable.cableType.replace('-', ' ')}`, hidden: connection.showLabel === false } : shape)
+        cadleShell.project = this.#project
+        void this.#persistProjectMetadata()
+      }
+    }
     this.#pushHistory()
     this.#render()
   }
@@ -1479,7 +1512,7 @@ export class CadleApp extends LiteElement {
         shape.kind === 'window' ||
         shape.kind === 'gate'
       ) {
-        if (this.#pointNearSegment(point, shape.start, shape.end, tolerance)) return shape.id
+        if (connectionSegments(shape).some((segment) => this.#pointNearSegment(point, segment.start, segment.end, tolerance))) return shape.id
         continue
       }
 
@@ -1497,7 +1530,8 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
-    if (!this.#tools.select(tool)) return
+    this.#connectionKind = null
+    if (!this.#tools.select(tool)) { this.#render(); return }
     const shellAction = this.#tools.shellAction()
     if (window.cadleShell?.action !== shellAction) {
       window.cadleShell.action = shellAction
@@ -2430,8 +2464,12 @@ export class CadleApp extends LiteElement {
     let side: 'top' | 'bottom' | 'left' | 'right' | null = null
 
     for (const shape of this.#document.shapes) {
-      if (shape.kind === 'line' && shape.bindingId) {
-        for (const ep of [shape.start, shape.end]) {
+      if (shape.kind === 'line' && !shape.hidden && (shape.bindingId || shape.connection || this.#connectionKind || this.#isKamrailShape(shape))) {
+        const candidates = connectionPoints(shape)
+        if (this.#connectionKind) for (const segment of connectionSegments(shape)) {
+          candidates.push(this.#closestPointOnSegment(point, segment.start, segment.end))
+        }
+        for (const ep of candidates) {
           const dist = Math.hypot(ep.x - point.x, ep.y - point.y)
           if (dist < bestDist) {
             bestDist = dist
@@ -2493,14 +2531,16 @@ export class CadleApp extends LiteElement {
 
     for (const shape of this.#document.shapes) {
       if (shape.kind !== 'line') continue
-      const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
-      const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
-      if (distance >= bestDistance) continue
+      for (const segment of connectionSegments(shape)) {
+        const closest = this.#closestPointOnSegment(point, segment.start, segment.end)
+        const distance = Math.hypot(point.x - closest.x, point.y - closest.y)
+        if (distance >= bestDistance) continue
 
-      const horizontal = Math.abs(shape.end.y - shape.start.y) <= Math.abs(shape.end.x - shape.start.x)
-      const gridded = this.#snapPoint(point)
-      best = horizontal ? { x: gridded.x, y: closest.y } : { x: closest.x, y: gridded.y }
-      bestDistance = distance
+        const horizontal = Math.abs(segment.end.y - segment.start.y) <= Math.abs(segment.end.x - segment.start.x)
+        const gridded = this.#snapPoint(point)
+        best = horizontal ? { x: gridded.x, y: closest.y } : { x: closest.x, y: gridded.y }
+        bestDistance = distance
+      }
     }
 
     return best ? { point: best, snapped: true } : { point, snapped: false }
@@ -2623,6 +2663,7 @@ export class CadleApp extends LiteElement {
       id: nextShapeId(),
       start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
       end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
+      stroke: ONEWIRE_BRANCH_STROKE,
       strokeWidth: KAMRAIL_STROKE_WIDTH
     }
     const analysis = this.analyzeBindings()
@@ -2645,6 +2686,8 @@ export class CadleApp extends LiteElement {
     const fresh: Shape[] = [
       freshBus,
       ...buildOneWireTopology(topology, freshBus, nextShapeId, {
+        rcdTypesByRole: oneWireTopologyRcdTypes(previous),
+        descriptionsByRole: oneWireTopologyDescriptions(previous),
         gridProtectionCurrentA: this.#project?.mainFuseA,
         defaultPoles: this.#project?.electricalProfile?.defaultPoles,
         phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
@@ -2702,10 +2745,19 @@ export class CadleApp extends LiteElement {
   }
 
   #compactExistingOneWireRail(): boolean {
+    let changed = false
+    // Keep the saved circuit names, but omit the duplicate headings from
+    // the diagram and from the width reserved for each circuit.
+    this.#document.shapes = this.#document.shapes.map((shape) => {
+      if (shape.kind !== 'text' || shape.sourceLink?.kind !== 'board' ||
+        shape.sourceLink.role !== 'description' || shape.hidden) return shape
+      changed = true
+      return { ...shape, hidden: true }
+    })
     const rails = this.#document.shapes.filter(
       (shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape)
     )
-    if (!rails.length) return false
+    if (!rails.length) return changed
 
     const nearestRail = (y: number): LineShape =>
       rails.reduce((nearest, candidate) =>
@@ -2730,7 +2782,7 @@ export class CadleApp extends LiteElement {
         }
       ]
     })
-    if (!anchors.length) return false
+    if (!anchors.length) return changed
 
     const shapePoint = (shape: Shape): Point => {
       if ('start' in shape && 'end' in shape) {
@@ -2757,7 +2809,6 @@ export class CadleApp extends LiteElement {
     }
 
     const anchorOffsets = new Map<string, number>()
-    const descriptionPlacements = new Map<string, Point>()
     const familyForShape = (shape: Shape) => this.#normalizeBindingFamily(
       shape.bindingId ?? (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : '')
     )
@@ -2769,19 +2820,9 @@ export class CadleApp extends LiteElement {
         !shape.hidden && !this.#isKamrailShape(shape) &&
         familyForShape(shape) === anchor.family && anchorForShape(shape, anchor.family)?.id === anchor.id
       )
-      const contentTop = Math.min(...railAnchors.flatMap((anchor) => familyShapes(anchor)
-        .filter((shape) => shape.sourceLink?.role !== 'description')
-        .map((shape) => oneWireLayoutBounds(shape).y)))
       const familyBounds = railAnchors.map((anchor) => {
-        const members = familyShapes(anchor)
-        const boxes = members.filter((shape) => shape.sourceLink?.role !== 'description').map(oneWireLayoutBounds)
+        const boxes = familyShapes(anchor).map(oneWireLayoutBounds)
         const xs = boxes.flatMap((bounds) => [bounds.x, bounds.x + bounds.width])
-        const center = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : anchor.x
-        for (const description of members.filter((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'description')) {
-          const bounds = oneWireLayoutBounds(description)
-          xs.push(center - bounds.width / 2, center + bounds.width / 2)
-          descriptionPlacements.set(description.id, { x: center, y: contentTop - 24 })
-        }
         return {
           family: anchor.id,
           anchorX: anchor.x,
@@ -2804,9 +2845,8 @@ export class CadleApp extends LiteElement {
         end: { ...rail.end, x: geometry.endX }
       })
     }
-    if (!anchorOffsets.size) return false
+    if (!anchorOffsets.size) return changed
 
-    let changed = false
     this.#document.shapes = this.#document.shapes.map((shape) => {
       const rail = railUpdates.get(shape.id)
       if (rail) {
@@ -2817,13 +2857,6 @@ export class CadleApp extends LiteElement {
       const anchor = family ? anchorForShape(shape, family) : undefined
       const dx = anchor ? anchorOffsets.get(anchor.id) : undefined
       if (!anchor || typeof dx !== 'number') return shape
-      const description = descriptionPlacements.get(shape.id)
-      if (description && shape.kind === 'text') {
-        const position = { x: description.x + dx, y: description.y }
-        if (shape.position.x === position.x && shape.position.y === position.y && shape.textAnchor === 'middle' && shape.oneWireRailId === anchor.railId) return shape
-        changed = true
-        return { ...shape, position, textAnchor: 'middle', oneWireRailId: anchor.railId }
-      }
       const translated = Math.abs(dx) < 0.01 ? shape : translateShape(shape, dx, 0)
       if (translated.oneWireRailId === anchor.railId && translated === shape) return shape
       changed = true
@@ -3200,7 +3233,7 @@ export class CadleApp extends LiteElement {
           kind: 'line',
           start: { x: (this.#worldWidth - busWidth) / 2, y: busY },
           end: { x: (this.#worldWidth + busWidth) / 2, y: busY },
-          stroke: '#111111',
+          stroke: ONEWIRE_BRANCH_STROKE,
           strokeWidth: KAMRAIL_STROKE_WIDTH,
           groupId: `onewire-topology-${nextShapeId()}`,
           generationKey: 'board:main:topology:bus',
@@ -3221,6 +3254,8 @@ export class CadleApp extends LiteElement {
         )
         this.#document.shapes.push(
           ...buildOneWireTopology(topology, topologyBus, nextShapeId, {
+            rcdTypesByRole: oneWireTopologyRcdTypes(previousGenerated),
+            descriptionsByRole: oneWireTopologyDescriptions(previousGenerated),
             gridProtectionCurrentA: this.#project?.mainFuseA,
             defaultPoles: this.#project?.electricalProfile?.defaultPoles,
             phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
@@ -3255,7 +3290,7 @@ export class CadleApp extends LiteElement {
             kind: 'line',
             start: { x: railStartX, y: railY },
             end: { x: railEndX, y: railY },
-            stroke: '#111111',
+            stroke: ONEWIRE_BRANCH_STROKE,
             strokeWidth: KAMRAIL_STROKE_WIDTH,
             groupId: `onewire-kamrail-${nextShapeId()}`,
             generationKey: `board:${boardId}:rail:${railId ?? railIndex}`,
@@ -3610,7 +3645,7 @@ export class CadleApp extends LiteElement {
       kind: 'line',
       start: railStart,
       end: railEnd,
-      stroke: '#111111',
+      stroke: ONEWIRE_BRANCH_STROKE,
       strokeWidth: KAMRAIL_STROKE_WIDTH,
       groupId
     }
@@ -3686,6 +3721,7 @@ export class CadleApp extends LiteElement {
     const connector: LineShape = {
       id: nextShapeId(),
       kind: 'line',
+      connection: { kind: 'wire', showLabel: false },
       start: {
         x: targetNode.x,
         y: railAnchor.point.y + ((placeBelowRail ? 1 : -1) * (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH)) / 2
@@ -3942,6 +3978,7 @@ export class CadleApp extends LiteElement {
   }
 
   #publishNativeSelection(selectedShape: Shape | null) {
+    if (this.readOnly) return
     if (this.#document.selectedId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
       const logoBounds = getProjectLogoBounds(this.#project)
       const logoScaleRaw =
@@ -3951,6 +3988,7 @@ export class CadleApp extends LiteElement {
       const logoColor = this.#project?.logoColor?.trim() ?? ''
       pubsub.publish('editor.selection.changed', {
         selectionCount: 1,
+        pageKey: this.#pageKey,
         shape: {
           id: PROJECT_LOGO_SHAPE_ID,
           kind: 'symbol',
@@ -4056,7 +4094,7 @@ export class CadleApp extends LiteElement {
   ) {
     const buildDocument = buildSvgDocument as unknown as (options: Record<string, unknown>) => string
     const exportOptions: Record<string, unknown> = {
-      shapes: this.#document.shapes,
+      shapes: this.#displayShapes(),
       selectedShape: this.#shapeById(this.#document.selectedId),
       paper: this.#paperMeta(),
       worldWidth: this.#worldWidth,
@@ -4649,13 +4687,21 @@ export class CadleApp extends LiteElement {
     return wallMaskTemplate(this.#document.shapes, this.#worldWidth, this.#worldHeight)
   }
 
+  #displayShapes(): Shape[] {
+    const shapes = presentConnectionLabels(this.#document.shapes)
+    return this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire'
+      ? presentInheritedPhaseLabels(shapes, this.#project)
+      : shapes
+  }
+
   #committedTemplate(selectedShape: Shape | null) {
-    const wallShapes = this.#document.shapes.filter((shape) => shape.kind === 'wall')
-    const openingShapes = this.#document.shapes.filter(
+    const displayShapes = this.#displayShapes()
+    const wallShapes = displayShapes.filter((shape) => shape.kind === 'wall')
+    const openingShapes = displayShapes.filter(
       (shape) => shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate'
     )
-    const symbolShapes = this.#document.shapes.filter((shape) => shape.kind === 'symbol')
-    const restShapes = this.#document.shapes.filter(
+    const symbolShapes = displayShapes.filter((shape) => shape.kind === 'symbol')
+    const restShapes = displayShapes.filter(
       (shape) =>
         shape.kind !== 'wall' &&
         shape.kind !== 'door' &&
@@ -4761,12 +4807,15 @@ export class CadleApp extends LiteElement {
   }
 
   #publishNativeControlsState() {
+    if (this.readOnly) return
     pubsub.publish('editor.controls.state', {
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
       oneWirePreset: this.#oneWirePreset,
       oneWireBindingId: this.#oneWireBindingId,
       oneWireComposeKind: this.#oneWireComposeKind,
+      connectionKind: this.#tools.current === 'line' ? this.#connectionKind : null,
+      activeTool: this.#tools.current,
       hasOneWireAnchor: Boolean(this.#oneWireAnchor)
     })
   }
@@ -4785,11 +4834,18 @@ export class CadleApp extends LiteElement {
   }
 
   #onNativeControlsCommand = (payload: {
+    connectionKind?: ConnectionKind
     paper?: PaperPreset
     onewirePreset?: OneWirePreset
     onewireCompose?: 'breaker' | 'switch' | 'kamrail' | 'load'
     action?: string
   }) => {
+    if (isConnectionKind(payload.connectionKind)) {
+      this.#activateTool('line')
+      this.#connectionKind = payload.connectionKind
+      this.#render()
+      return
+    }
     const paperPreset = payload.paper
     if (paperPreset && paperPreset in PAPER_PRESETS) {
       const previousWidth = this.#worldWidth
@@ -5339,6 +5395,11 @@ export class CadleApp extends LiteElement {
           ? this.#snapToEndpoints(gridSnapped).point
           : gridSnapped
     this.#draft = createDraftShape(nextShapeId(), point, this.#tools.current)
+    if (this.#draft.kind === 'line' && this.#connectionKind) {
+      this.#draft.connection = connectionDefaults(this.#connectionKind)
+      const host = this.#nearestElectricalAnchor(point).hostSymbol
+      if (host?.bindingId) this.#draft.bindingId = host.bindingId
+    }
     this.#stagePointerId = event.pointerId
     ;(stage as SVGSVGElement).setPointerCapture(event.pointerId)
     this.#render()

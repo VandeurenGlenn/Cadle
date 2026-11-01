@@ -4,6 +4,7 @@
 }
 
 .onewire-actions-container {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--cadle-space-1);
@@ -11,6 +12,42 @@
   border-left: 1px solid var(--md-sys-color-outline-variant);
   border-right: 1px solid var(--md-sys-color-outline-variant);
   margin: 0 0.25rem;
+}
+
+.connection-menu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--cadle-touch-target);
+  padding: 0 8px;
+  border-radius: var(--cadle-radius-sm);
+  cursor: pointer;
+  list-style: none;
+  font: var(--md-sys-typescale-label-medium);
+}
+.connection-menu summary::-webkit-details-marker { display: none; }
+.connection-menu summary[data-active='true'], .connection-menu summary:hover {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.connection-options {
+  position: absolute;
+  z-index: 1000;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 200px;
+  padding: 6px;
+  border: var(--cadle-panel-border);
+  border-radius: var(--cadle-radius-md);
+  background: var(--cadle-panel-bg);
+  box-shadow: var(--cadle-elevation-3);
+}
+.connection-options .onewire-action-btn { justify-content: flex-start; }
+.connection-options .onewire-action-btn span { display: inline; }
+.connection-icon { width: 20px; height: 20px; flex: 0 0 20px; }
+@media (max-width: 720px) {
+  .connection-menu summary > span { display: none; }
 }
 
 .onewire-action-btn {

@@ -1,6 +1,7 @@
 import type { SymbolShape } from './model/types.js'
-import { protectionLabelLayout } from './layout/protection-label-layout.js'
-import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
+import { protectionAnnotationLayout, PROTECTION_FONT_FAMILY, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './layout/protection-label-layout.js'
+import { rcdTypeLabel } from './model/electrical.js'
+
 
 export type SymbolTextFieldDefinition = {
   key: string
@@ -102,6 +103,7 @@ const SYMBOL_METADATA: Record<string, SymbolMetadataDefinition> = {
   },
   'symbols/protection devices/automaat.svg': {
     textFields: [
+      { key: 'description', label: 'Benaming', defaultValue: '', x: 0, y: 0, fontSize: 0 },
       { key: 'poles', legacyKeys: ['desc:nP'], label: 'Poles', defaultValue: 'nP', x: 1.87, y: 16.3635, fontSize: 5 },
       { key: 'phase', legacyKeys: ['desc:n'], label: 'Phase', defaultValue: 'n', x: 8.8267, y: 27.01, fontSize: 6 },
       { key: 'rated-current', legacyKeys: ['desc:20A'], label: 'Rated current', defaultValue: '20A', x: 17.0135, y: 16.3801, fontSize: 6 }
@@ -109,12 +111,13 @@ const SYMBOL_METADATA: Record<string, SymbolMetadataDefinition> = {
   },
   'symbols/protection devices/residual-current circuit breaker.svg': {
     textFields: [
+      { key: 'description', label: 'Benaming', defaultValue: '', x: 0, y: 0, fontSize: 0 },
       { key: 'poles', legacyKeys: ['desc:nP'], label: 'Poles', defaultValue: 'nP', x: 1.87, y: 17.4235, fontSize: 5 },
       { key: 'phase', legacyKeys: ['desc:n'], label: 'Phase', defaultValue: 'n', x: 8.8267, y: 28.07, fontSize: 6 },
       { key: 'rated-current', legacyKeys: ['desc:40A'], label: 'Rated current', defaultValue: '40A', x: 16.9427, y: 23.818, fontSize: 6 },
       { key: 'residual-current', legacyKeys: ['desc:300mA'], label: 'Residual current', defaultValue: '300mA', x: 16.9427, y: 16.8731, fontSize: 6 },
-      { key: 'rcd-type', label: 'RCD type', defaultValue: '', x: 16.9427, y: 31.2, fontSize: 5 },
-      { key: 'device-type', legacyKeys: ['desc:I'], label: 'Device type', defaultValue: 'I', x: 27.2891, y: 9.7762, fontSize: 10, fontFamily: 'Times New Roman' }
+      { key: 'rcd-type', label: 'RCD type', defaultValue: rcdTypeLabel(), x: 16.9427, y: 31.2, fontSize: 5 },
+      { key: 'device-type', legacyKeys: ['desc:I'], label: 'Device type', defaultValue: 'ΔI', x: 21.6198, y: 9.7762, fontSize: 12, fontFamily: 'Times New Roman' }
     ]
   },
   'symbols/protection devices/fuse.svg': {
@@ -143,6 +146,7 @@ const escapeXml = (value: string): string =>
 export const symbolTextLayer = (path: string, overrides?: Record<string, string>): string =>
   symbolTextFieldsFor(path)
     .map((field) => {
+      if (field.key === 'description') return ''
       const legacyValue = field.legacyKeys?.map((key) => overrides?.[key]).find((value) => typeof value === 'string')
       const value = overrides?.[field.key] ?? legacyValue ?? field.defaultValue
       if (!value) return ''
@@ -152,39 +156,53 @@ export const symbolTextLayer = (path: string, overrides?: Record<string, string>
     })
     .join('')
 
-// Topology protection values use the same paper-sized annotations as circuit
-// protections. Keeping them outside the tiny asset viewBox also keeps edits
-// readable without enlarging the electrical geometry.
+// All protection symbols share paper-sized annotations, independent of whether
+// they were placed manually or generated. Blank overrides let circuit bundles
+// supply their linked text shapes at the same shared positions.
 export const symbolTextPresentation = (shape: SymbolShape): { inner: string; annotations: string } => {
-  if (!/^board:main:topology:v\d+:/.test(shape.generationKey ?? '') ||
-      !/protection devices\/(?:automaat|residual-current circuit breaker)\.svg$/i.test(shape.path)) {
-    return { inner: symbolTextLayer(shape.path, shape.symbolTextOverrides), annotations: '' }
+  const protection = /protection devices\/(?:automaat|residual-current circuit breaker)\.svg$/i.test(shape.path)
+  const layout = protection ? protectionAnnotationLayout(shape) : null
+  const description = shape.symbolTextOverrides?.description
+  const descriptionLayout = description ? layout?.description : null
+  const descriptionText = description && descriptionLayout
+    ? `<text class="onewire-device-description" x="${descriptionLayout.x}" y="${descriptionLayout.y}" font-family="${PROTECTION_FONT_FAMILY}" font-size="${PROTECTION_TEXT_SIZE}" font-weight="600" fill="#000000" stroke="none">${escapeXml(description)}</text>` : ''
+  if (!protection) {
+    return { inner: symbolTextLayer(shape.path, shape.symbolTextOverrides), annotations: descriptionText }
   }
-  const layout = protectionLabelLayout(shape)
   if (!layout) {
     return { inner: symbolTextLayer(shape.path, shape.symbolTextOverrides), annotations: '' }
   }
-  const keys = ['poles', 'phase', 'rated-current', 'residual-current', 'rcd-type']
+  const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
+  const keys = ['poles', 'phase', 'rated-current', 'residual-current', 'rcd-type', 'device-type']
   const values = new Map(symbolTextFieldsFor(shape.path).map((field) => [
     field.key,
     shape.symbolTextOverrides?.[field.key] ?? field.legacyKeys?.map((key) => shape.symbolTextOverrides?.[key])
       .find((value) => typeof value === 'string') ?? field.defaultValue
   ]))
   const inner = symbolTextLayer(shape.path, { ...shape.symbolTextOverrides, ...Object.fromEntries(keys.map((key) => [key, ''])) })
-  const { axisX, centerY, bottomY, rightX, leftX } = layout
-  const label = (key: string, x: number, y: number, anchor = 'start') => {
+  const label = (key: string, point: { x: number; y: number }, anchor = 'start') => {
     const value = values.get(key)
-    return value ? `<text class="onewire-technical-annotation" x="${x}" y="${y}" text-anchor="${anchor}" font-family="Segoe UI,Arial,sans-serif" font-size="${2.5 * PAPER_WORLD_UNITS_PER_MM}" font-weight="400" fill="#000000" stroke="none">${escapeXml(value)}</text>` : ''
+    return value ? `<text class="onewire-technical-annotation" x="${point.x}" y="${point.y}" text-anchor="${anchor}" font-family="${PROTECTION_FONT_FAMILY}" font-size="${PROTECTION_TEXT_SIZE}" font-weight="${PROTECTION_TEXT_WEIGHT}" fill="#000000" stroke="none">${escapeXml(value)}</text>` : ''
   }
-  const residual = values.get('residual-current')
+  // Spans flow using actual font metrics: long ratings and RCD types keep
+  // their spacing without guessing a fixed width for either value.
+  const row = (keys: string[], point: { x: number; y: number }) => {
+    const fields = keys.filter((key) => values.get(key))
+    if (!fields.length) return ''
+    const spans = fields.map((key, index) => {
+      const markerStyle = key === 'device-type' ? ` font-family="Times New Roman,serif" font-size="${PROTECTION_TEXT_SIZE * 1.2}"` : ''
+      return `<tspan data-field="${key}"${index ? ' dx="8"' : ''}${markerStyle}>${escapeXml(values.get(key)!)}</tspan>`
+    }).join('')
+    return `<text class="onewire-technical-annotation" x="${point.x}" y="${point.y}" text-anchor="start" font-family="${PROTECTION_FONT_FAMILY}" font-size="${PROTECTION_TEXT_SIZE}" font-weight="${PROTECTION_TEXT_WEIGHT}" fill="#000000" stroke="none">${spans}</text>`
+  }
   return {
     inner,
     annotations: [
-      label('poles', leftX, centerY + 5, 'end'),
-      label('rated-current', rightX, centerY + (residual ? 36 : 5)),
-      label('residual-current', rightX, centerY + 12),
-      label('phase', axisX - 12, bottomY + 24, 'end'),
-      label('rcd-type', rightX, centerY + 60)
+      label('poles', layout.poles, 'end'),
+      residual ? row(['device-type', 'residual-current'], layout.residual) : '',
+      residual ? row(['rated-current', 'rcd-type'], layout.current) : label('rated-current', layout.current),
+      label('phase', layout.phase),
+      descriptionText
     ].join('')
   }
 }

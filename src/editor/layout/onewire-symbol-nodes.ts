@@ -2,17 +2,20 @@ import type { Point } from '../../editor/model/types.js'
 import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
 
-// One canonical rendered size for every Automaat.svg, independent of where it
-// appears in the one-wire topology. The breaker is intentionally the visual
-// anchor, while the rest of the row stays smaller so the feeder and cable labels
-// remain legible and proportionate to the electrical reference.
-export const ONE_WIRE_DEFAULT_SCALE = (4 * PAPER_WORLD_UNITS_PER_MM) / 24
-export const ONE_WIRE_BREAKER_SCALE = (12 * PAPER_WORLD_UNITS_PER_MM) / 24
+// Physical sizes shared by manually placed and generated one-wire symbols.
+// Protection devices and the complete earthing assembly have equal height;
+// the earthing assembly must not dominate the switching bodies.
+const PROTECTION_HEIGHT_MM = 16
+const EARTHING_HEIGHT_MM = 16
+const ROW_SYMBOL_SCALE_FACTOR = 1.5
+export const ONE_WIRE_DEFAULT_SCALE = (6 * PAPER_WORLD_UNITS_PER_MM) / 24
+export const ONE_WIRE_BREAKER_SCALE = (PROTECTION_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_METER_SCALE = (8 * PAPER_WORLD_UNITS_PER_MM) / 24
 
-// Match the 12 mm device height despite the RCD's wider source viewBox.
-export const ONE_WIRE_RCD_SCALE = (12 * PAPER_WORLD_UNITS_PER_MM * 38.5625) / (24 * 29.8893)
+// Match the breaker height despite the RCD's wider source viewBox.
+export const ONE_WIRE_RCD_SCALE = (PROTECTION_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM * 38.5625) / (24 * 29.8893)
 export const ONE_WIRE_RENDERED_STROKE_WIDTH = 2
+export const ONE_WIRE_BUS_STROKE_WIDTH = 4
 
 // Trikker-style wire connection metadata for the built-in one-wire symbols.
 // node — not the bounding box — lands on the wire axis, and defines how wide
@@ -55,7 +58,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 24, height: 54 },
       node: { x: 14, y: 52 },
       cutRadius: null,
-      oneWireScale: 2.25
+      oneWireScale: 4.5
     }
   },
   {
@@ -65,7 +68,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 24, height: 54 },
       node: { x: 12, y: 52 },
       cutRadius: null,
-      oneWireScale: 2.25
+      oneWireScale: 4.5
     }
   },
   {
@@ -146,7 +149,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
         top: { x: 3.32, y: 0.93197 },
         bottom: { x: 3.32, y: 7.33197 }
       },
-      oneWireScale: 1.425
+      oneWireScale: 1.425 * ROW_SYMBOL_SCALE_FACTOR
     }
   },
   {
@@ -155,7 +158,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 10.1613, height: 20.2715 },
       node: { x: 4.37197, y: 10.04123 },
       cutRadius: 4.25197,
-      oneWireScale: 0.95
+      oneWireScale: 0.95 * ROW_SYMBOL_SCALE_FACTOR
     }
   },
   {
@@ -221,12 +224,22 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: { viewBox: { width: 11.6776, height: 20.8268 }, node: { x: 5.835, y: 10.41 }, cutRadius: SWITCH_NODE_RADIUS }
   },
   {
-    match: /switches\/(?:impulse relay|time switch|electric lock or guard tour control device|thermostat|timer)\.svg$/i,
+    match: /switches\/impulse relay\.svg$/i,
     spec: {
       viewBox: { width: 20.0825, height: 8.74394 },
       node: { x: 10.04125, y: 4.37197 },
       cutRadius: 9.92125,
-      oneWireScale: 0.67473017
+      // The wide relay needs more width for its internal switching mark.
+      oneWireScale: (6 * PAPER_WORLD_UNITS_PER_MM) / 24
+    }
+  },
+  {
+    match: /switches\/(?:time switch|electric lock or guard tour control device|thermostat|timer)\.svg$/i,
+    spec: {
+      viewBox: { width: 20.0825, height: 8.74394 },
+      node: { x: 10.04125, y: 4.37197 },
+      cutRadius: 9.92125,
+      oneWireScale: 0.67473017 * ROW_SYMBOL_SCALE_FACTOR
     }
   },
   {
@@ -239,14 +252,13 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    // Plain X cross — drawn over the wire, no interruption. Lamps render
-    // noticeably smaller than switch assemblies.
+    // Plain X cross — drawn over the wire, no interruption.
     match: /consumption appliances\/lighting\.svg$/i,
     spec: {
       viewBox: { width: 11.6358, height: 11.6358 },
       node: { x: 5.8179, y: 5.8179 },
       cutRadius: null,
-      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+      oneWireScale: (4.5 * PAPER_WORLD_UNITS_PER_MM) / 24
     }
   },
   {
@@ -270,14 +282,15 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    // The wall line forms the symbol's electrical base. Anchor its left end to
-    // the branch so the lamp remains upright and entirely above the conductor.
+    // Stand the wall vertically on the left, with the lamp on the right.
+    // The horizontal conductor meets the midpoint of the wall.
     match: /consumption appliances\/wall light\.svg$/i,
     spec: {
       viewBox: { width: 22.9172, height: 14.4132 },
-      node: { x: 0.12, y: 14.2932 },
+      node: { x: 11.4586, y: 14.2932 },
       cutRadius: null,
-      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE,
+      rotation: 90
     }
   },
   {
@@ -374,6 +387,14 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
     }
   },
   {
+    match: /protection devices\/main earthing connection\.svg$/i,
+    spec: {
+      viewBox: { width: 13.5, height: 31 },
+      oneWireScale: (EARTHING_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM) / 24,
+      top: { x: 6.75, y: 0.25 }
+    }
+  },
+  {
     match: /protection devices\/earth electrode\.svg$/i,
     spec: {
       viewBox: { width: 17.2479, height: 17.2479 },
@@ -399,8 +420,8 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
 // Rendered node radius shared by every switch on a wire; the node itself must
 // stay at the same electrical width no matter how the body is scaled. This keeps
 // the visual balance right without disturbing the branch connection geometry.
-const TARGET_NODE_RADIUS = PAPER_WORLD_UNITS_PER_MM
-const MAX_NODE_NORMALIZED_SCALE = 3
+const TARGET_NODE_RADIUS = PAPER_WORLD_UNITS_PER_MM * ROW_SYMBOL_SCALE_FACTOR
+const MAX_NODE_NORMALIZED_SCALE = 3 * ROW_SYMBOL_SCALE_FACTOR
 
 const findSpec = (path: string): NodeSpec | null => NODE_SPECS.find(({ match }) => match.test(path))?.spec ?? null
 

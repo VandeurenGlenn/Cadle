@@ -88,8 +88,20 @@ export const shouldShowPhaseLabel = (
   showPhaseLabel: boolean | undefined
 ): boolean => poles !== 4 && showPhaseLabel !== false
 
-export const rcdTypeLabel = (type: ElectricalDeviceMetadata['rcdType']): string => {
-  if (!type) return ''
+export const DEFAULT_RCD_TYPE = 'A' as const
+
+export const isRcdType = (value: unknown): value is NonNullable<ElectricalDeviceMetadata['rcdType']> =>
+  value === 'AC' || value === 'A' || value === 'F' || value === 'B' || value === 'other'
+
+export const rcdTypeFromLabel = (label: string | undefined): ElectricalDeviceMetadata['rcdType'] => {
+  const value = label?.replace(/^Type /i, '')
+  return value === 'Other' ? 'other' : isRcdType(value) ? value : undefined
+}
+
+export const defaultRcdTypeForDevice = (name: string, path: string): typeof DEFAULT_RCD_TYPE | undefined =>
+  /residual-current|differential|differentieel|\brcd\b/i.test(`${name} ${path}`) ? DEFAULT_RCD_TYPE : undefined
+
+export const rcdTypeLabel = (type: ElectricalDeviceMetadata['rcdType'] = DEFAULT_RCD_TYPE): string => {
   return `Type ${type === 'other' ? 'Other' : type}`
 }
 
@@ -221,10 +233,7 @@ export const electricalMetadataFromCatalog = (
         ? explicit.breakerCurve
         : undefined,
     rcdSensitivityMa: finitePositive(explicit.rcdSensitivityMa),
-    rcdType:
-      explicit.rcdType === 'AC' || explicit.rcdType === 'A' || explicit.rcdType === 'F' || explicit.rcdType === 'B' || explicit.rcdType === 'other'
-        ? explicit.rcdType
-        : undefined,
+    rcdType: isRcdType(explicit.rcdType) ? explicit.rcdType : defaultRcdTypeForDevice(name, path),
     boardId: typeof explicit.boardId === 'string' ? explicit.boardId.trim() || undefined : undefined,
     railId: typeof explicit.railId === 'string' ? explicit.railId.trim() || undefined : undefined,
     notes: typeof explicit.notes === 'string' ? explicit.notes.trim() || undefined : undefined

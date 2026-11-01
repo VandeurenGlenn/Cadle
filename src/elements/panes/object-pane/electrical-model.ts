@@ -1,6 +1,7 @@
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../../editor/circuit-defaults.js'
 import {
   defaultManufacturerForDevice,
+  defaultRcdTypeForDevice,
   neutralPositionForManufacturer
 } from '../../../editor/model/electrical.js'
 import type { SelectionShapeElectrical } from './selection-model.js'
@@ -46,6 +47,7 @@ export const effectiveSelectionElectrical = (
     phaseConfiguration: electrical.phaseConfiguration ?? defaults.phaseConfiguration,
     showPhaseLabel: electrical.showPhaseLabel ?? true,
     breakerCurve: electrical.breakerCurve ?? defaults.breakerCurve,
+    rcdType: electrical.rcdType ?? defaultRcdTypeForDevice(symbolName, symbolPath),
     boardId: electrical.boardId ?? defaults.boardId,
     railId: electrical.railId ?? defaults.railId
   }

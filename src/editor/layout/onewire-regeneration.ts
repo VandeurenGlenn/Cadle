@@ -2,6 +2,13 @@ import type { Shape } from '../../editor/model/types.js'
 
 const preserveGeneratedIdentity = (fresh: Shape, previous: Shape): Shape => {
   if (fresh.kind !== previous.kind) return fresh
+  if (fresh.kind === 'line' && previous.kind === 'line' && fresh.connection && previous.connection) {
+    return { ...fresh, id: previous.id, connection: {
+      ...previous.connection, ...fresh.connection, kind: previous.connection.kind,
+      ...Object.fromEntries(['name', 'showLabel', 'offsetMm', 'labelOwner'].flatMap((key) =>
+        key in previous.connection! ? [[key, previous.connection![key as keyof typeof previous.connection]]] : []))
+    } }
+  }
   return { ...fresh, id: previous.id } as Shape
 }
 

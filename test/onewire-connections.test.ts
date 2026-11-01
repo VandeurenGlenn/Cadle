@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SymbolShape } from '../src/editor/model/types.js'
-import { oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from '../src/editor/layout/onewire-connections.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from '../src/editor/layout/onewire-connections.js'
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.js'
 import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.js'
 import { ONE_WIRE_PRESETS } from '../src/editor/constants.js'
@@ -84,6 +84,13 @@ test('manual presets form continuous columns from the bus through every componen
       const targetBounds = oneWireSymbolBounds(symbols[index])!
       assert.ok(targetBounds.y + targetBounds.height <= previousBounds.y - 8 + 1e-8)
     }
+    const cable = result.shapes.find((shape) => shape.kind === 'text' && shape.text.includes('mm²'))!
+    assert.ok(cable.kind === 'text')
+    assert.equal(cable.rotation, -90)
+    const cableBounds = oneWireLayoutBounds(cable)
+    assert.ok(cableBounds.x >= start.x + 12)
+    assert.ok(cableBounds.y >= wires[1].end.y + 24 - 1e-8)
+    assert.ok(cableBounds.y + cableBounds.height <= wires[1].start.y - 24 + 1e-8)
   }
 })
 

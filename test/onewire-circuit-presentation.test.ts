@@ -52,6 +52,15 @@ test('updates circuit specifications immutably and excludes runtime metadata', (
   })
 })
 
+test('manual and generated circuit protections keep the same breaker curve when values change', () => {
+  const symbol: SymbolShape = { id: 'manual', kind: 'symbol', name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', position: { x: 300, y: 500 }, scale: 4, bindingId: 'A1' }
+  const result = applyOneWireCircuitPresentation({ shapes: [symbol, linkedText('current', 'breaker-current', 'C16A')],
+    circuitKey: 'A', stored: { breakerCurrentA: 25, breakerCurve: 'D' } })
+  assert.equal((result.shapes[0] as SymbolShape).symbolTextOverrides?.['rated-current'], 'D25A')
+  assert.equal((result.shapes[1] as TextShape).text, 'D25A')
+})
+
 test('applies stored circuit values to generated labels and cable symbols', () => {
   const shapes: Shape[] = [
     linkedText('poles', 'breaker-poles', '4P'),
@@ -99,7 +108,7 @@ test('applies stored circuit values to generated labels and cable symbols', () =
   assert.equal(result.shapes[4].hidden, true)
   assert.equal(result.shapes[5].hidden, false)
   assert.match((result.shapes[5] as SymbolShape).path, /underground/i)
-  assert.equal(result.shapes[5].scale, 2.25)
+  assert.equal(result.shapes[5].scale, 4.5)
   assert.strictEqual(result.shapes[6], shapes[6])
   const hidden = applyOneWireCircuitPresentation({
     shapes: result.shapes,

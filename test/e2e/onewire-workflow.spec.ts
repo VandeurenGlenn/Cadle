@@ -1,4 +1,14 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+// Selection now opens an overlay. Close it before coordinate-based drawing
+// steps so those clicks reach the intended part of the sheet.
+const closePropertiesForDrawing = async (page: Page) => {
+  const panel = page.locator('app-shell #object-inspector')
+  if (await panel.getAttribute('data-open') === 'true') {
+    await panel.getByRole('button', { name: 'Close properties' }).click()
+    await expect(panel).toBeHidden()
+  }
+}
 
 test('create, draw, bind, validate, generate, reload, and export one-wire project', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 })
@@ -142,6 +152,25 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => element.toSVG())).toContain('N-L2')
   await neutralOptions.getByRole('radio', { name: 'N right' }).click()
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => element.toSVG())).toContain('L2-N')
+  const phasePlacement = await page.locator('cadle-app').evaluate((element: any) => {
+    const labels = [...element.shadowRoot.querySelectorAll('text.shape-text')] as SVGTextElement[]
+    const phase = labels.find((label) => label.textContent?.trim() === 'L2-N')!
+    const current = labels.find((label) => /^[BCD]?\d+A$/.test(label.textContent?.trim() ?? '') &&
+      label.getAttribute('x') === phase.getAttribute('x') &&
+      Math.abs(Number(phase.getAttribute('y')) - Number(label.getAttribute('y')) - 28) < 1e-6)!
+    const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    const exportedPhase = [...exported.querySelectorAll('text')].find((label) => label.textContent?.trim() === 'L2-N')!
+    return {
+      aligned: Boolean(current),
+      clear: Boolean(current) && phase.getBoundingClientRect().top > current.getBoundingClientRect().bottom,
+      exportedY: exportedPhase.getAttribute('y'),
+      editorY: phase.getAttribute('y')
+    }
+  })
+  expect(phasePlacement.aligned).toBe(true)
+  expect(phasePlacement.clear).toBe(true)
+  expect(phasePlacement.exportedY).toBe(phasePlacement.editorY)
+  await page.screenshot({ path: '/private/tmp/cadle-circuit-phase.png' })
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => element.toSVG())).toContain('2P')
 
   const showPhaseLabel = page.getByRole('checkbox', { name: 'Show phase label' })
@@ -233,6 +262,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   ).toBeLessThanOrEqual(30)
 
   const addKamrail = page.getByRole('button', { name: 'Add kamrail' }).last()
+  await closePropertiesForDrawing(page)
   await addKamrail.click()
   const secondRailPoint = await stage.evaluate((element) => {
     const rail = [...element.querySelectorAll<SVGLineElement>('line.shape-line')].find(
@@ -249,6 +279,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   await expect.poll(async () => (await oneWireGeometry()).rails.length).toBe(2)
   await expect.poll(() => page.locator('cadle-app').evaluate((element: any) => element.toSVG())).toContain('D25A')
 
+  await closePropertiesForDrawing(page)
   await addBreaker.click()
   const secondRailClick = await stage.evaluate((element) => {
     const rails = [...element.querySelectorAll<SVGLineElement>('line.shape-line')]
@@ -367,6 +398,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   if (!railId) throw new Error('The new kamrail was not created.')
 
   const addSwitch = page.getByRole('button', { name: 'Add switch' })
+  await closePropertiesForDrawing(page)
   await addSwitch.click()
   await expect(addSwitch).toHaveAttribute('aria-pressed', 'true')
   expect((await addSwitch.boundingBox())?.height).toBe(44)
@@ -439,6 +471,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   const beforeExtensionCount = await stage
     .locator('[data-shape-id]')
     .evaluateAll((items) => new Set(items.map((item) => item.getAttribute('data-shape-id'))).size)
+  await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Add load' }).click()
   await page.mouse.click(switchBounds.x + switchBounds.width / 2, switchBounds.y + switchBounds.height / 2)
   await expect
@@ -455,6 +488,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   }))
   expect(extension.y1).toBeCloseTo(extension.y2)
 
+  await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Add breaker' }).first().click()
   const secondBreakerPoint = await rail.evaluate((line) => {
     const point = line.ownerSVGElement?.createSVGPoint()
@@ -473,6 +507,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   const beforeSwitchCount = await stage
     .locator('[data-shape-id]')
     .evaluateAll((items) => new Set(items.map((item) => item.getAttribute('data-shape-id'))).size)
+  await closePropertiesForDrawing(page)
   await addSwitch.click()
   // Click the painted conductor, since the SVG viewport also contains empty
   // space and becomes a larger click target when the device size increases.
@@ -503,6 +538,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   const railIdsBeforeSecondRail = await stage
     .locator('line.shape-line')
     .evaluateAll((lines) => lines.map((line) => line.getAttribute('data-shape-id')).filter(Boolean))
+  await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Add kamrail' }).click()
   const secondRailPoint = await stage.locator('.print-safe-area').evaluate((area) => {
     const rect = area as SVGRectElement
@@ -519,6 +555,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   }, railIdsBeforeSecondRail)
   if (!secondRailId) throw new Error('The second rail has no shape identity.')
   const secondRail = stage.locator(`line[data-shape-id="${secondRailId}"]`)
+  await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Add breaker' }).first().click()
   await secondRail.evaluate((line) => {
     const init = { bubbles: true, composed: true, pointerId: 1, pointerType: 'mouse', button: 0 }
@@ -533,6 +570,7 @@ test('inserts a breaker before the selected component without shrinking the rail
     y1: Number(line.getAttribute('y1')),
     y2: Number(line.getAttribute('y2'))
   }))
+  await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Select', exact: true }).click()
   const deletePoint = await stage.locator(`[data-shape-id="${breakerId}"] path`).first().evaluate((path: SVGPathElement) => {
     const point = path.getPointAtLength(2)

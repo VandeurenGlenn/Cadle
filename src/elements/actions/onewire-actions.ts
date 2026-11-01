@@ -3,6 +3,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import pubsub from '../../pubsub.js'
 import styles from './onewire-actions.css' with { type: 'css' }
+import { CONNECTION_NAMES, type ConnectionKind } from '../../editor/model/electrical-connection.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -25,6 +26,19 @@ export class OneWireActions extends LiteElement {
 
   @property({ type: Boolean }) accessor isVisible = false
   @property({ type: String }) accessor activeKind: OneWireComposeKind = 'switch'
+  @property({ attribute: false }) accessor connectionKind: ConnectionKind | null = null
+  @property({ type: String }) accessor activeTool = 'select'
+
+  #connections: ConnectionKind[] = ['wire', 'cable', 'branch', 'bridge']
+
+  #connectionIcon(kind: ConnectionKind = 'cable') {
+    const path = kind === 'bridge' ? 'M3 18V6H21V18'
+      : kind === 'branch' ? 'M3 12H21M12 12V3'
+      : kind === 'cable' ? 'M3 12H21M10 7L14 17' : 'M3 12H21'
+    return html`<svg class="connection-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d=${path}></path>${kind === 'branch' ? html`<circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"></circle>` : ''}
+    </svg>`
+  }
 
   #actions: OneWireAction[] = [
     { kind: 'kamrail', icon: 'power_input', title: 'Add kamrail', label: 'Kamrail' },
@@ -52,8 +66,10 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
-  #onControlsState = (state: { oneWireComposeKind?: OneWireComposeKind }) => {
+  #onControlsState = (state: { oneWireComposeKind?: OneWireComposeKind; connectionKind?: ConnectionKind | null; activeTool?: string }) => {
     if (state.oneWireComposeKind) this.activeKind = state.oneWireComposeKind
+    this.connectionKind = state.connectionKind ?? null
+    if (state.activeTool) this.activeTool = state.activeTool
   }
 
   @listen('hashchange', { target: 'window' })
@@ -76,13 +92,29 @@ export class OneWireActions extends LiteElement {
               class="onewire-action-btn"
               title="${action.title}"
               aria-label="${action.title}"
-              aria-pressed=${this.activeKind === action.kind ? 'true' : 'false'}
+              aria-pressed=${this.activeTool === 'onewire' && this.activeKind === action.kind ? 'true' : 'false'}
               @click="${() => this.#handleAction(action.kind)}">
               <custom-icon icon="${action.icon}"></custom-icon>
               <span>${action.label}</span>
             </button>
           `
         )}
+        <details class="connection-menu">
+          <summary title="Elektrische verbindingen" aria-label="Elektrische verbindingen" data-active=${this.connectionKind ? 'true' : 'false'}>
+            ${this.#connectionIcon(this.connectionKind ?? 'cable')}
+            <span>${this.connectionKind ? CONNECTION_NAMES[this.connectionKind] : 'Verbinding'}</span>
+          </summary>
+          <div class="connection-options">
+            ${this.#connections.map((kind) => html`
+              <button class="onewire-action-btn" aria-label=${`Teken ${CONNECTION_NAMES[kind].toLowerCase()}`}
+                aria-pressed=${this.connectionKind === kind ? 'true' : 'false'} @click=${(event: Event) => {
+                  pubsub.publish('editor.controls.command', { connectionKind: kind })
+                  const details = (event.currentTarget as HTMLElement).closest('details')
+                  if (details) details.open = false
+                }}>${this.#connectionIcon(kind)}<span>${CONNECTION_NAMES[kind]}</span></button>
+            `)}
+          </div>
+        </details>
       </div>
     `
   }

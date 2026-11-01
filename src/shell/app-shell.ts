@@ -442,10 +442,6 @@ export class AppShell extends LiteElement {
     this.objectInspectorOpen = false
   }
 
-  #openObjectInspectorAfterPlacement = () => {
-    if (window.matchMedia('(min-width: 721px)').matches) this.objectInspectorOpen = true
-  }
-
   #focusSelection = () => {
     pubsub.publish('editor.controls.command', { action: 'focus-selection' })
   }
@@ -455,12 +451,21 @@ export class AppShell extends LiteElement {
     this.splitViewOpen = !this.splitViewOpen
   }
 
+  #selectedObjectId = ''
+
   #onEditorSelectionChanged = (payload: {
     selectionCount?: number
     pageKey?: string
-    shape?: { bindingId?: string }
+    shape?: { id?: string; bindingId?: string }
   }) => {
-    this.selectedObjectCount = Math.max(0, Number(payload?.selectionCount) || 0)
+    if (payload.pageKey && payload.pageKey !== this.loadedPage) return
+    const count = Math.max(0, Number(payload?.selectionCount) || 0)
+    const id = payload.shape?.id ?? ''
+    const selectionChanged = count !== this.selectedObjectCount || id !== this.#selectedObjectId
+    this.selectedObjectCount = count
+    this.#selectedObjectId = id
+    if (count === 0) this.objectInspectorOpen = false
+    else if (selectionChanged) this.objectInspectorOpen = true
     const bindingId = payload.shape?.bindingId?.trim()
     if (payload.pageKey !== this.loadedPage || !bindingId) return
     this.selectedBindingId = bindingId.toUpperCase()
@@ -925,7 +930,6 @@ export class AppShell extends LiteElement {
 
     window.addEventListener('hashchange', this.#onhashchange)
     pubsub.subscribe('editor.selection.changed', this.#onEditorSelectionChanged)
-    pubsub.subscribe('editor.symbol.placed', this.#openObjectInspectorAfterPlacement)
     if (this.showReopenPreviousProjectPrompt) {
       pubsub.publish('shell.reopen-previous-project-prompt', {
         open: true,
@@ -940,7 +944,6 @@ export class AppShell extends LiteElement {
     window.removeEventListener('hashchange', this.#onhashchange)
     window.removeEventListener('cadle-google-drive-auth-required', this.#onGoogleDriveAuthRequired)
     pubsub.unsubscribe('editor.selection.changed', this.#onEditorSelectionChanged)
-    pubsub.unsubscribe('editor.symbol.placed', this.#openObjectInspectorAfterPlacement)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
 

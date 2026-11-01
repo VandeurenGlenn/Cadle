@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
 import { oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
+import { protectionDescriptionLayout } from '../src/editor/layout/protection-label-layout.ts'
 import {
   energyScenarioOpacityValues,
   oneWireEnergyFlowSegment,
@@ -59,12 +60,12 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('meter'))
   assert.ok(roles.has('main-switch'))
   assert.ok(roles.has('main-switch-to-meter'))
-  assert.ok(roles.has('main-switch-title'))
+  assert.equal(roles.has('main-switch-title'), false)
   assert.ok(roles.has('main-differential'))
   assert.ok(roles.has('grid-incoming'))
   assert.ok(roles.has('earth'))
-  assert.ok(roles.has('earth-rail'))
-  assert.ok(roles.has('earth-drop'))
+  assert.equal(roles.has('earth-rail'), false)
+  assert.equal(roles.has('earth-drop'), false)
   assert.equal(roles.has('earth-label'), false)
   assert.equal(roles.has('solar-label'), false)
   assert.ok(roles.has('secondary-busbar'))
@@ -81,10 +82,11 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v23:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v33:')))
   for (const shape of shapes) {
     if (shape.kind === 'line') {
-      assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 10 : 2)
+      assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 4 : 2)
+      assert.equal(shape.stroke, '#000000')
     } else if (shape.kind === 'symbol') {
       const source = readFileSync(new URL(`../www/${shape.path}`, import.meta.url), 'utf8')
       const viewBox = source.match(/viewBox="([^"]+)"/)![1].split(/\s+/).map(Number)
@@ -93,29 +95,19 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     }
   }
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === '4x10 mm² EXVB'))
-  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'remautomaat'))
-  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'Hoofdautomaat'))
+  assert.ok(shapes.some((shape) => shape.kind === 'symbol' && shape.symbolTextOverrides?.description === 'remautomaat'))
+  assert.ok(shapes.some((shape) => shape.kind === 'symbol' && shape.symbolTextOverrides?.description === 'Hoofdautomaat'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'BEGRENZDE RAIL · REMAUTOMAAT C40A'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'EV · U'))
-  for (const [titleRole, deviceRole] of [
-    ['main-differential-title', 'main-differential'],
-    ['main-switch-title', 'main-switch'],
-    ['residual-breaker-label', 'residual-breaker']
-  ]) {
-    const title = shapes.find((shape) => shape.sourceLink?.role === titleRole)!
+  for (const deviceRole of ['main-switch', 'residual-breaker']) {
     const device = shapes.find((shape) => shape.sourceLink?.role === deviceRole)!
-    assert.ok(title.kind === 'text' && device.kind === 'symbol')
-    const titleBounds = oneWireLayoutBounds(title)
+    assert.ok(device.kind === 'symbol')
+    const title = protectionDescriptionLayout(device)!
     const terminals = oneWireSymbolTerminalInfo(device.path, device.scale)!
     const axisX = device.position.x + terminals.bottom!.x
-    const maxViewBox = device.path.includes('Residual-current') ? 38.5625 : 28.8265
-    const bodyLeft = axisX + (5.6536 - 15.3836) * 24 * device.scale / maxViewBox
-    assert.equal(title.textAnchor, 'end')
-    assert.ok(Math.abs(bodyLeft - title.position.x - 8) < 1e-8)
-    assert.ok(titleBounds.x + titleBounds.width <= bodyLeft - 8 + 1e-8)
+    assert.equal(title.x, axisX + 10)
     const centerY = device.position.y + (terminals.top!.y + terminals.bottom!.y) / 2
-    assert.equal(title.position.y, centerY - 24)
-    assert.equal(18 * title.scale! / 8, 2.5)
+    assert.equal(title.y, centerY + 29)
   }
 
   const busY = 700
@@ -124,6 +116,21 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const additional = shapes.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')
   assert.ok(meter?.kind === 'symbol' && meter.position.y > busY)
   assert.equal(meter.scale * 24 / 8, 8)
+  const incomingCable = shapes.find((shape) => shape.sourceLink?.role === 'incoming-cable-label')!
+  const mainDevice = shapes.find((shape) => shape.sourceLink?.role === 'main-differential')!
+  assert.ok(incomingCable.kind === 'text' && mainDevice.kind === 'symbol')
+  const mainTitle = protectionDescriptionLayout(mainDevice)!
+  const mainTerminals = oneWireSymbolTerminalInfo(mainDevice.path, mainDevice.scale)!
+  const mainAxis = mainDevice.position.x + mainTerminals.bottom!.x
+  assert.equal(mainDevice.symbolTextOverrides?.description, 'Hoofddiff.')
+  assert.equal(mainTitle.x, mainAxis + 10)
+  assert.equal(incomingCable.position.x, mainAxis + 24)
+  assert.equal(incomingCable.position.y - mainTitle.y, 60)
+  assert.equal(incomingCable.rotation ?? 0, 0)
+  assert.equal(incomingCable.fontWeight, 400)
+  const meterTopY = meter.position.y + oneWireSymbolTerminalInfo(meter.path, meter.scale)!.top!.y
+  assert.equal(meterTopY - incomingCable.position.y, 24)
+  assert.equal(meterTopY, Math.max(mainDevice.position.y + mainTerminals.bottom!.y + 40, mainTitle.y + 84))
   const solarMeter = shapes.find((shape) => shape.sourceLink?.role === 'solar-meter')
   assert.ok(solarMeter?.kind === 'symbol')
   assert.equal(solarMeter.scale * 24 / 8, 8)
@@ -152,7 +159,6 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     ['grid-incoming', 'start', 'main-switch', 'bottom'],
     ['residual-to-rail', 'end', 'residual-breaker', 'bottom'],
     ['residual-outgoing', 'start', 'residual-breaker', 'top'],
-    ['earth-drop', 'end', 'earth', 'top'],
     ['solar-branch', 'end', 'solar-breaker', 'bottom'],
     ['solar-breaker-to-meter', 'start', 'solar-breaker', 'top'],
     ['solar-breaker-to-meter', 'end', 'solar-meter', 'bottom'],
@@ -173,13 +179,16 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const mainSwitch = shapes.find((shape) => shape.sourceLink?.role === 'main-switch')
   const mainLabel = shapes.find((shape) => shape.sourceLink?.role === 'main-differential-label')
   assert.ok(earth?.kind === 'symbol' && main?.kind === 'symbol' && earth.position.x < main.position.x)
+  assert.equal(earth.path, 'symbols/Protection devices/Main earthing connection.svg')
+  assert.deepEqual(terminal('earth', 'top'), { x: 80 + (920 - 80) * 0.06, y: 700 })
+  assert.equal(earth.scale * 24 / 8, 16)
   assert.ok(mainSwitch?.kind === 'symbol')
-  assert.ok(Math.abs(mainSwitch.scale * 24 / 8 - 12) < 1e-6)
+  assert.ok(Math.abs(mainSwitch.scale * 24 / 8 - 16) < 1e-6)
   assert.equal(mainSwitch.electrical?.breakerCurrentA, 25)
   assert.equal(mainSwitch.symbolTextOverrides?.['rated-current'], '25A')
   assert.equal(mainLabel, undefined)
   assert.ok(main?.kind === 'symbol')
-  assert.ok(Math.abs(main.scale * 24 * 29.8893 / 38.5625 / 8 - 12) < 1e-6)
+  assert.ok(Math.abs(main.scale * 24 * 29.8893 / 38.5625 / 8 - 16) < 1e-6)
   assert.equal(main.electrical?.breakerCurrentA, 40)
   assert.equal(main.electrical?.rcdSensitivityMa, 300)
   assert.equal(main.electrical?.manufacturer, 'Schneider Electric')
@@ -193,9 +202,9 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     (shape) => shape.sourceLink?.role === 'additional-differential-consumers-1'
   )
   assert.ok(residualBreaker?.kind === 'symbol' && additionalDifferential?.kind === 'symbol')
-  assert.ok(Math.abs(additionalDifferential.scale * 24 * 29.8893 / 38.5625 / 8 - 12) < 1e-6)
+  assert.ok(Math.abs(additionalDifferential.scale * 24 * 29.8893 / 38.5625 / 8 - 16) < 1e-6)
   assert.equal(residualBreaker.electrical?.breakerCurrentA, 40)
-  assert.ok(Math.abs(residualBreaker.scale * 24 / 8 - 12) < 1e-6)
+  assert.ok(Math.abs(residualBreaker.scale * 24 / 8 - 16) < 1e-6)
   assert.equal(residualBreaker.electrical?.breakerCurve, 'C')
   assert.equal(residualBreaker.symbolTextOverrides?.['rated-current'], 'C40A')
   assert.equal(additionalDifferential.electrical?.breakerCurrentA, 40)
@@ -205,7 +214,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
 
   const solarBreaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
   assert.ok(solarBreaker?.kind === 'symbol')
-  assert.ok(Math.abs(solarBreaker.scale * 24 / 8 - 12) < 1e-6)
+  assert.ok(Math.abs(solarBreaker.scale * 24 / 8 - 16) < 1e-6)
   assert.equal(solarBreaker.electrical?.breakerCurrentA, 20)
   assert.equal(solarBreaker.electrical?.breakerCurve, 'C')
   assert.equal(solarBreaker.symbolTextOverrides?.['rated-current'], 'C20A')
@@ -464,8 +473,10 @@ test('connects every topology branch to a tap on a moved busbar', () => {
     primaryLines.every((line) => onBusbar(line.sourceLink?.role === 'main-to-rail' ? line.end : line.start, rail))
   )
   assert.ok(secondaryBusbar?.kind === 'line')
-  const earthDrop = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'earth-drop')
-  assert.ok(earthDrop?.kind === 'line' && !onBusbar(earthDrop.start, rail))
+  const earth = shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'earth')
+  assert.ok(earth?.kind === 'symbol')
+  const earthTop = oneWireSymbolTerminalInfo(earth.path, earth.scale)!.top!
+  assert.ok(onBusbar({ x: earth.position.x + earthTop.x, y: earth.position.y + earthTop.y }, rail))
   assert.ok(additionalLine?.kind === 'line' && onBusbar(additionalLine.start, secondaryBusbar))
   assert.ok(feederLine?.kind === 'line' && onBusbar(feederLine.end, secondaryBusbar))
 })

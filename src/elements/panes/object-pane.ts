@@ -16,6 +16,7 @@ import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/cir
 import { GRID_SIZE } from '../../editor/constants.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
+import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -23,6 +24,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
+  @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
   @property()
   private accessor _activeObjectLabel = 'No selection'
 
@@ -147,6 +149,7 @@ export class ObjectPane extends LiteElement {
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
+      this._nativeConnection = null
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
       this._nativeSelectedId = ''
       this._nativeSelectedKind = ''
@@ -179,6 +182,7 @@ export class ObjectPane extends LiteElement {
     }
 
     const shape = selection.shape
+    this._nativeConnection = shape.connection
     this._nativeSelectedId = shape.id
     this._nativeSelectedKind = shape.kind
     this._nativeBindingId = shape.bindingId
@@ -228,7 +232,7 @@ export class ObjectPane extends LiteElement {
     } else {
       this._nativeElectrical = null
     }
-    this._activeObjectLabel = shape.label
+    this._activeObjectLabel = shape.connection ? CONNECTION_NAMES[shape.connection.kind] : shape.label
   }
 
   #setBindingLabelSide = (side: BindingLabelSide) => {
@@ -537,6 +541,64 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.convert-room', {})
   }
 
+  #updateConnection = (update: Partial<ElectricalConnection>) => {
+    if (!this._nativeConnection) return
+    this._nativeConnection = { ...this._nativeConnection, ...update }
+    pubsub.publish('editor.object.update', { connection: update })
+  }
+
+  #renderConnectionProperties() {
+    const connection = this._nativeConnection
+    const conductor = connection?.kind === 'wire' || connection?.kind === 'cable'
+    return html`
+      <div class="native-section-title">Elektrische verbinding</div>
+      <label><span class="native-label">Verbindingstype</span>
+        <select class="native-select" @change=${(event: Event) => {
+          const kind = (event.target as HTMLSelectElement).value as ConnectionKind | ''
+          this._nativeConnection = kind ? connectionDefaults(kind) : null
+          pubsub.publish('editor.object.update', { connection: this._nativeConnection })
+        }}>
+          <option value="" ?selected=${!connection}>Grafische lijn</option>
+          ${Object.entries(CONNECTION_NAMES).map(([kind, label]) => html`<option value=${kind} ?selected=${connection?.kind === kind}>${label}</option>`)}
+        </select>
+      </label>
+      ${connection ? html`
+        <label><span class="native-label">Benaming verbinding</span>
+          <input class="native-input" .value=${connection.name ?? ''}
+            @input=${(event: Event) => this.#updateConnection({ name: (event.target as HTMLInputElement).value })} />
+        </label>
+        ${conductor ? html`
+          <div class="native-row">
+            <label><span class="native-label">Doorsnede (mm²)</span>
+              <input class="native-input" type="number" min="0.1" step="0.5" .value=${String(connection.sectionMm2 ?? 2.5)}
+                @change=${(event: Event) => { const value = Number((event.target as HTMLInputElement).value); if (value > 0) this.#updateConnection({ sectionMm2: value }) }} />
+            </label>
+            <label><span class="native-label">Aantal geleiders</span>
+              <input class="native-input" type="number" min="1" max="1000" step="1" .value=${String(connection.conductors ?? 1)}
+                @change=${(event: Event) => { const value = Number((event.target as HTMLInputElement).value); if (Number.isInteger(value) && value > 0) this.#updateConnection({ conductors: value }) }} />
+            </label>
+          </div>
+          <label><span class="native-label">Kabel-/draadtype</span>
+            <select class="native-select"
+              @change=${(event: Event) => this.#updateConnection({ cableType: (event.target as HTMLSelectElement).value as ElectricalConnection['cableType'] })}>
+              ${['none', 'VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].map((type) => html`<option value=${type} ?selected=${(connection.cableType ?? 'none') === type}>${type === 'none' ? 'Geen' : type === 'other' ? 'Ander' : type.replace('-', ' ')}</option>`)}
+            </select>
+          </label>
+          <label class="native-check"><input type="checkbox" .checked=${connection.hasProtectiveConductor ?? false}
+            @change=${(event: Event) => this.#updateConnection({ hasProtectiveConductor: (event.target as HTMLInputElement).checked })} /> Met beschermingsgeleider (G)</label>
+        ` : ''}
+        ${connection.kind === 'bridge' ? html`
+          <label><span class="native-label">Brughoogte (mm)</span>
+            <input class="native-input" type="number" min="-30" max="30" step="1" .value=${String(connection.offsetMm ?? 3)}
+              @change=${(event: Event) => this.#updateConnection({ offsetMm: Number((event.target as HTMLInputElement).value) })} />
+          </label>
+        ` : ''}
+        <label class="native-check"><input type="checkbox" .checked=${connection.showLabel !== false}
+          @change=${(event: Event) => this.#updateConnection({ showLabel: (event.target as HTMLInputElement).checked })} /> Toon aanduiding</label>
+      ` : ''}
+    `
+  }
+
   #renderNativeSelection() {
     const isResidualBreaker = /residual-current/i.test(`${this._nativePath} ${this._nativeName}`)
     const isProtectionDevice = this._nativeCircuitPropertiesEditable
@@ -567,7 +629,7 @@ export class ObjectPane extends LiteElement {
         ${multiple
           ? html`<div class="native-note">Binding updates apply to all selected objects.</div>`
           : html`
-              <div class="native-kv"><span>Type</span><strong>${this._nativeSelectedKind || '-'}</strong></div>
+              <div class="native-kv"><span>Type</span><strong>${this._nativeConnection ? CONNECTION_NAMES[this._nativeConnection.kind] : this._nativeSelectedKind || '-'}</strong></div>
               <div class="native-kv">
                 <span>Id</span>
                 <span
@@ -587,6 +649,15 @@ export class ObjectPane extends LiteElement {
                   </div>`
                 : ''}
             `}
+        ${!multiple && this._nativeSelectedKind === 'symbol'
+          ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
+              <label>
+                <span class="native-label">${field.label}</span>
+                <input class="native-input" type="text" .value=${field.value}
+                  @input=${(event: Event) => this.#onSymbolTextInput(field.key, (event.target as HTMLInputElement).value)} />
+              </label>
+            `) : ''}
+        ${!multiple && this._nativeSelectedKind === 'line' ? this.#renderConnectionProperties() : ''}
         <label class="native-label">Binding ID</label>
         <input
           class="native-input native-binding-input"
@@ -1127,10 +1198,10 @@ export class ObjectPane extends LiteElement {
                 : ''}
             `
           : ''}
-        ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.length > 0
+        ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description')
           ? html`
               <label class="native-label">Symbol text fields</label>
-              ${this._nativeSymbolTextFields.map(
+              ${this._nativeSymbolTextFields.filter((field) => field.key !== 'description').map(
                 (field) => html`
                   <div class="native-kv"><span>${field.label}</span></div>
                   <input

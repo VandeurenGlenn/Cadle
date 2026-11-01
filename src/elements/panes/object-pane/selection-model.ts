@@ -1,3 +1,4 @@
+import type { ElectricalConnection } from '../../../editor/model/electrical-connection.js'
 export type BindingLabelSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
 
 export type SymbolTextField = {
@@ -9,6 +10,7 @@ export type SymbolTextField = {
 export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
 
 export type SelectionShape = {
+  connection?: ElectricalConnection
   id?: string
   kind?: string
   path?: string
@@ -107,6 +109,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
     shape: {
       id: typeof shape.id === 'string' ? shape.id : '',
       kind,
+      connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',
       label: kind.charAt(0).toUpperCase() + kind.slice(1),
       bindingId: typeof shape.bindingId === 'string' ? shape.bindingId : '',

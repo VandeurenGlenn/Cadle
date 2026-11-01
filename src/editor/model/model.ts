@@ -1,6 +1,8 @@
 import type { DraftShape, ImageShape, LineShape, Point, RectShape, Shape, SymbolShape, TextShape } from './types.js'
-import { sanitizeElectricalMetadata } from './electrical.js'
+import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata } from './electrical.js'
 import { renderedSymbolScale } from './symbol-scale.js'
+import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
+import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -111,6 +113,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       name?: unknown
       path?: unknown
       symbolTextOverrides?: unknown
+      connection?: unknown
       electrical?: unknown
       scale?: unknown
       width?: unknown
@@ -156,6 +159,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
+      if (raw.kind === 'line') line.connection = sanitizeConnection(raw.connection)
       if (typeof raw.scale === 'number' && Number.isFinite(raw.scale)) line.scale = Math.max(0.1, raw.scale)
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) line.rotation = raw.rotation
       if (raw.flipX === true) line.flipX = true
@@ -284,6 +288,9 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         if (entries.length) symbol.symbolTextOverrides = Object.fromEntries(entries)
       }
       const electrical = sanitizeElectricalMetadata(raw.electrical)
+      if (electrical && !electrical.rcdType) {
+        electrical.rcdType = rcdTypeFromLabel(symbol.symbolTextOverrides?.['rcd-type']) ?? defaultRcdTypeForDevice(symbol.name, symbol.path)
+      }
       if (electrical) symbol.electrical = electrical
       if (isPoint(raw.bindingLabelOffset)) symbol.bindingLabelOffset = clonePoint(raw.bindingLabelOffset)
       if (Array.isArray(raw.catalogShapes)) {
@@ -341,7 +348,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
       shapes.push(image)
     }
   }
-  return shapes
+  return migrateProtectionDescriptions(shapes)
 }
 
 export const cloneShape = (shape: Shape): Shape => {
@@ -368,6 +375,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (typeof shape.strokeWidth === 'number') cloned.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) cloned.energyFlow = shape.energyFlow
       if (shape.energySource) cloned.energySource = shape.energySource
+      if (shape.connection) cloned.connection = { ...shape.connection }
       if (shape.bindingId) cloned.bindingId = shape.bindingId
       if (shape.groupId) cloned.groupId = shape.groupId
       if (shape.bindingLabelOffset) cloned.bindingLabelOffset = { ...shape.bindingLabelOffset }
@@ -489,6 +497,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) scaled.energyFlow = shape.energyFlow
       if (shape.energySource) scaled.energySource = shape.energySource
+      if (shape.connection) scaled.connection = { ...shape.connection }
       if (shape.bindingId) scaled.bindingId = shape.bindingId
       if (shape.groupId) scaled.groupId = shape.groupId
       copyGeneratedMetadata(shape, scaled)
@@ -629,6 +638,7 @@ export const escapeHtml = (value: string): string =>
     .replaceAll("'", '&#39;')
 
 export const shapeBounds = (shape: Shape) => {
+  if (shape.kind === 'line' && shape.connection) return connectionBounds(shape)
   switch (shape.kind) {
     case 'wall':
     case 'line':

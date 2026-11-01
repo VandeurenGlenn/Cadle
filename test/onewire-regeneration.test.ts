@@ -222,7 +222,11 @@ test('migrates generated circuits without deleting manual lines or losing cable 
   const trunk = migrated.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')
   assert.ok(breaker?.kind === 'symbol' && trunk?.kind === 'line')
   assert.equal(trunk.start.y, breaker.position.y + oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!.top!.y)
-  assert.equal(trunk.end.y, 703 - 360 - 64)
+  const expectedTrunk = bundle.shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')
+  assert.ok(expectedTrunk?.kind === 'line')
+  assert.equal(trunk.end.y, expectedTrunk.end.y)
+  assert.equal(trunk.connection?.sectionMm2, 4)
+  assert.equal(trunk.connection?.cableType, 'XVB-Cca')
   const installation = migrated.find((shape) => shape.sourceLink?.role === 'cable-installation')
   assert.ok(installation?.kind === 'symbol')
   const installationNode = oneWireSymbolNodeInfo(installation.path, installation.scale)!

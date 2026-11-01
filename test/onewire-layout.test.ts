@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ONE_WIRE_PRESETS, ONE_WIRE_SOCKET_SYMBOL_PATH } from '../src/editor/constants.ts'
 import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.ts'
+import { symbolTextPresentation } from '../src/editor/symbol-metadata.ts'
 import {
   buildKamrailCircuitBundle,
   buildOneWireBreakerSection,
@@ -14,6 +15,7 @@ import {
 import {
   ONE_WIRE_RENDERED_STROKE_WIDTH,
   oneWireSymbolNodeInfo,
+  oneWireSymbolBounds,
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
   oneWireSymbolStrokeWidthFor,
@@ -42,8 +44,9 @@ test('normalizes ground-plan protection symbols to their one-wire variants', () 
   assert.ok((oneWireSymbolScaleFor('symbols/Protection devices/Automaat.svg') ?? 0) > 2.5)
   assert.ok((oneWireSymbolScaleFor('symbols/Protection devices/Residual-current circuit breaker.svg') ?? 0) > 1.8)
   const switchScale = oneWireSymbolScaleFor('symbols/Switches/Switch general symbol.svg')!
-  assert.ok(Math.abs(oneWireSymbolNodeInfo('symbols/Switches/Switch general symbol.svg', switchScale)!.cutHalfWidth! * 2 / 8 - 2) < 1e-6)
-  assert.equal(oneWireSymbolScaleFor('symbols/Socket outlets/Wall outlet with grounding.svg')! * 24 / 8, 4)
+  assert.ok(Math.abs(oneWireSymbolNodeInfo('symbols/Switches/Switch general symbol.svg', switchScale)!.cutHalfWidth! * 2 / 8 - 3) < 1e-6)
+  assert.equal(oneWireSymbolScaleFor('symbols/Socket outlets/Wall outlet with grounding.svg')! * 24 / 8, 6)
+  assert.equal(oneWireSymbolScaleFor('symbols/Consumption appliances/Lighting.svg')! * 24 / 8, 4.5)
   assert.equal(ONE_WIRE_SOCKET_SYMBOL_PATH, 'symbols/Socket outlets/Wall outlet with grounding.svg')
 })
 
@@ -81,23 +84,30 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 4.2 && node.cutHalfWidth <= 8.001)
+    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 6.3 && node.cutHalfWidth <= 12.001)
   }
 
   for (const path of classicSwitchPaths) {
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth * 2 / 8 - 2) < 1e-6)
-    assert.ok(scale! > 0 && scale! <= 3)
+    assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth * 2 / 8 - 3) < 1e-6)
+    assert.ok(scale! > 0 && scale! <= 4.5)
+    const bounds = oneWireSymbolBounds({ path, scale: scale!, position: { x: 0, y: 0 } })!
+    assert.ok(bounds.height + 6 <= 96, `${path} must fit between circuit rows`)
   }
 
   for (const path of deviceSwitchPaths) {
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 7.999 && node.cutHalfWidth <= 8.001)
-    assert.ok(scale! >= 0.67 && scale! <= 0.69)
+    if (/impulse relay/i.test(path)) {
+      assert.equal(scale! * 24 / 8, 6)
+      assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 9.92125 * 48 / 20.0825) < 1e-8)
+    } else {
+      assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 11.999 && node.cutHalfWidth <= 12.001)
+      assert.ok(scale! >= 1.01 && scale! <= 1.03)
+    }
   }
 
   const doubleButton = oneWireSymbolNodeInfo('symbols/Switches/Double push button.svg', 1.425)
@@ -107,11 +117,11 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
 
 test('keeps electrical nodes and breaker terminals on their wire axes', () => {
   const wallLightPath = 'symbols/Consumption appliances/Wall light.svg'
-  const wallLightNode = oneWireSymbolNodeInfo(wallLightPath, 1.7)
+  const wallLightNode = oneWireSymbolNodeInfo(wallLightPath, 1.7, oneWireSymbolRotationFor(wallLightPath))
   assert.ok(wallLightNode)
-  assert.equal(oneWireSymbolRotationFor(wallLightPath), undefined)
+  assert.equal(oneWireSymbolRotationFor(wallLightPath), 90)
   assert.ok(wallLightNode.offset.x < 0)
-  assert.ok(wallLightNode.offset.y > 0)
+  assert.ok(Math.abs(wallLightNode.offset.y) < 1e-8)
 
   const breakerPath = 'symbols/Protection devices/Automaat.svg'
   const breakerNode = oneWireSymbolNodeInfo(breakerPath, 2.8)
@@ -126,11 +136,41 @@ test('connects row wires directly to symbol node edges', () => {
   const scale = oneWireSymbolScaleFor(path) ?? 1
   const node = oneWireSymbolNodeInfo(path, scale)
   assert.ok(node)
-  assert.ok(node.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 8) < 1e-6)
+  assert.ok(node.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 12) < 1e-6)
   const lamp = oneWireSymbolNodeInfo('symbols/Consumption appliances/Lighting.svg', 1.35)
   assert.deepEqual(lamp, { offset: { x: 0, y: 0 }, cutHalfWidth: null })
   const fluorescent = oneWireSymbolNodeInfo('symbols/Consumption appliances/Fluorescent lamp.svg', 1.35, 90)
   assert.ok(fluorescent?.cutHalfWidth !== null && fluorescent.cutHalfWidth < 0.2)
+})
+
+test('aligns incoming row conductors and leaves space between switches and the rotated wall light', () => {
+  for (const first of ['Switch general symbol', 'Double push button', 'Illuminated push button']) {
+    const row = buildOneWireRowSection(0, ['A1', [
+      { bindingId: 'A1', kind: 'switch', sourcePath: `symbols/Switches/${first}.svg` },
+      { bindingId: 'A1', kind: 'switch', sourcePath: 'symbols/Switches/Switch general symbol.svg' },
+      { bindingId: 'A1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Wall light.svg' }
+    ]], 700, 400, {
+      nextShapeId: idSequence(),
+      oneWireComponentSymbol: () => ({ name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+      branchStroke: '#000000'
+    })
+    const lead = row.shapes.find((shape) => shape.kind === 'line' && shape.start.x === 400)
+    assert.ok(lead?.kind === 'line')
+    assert.ok(Math.abs(lead.end.x - lead.start.x - 24) < 1e-8, first)
+    const devices = row.shapes.filter((shape) => shape.kind === 'symbol')
+    const bounds = devices.map((shape) => oneWireSymbolBounds(shape)!)
+    for (let i = 1; i < bounds.length; i++) {
+      assert.ok(bounds[i].x - bounds[i - 1].x - bounds[i - 1].width >= 16 - 1e-8)
+    }
+    const wall = devices.at(-1)!
+    assert.equal(wall.rotation, 90)
+    const node = oneWireSymbolNodeInfo(wall.path, wall.scale, wall.rotation)!
+    assert.ok(row.shapes.some((shape) => shape.kind === 'line' &&
+      Math.abs(shape.end.x - wall.position.x - node.offset.x) < 1e-8 &&
+      Math.abs(shape.end.y - wall.position.y - node.offset.y) < 1e-8))
+  }
 })
 
 test('connects the breaker terminal and every branch without grid rounding gaps', () => {
@@ -174,7 +214,7 @@ test('connects the breaker terminal and every branch without grid rounding gaps'
   const trunks = result.shapes.filter(
     (shape) => shape.kind === 'line' && /^trunk(?:-\d+)?$/.test(shape.sourceLink?.role ?? '')
   )
-  assert.equal(trunks.length, 2)
+  assert.equal(trunks.length, 3)
   assert.ok(trunks[0].kind === 'line' && trunks[1].kind === 'line' && trunks[1].start.x - trunks[0].start.x > 200)
   for (const trunk of trunks) {
     assert.ok(trunk.kind === 'line')
@@ -182,7 +222,7 @@ test('connects the breaker terminal and every branch without grid rounding gaps'
     const branches = result.shapes.filter(
       (shape) => shape.kind === 'line' && shape.sourceLink?.role === 'row-wire' && shape.start.x === trunk.start.x
     )
-    assert.equal(branches.length, 3)
+    assert.equal(branches.length, 2)
     assert.equal(trunk.end.y, Math.min(...branches.map((shape) => (shape.kind === 'line' ? shape.start.y : Infinity))))
   }
 })
@@ -214,6 +254,8 @@ test('lays out known row symbols identically before and after SVG cache warming'
 test('normalizes rendered stroke widths across differently sized symbol viewBoxes', () => {
   const symbols = [
     { path: 'symbols/Protection devices/Automaat.svg', maxViewBox: 28.8265 },
+    { path: 'symbols/Protection devices/Residual-current circuit breaker.svg', maxViewBox: 38.5625 },
+    { path: 'symbols/Protection devices/Main earthing connection.svg', maxViewBox: 31 },
     { path: 'symbols/Switches/Push button.svg', maxViewBox: 8.74394 },
     { path: 'symbols/Switches/Switch general symbol.svg', maxViewBox: 13.368 },
     { path: 'symbols/Consumption appliances/Lighting.svg', maxViewBox: 11.6358 },
@@ -326,7 +368,7 @@ test('anchors readable breaker annotations to the conductor like the reference d
 test('builds a complete lighting circuit upward from its bus connection', () => {
   const result = buildOneWireCircuit({ x: 400, y: 700 }, 'A1', ONE_WIRE_PRESETS.lighting, idSequence(), 80, 24)
 
-  assert.equal(result.shapes.length, 11)
+  assert.equal(result.shapes.length, 10)
   assert.equal(result.primarySelection.length, result.shapes.length)
   assert.ok(result.shapes.some((shape) => shape.kind === 'symbol' && shape.name === 'Automaat'))
   assert.ok(
@@ -335,6 +377,13 @@ test('builds a complete lighting circuit upward from its bus connection', () => 
     )
   )
   assert.ok(result.shapes.every((shape) => shape.bindingId === 'A1'))
+  const breaker = result.shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'Automaat')!
+  assert.ok(breaker.kind === 'symbol')
+  assert.equal(breaker.electrical?.breakerCurrentA, 16)
+  assert.equal(breaker.symbolTextOverrides?.['rated-current'], 'C16A')
+  assert.equal(breaker.symbolTextOverrides?.poles, '2P')
+  assert.ok(result.shapes.some((shape) => shape.kind === 'text' && shape.text === '3G1.5 mm² VOB'))
+  assert.equal(result.shapes.some((shape) => shape.kind === 'text' && shape.text === '16A'), false)
 })
 
 test('attaches a composed breaker to a selected one-wire bus', () => {
@@ -383,7 +432,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   const cableInstallation = result.shapes.find((shape) => shape.sourceLink?.role === 'cable-installation')
   const cableInstallationLabel = result.shapes.find((shape) => shape.sourceLink?.role === 'cable-installation-label')
   const phase = result.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')
-  assert.equal(phase?.kind === 'text' ? phase.textAnchor : null, 'end')
+  assert.equal(phase?.kind === 'text' ? phase.textAnchor : null, 'start')
   assert.ok(cableSection?.kind === 'text' && cableSection.position.x === 436)
   assert.equal(cableSection?.kind === 'text' ? cableSection.textAnchor : null, undefined)
   assert.equal(cableSection?.kind === 'text' ? 18 * cableSection.scale! / 8 : null, 2.5)
@@ -393,7 +442,22 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.scale : null, 0.54)
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.rotation : null, -90)
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.hidden : null, true)
-  assert.ok(phase?.kind === 'text' && phase.position.x < 400 && phase.position.y === 694)
+  assert.ok(phase?.kind === 'text' && breaker?.kind === 'symbol')
+  const terminals = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!
+  assert.ok(phase.position.x > 400)
+  assert.equal(phase.position.y, breaker.position.y + (terminals.top!.y + terminals.bottom!.y) / 2 + 33)
+  assert.ok(phase.position.y < 694)
+  const labels = [
+    ['poles', 'breaker-poles'], ['rated-current', 'breaker-current'], ['phase', 'breaker-phase']
+  ].map(([key, role]) => ({ key, shape: result.shapes.find((shape) => shape.sourceLink?.role === role)! }))
+  const manual = symbolTextPresentation({ ...breaker, generationKey: undefined,
+    symbolTextOverrides: Object.fromEntries(labels.map(({ key, shape }) => [key, shape.kind === 'text' ? shape.text : ''])) })
+  for (const { shape } of labels) {
+    assert.ok(shape.kind === 'text')
+    const annotation = manual.annotations.split('</text>').find((label) => label.endsWith(`>${shape.text}`))!
+    assert.ok(annotation.includes(`x="${shape.position.x}" y="${shape.position.y}" text-anchor="${shape.textAnchor ?? 'start'}"`))
+    assert.ok(annotation.includes(`font-size="${18 * shape.scale!}" font-weight="${shape.fontWeight}"`))
+  }
   assert.ok(cableSection?.kind === 'text' && cableSection.position.y < 700)
   assert.equal(
     cableInstallation?.kind === 'symbol' ? cableInstallation.path : null,
@@ -401,7 +465,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   )
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.hidden : null, false)
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.position.x : null, 400)
-  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.scale : null, 2.25)
+  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.scale : null, 4.5)
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.strokeWidth : null, 2)
   const restoredCable = sanitizeShapes(result.shapes).find((shape) => shape.sourceLink?.role === 'cable-section')
   assert.ok(restoredCable?.kind === 'text' && cableSection?.kind === 'text')
@@ -499,7 +563,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   )
   const hiddenPhaseLabel = hiddenPhase.shapes.find((shape) => shape.sourceLink?.role === 'breaker-phase')
   assert.equal(hiddenPhaseLabel?.kind === 'text' ? hiddenPhaseLabel.text : null, '')
-  assert.equal(hiddenPhaseLabel?.kind === 'text' ? hiddenPhaseLabel.textAnchor : null, 'end')
+  assert.equal(hiddenPhaseLabel?.kind === 'text' ? hiddenPhaseLabel.textAnchor : null, 'start')
   const fourPolePhase = buildOneWireBreakerSection(
     700,
     400,
@@ -771,7 +835,7 @@ test('keeps numbered row symbols close to the vertical circuit trunk', () => {
   const firstConnector = result.shapes.find(
     (shape) => shape.kind === 'line' && shape.bindingId === 'A1' && shape.start.y === shape.end.y
   )
-  assert.equal(firstSymbol?.kind === 'symbol' ? firstSymbol.position.x : null, 430)
+  assert.equal(firstSymbol?.kind === 'symbol' ? firstSymbol.position.x : null, 436)
   assert.ok(firstConnector?.kind === 'line')
   assert.ok(firstConnector.end.x - firstConnector.start.x <= 50)
 })
@@ -837,18 +901,18 @@ test('wraps a 22-point manually inserted family into readable columns', () => {
         shape.kind === 'line' && /^trunk(?:-\d+)?$/.test(shape.sourceLink?.role ?? '')
     )
     .map((shape) => shape.start.x)
-  assert.equal(trunkXs.length, 2)
+  assert.equal(trunkXs.length, 4)
   const columns = Map.groupBy(rowYs, (row) =>
     trunkXs.reduce((closest, trunkX) => (Math.abs(row.x - trunkX) < Math.abs(row.x - closest) ? trunkX : closest))
   )
   for (const rows of columns.values()) {
     const ys = rows.map((row) => row.y).sort((a, b) => a - b)
     assert.ok(ys[0] >= 100)
-    assert.ok(ys.every((rowY, index) => index === 0 || rowY - ys[index - 1] === 64))
+    assert.ok(ys.every((rowY, index) => index === 0 || rowY - ys[index - 1] === 96))
   }
   const columnSizes = [...columns.values()].map((rows) => rows.length)
   assert.ok(Math.max(...columnSizes) - Math.min(...columnSizes) <= 1)
-  assert.equal(Math.max(...trunkXs) - Math.min(...trunkXs), 200)
+  assert.equal(Math.max(...trunkXs) - Math.min(...trunkXs), 600)
   assert.ok(
     result.shapes.some(
       (shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk-distribution' && shape.end.x > shape.start.x

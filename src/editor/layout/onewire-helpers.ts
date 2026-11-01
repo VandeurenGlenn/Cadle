@@ -1,5 +1,9 @@
-import { GRID_SIZE } from '../constants.js'
+import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
+import { protectionAnnotationLayout, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './protection-label-layout.js'
+export { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
+import { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
+import { sanitizeConnection } from '../model/electrical-connection.js'
 import { oneWireLayoutBounds } from './onewire-connections.js'
 import { PAPER_LABEL_FONT_SIZE, paperTextScale } from './page-layout.js'
 import {
@@ -118,9 +122,9 @@ const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GR
 const ONE_WIRE_COLUMN_SPACING_X = 200
 export const ONE_WIRE_CONDUCTOR_STROKE_WIDTH = 2
 const ONE_WIRE_LABEL_SCALE = paperTextScale(2.75)
-const ONE_WIRE_TECHNICAL_LABEL_SCALE = paperTextScale(2.5)
+const ONE_WIRE_TECHNICAL_LABEL_SCALE = PROTECTION_TEXT_SIZE / 18
 const ONE_WIRE_LABEL_WEIGHT = 500
-const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = 400
+const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = PROTECTION_TEXT_WEIGHT
 const ONE_WIRE_BREAKER_RAIL_GAP = 40
 
 export const oneWirePhaseLabelText = (
@@ -156,19 +160,6 @@ const IMPULSE_RELAY_PATH = 'symbols/Switches/Impulse relay.svg'
 const CONTROL_DEVICE_PATH =
   /switches\/(?:impulse relay|time switch|thermostat|timer|dimmer switch|niko home control dimmer)\.svg$/i
 const PUSH_BUTTON_PATH = /switches\/(?:illuminated |double )?push button\.svg$/i
-
-export const oneWireCableLabelText = (cable: {
-  conductors?: number
-  sectionMm2?: number
-  hasProtectiveConductor?: boolean
-  cableType?: string
-}): string => {
-  const hasProtectiveConductor = cable.hasProtectiveConductor ?? cable.conductors !== 4
-  const conductorMarker = hasProtectiveConductor ? 'G' : 'X'
-  const cableType = cable.cableType?.trim()
-  const cableTypeLabel = cableType && cableType !== 'none' ? ` ${cableType.replace('-', ' ')}` : ''
-  return `${cable.conductors ?? 3}${conductorMarker}${cable.sectionMm2 ?? 1.5} mm²${cableTypeLabel}`
-}
 
 export const oneWireProtectionSymbolPath = (name: string, path: string): string => {
   const searchable = `${name} ${path}`
@@ -290,10 +281,11 @@ export const buildOneWireBreakerSection = (
 
   const breakerBounds = deps.symbolContentBounds(symbol)
   const breakerContentTopY = terminals?.top ? center.y + terminals.top.y : breakerBounds.y
+  const labels = protectionAnnotationLayout(symbol)
   const polesLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: { x: x - 16, y: center.y + 5 },
+    position: labels?.poles ?? { x: x - 16, y: center.y + 5 },
     textAnchor: 'end',
     text: `${specification?.poles ?? 2}P`,
     fill: '#000000',
@@ -306,7 +298,7 @@ export const buildOneWireBreakerSection = (
   const currentLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: { x: x + 12, y: center.y + 5 },
+    position: labels?.current ?? { x: x + 12, y: center.y + 5 },
     text: `${specification?.breakerCurve ?? 'C'}${specification?.amps ?? 20}A`,
     fill: '#000000',
     stroke: 'none',
@@ -318,10 +310,7 @@ export const buildOneWireBreakerSection = (
   const phaseLabel: TextShape = {
     id: deps.nextShapeId(),
     kind: 'text',
-    position: {
-      x: x - 13,
-      y: railY - 6
-    },
+    position: labels?.phase ?? { x: x + 12, y: center.y + 33 },
     text: shouldShowPhaseLabel(specification?.poles, specification?.showPhaseLabel)
       ? oneWirePhaseLabelText(
           specification?.phaseConfiguration,
@@ -330,7 +319,7 @@ export const buildOneWireBreakerSection = (
             'right'
         )
       : '',
-    textAnchor: 'end',
+    textAnchor: 'start',
     fill: '#000000',
     stroke: 'none',
     scale: ONE_WIRE_TECHNICAL_LABEL_SCALE,
@@ -441,15 +430,15 @@ export const buildOneWireRowSection = (
   firstRowOffsetY = ONE_WIRE_FIRST_ROW_OFFSET_Y
 ): { shapes: Shape[]; ids: string[] } => {
   const ROW_NUMBER_OFFSET_X = -12
-  const ROW_FIRST_SYMBOL_OFFSET_X = 30
-  const ROW_SYMBOL_MARGIN_X = 4
+  const ROW_LEAD_LENGTH = 3 * PAPER_WORLD_UNITS_PER_MM
+  const ROW_SYMBOL_MARGIN_X = 2 * PAPER_WORLD_UNITS_PER_MM
   const SPOT_LEADING_MARGIN_X = 0
   const [bindingId, entries] = row
   const rowY = railY - firstRowOffsetY - rowIndex * rowSpacingY
   const rowJunctionX = snapToGrid(startX)
   const drawableEntryCount = entries.filter((entry) => entry.kind !== 'empty').length
   const placeDirectlyOnTrunk = compactSingleCircuit && drawableEntryCount === 1
-  const symbolBaseX = snapToGrid(placeDirectlyOnTrunk ? rowJunctionX : rowJunctionX + ROW_FIRST_SYMBOL_OFFSET_X)
+  const symbolBaseX = rowJunctionX
   const rowGroupId = `onewire-${deps.nextShapeId()}`
 
   const resolvedEntryPath = (entry: OneWireResolvedComponent): string =>
@@ -569,7 +558,10 @@ export const buildOneWireRowSection = (
   const slotXs: number[] = []
   for (const [symbolIndex, spec] of rowSymbolSpecs.entries()) {
     if (symbolIndex === 0) {
-      slotXs.push(snapToGrid(symbolBaseX))
+      // Align the incoming contact, not the center: compound switches have
+      // wider nodes, but every row must start with the same conductor length.
+      const leadingReach = spec.node?.cutHalfWidth ?? spec.leftReach
+      slotXs.push(placeDirectlyOnTrunk ? symbolBaseX : symbolBaseX + ROW_LEAD_LENGTH + leadingReach)
       continue
     }
     const prevSpec = rowSymbolSpecs[symbolIndex - 1]
@@ -862,7 +854,14 @@ export const buildKamrailCircuitBundle = (
 
   if (!createdIds.length) return null
   return {
-    shapes: spaceOneWireCircuitAnnotations(shapes, options.family).shapes,
+    shapes: spaceOneWireCircuitAnnotations(shapes, options.family).shapes.map((shape): Shape => {
+      if (shape.kind !== 'line') return shape
+      const trunk = /^trunk(?:-\d+)?$/.test(shape.sourceLink?.role ?? '')
+      return { ...shape, connection: trunk ? sanitizeConnection({ kind: 'cable', showLabel: true, labelOwner: 'circuit',
+        conductors: options.cableConductors ?? 3, sectionMm2: options.cableSectionMm2 ?? 2.5,
+        hasProtectiveConductor: options.hasProtectiveConductor ?? options.cableConductors !== 4,
+        cableType: options.cableType ?? 'VOB' }) : { kind: 'wire', showLabel: false } }
+    }),
     createdIds,
     // Breaker sections always put their protection symbol first. Selecting it
     // keeps the object pane editable instead of focusing a generated label.

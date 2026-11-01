@@ -1,6 +1,7 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './status-bar.css' with { type: 'css' }
 import pubsub from '../pubsub.js'
+import { CONNECTION_NAMES, type ConnectionKind } from '../editor/model/electrical-connection.js'
 declare global {
   interface HTMLElementTagNameMap {
     'status-bar': StatusBar
@@ -35,6 +36,7 @@ export class StatusBar extends LiteElement {
   static styles = [styles]
 
   @property({ type: String }) accessor action = ''
+  @property({ attribute: false }) accessor connectionKind: ConnectionKind | null = null
   @property({ type: Number }) accessor cursorX = 0
   @property({ type: Number }) accessor cursorY = 0
   @property({ type: Boolean }) accessor hasCursor = false
@@ -51,6 +53,7 @@ export class StatusBar extends LiteElement {
     this.action = shell?.action ?? ''
     this.snap = !shell?.freeDraw
     pubsub.subscribe('shell.action', this.#onAction)
+    pubsub.subscribe('editor.controls.state', this.#onControlsState)
     pubsub.subscribe('shell.snap', this.#onSnap)
     pubsub.subscribe('project.saved', this.#onProjectSaved)
     pubsub.subscribe('project.modified', this.#onProjectModified)
@@ -69,6 +72,7 @@ export class StatusBar extends LiteElement {
   disconnectedCallback(): void {
     super.disconnectedCallback()
     pubsub.unsubscribe('shell.action', this.#onAction)
+    pubsub.unsubscribe('editor.controls.state', this.#onControlsState)
     pubsub.unsubscribe('shell.snap', this.#onSnap)
     pubsub.unsubscribe('project.saved', this.#onProjectSaved)
     pubsub.unsubscribe('project.modified', this.#onProjectModified)
@@ -105,6 +109,10 @@ export class StatusBar extends LiteElement {
     this.action = value ?? ''
   }
 
+  #onControlsState = (state: { connectionKind?: ConnectionKind | null }) => {
+    this.connectionKind = state.connectionKind ?? null
+  }
+
   #onSnap = (value: boolean) => {
     this.snap = !!value
   }
@@ -125,7 +133,8 @@ export class StatusBar extends LiteElement {
   }
 
   render() {
-    const toolLabel = TOOL_LABELS[this.action] ?? this.action ?? 'Select'
+    const toolLabel = this.action === 'draw-line' && this.connectionKind
+      ? CONNECTION_NAMES[this.connectionKind] : TOOL_LABELS[this.action] ?? this.action ?? 'Select'
     return html`
       <span class="item tool">
         <span class="label">Tool</span>

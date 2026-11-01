@@ -1,6 +1,8 @@
 import type { Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
 import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
+import { symbolTextFieldsFor } from '../symbol-metadata.js'
+import { CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
 
 export type NativeSelectionSymbolTextField = {
@@ -10,6 +12,7 @@ export type NativeSelectionSymbolTextField = {
 }
 
 export type NativeSelectionShapePayload = {
+  connection?: ElectricalConnection
   id: string
   kind: string
   text?: string
@@ -99,6 +102,10 @@ export const createNativeSelectionChangedPayload = (
     id: selectedShape.id,
     kind
   }
+  if (selectedShape.kind === 'line' && selectedShape.connection) {
+    shapePayload.connection = { ...selectedShape.connection }
+    shapePayload.name = CONNECTION_NAMES[selectedShape.connection.kind]
+  }
   if (selectedShape.kind === 'text') shapePayload.text = selectedShape.text
   if (selectedShape.kind === 'symbol') {
     shapePayload.path = selectedShape.path
@@ -125,7 +132,10 @@ export const createNativeSelectionChangedPayload = (
       `${selectedShape.name} ${selectedShape.path}`
     )
     const editableFields =
-      options?.hideSymbolTextFields || isProtectionSymbol ? [] : listEditableSymbolTextFields(selectedShape.path)
+      isProtectionSymbol
+        ? symbolTextFieldsFor(selectedShape.path).filter((field) => field.key === 'description')
+            .map((field) => ({ key: field.key, label: field.label, value: field.defaultValue }))
+        : options?.hideSymbolTextFields ? [] : listEditableSymbolTextFields(selectedShape.path)
     if (editableFields.length) {
       const overrides = selectedShape.symbolTextOverrides ?? {}
       shapePayload.symbolTextFields = editableFields.map((field) => ({

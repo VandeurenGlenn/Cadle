@@ -1,3 +1,5 @@
+import type { ElectricalConnection } from './electrical-connection.js'
+
 export type Tool =
   | 'select'
   | 'wall'
@@ -45,6 +47,7 @@ export type LineShape = GeneratedShapeMetadata & {
   strokeWidth?: number
   energyFlow?: 'forward' | 'reverse' | 'bidirectional'
   energySource?: 'default' | 'generator' | 'mixed'
+  connection?: ElectricalConnection
   bindingId?: string
   groupId?: string
   bindingLabelOffset?: { x: number; y: number }

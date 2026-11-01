@@ -1,16 +1,17 @@
 import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
-import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, ONE_WIRE_BUS_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { paperTextScale } from './page-layout.js'
-import { protectionLabelLayout } from './protection-label-layout.js'
+import { protectionDescriptionLayout } from './protection-label-layout.js'
+import { setProtectionDescription } from './protection-descriptions.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
-import { neutralPositionForManufacturer, phaseConfigurationLabel, shouldShowPhaseLabel } from '../model/electrical.js'
+import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabel, rcdTypeFromLabel, rcdTypeLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 
 const KWH_PATH = 'symbols/Consumption appliances/kWh meter.svg'
 const RCD_PATH = 'symbols/Protection devices/Residual-current circuit breaker.svg'
 const INVERTER_PATH = 'symbols/Photovoltaic devices (≠AREI)/Inverter.svg'
 const SOLAR_PANEL_PATH = 'symbols/Photovoltaic devices (≠AREI)/Solar panel.svg'
-const EARTH_PATH = 'symbols/Protection devices/Earth electrode.svg'
+const EARTH_PATH = 'symbols/Protection devices/Main earthing connection.svg'
 const BREAKER_PATH = 'symbols/Protection devices/Automaat.svg'
 const BREAKER_SCALE = ONE_WIRE_BREAKER_SCALE
 const RCD_SCALE = ONE_WIRE_RCD_SCALE
@@ -18,7 +19,13 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 23
+const TOPOLOGY_GEOMETRY_VERSION = 33
+
+export const oneWireTopologyRcdTypes = (shapes: readonly Shape[]) => Object.fromEntries(shapes.flatMap((shape) => {
+  if (shape.kind !== 'symbol' || !shape.sourceLink?.role || !/^board:main:topology:/.test(shape.generationKey ?? '')) return []
+  const type = shape.electrical?.rcdType ?? rcdTypeFromLabel(shape.symbolTextOverrides?.['rcd-type'])
+  return isRcdType(type) ? [[shape.sourceLink.role, type]] : []
+}))
 
 type TopologyRail = Pick<LineShape, 'start' | 'end'>
 
@@ -27,6 +34,8 @@ export type OneWireTopologyOptions = {
   defaultPoles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   protectionManufacturer?: string
+  rcdTypesByRole?: Record<string, NonNullable<SymbolShape['electrical']>['rcdType']>
+  descriptionsByRole?: Readonly<Record<string, string>>
   destinationSheetLabels?: Readonly<Record<string, string>>
   ev?: {
     bindingId: string
@@ -78,6 +87,9 @@ export const buildOneWireTopology = (
         end: { x: x2, y: y2 },
         stroke: '#000000',
         strokeWidth,
+        ...(role !== 'secondary-busbar' ? { connection: role === 'incoming' && plan.incomingCable
+          ? { kind: 'cable' as const, ...plan.incomingCable, labelOwner: 'topology' as const, showLabel: true }
+          : { kind: 'wire' as const, showLabel: false } } : {}),
         ...(energyFlow ? { energyFlow } : {}),
         ...(energySource ? { energySource } : {})
       },
@@ -110,19 +122,21 @@ export const buildOneWireTopology = (
     shape: SymbolShape,
     ratedCurrentA?: number,
     sensitivityMa?: number,
-    device?: { manufacturer?: string; neutralPosition?: 'left' | 'right' }
+    device?: { manufacturer?: string; neutralPosition?: 'left' | 'right'; rcdType?: NonNullable<SymbolShape['electrical']>['rcdType'] }
   ): SymbolShape => {
     const breakerCurve = shape.path === BREAKER_PATH && ratedCurrentA ? ('C' as const) : undefined
     const manufacturer = device?.manufacturer?.trim() || options.protectionManufacturer?.trim() || 'Schneider Electric'
     const neutralPosition = device?.neutralPosition ?? neutralPositionForManufacturer(manufacturer) ?? 'right'
     const poles = options.defaultPoles ?? 2
     const phaseConfiguration = options.phaseConfiguration ?? 'single-phase'
+    const rcdType = device?.rcdType ?? options.rcdTypesByRole?.[shape.sourceLink!.role] ?? DEFAULT_RCD_TYPE
     shape.electrical = {
       role: 'protection',
       oneWireEligible: true,
       ...(ratedCurrentA ? { breakerCurrentA: ratedCurrentA } : {}),
       ...(breakerCurve ? { breakerCurve } : {}),
       ...(sensitivityMa ? { rcdSensitivityMa: sensitivityMa } : {}),
+      ...(shape.path === RCD_PATH ? { rcdType } : {}),
       poles,
       phaseConfiguration,
       manufacturer,
@@ -134,8 +148,10 @@ export const buildOneWireTopology = (
       poles: `${poles}P`,
       phase: shouldShowPhaseLabel(poles, true) ? phaseConfigurationLabel(phaseConfiguration, neutralPosition) : '',
       'rated-current': ratedCurrentA ? `${breakerCurve ?? ''}${ratedCurrentA}A` : '',
-      ...(shape.path === RCD_PATH ? { 'residual-current': sensitivityMa ? `${sensitivityMa}mA` : '' } : {})
+      ...(shape.path === RCD_PATH ? { 'residual-current': sensitivityMa ? `${sensitivityMa}mA` : '', 'rcd-type': rcdTypeLabel(rcdType) } : {})
     }
+    const description = options.descriptionsByRole?.[shape.sourceLink!.role]
+    if (description !== undefined) setProtectionDescription(shape, description)
     return shape
   }
   const terminalOffset = (path: string, scale: number, terminal: 'top' | 'bottom') => {
@@ -194,7 +210,13 @@ export const buildOneWireTopology = (
     plan.mainDifferential
   )
   const mainBottom = terminalPoint(mainDifferential, 'bottom')
-  const meterTop = { x: mainTap.x, y: mainBottom.y + 40 }
+  const mainTitleY = protectionDescriptionLayout(mainDifferential)!.y
+  const cableSpaceTopY = mainTitleY + (plan.mainDifferential ? 36 : 0)
+  const lastCaptionY = plan.incomingCable ? cableSpaceTopY : plan.mainDifferential ? mainTitleY : mainBottom.y
+  // Preserve the space between devices; place the cable caption 3 mm above
+  // the meter instead of directly beneath the differential's description.
+  const meterTop = { x: mainTap.x, y: Math.max(mainBottom.y + 40, lastCaptionY + 48) }
+  const incomingCableY = meterTop.y - 24
   const meter = symbolAtTerminal('meter', 'kWh meter', KWH_PATH, KWH_SCALE, 'top', meterTop)
   const meterBottom = terminalPoint(meter, 'bottom')
   const mainSwitchTop = { x: meterBottom.x, y: meterBottom.y + 34 }
@@ -262,33 +284,23 @@ export const buildOneWireTopology = (
   )
 
   if (plan.incomingCable) {
-    shapes.push(
-      text(
-        'incoming-cable-label',
-        `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`,
-        meter.position.x + 190,
-        meter.position.y + 24,
-        0.58,
-        -90
-      )
+    const cableLabel = text(
+      'incoming-cable-label',
+      `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`,
+      // Leave 3 mm from the conductor, including its diagonal cable marker.
+      mainTap.x + 24,
+      incomingCableY
     )
+    shapes.push(cableLabel)
   }
-  const protectionTitle = (role: string, name: string, device: SymbolShape) => {
-    const layout = protectionLabelLayout(device)!
-    const title = text(role, name, layout.leftX, layout.centerY - 24)
-    title.textAnchor = 'end'
-    shapes.push(title)
+  const protectionTitle = (name: string, device: SymbolShape) => {
+    setProtectionDescription(device, options.descriptionsByRole?.[device.sourceLink!.role] ?? name)
   }
-  if (plan.mainDifferential) protectionTitle('main-differential-title', 'Hoofddiff.', mainDifferential)
-  protectionTitle('main-switch-title', 'Hoofdautomaat', mainSwitch)
+  if (plan.mainDifferential) protectionTitle('Hoofddiff.', mainDifferential)
+  protectionTitle('Hoofdautomaat', mainSwitch)
 
   const earthTap = busTap(0.06)
-  const earthRailY = earthTap.y + 24
-  const earthTop = { x: earthTap.x, y: earthRailY + 28 }
-  const earth = symbolAtTerminal('earth', 'Earth electrode', EARTH_PATH, EARTH_SCALE, 'top', earthTop)
-  shapes.push(line('earth-rail', earthTap.x - 35, earthRailY, earthTap.x + 35, earthRailY))
-  shapes.push(line('earth-drop', earthTap.x, earthRailY, earthTop.x, earthTop.y))
-  shapes.push(earth)
+  shapes.push(symbolAtTerminal('earth', 'Main earthing connection', EARTH_PATH, EARTH_SCALE, 'top', earthTap))
 
   const capacity = assessOneWireCapacity(plan, {
     gridProtectionCurrentA: options.gridProtectionCurrentA
@@ -305,7 +317,7 @@ export const buildOneWireTopology = (
   }
   const distributionRail = plan.residualBreaker || plan.solar ? upperRail : rail
   if (distributionRail === upperRail) {
-    shapes.push(line('secondary-busbar', upperRail.start.x, upperRail.start.y, upperRail.end.x, upperRail.end.y, 10))
+    shapes.push(line('secondary-busbar', upperRail.start.x, upperRail.start.y, upperRail.end.x, upperRail.end.y, ONE_WIRE_BUS_STROKE_WIDTH))
   }
   const upperTap = (fraction: number) => ({
     x: distributionRail.start.x + (distributionRail.end.x - distributionRail.start.x) * fraction,
@@ -399,7 +411,7 @@ export const buildOneWireTopology = (
         downstreamSource
       )
     )
-    protectionTitle('residual-breaker-label', 'remautomaat', breaker)
+    protectionTitle('remautomaat', breaker)
   }
 
   const evDifferentials = additional.filter((item) => item.purpose === 'ev')
@@ -447,7 +459,8 @@ export const buildOneWireTopology = (
               ? 'VERBRUIKERS'
               : 'OVERIG'
     const ratedCurrentA = item.ratedCurrentA ?? plan.mainDifferential?.ratedCurrentA
-    const branchBottom = { x: branchTap.x, y: branchTap.y - 40 }
+    // Leave room for Type A and the phase label in the same right-hand column.
+    const branchBottom = { x: branchTap.x, y: branchTap.y - (options.descriptionsByRole?.[role] ? 96 : 68) }
     const differential = symbolAtTerminal(role, 'Additional differential', RCD_PATH, RCD_SCALE, 'bottom', branchBottom)
     protectionValues(differential, ratedCurrentA, item.sensitivityMa, item)
     const branchTop = terminalPoint(differential, 'top')

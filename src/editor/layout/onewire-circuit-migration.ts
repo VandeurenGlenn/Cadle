@@ -1,6 +1,7 @@
 import type { LineShape, Shape, SymbolShape } from '../model/types.js'
 import { buildKamrailCircuitBundle, type BuildKamrailCircuitBundleInput } from './onewire-helpers.js'
 import { isOneWireRailShape, reconcileGeneratedOneWire } from './onewire-regeneration.js'
+import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import {
   oneWireSymbolNodeInfo,
   oneWireSymbolScaleFor,
@@ -90,6 +91,8 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
     })
     if (!familyComponents.length) familyComponents.push({ bindingId: `${family}1`, kind: 'empty' })
     const metadata = breaker.electrical
+    const cable = previous.find((shape): shape is LineShape => shape.kind === 'line' &&
+      shape.sourceLink?.role === 'trunk' && shape.connection?.kind === 'cable')?.connection
     const generated = buildKamrailCircuitBundle({
       ...deps,
       rail,
@@ -97,6 +100,10 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
       familyComponents,
       options: {
         ...metadata,
+        cableConductors: metadata?.cableConductors ?? cable?.conductors,
+        cableSectionMm2: metadata?.cableSectionMm2 ?? cable?.sectionMm2,
+        cableType: metadata?.cableType ?? cable?.cableType,
+        hasProtectiveConductor: metadata?.hasProtectiveConductor ?? cable?.hasProtectiveConductor,
         amps: metadata?.breakerCurrentA ?? 20,
         family,
         autoIncludeFamily: true,
@@ -144,7 +151,9 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
       }
       return { ...shape, oneWireRailId: rail.id }
     })
-    replacements.set(breaker.id, reconcileGeneratedOneWire(previous, fresh).shapes)
+    // Restored captions can be longer than the regenerated defaults. Recheck
+    // their clearance after restoring them and the enlarged device geometry.
+    replacements.set(breaker.id, spaceOneWireCircuitAnnotations(reconcileGeneratedOneWire(previous, fresh).shapes, family).shapes)
     previous.forEach((shape) => removed.add(shape.id))
   }
   return shapes.flatMap((shape) => replacements.get(shape.id) ?? (removed.has(shape.id) ? [] : [shape]))

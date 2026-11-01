@@ -35,6 +35,14 @@ const checkClearance = (shapes: Shape[]) => {
   const cable = shapes.find((shape) => shape.sourceLink?.role === 'cable-section')!
   const cableBox = oneWireLayoutBounds(cable)
   assert.ok(cableBox.x >= axisX + 12)
+  const current = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-current')!
+  const phase = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-phase')!
+  assert.ok(current.kind === 'text' && phase.kind === 'text')
+  assert.equal(phase.position.x, current.position.x)
+  assert.equal(phase.position.y - current.position.y, 28)
+  assert.ok(phase.position.y < breaker.position.y + terminals.bottom!.y)
+  const currentBox = oneWireLayoutBounds(current)
+  assert.ok(oneWireLayoutBounds(phase).y > currentBox.y + currentBox.height)
   for (const role of ['breaker-poles', 'breaker-current']) {
     const label = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === role)!)
     const gap = role === 'breaker-poles' ? bodyLeft - label.x - label.width : label.x - axisX

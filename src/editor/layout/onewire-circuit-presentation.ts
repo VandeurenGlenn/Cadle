@@ -8,7 +8,7 @@ import {
   shouldShowPhaseLabel,
   type ElectricalDeviceMetadata
 } from '../model/electrical.js'
-import type { Shape, SymbolShape } from '../model/types.js'
+import type { LineShape, Shape, SymbolShape } from '../model/types.js'
 import type { ElectricalProjectProfile, ProjectCircuitSpecification } from '../../types.js'
 import { normalizeOneWireFamilyKey } from './onewire-layout-plan.js'
 import {
@@ -182,13 +182,15 @@ export const applyOneWireCircuitPresentation = ({
     rcdType: stored.rcdType ?? groupSpecification?.rcdType
   }
   const cableInstallation = specification.cableInstallation ?? 'conduit-recessed'
+  const cableConnection = shapes.find((shape): shape is LineShape =>
+    shape.kind === 'line' && shape.sourceLink?.kind === 'board' && shape.sourceLink.id === circuitKey && shape.connection?.labelOwner === 'circuit')?.connection
   const labels: Record<string, string> = {
     'breaker-poles': `${specification.poles}P`,
     'breaker-current': `${specification.breakerCurve ?? 'C'}${specification.breakerCurrentA}A`,
     'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
       ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
       : '',
-    'cable-section': oneWireCableLabelText({
+    'cable-section': cableConnection?.name?.trim() || oneWireCableLabelText({
       conductors: specification.cableConductors,
       sectionMm2: specification.cableSectionMm2,
       hasProtectiveConductor: specification.hasProtectiveConductor,
@@ -224,7 +226,7 @@ export const applyOneWireCircuitPresentation = ({
           phase: shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
             ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
             : '',
-          'rated-current': `${specification.breakerCurrentA}A`,
+          'rated-current': `${isResidualBreaker ? '' : (specification.breakerCurve ?? 'C')}${specification.breakerCurrentA}A`,
           ...(isResidualBreaker
             ? {
                 'residual-current': specification.rcdSensitivityMa ? `${specification.rcdSensitivityMa}mA` : '',
@@ -236,12 +238,18 @@ export const applyOneWireCircuitPresentation = ({
     }
 
     if (!linkedBoardShape) return shape
+    if (shape.kind === 'line' && shape.connection?.kind === 'cable') {
+      changed = true
+      return { ...shape, connection: { ...shape.connection, conductors: specification.cableConductors,
+        sectionMm2: specification.cableSectionMm2, cableType: specification.cableType,
+        hasProtectiveConductor: specification.hasProtectiveConductor } }
+    }
     if (shape.kind === 'text' && link.role && labels[link.role] !== undefined) {
       const text = labels[link.role]
-      const hidden = link.role === 'cable-installation-label'
+      const hidden = link.role === 'cable-installation-label' || (link.role === 'cable-section' && cableConnection?.showLabel === false)
       if (shape.text === text && Boolean(shape.hidden) === hidden) return shape
       changed = true
-      return { ...shape, text, ...(link.role === 'cable-installation-label' ? { hidden } : {}) }
+      return { ...shape, text, ...(link.role === 'cable-installation-label' || link.role === 'cable-section' ? { hidden } : {}) }
     }
     if (shape.kind === 'symbol' && link.role === 'cable-installation') {
       const path = oneWireCableInstallationPath(cableInstallation)

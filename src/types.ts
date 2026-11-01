@@ -50,6 +50,7 @@ export type OneWireTopologyPlan = {
   mainDifferential?: {
     ratedCurrentA: number
     sensitivityMa: number
+    rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
     manufacturer?: string
     neutralPosition?: 'left' | 'right'
   }
@@ -69,6 +70,7 @@ export type OneWireTopologyPlan = {
     boardId?: string
     railId?: string
     sensitivityMa: number
+    rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
     ratedCurrentA?: number
     manufacturer?: string
     neutralPosition?: 'left' | 'right'

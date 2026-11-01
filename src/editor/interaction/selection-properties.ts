@@ -4,6 +4,7 @@ import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layo
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
+import { sanitizeConnection, type ElectricalConnection } from '../model/electrical-connection.js'
 import {
   inferCircuitType,
   inferElectricalRole,
@@ -17,6 +18,7 @@ import {
 const phaseLabel = phaseConfigurationLabel
 
 export type SelectionPropertyUpdate = {
+  connection?: Partial<ElectricalConnection> | null
   text?: string
   symbolTextOverrides?: Record<string, string>
   bindingId?: string
@@ -221,6 +223,10 @@ const applyProperties = (
   context: SelectionUpdateContext
 ): Shape => {
   const updated = cloneShape(shape) as Shape & { fill?: string }
+  if ('connection' in payload && updated.kind === 'line') {
+    if (payload.connection === null) delete updated.connection
+    else updated.connection = sanitizeConnection({ ...updated.connection, ...payload.connection })
+  }
   if ('bindingId' in payload) {
     if (bindingId && (!context.groupedSelection || shape.id === context.selectedId)) updated.bindingId = bindingId
     else delete updated.bindingId
@@ -345,10 +351,9 @@ const applyProperties = (
 
   if (payload.symbolTextOverrides && updated.kind === 'symbol') {
     const entries = Object.entries(payload.symbolTextOverrides)
-      .filter(([key, value]) => Boolean(key.trim()) && Boolean(value.trim()))
+      .filter(([key, value]) => Boolean(key.trim()) && typeof value === 'string')
       .map(([key, value]) => [key.trim(), value] as const)
-    if (entries.length) updated.symbolTextOverrides = Object.fromEntries(entries)
-    else delete updated.symbolTextOverrides
+    if (entries.length) updated.symbolTextOverrides = { ...updated.symbolTextOverrides, ...Object.fromEntries(entries) }
   }
 
   if (payload.electrical && updated.kind === 'symbol') {

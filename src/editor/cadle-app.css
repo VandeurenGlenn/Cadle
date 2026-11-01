@@ -18,7 +18,7 @@ output,
 }
 
 :host {
-  --cadle-accent: #a85427;
+  --cadle-accent: var(--cadle-brand, #2563eb);
   --cadle-surface: color-mix(in srgb, var(--md-sys-color-surface, #f6f1eb) 88%, white);
   --cadle-surface-strong: color-mix(in srgb, var(--md-sys-color-surface-container-high, #efe7de) 92%, white);
   --cadle-outline: color-mix(in srgb, var(--md-sys-color-outline, #7d736d) 45%, transparent);
@@ -335,7 +335,7 @@ output,
 
 .nc-btn[data-active='true'] {
   border-color: color-mix(in srgb, var(--cadle-accent) 68%, white);
-  background: linear-gradient(180deg, rgba(168, 84, 39, 0.14), rgba(168, 84, 39, 0.04));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cadle-accent) 14%, transparent), color-mix(in srgb, var(--cadle-accent) 4%, transparent));
 }
 
 .nc-btn.nc-danger {
@@ -588,8 +588,8 @@ output,
 
 /* Rubber-band selection rectangle */
 .rubber-band {
-  fill: rgba(168, 84, 39, 0.08);
-  stroke: rgba(168, 84, 39, 0.7);
+  fill: color-mix(in srgb, var(--cadle-accent) 8%, transparent);
+  stroke: color-mix(in srgb, var(--cadle-accent) 70%, transparent);
   stroke-width: 1.5;
   stroke-dasharray: 6 3;
   vector-effect: non-scaling-stroke;
@@ -597,7 +597,7 @@ output,
 }
 
 .shape[data-selected='true'] {
-  filter: drop-shadow(0 0 12px rgba(168, 84, 39, 0.2));
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--cadle-accent) 20%, transparent));
 }
 
 /* Snap indicator — green ring shown when pointer snaps to a wall endpoint */
@@ -654,7 +654,7 @@ output,
 
 .selected-outline {
   fill: none;
-  stroke: rgba(168, 84, 39, 0.86);
+  stroke: color-mix(in srgb, var(--cadle-accent) 86%, transparent);
   stroke-width: 2;
   stroke-dasharray: 10 6;
   vector-effect: non-scaling-stroke;

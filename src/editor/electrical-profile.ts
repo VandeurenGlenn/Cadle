@@ -1,4 +1,5 @@
 import type { ElectricalProjectProfile } from '../types.js'
+import { DEFAULT_RCD_TYPE } from './model/electrical.js'
 
 type SupplyConfiguration = ElectricalProjectProfile['supplyConfiguration']
 type PhaseConfiguration = ElectricalProjectProfile['phaseConfiguration']
@@ -70,8 +71,8 @@ export const normalizeElectricalProfile = (profile: ElectricalProjectProfile | u
       ? profile.boards.map((board) => ({
           ...board,
           rails: board.rails?.length ? board.rails.map((rail) => ({ ...rail })) : [{ id: 'rail-1', name: 'Rail 1' }],
-          mainDifferential: board.mainDifferential ? { ...board.mainDifferential } : undefined,
-          additionalDifferentials: board.additionalDifferentials?.map((item) => ({ ...item }))
+          mainDifferential: board.mainDifferential ? { ...board.mainDifferential, type: board.mainDifferential.type ?? DEFAULT_RCD_TYPE } : undefined,
+          additionalDifferentials: board.additionalDifferentials?.map((item) => ({ ...item, type: item.type ?? DEFAULT_RCD_TYPE }))
         }))
       : DEFAULT_AREI_PROFILE.boards?.map((board) => ({ ...board, rails: board.rails.map((rail) => ({ ...rail })) }))
   }

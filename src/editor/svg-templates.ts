@@ -6,6 +6,7 @@ import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from './constants.js'
 import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextPresentation } from './symbol-metadata.js'
+import { electricalConnectionMarkup } from './electrical-connection-markup.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 import { symbolContentBounds, symbolOpticalMetrics } from './layout/symbol-layout.js'
 import {
@@ -96,7 +97,7 @@ export const shapeTemplate = (
         ? `-${((shape.sourceLink?.role ?? '').split('').reduce((sum, character) => sum + character.charCodeAt(0), 0) % 14) / 10}s`
         : '0s'
       return svg`
-        <line
+        ${shape.kind === 'line' && shape.connection ? unsafeSVG(electricalConnectionMarkup(shape, selected, extraClass)) : svg`<line
           class=${shapeClass}
           data-shape-id=${shape.id}
           data-selected=${selectedAttr}
@@ -105,7 +106,7 @@ export const shapeTemplate = (
           x1=${shape.start.x}
           y1=${shape.start.y}
           x2=${shape.end.x}
-          y2=${shape.end.y}></line>
+          y2=${shape.end.y}></line>`}
         ${energyFlows.map(
           (energyFlow, index) => svg`
               <circle

@@ -5,7 +5,7 @@
  * One file, hand-authored, brand-correct, survives builds.
  *
  * Layout:
- *   1. Brand color reference scale (private — derived from #a85427)
+ *   1. Brand accent (blue in light mode, warm in dark mode)
  *   2. Light-mode semantic colors (--md-sys-color-*)
  *   3. Dark-mode semantic color overrides (prefers-color-scheme)
  *   4. Shape, motion, elevation
@@ -15,22 +15,22 @@
  * ========================================================================== */
 
 :root {
-  /* ── 1. Brand reference scale (warm orange-brown derived from #a85427) ── */
-  --cadle-brand: #a85427;
+  /* ── 1. Brand accent ───────────────────────────────────────────────── */
+  --cadle-brand: #2563eb;
 
   /* ── 2. Light-mode semantic colors ──────────────────────────────────── */
-  --md-sys-color-primary: #a85427;
+  --md-sys-color-primary: #2563eb;
   --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #ffdbc7;
-  --md-sys-color-on-primary-container: #381000;
+  --md-sys-color-primary-container: #dce9ff;
+  --md-sys-color-on-primary-container: #123b78;
 
-  --md-sys-color-secondary: #735c52;
+  --md-sys-color-secondary: #486582;
   --md-sys-color-on-secondary: #ffffff;
-  --md-sys-color-secondary-container: #fcdfd2;
-  --md-sys-color-on-secondary-container: #2a1c14;
-  --md-sys-color-secondary-container-hover: #fcdfd2bf;
+  --md-sys-color-secondary-container: #dde9f7;
+  --md-sys-color-on-secondary-container: #1a3857;
+  --md-sys-color-secondary-container-hover: #dde9f7bf;
 
-  --md-sys-color-tertiary: #536473;
+  --md-sys-color-tertiary: #326d83;
   --md-sys-color-on-tertiary: #ffffff;
   --md-sys-color-tertiary-container: #d8eafc;
   --md-sys-color-on-tertiary-container: #0e1f2c;
@@ -40,24 +40,24 @@
   --md-sys-color-error-container: #f9dedc;
   --md-sys-color-on-error-container: #410e0b;
 
-  --md-sys-color-background: #fdf8f5;
-  --md-sys-color-on-background: #1c1815;
-  --md-sys-color-surface: #fdf8f5;
-  --md-sys-color-on-surface: #1c1815;
-  --md-sys-color-surface-variant: #f0e6df;
-  --md-sys-color-on-surface-variant: #4a443f;
+  --md-sys-color-background: #f5f8fd;
+  --md-sys-color-on-background: #17283f;
+  --md-sys-color-surface: #f5f8fd;
+  --md-sys-color-on-surface: #17283f;
+  --md-sys-color-surface-variant: #e3ebf6;
+  --md-sys-color-on-surface-variant: #475b73;
 
-  --md-sys-color-surface-container: #f9f1eb;
-  --md-sys-color-surface-container-high: #f3eae3;
-  --md-sys-color-surface-container-highest: #ede2da;
+  --md-sys-color-surface-container: #edf3fc;
+  --md-sys-color-surface-container-high: #e5edf8;
+  --md-sys-color-surface-container-highest: #dce6f3;
 
-  --md-sys-color-outline: #837972;
-  --md-sys-color-outline-variant: #d6cbc4;
+  --md-sys-color-outline: #71839c;
+  --md-sys-color-outline-variant: #cad7e7;
 
-  --md-sys-color-inverse-surface: #322d2a;
-  --md-sys-color-inverse-on-surface: #f6ede9;
-  --md-sys-color-inverse-primary: #ffb693;
-  --md-sys-color-surface-tint: #a85427;
+  --md-sys-color-inverse-surface: #24364e;
+  --md-sys-color-inverse-on-surface: #eff4fc;
+  --md-sys-color-inverse-primary: #a9c8ff;
+  --md-sys-color-surface-tint: #2563eb;
 
   --md-sys-color-shadow: #000000;
   --md-sys-color-scrim: #000000;
@@ -121,11 +121,11 @@
   --cadle-scrim: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
 
   /* ── 5. Elevation + glass surfaces (light defaults) ────────────────── */
-  --cadle-elevation-1: 0 1px 2px rgba(28, 24, 21, 0.06), 0 1px 3px rgba(28, 24, 21, 0.04);
-  --cadle-elevation-2: 0 2px 4px rgba(28, 24, 21, 0.08), 0 2px 6px rgba(28, 24, 21, 0.05);
-  --cadle-elevation-3: 0 4px 8px rgba(28, 24, 21, 0.1), 0 4px 12px rgba(28, 24, 21, 0.06);
-  --cadle-elevation-4: 0 8px 16px rgba(28, 24, 21, 0.12), 0 6px 20px rgba(28, 24, 21, 0.08);
-  --cadle-elevation-5: 0 16px 32px rgba(28, 24, 21, 0.16), 0 10px 28px rgba(28, 24, 21, 0.1);
+  --cadle-elevation-1: 0 1px 2px rgba(23, 40, 63, 0.06), 0 1px 3px rgba(23, 40, 63, 0.04);
+  --cadle-elevation-2: 0 2px 4px rgba(23, 40, 63, 0.08), 0 2px 6px rgba(23, 40, 63, 0.05);
+  --cadle-elevation-3: 0 4px 8px rgba(23, 40, 63, 0.1), 0 4px 12px rgba(23, 40, 63, 0.06);
+  --cadle-elevation-4: 0 8px 16px rgba(23, 40, 63, 0.12), 0 6px 20px rgba(23, 40, 63, 0.08);
+  --cadle-elevation-5: 0 16px 32px rgba(23, 40, 63, 0.16), 0 10px 28px rgba(23, 40, 63, 0.1);
 
   --cadle-glass-bg: color-mix(in srgb, var(--md-sys-color-surface-container) 78%, transparent);
   --cadle-glass-bg-strong: color-mix(in srgb, var(--md-sys-color-surface-container-high) 92%, transparent);
@@ -136,16 +136,16 @@
 
   /* ── Canvas surface tokens ─────────────────────────────────────────
      The drawing artboard is its own depth layer below the chrome. Light
-     mode = a hint warmer than --background; dark mode = a hint darker so
+     mode = a pale blue-grey; dark mode = a hint darker so
      the rails / header read as floating above. */
-  --cadle-canvas-surface: #f2f3f3;
+  --cadle-canvas-surface: #e8eef7;
   --cadle-canvas-grid-line: color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent);
   --cadle-canvas-grid-line-major: color-mix(in srgb, var(--md-sys-color-outline-variant) 85%, transparent);
   --cadle-canvas-ink: color-mix(in srgb, var(--md-sys-color-on-surface) 82%, transparent);
 
   /* One-line schematic fill — used by circuit-templates rectangles. Light:
-     near-white warm neutral; dark variant overrides below. */
-  --cadle-oneline-fill: #fff7f2;
+     near-white blue; dark variant overrides below. */
+  --cadle-oneline-fill: #f5f9ff;
 
   /* Semantic status colors — shared by validation report pills, future
      toasts, and binding overlay error/warn signals. Both have an on-* pair
@@ -354,6 +354,7 @@
 /* ── 3. Dark-mode overrides ──────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {
+    --cadle-brand: #a85427;
     --md-sys-color-primary: #ffb693;
     --md-sys-color-on-primary: #5b1d00;
     --md-sys-color-primary-container: #813000;

@@ -1,4 +1,5 @@
 import type { OneWireTopologyPlan } from '../types.js'
+import { isRcdType } from './model/electrical.js'
 
 export const ONE_WIRE_TOPOLOGY_SCHEMA = {
   $id: 'https://cadle.be/schemas/onewire-topology.v1.json',
@@ -32,6 +33,7 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
       additionalProperties: false,
       required: ['ratedCurrentA', 'sensitivityMa'],
       properties: {
+        rcdType: { enum: ['AC', 'A', 'F', 'B', 'other'] },
         ratedCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
         sensitivityMa: { type: 'number', exclusiveMinimum: 0, maximum: 3000 },
         manufacturer: { type: 'string', minLength: 1, maxLength: 120 },
@@ -58,6 +60,7 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
         required: ['count', 'sensitivityMa', 'purpose'],
         properties: {
           count: { type: 'integer', minimum: 1, maximum: 12 },
+          rcdType: { enum: ['AC', 'A', 'F', 'B', 'other'] },
           boardId: { type: 'string', minLength: 1, maxLength: 120 },
           railId: { type: 'string', minLength: 1, maxLength: 120 },
           sensitivityMa: { type: 'number', exclusiveMinimum: 0, maximum: 3000 },
@@ -188,7 +191,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
   if (value.mainDifferential !== undefined && !differential) errors.push('mainDifferential moet een object zijn.')
   if (differential) {
     for (const key of Object.keys(differential)) {
-      if (!['ratedCurrentA', 'sensitivityMa', 'manufacturer', 'neutralPosition'].includes(key)) {
+      if (!['ratedCurrentA', 'sensitivityMa', 'manufacturer', 'neutralPosition', 'rcdType'].includes(key)) {
         errors.push(`Onbekend mainDifferential-veld: ${key}.`)
       }
     }
@@ -206,6 +209,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
     ) {
       errors.push('mainDifferential.sensitivityMa moet positief zijn.')
     }
+    if (differential.rcdType !== undefined && !isRcdType(differential.rcdType)) errors.push('mainDifferential.rcdType is ongeldig.')
     if (
       differential.manufacturer !== undefined &&
       (typeof differential.manufacturer !== 'string' || !differential.manufacturer.trim())
@@ -249,6 +253,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
               'boardId',
               'railId',
               'sensitivityMa',
+              'rcdType',
               'ratedCurrentA',
               'manufacturer',
               'neutralPosition',
@@ -287,6 +292,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
         ) {
           errors.push(`${prefix}.sensitivityMa moet positief zijn.`)
         }
+        if (differential.rcdType !== undefined && !isRcdType(differential.rcdType)) errors.push(`${prefix}.rcdType is ongeldig.`)
         if (
           differential.ratedCurrentA !== undefined &&
           (typeof differential.ratedCurrentA !== 'number' ||

@@ -104,29 +104,29 @@ test('limits a vertical family to the rows that fit the usable page height', () 
     usableWidth: 600,
     usableHeight: 540
   })
-  assert.equal(plan.pageCount, 7)
-  assert.equal(plan.placements[0]?.circuitCount, 4)
+  assert.equal(plan.pageCount, 13)
+  assert.equal(plan.placements[0]?.circuitCount, 2)
   assert.equal(plan.placements.at(-1)?.circuitCount, 1)
 })
 
 test('fits long circuit families into two balanced vertical columns before adding pages', () => {
-  const plan = planOneWireLayout([{ family: 'A', circuitCount: 22, requiredWidth: 240 }], {
+  const plan = planOneWireLayout([{ family: 'A', circuitCount: 16, requiredWidth: 240 }], {
     usableWidth: 900,
     usableHeight: 1140
   })
 
   assert.equal(plan.pageCount, 1)
-  assert.equal(plan.placements[0]?.circuitCount, 22)
+  assert.equal(plan.placements[0]?.circuitCount, 16)
   assert.equal(plan.placements[0]?.requiredWidth, 540)
 })
 
 test('centers the rail around circuit rows while preserving a clear top and bottom margin', () => {
   const railY = oneWireRailYForRows(11, { y: 40, height: 1600 })
-  const top = railY - 360 - 10 * 64
+  const top = railY - 360 - 10 * 96
   const bottom = railY + 100
 
-  assert.equal(top, 290)
-  assert.equal(bottom, 1390)
+  assert.equal(top, 130)
+  assert.equal(bottom, 1550)
   assert.equal((top + bottom) / 2, 840)
 })
 
@@ -136,7 +136,7 @@ test('packs separate families together while the page still has room', () => {
       { family: 'A', circuitCount: 2 },
       { family: 'B', circuitCount: 3 }
     ],
-    { usableWidth: 900, usableHeight: 620, maxCircuitsPerPage: 25 }
+    { usableWidth: 900, usableHeight: 700, maxCircuitsPerPage: 25 }
   )
   assert.equal(plan.pageCount, 1)
   assert.equal(plan.slotsPerRail, 2)
@@ -156,7 +156,7 @@ test('keeps cabinet rows on separate continuation pages', () => {
       { family: 'B', circuitCount: 3, railId: 'row-1' },
       { family: 'C', circuitCount: 2, railId: 'row-2' }
     ],
-    { usableWidth: 900, usableHeight: 620, maxCircuitsPerPage: 25 }
+    { usableWidth: 900, usableHeight: 700, maxCircuitsPerPage: 25 }
   )
 
   assert.deepEqual(
@@ -175,7 +175,7 @@ test('does not merge equal rail IDs from different cabinets', () => {
       { family: 'A', circuitCount: 2, boardId: 'main', railId: 'rail-1' },
       { family: 'K', circuitCount: 2, boardId: 'kitchen', railId: 'rail-1' }
     ],
-    { usableWidth: 900, usableHeight: 620, maxCircuitsPerPage: 25 }
+    { usableWidth: 900, usableHeight: 700, maxCircuitsPerPage: 25 }
   )
 
   assert.deepEqual(
@@ -194,7 +194,7 @@ test('continues on a new page only after all family slots are occupied', () => {
       { family: 'B', circuitCount: 3 },
       { family: 'C', circuitCount: 1 }
     ],
-    { usableWidth: 900, usableHeight: 620, maxCircuitsPerPage: 25 }
+    { usableWidth: 900, usableHeight: 700, maxCircuitsPerPage: 25 }
   )
   assert.equal(plan.pageCount, 2)
   assert.deepEqual(

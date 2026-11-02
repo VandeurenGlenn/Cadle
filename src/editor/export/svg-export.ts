@@ -446,6 +446,7 @@ export const buildSvgDocument = (options: {
   pageName?: string
   pageKey?: string
   printMargin?: number
+  drawingScale?: number | null
   symbolStrokeWidth?: number
   viewBox?: { x: number; y: number; width: number; height: number }
   monochrome?: boolean
@@ -508,7 +509,8 @@ export const buildSvgDocument = (options: {
     1,
     0,
     0,
-    options.printMargin
+    options.printMargin,
+    options.drawingScale
   )
   const markup = `${wallMarkup}${wallOpeningCuts}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
   const exportStyle = options.monochrome ? EXPORT_STYLE_BLOCK_MONO : EXPORT_STYLE_BLOCK

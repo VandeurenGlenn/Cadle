@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+
+test.use({ serviceWorkers: 'block' })
+
+test('shows one correctly styled kWh label in the card, hover and placed symbol, including older SVG text', async ({ page }) => {
+  const markup = await readFile('www/symbols/Consumption appliances/kWh meter.svg', 'utf8')
+  const legacy = markup.replace('</svg>', '<text x="3.18" y="13.4675" font-size="6">Kwh</text><desc>Kwh</desc></svg>')
+  await page.route(/\/kwh(?:%20| )meter\.svg$/i, (route) => route.fulfill({ contentType: 'image/svg+xml', body: legacy }))
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  await page.getByRole('tab', { name: 'Symbols catalog' }).click()
+  await page.locator('catalog-element search-element input').fill('kWh')
+  await expect(page.locator('catalog-element .search-status')).toContainText('kWh')
+  const item = page.locator('catalog-element').getByRole('button', { name: /^Place kwh meter$/i }).first()
+  const cardText = item.locator('.preview svg text')
+  await expect(cardText).toHaveCount(1)
+  await expect(cardText).toHaveText('kWh')
+  await item.hover()
+  const magnifier = page.locator('.catalog-magnifier')
+  await expect(magnifier).toBeVisible()
+  const hoverText = magnifier.locator('svg text')
+  await expect(hoverText).toHaveCount(1)
+  await expect(hoverText).toHaveText('kWh')
+  const previewWeights = await Promise.all([cardText, hoverText].map((node) => node.evaluate((text) => getComputedStyle(text).fontWeight)))
+  await page.screenshot({ path: '/private/tmp/cadle-kwh-preview.png' })
+  await item.click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const point = await app.locator('.world').evaluate((world: SVGGElement) => {
+    const point = new DOMPoint(1000, 300).matrixTransform(world.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  const placedText = app.locator('g.shape-symbol[data-selected="true"]:not(.symbol-preview) svg text')
+  await expect(placedText).toHaveCount(1)
+  await expect(placedText).toHaveText('kWh')
+  const placedWeight = await placedText.evaluate((text) => getComputedStyle(text).fontWeight)
+  expect(previewWeights).toEqual([placedWeight, placedWeight])
+})

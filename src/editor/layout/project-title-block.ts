@@ -1,3 +1,4 @@
+import { drawingScaleLabel } from './drawing-scale.js'
 import type { Project } from '../../types.js'
 import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { pageLayout } from './page-layout.js'
@@ -85,7 +86,8 @@ export const buildProjectTitleBlockMarkup = (
   layoutScale = 1,
   originX = 0,
   originY = 0,
-  marginMm?: number
+  marginMm?: number,
+  drawingScale?: number | null
 ): string => {
   const mm = PAPER_WORLD_UNITS_PER_MM * layoutScale
   const bounds = getProjectTitleBlockBounds(worldWidth, worldHeight, layoutScale, originX, originY, marginMm)
@@ -106,19 +108,24 @@ export const buildProjectTitleBlockMarkup = (
       ? ` textLength="${width}" lengthAdjust="spacingAndGlyphs"` : ''
     return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size * mm}" font-weight="${weight}" fill="${muted ? '#555555' : '#111111'}"${fit}>${escapeText(value)}</text>`
   }
-  const field = (key: string, x: number, width: number, label: string, values: string[], weight = 400) => {
+  const field = (key: string, x: number, width: number, label: string, values: string[], weight = 400, footer = '') => {
     const available = Math.max(mm, width - pad * 2)
     const wrap = (size: number) => values.flatMap((value) => textLines(value, Math.max(1, Math.floor(available / (size * mm * 0.68))), 3))
     const size = wrap(2.6).length > 2 ? 2.3 : 2.6
     const wrapped = wrap(size)
-    const lines = wrapped.length > 3 ? [wrapped[0], wrapped[1], wrapped.slice(2).join(' ')] : wrapped
+    const limit = footer ? 2 : 3
+    const lines = wrapped.length > limit ? [...wrapped.slice(0, limit - 1), wrapped.slice(limit - 1).join(' ')] : wrapped
     const firstBaseline = 6.8
     return `<g data-title-field="${key}" data-field-x="${x}" data-field-width="${width}">
       <title>${escapeText(values.join(', '))}</title>
       ${text(x + pad, bounds.y + 3 * mm, upper(label), available, 1.8, 600, 'start', true)}
       ${lines.map((line, index) => text(x + pad, bounds.y + (firstBaseline + index * 3) * mm, line, available, size, weight)).join('')}
+      ${footer ? `<g class="drawing-scale-label">${text(x + pad, bounds.y + 12.5 * mm, footer, available, 1.8, 400)}</g>` : ''}
     </g>`
   }
+  const pageType = project?.pages?.[currentPageKey]?.pageType
+  const scaleCaption = typeof drawingScale === 'number' ? `Schaal ${drawingScaleLabel(drawingScale)}`
+    : drawingScale === null || pageType === 'groundplan' ? 'Schaal niet ingesteld' : pageType === 'onewire' ? 'Schematisch' : ''
   const addressLabel = missingRequiredFields.length ? 'Installatieadres · aanvullen' : 'Installatieadres'
   const metaAvailable = metaWidth - pad * 2
   return `<g class="project-title-block" data-project-title-block="true" font-family="Segoe UI, Arial, sans-serif" fill="#111111">
@@ -128,7 +135,7 @@ export const buildProjectTitleBlockMarkup = (
     ${field('client', bounds.x, clientWidth, rows[0].label, [rows[0].value])}
     ${field('address', addressX, addressWidth, addressLabel, [rows[1].value, rows[1].subValue ?? '—'])}
     <g class="project-page-section" data-project-page-section="true">
-      ${field('drawing', pageX, pageWidth, 'Tekening', [displayValue(pageName)], 600)}
+      ${field('drawing', pageX, pageWidth, 'Tekening', [displayValue(pageName)], 600, scaleCaption)}
     </g>
     <g data-title-field="metadata" data-field-x="${metaX}" data-field-width="${metaWidth}">
       ${text(metaX + pad, bounds.y + 4.5 * mm, 'DATUM', metaAvailable * 0.3, 1.8, 600, 'start', true)}

@@ -10,7 +10,7 @@ export type SymbolTextField = {
 export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
 
 export type SelectionShape = {
-  dimensions?: { length?: number; width?: number; height?: number; strokeWidth?: number }
+  dimensions?: { drawingScale?: number; length?: number; width?: number; height?: number; strokeWidth?: number }
   connection?: ElectricalConnection
   id?: string
   kind?: string
@@ -131,6 +131,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       canSetStrokeWidth: shape.canSetStrokeWidth === true,
       strokeWidth: finiteNumber(shape.strokeWidth),
       dimensions: shape.dimensions ? {
+        drawingScale: finiteNumber(shape.dimensions.drawingScale),
         length: finiteNumber(shape.dimensions.length),
         width: finiteNumber(shape.dimensions.width),
         height: finiteNumber(shape.dimensions.height),

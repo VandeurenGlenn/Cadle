@@ -58,6 +58,9 @@ export class CatalogItem extends LiteElement {
   private _menuX = 0
   private _menuY = 0
   private static _magnifierElement?: HTMLDivElement
+  private static _magnifierOwner?: CatalogItem
+  #previewRequest = 0
+  #previewSource = ''
   set headline(value: string) {
     this._headline = value
     this.setAttribute('aria-label', `Place ${value}`)
@@ -89,6 +92,8 @@ export class CatalogItem extends LiteElement {
   #getMagnifierElement() {
     if (CatalogItem._magnifierElement?.isConnected) return CatalogItem._magnifierElement
     const element = document.createElement('div')
+    element.className = 'catalog-magnifier'
+    element.setAttribute('role', 'tooltip')
     element.style.position = 'fixed'
     element.style.width = `${MAGNIFIER_WIDTH}px`
     element.style.height = `${MAGNIFIER_HEIGHT}px`
@@ -118,6 +123,9 @@ export class CatalogItem extends LiteElement {
     preview.style.display = 'grid'
     preview.style.placeItems = 'center'
     preview.style.minHeight = '0'
+    preview.style.minWidth = '0'
+    preview.style.width = '100%'
+    preview.style.height = '100%'
     preview.style.overflow = 'hidden'
     if (this._svgPreview) {
       preview.innerHTML = this._svgPreview
@@ -126,6 +134,8 @@ export class CatalogItem extends LiteElement {
         svg.style.display = 'block'
         svg.style.width = '100%'
         svg.style.height = '100%'
+        svg.style.minWidth = '0'
+        svg.style.minHeight = '0'
       }
     } else if (previewSource) {
       const image = document.createElement('img')
@@ -153,10 +163,12 @@ export class CatalogItem extends LiteElement {
     label.style.font = 'var(--md-sys-typescale-label-medium)'
     label.style.fontWeight = '600'
     target.replaceChildren(preview, label)
+    target.dataset.symbolPath = previewSource ?? ''
   }
 
   #showMagnifier(row: HTMLElement | null) {
     const target = this.#getMagnifierElement()
+    CatalogItem._magnifierOwner = this
     this.#renderMagnifierContent(target)
     this.#positionMagnifier(row)
     target.style.display = 'grid'
@@ -193,7 +205,9 @@ export class CatalogItem extends LiteElement {
   }
 
   #closeMagnifier = () => {
+    if (CatalogItem._magnifierOwner !== this) return
     if (CatalogItem._magnifierElement) CatalogItem._magnifierElement.style.display = 'none'
+    CatalogItem._magnifierOwner = undefined
   }
 
   #onKeyDown = (event: KeyboardEvent) => {
@@ -233,22 +247,39 @@ export class CatalogItem extends LiteElement {
   }
 
   async #syncSvgPreview() {
+    const request = ++this.#previewRequest
     const sourcePath = this.symbol?.path ?? this.image
+    if (sourcePath !== this.#previewSource) {
+      this.#previewSource = sourcePath
+      this._svgPreview = ''
+      this._cardSvgPreview = ''
+      this.requestRender()
+      if (CatalogItem._magnifierOwner === this && CatalogItem._magnifierElement) {
+        this.#renderMagnifierContent(CatalogItem._magnifierElement)
+      }
+    }
     if (!sourcePath) {
       this._svgPreview = ''
       this._cardSvgPreview = ''
+      this.requestRender()
+      this.#closeMagnifier()
       return
     }
 
     try {
       const markup = await this.#loadSvgMarkup(sourcePath)
+      if (request !== this.#previewRequest) return
       this._svgPreview = createCatalogSvgPreview(markup, sourcePath, false)
       this._cardSvgPreview = createCatalogSvgPreview(markup, sourcePath, true)
       this.requestRender()
     } catch {
+      if (request !== this.#previewRequest) return
       this._svgPreview = ''
       this._cardSvgPreview = ''
       this.requestRender()
+    }
+    if (CatalogItem._magnifierOwner === this && CatalogItem._magnifierElement) {
+      this.#renderMagnifierContent(CatalogItem._magnifierElement)
     }
   }
 

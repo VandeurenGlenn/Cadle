@@ -1,0 +1,75 @@
+import { expect, test } from '@playwright/test'
+
+test.use({ serviceWorkers: 'block' })
+
+test('keeps architectural measurements correct through scale changes, calibration, undo and export', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1050 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const ground = '00000000-0000-4000-8000-000000000102'
+  const topology = '00000000-0000-4000-8000-000000000103'
+  const app = page.locator('cadle-app:not([read-only])')
+  const shell = page.locator('app-shell')
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, ground)
+  const scale = page.getByRole('combobox', { name: 'Planschaal', exact: true })
+  const base = { version: 2, paperLayoutVersion: 1, paperPreset: 'a4-landscape', worldWidth: 2376, worldHeight: 1680, printMargin: 10, shapes: [], selectedId: null }
+  const importState = async (state: unknown) => app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'scale.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state))
+  })
+  await importState(base)
+  await expect(scale).toHaveValue('50')
+  const shapes = [
+    { id: 'arch-wall', kind: 'wall', start: { x: 400, y: 500 }, end: { x: 1200, y: 500 }, strokeWidth: 6 },
+    { id: 'arch-switch', kind: 'symbol', name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg', position: { x: 600, y: 530 }, scale: 2 },
+    { id: 'arch-text', kind: 'text', position: { x: 800, y: 600 }, text: 'Living', scale: 1.25 }
+  ]
+  await importState({ ...base, shapes })
+  await expect(scale).toHaveValue('')
+  await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal niet ingesteld')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const wall = app.locator('line[data-shape-id="arch-wall"]')
+  const width = () => wall.evaluate((node) => Math.hypot(Number(node.getAttribute('x2')) - Number(node.getAttribute('x1')), Number(node.getAttribute('y2')) - Number(node.getAttribute('y1'))))
+  const symbolWidth = await app.locator('[data-shape-id="arch-switch"] > svg').getAttribute('width')
+  await scale.selectOption('50')
+  expect(await width()).toBe(800)
+  await scale.selectOption('100')
+  await expect.poll(width).toBe(400)
+  await expect(app.locator('[data-shape-id="arch-switch"] > svg')).toHaveAttribute('width', symbolWidth!)
+  await expect(app.locator('text[data-shape-id="arch-text"]')).toHaveCSS('font-size', '22.5px')
+  await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal 1:100')
+  expect(await app.evaluate((element: any) => element.toSVG())).toContain('Schaal 1:100')
+  await app.evaluate((element: any) => element.undo())
+  await expect(scale).toHaveValue('50')
+  expect(await width()).toBe(800)
+  await app.evaluate((element: any) => element.redo())
+  await expect(scale).toHaveValue('100')
+  expect(await width()).toBe(400)
+  const point = await wall.evaluate((node: SVGLineElement) => {
+    const point = new DOMPoint((node.x1.baseVal.value + node.x2.baseVal.value) / 2, node.y1.baseVal.value).matrixTransform(node.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  await expect(page.locator('[data-dimension="length"]')).toHaveText('5 m')
+  await page.getByRole('button', { name: 'Planschaal kalibreren', exact: true }).click()
+  const dialog = page.locator('input-form-dialog')
+  await dialog.getByLabel('Werkelijke lengte (m)').fill('5.5')
+  await dialog.getByLabel('Planschaal', { exact: true }).selectOption('50')
+  await dialog.getByRole('button', { name: 'Kalibreren', exact: true }).click()
+  await expect(scale).toHaveValue('50')
+  await expect.poll(width).toBeCloseTo(880, 5)
+  await expect(page.locator('[data-dimension="length"]')).toHaveText('5,5 m')
+  await expect(app.locator('[data-shape-id="arch-switch"] > svg')).toHaveAttribute('width', symbolWidth!)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, topology)
+  await expect(scale).toHaveCount(0)
+  await expect(app.locator('.drawing-scale-label')).toHaveText('Schematisch')
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, ground)
+  await expect(scale).toHaveValue('50')
+  await expect.poll(width).toBeCloseTo(880, 5)
+  await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal 1:50')
+  const svg = await app.evaluate((element: any) => element.toSVG())
+  expect(svg).toContain('width="297mm"')
+  expect(svg).toContain('Schaal 1:50')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  await page.screenshot({ path: '/private/tmp/cadle-architectural-scale.png' })
+})

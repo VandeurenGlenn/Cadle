@@ -143,6 +143,7 @@ export type NativeCatalogPick = {
 }
 
 export type Snapshot = {
+  drawingScale?: import('../layout/drawing-scale.js').DrawingScale | null
   shapes: Shape[]
   selectedId: string | null
   worldWidth: number

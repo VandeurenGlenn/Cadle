@@ -14,7 +14,7 @@ export type NativeSelectionSymbolTextField = {
 }
 
 export type NativeSelectionShapePayload = {
-  dimensions?: { length?: number; width?: number; height?: number; strokeWidth?: number }
+  dimensions?: { drawingScale?: number; length?: number; width?: number; height?: number; strokeWidth?: number }
   connection?: ElectricalConnection
   id: string
   kind: string
@@ -86,6 +86,7 @@ export const createNativeSelectionChangedPayload = (
     circuitPropertiesEditable?: boolean
     hideSymbolTextFields?: boolean
     canConvertToRoom?: boolean
+    drawingScale?: number | null
     symbolStrokeWidthPreference?: number
   }
 ): NativeSelectionChangedPayload => {
@@ -247,6 +248,9 @@ export const createNativeSelectionChangedPayload = (
       shapePayload.dimensions = { width, height,
         ...(pen !== null && selectedShape.kind !== 'image' ? { strokeWidth: pen } : {}) }
     }
+  }
+  if (shapePayload.dimensions && options?.drawingScale && selectedShape.kind !== 'symbol') {
+    shapePayload.dimensions.drawingScale = options.drawingScale
   }
   shapePayload.x = bounds.x + bounds.width / 2
   shapePayload.y = bounds.y + bounds.height / 2

@@ -8,6 +8,7 @@ export type InputFormField = {
   placeholder?: string
   description?: string
   type?: 'text' | 'number'
+  step?: number | 'any'
   required?: boolean
   min?: number
   max?: number
@@ -95,6 +96,7 @@ export class InputFormDialog extends LiteElement {
                   : html`<input
                       name=${field.name}
                       type=${field.type ?? 'text'}
+                      step=${field.step ?? 1}
                       .value=${field.value ?? ''}
                       placeholder=${field.placeholder ?? ''}
                       ?required=${field.required}

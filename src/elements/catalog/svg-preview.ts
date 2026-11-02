@@ -1,8 +1,9 @@
-import { symbolTextLayer } from '../../editor/symbol-metadata.js'
+import { symbolTextFieldsFor, symbolTextLayer } from '../../editor/symbol-metadata.js'
 
 const SVG_GRAPHICS_SELECTOR = 'path, rect, circle, ellipse, line, polyline, polygon, text, use, image'
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 const PREVIEW_PADDING_RATIO = 0.1
+const COMPACT_IDENTIFICATION_FIELDS = new Set(['marker', 'device-label', 'meter-label', 'timer-label', 'dc-label', 'ac-label', 'phase-count'])
 
 let measurementHost: SVGSVGElement | undefined
 
@@ -121,8 +122,16 @@ export const createCatalogSvgPreview = (markup: string, sourcePath: string, comp
   const doc = new DOMParser().parseFromString(replaceBlackColorTokens(markup), 'image/svg+xml')
   const svg = doc.documentElement
   if (!svg || svg.nodeName.toLowerCase() !== 'svg') return ''
+  const textFields = symbolTextFieldsFor(sourcePath)
+  // Match the editor: registered text replaces legacy SVG text, rather than
+  // being drawn on top of it (notably older kWh meter symbols).
+  if (textFields.length) svg.querySelectorAll('text, desc').forEach((node) => node.remove())
 
-  const metadataText = compact ? '' : symbolTextLayer(sourcePath)
+  // Identification marks belong to the symbol, including in the small cards.
+  // Keep configurable protection values out of those compact thumbnails.
+  const compactOverrides = compact ? Object.fromEntries(textFields
+    .filter((field) => !COMPACT_IDENTIFICATION_FIELDS.has(field.key)).map((field) => [field.key, ''])) : undefined
+  const metadataText = symbolTextLayer(sourcePath, compactOverrides)
   if (metadataText) {
     const layer = new DOMParser().parseFromString(
       `<svg xmlns="${SVG_NAMESPACE}">${metadataText}</svg>`,
@@ -132,7 +141,7 @@ export const createCatalogSvgPreview = (markup: string, sourcePath: string, comp
       if (node instanceof Element) {
         const style = node.getAttribute('style') ?? ''
         const baseStyle = style.replace(/fill\s*:[^;]+;?/i, '').replace(/;?\s*$/, ';')
-        node.setAttribute('style', `${baseStyle}fill:currentColor;font-weight:600;`)
+        node.setAttribute('style', `${baseStyle}fill:currentColor;`)
       }
       svg.append(doc.importNode(node, true))
     }
@@ -147,6 +156,6 @@ export const createCatalogSvgPreview = (markup: string, sourcePath: string, comp
     replaceInlineStyleColor(element)
     normalizePreviewStroke(element)
   }
-  if (compact) fitSvgPreviewToContent(svg as unknown as SVGSVGElement)
+  fitSvgPreviewToContent(svg as unknown as SVGSVGElement)
   return new XMLSerializer().serializeToString(svg)
 }

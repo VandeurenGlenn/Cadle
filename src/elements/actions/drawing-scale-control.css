@@ -1,0 +1,22 @@
+:host { display: contents; }
+.scale-control, label { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+label { font: 11px var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
+select {
+  min-height: 28px;
+  max-width: 112px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font: 500 12px var(--cadle-font-sans);
+  cursor: pointer;
+}
+select:focus-visible { outline: none; box-shadow: var(--cadle-focus-ring); }
+.scale-warning { font: 11px var(--cadle-font-sans); color: var(--cadle-color-warning); white-space: nowrap; }
+@media (max-width: 720px) { label > span, .scale-warning { display: none; } select { max-width: 100px; } }
+button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; cursor: pointer; color: var(--md-sys-color-on-surface-variant); background: transparent; }
+button:hover { background: var(--cadle-hover-bg); }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: none; box-shadow: var(--cadle-focus-ring); }
+custom-icon { font-size: 18px; --custom-icon-color: currentColor; }

@@ -370,7 +370,10 @@ export class AppShell extends LiteElement {
     this.#editorHeaderElement = element
     if (!element) return
     this.#editorHeaderObserver = new ResizeObserver(([entry]) => {
-      this.style.setProperty('--cadle-editor-header-height', `${entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height}px`)
+      this.style.setProperty(
+        '--cadle-editor-header-height',
+        `${entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height}px`
+      )
     })
     this.#editorHeaderObserver.observe(element)
   }
@@ -382,6 +385,7 @@ export class AppShell extends LiteElement {
       import('../elements/panes/object-pane.js'),
       import('../elements/status-bar.js'),
       import('../elements/actions/actions.js'),
+      import('../elements/actions/drawing-scale-control.js'),
       import('../elements/actions/project-actions.js'),
       import('../elements/actions/onewire-actions.js'),
       import('../elements/modals/validation-report.js'),
@@ -855,7 +859,7 @@ export class AppShell extends LiteElement {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return
 
     try {
-      const registration = await navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), {
+      const registration = await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), {
         scope: './',
         updateViaCache: 'none'
       })
@@ -978,11 +982,27 @@ export class AppShell extends LiteElement {
   #googleDriveAuthNotice() {
     if (!this.googleDriveAuthRequired) return ''
     return html`
-      <aside class="drive-auth-notice" role="alert" aria-live="assertive">
+      <aside
+        class="drive-auth-notice"
+        role="alert"
+        aria-live="assertive">
         <custom-icon icon="cloud_off"></custom-icon>
-        <div><strong>Google Drive opnieuw aanmelden</strong><span>Je sessie is verlopen. Meld opnieuw aan zodat back-ups bij afsluiten blijven werken.</span></div>
-        <button type="button" @click=${this.#reauthorizeGoogleDrive}>Opnieuw aanmelden</button>
-        <button class="notice-close" type="button" aria-label="Melding sluiten" @click=${() => (this.googleDriveAuthRequired = false)}>×</button>
+        <div>
+          <strong>Google Drive opnieuw aanmelden</strong
+          ><span>Je sessie is verlopen. Meld opnieuw aan zodat back-ups bij afsluiten blijven werken.</span>
+        </div>
+        <button
+          type="button"
+          @click=${this.#reauthorizeGoogleDrive}>
+          Opnieuw aanmelden
+        </button>
+        <button
+          class="notice-close"
+          type="button"
+          aria-label="Melding sluiten"
+          @click=${() => (this.googleDriveAuthRequired = false)}>
+          ×
+        </button>
       </aside>
     `
   }
@@ -1585,57 +1605,83 @@ export class AppShell extends LiteElement {
               .catalog=${this.catalog}></project-pane>
           </aside>
           <main class="center-stage">
-            <header class="editor-header" ${ref(this.#observeEditorHeader)}>
-            <div class="editor-context-bar">
-              <button
-                class="mobile-drawer-toggle"
-                type="button"
-                aria-label="Open project menu"
-                aria-controls="project-drawer"
-                aria-expanded=${this.mobileDrawerOpen ? 'true' : 'false'}
-                @click=${this.#toggleMobileDrawer}>
-                <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
-              </button>
-              <div class="drawing-context">
-                <span class="drawing-project" title=${this.currentProjectName}>${this.currentProjectName}</span>
-                <span class="context-separator" aria-hidden="true">/</span>
-                <h1 class="drawing-title" title=${this.currentPageName}>${this.currentPageName || 'Drawing'}</h1>
+            <header
+              class="editor-header"
+              ${ref(this.#observeEditorHeader)}>
+              <div class="editor-context-bar">
+                <button
+                  class="mobile-drawer-toggle"
+                  type="button"
+                  aria-label="Open project menu"
+                  aria-controls="project-drawer"
+                  aria-expanded=${this.mobileDrawerOpen ? 'true' : 'false'}
+                  @click=${this.#toggleMobileDrawer}>
+                  <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
+                </button>
+                <div class="drawing-context">
+                  <span
+                    class="drawing-project"
+                    title=${this.currentProjectName}
+                    >${this.currentProjectName}</span
+                  >
+                  <span
+                    class="context-separator"
+                    aria-hidden="true"
+                    >/</span
+                  >
+                  <h1
+                    class="drawing-title"
+                    title=${this.currentPageName}>
+                    ${this.currentPageName || 'Drawing'}
+                  </h1>
+                </div>
+                <drawing-scale-control></drawing-scale-control>
+                <span class="drawing-kind"
+                  >${circuitSchedulePage
+                    ? 'Circuit overview'
+                    : this.currentPage?.pageType === 'onewire'
+                      ? 'One-wire'
+                      : 'Floor plan'}</span
+                >
+                <button
+                  class="settings-navigation"
+                  type="button"
+                  title="Instellingen en back-ups"
+                  aria-label="Instellingen en back-ups"
+                  @click=${() => (location.hash = '#!/settings')}>
+                  <custom-icon icon="settings"></custom-icon>
+                </button>
+                ${circuitSchedulePage
+                  ? ''
+                  : html`
+                      <button
+                        class="split-view-toggle"
+                        type="button"
+                        title=${this.linkedPageKey
+                          ? this.splitViewOpen
+                            ? 'Close linked view'
+                            : 'Compare with linked page'
+                          : 'No linked page available'}
+                        aria-label=${this.splitViewOpen ? 'Close linked view' : 'Compare with linked page'}
+                        aria-pressed=${this.splitViewOpen ? 'true' : 'false'}
+                        ?disabled=${!this.linkedPageKey}
+                        @click=${this.#toggleSplitView}>
+                        <custom-icon icon="splitscreen"></custom-icon>
+                      </button>
+                    `}
               </div>
-              <span class="drawing-kind">${circuitSchedulePage ? 'Circuit overview' : this.currentPage?.pageType === 'onewire' ? 'One-wire' : 'Floor plan'}</span>
-              <button
-                class="settings-navigation"
-                type="button"
-                title="Instellingen en back-ups"
-                aria-label="Instellingen en back-ups"
-                @click=${() => (location.hash = '#!/settings')}>
-                <custom-icon icon="settings"></custom-icon>
-              </button>
               ${circuitSchedulePage
                 ? ''
                 : html`
-                    <button
-                      class="split-view-toggle"
-                      type="button"
-                      title=${this.linkedPageKey
-                        ? this.splitViewOpen
-                          ? 'Close linked view'
-                          : 'Compare with linked page'
-                        : 'No linked page available'}
-                      aria-label=${this.splitViewOpen ? 'Close linked view' : 'Compare with linked page'}
-                      aria-pressed=${this.splitViewOpen ? 'true' : 'false'}
-                      ?disabled=${!this.linkedPageKey}
-                      @click=${this.#toggleSplitView}>
-                      <custom-icon icon="splitscreen"></custom-icon>
-                    </button>
+                    <div
+                      class="center-stage-toolbar"
+                      role="toolbar"
+                      aria-label="Drawing toolbar">
+                      <cadle-actions page-type=${this.currentPage?.pageType ?? 'groundplan'}>
+                        ${this.currentPage?.pageType === 'onewire' ? html`<onewire-actions></onewire-actions>` : ''}
+                      </cadle-actions>
+                    </div>
                   `}
-            </div>
-              ${circuitSchedulePage ? '' : html`
-                <div class="center-stage-toolbar" role="toolbar" aria-label="Drawing toolbar">
-                  <cadle-actions page-type=${this.currentPage?.pageType ?? 'groundplan'}>
-                    ${this.currentPage?.pageType === 'onewire' ? html`<onewire-actions></onewire-actions>` : ''}
-                  </cadle-actions>
-                </div>
-              `}
             </header>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>

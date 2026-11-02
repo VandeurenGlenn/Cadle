@@ -1,3 +1,6 @@
+import type { PaperPresetConfig } from './constants.js'
+import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
+import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
@@ -259,6 +262,7 @@ export class CadleApp extends LiteElement {
   #snap = true
   #stagePointerId: number | null = null
   #paperPreset: PaperPreset = 'a4-landscape'
+  #drawingScale: DrawingScale | null = DEFAULT_DRAWING_SCALE
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
@@ -398,7 +402,8 @@ export class CadleApp extends LiteElement {
     const { widthPx, heightPx } = pagePixelSize(resolvedOrientation)
     const exportViewBox = this.#exportViewBox(resolvedOrientation)
     const dataUrl = await rasterizeSvgToPng(
-      this.#buildSvgDocument(exportViewBox ?? undefined, monochrome),
+      this.#buildSvgDocument(exportViewBox ?? undefined, monochrome, undefined, undefined,
+        PAPER_PRESETS[resolvedOrientation === 'landscape' ? 'a4-landscape' : 'a4-portrait']),
       widthPx,
       heightPx,
       'Unable to render SVG export'
@@ -1113,13 +1118,15 @@ export class CadleApp extends LiteElement {
     if (typeof parsed.printMargin === 'number' && Number.isFinite(parsed.printMargin) && parsed.printMargin >= 0) {
       this.#printMargin = Math.max(DEFAULT_PRINT_MARGIN_MM, Math.min(50, parsed.printMargin))
     }
+    const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    const hasPlanScale = pageType === 'groundplan' && isDrawingScale(parsed.drawingScale)
     const target = paperWorldSize(this.#paperPreset)
     const previousWidth =
       typeof parsed.worldWidth === 'number' && parsed.worldWidth > 0 ? parsed.worldWidth : target.width
     const previousHeight =
       typeof parsed.worldHeight === 'number' && parsed.worldHeight > 0 ? parsed.worldHeight : target.height
     if (Math.abs(previousWidth - target.width) > 1 || Math.abs(previousHeight - target.height) > 1) {
-      const scale = Math.min(target.width / previousWidth, target.height / previousHeight)
+      const scale = hasPlanScale ? 1 : Math.min(target.width / previousWidth, target.height / previousHeight)
       const offsetX = (target.width - previousWidth * scale) / 2
       const offsetY = (target.height - previousHeight * scale) / 2
       this.#document.shapes = scaleShapesBetweenPages(this.#document.shapes, scale, offsetX, offsetY)
@@ -1128,7 +1135,7 @@ export class CadleApp extends LiteElement {
     }
     this.#worldWidth = target.width
     this.#worldHeight = target.height
-    const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    this.#drawingScale = pageType === 'groundplan' ? isDrawingScale(parsed.drawingScale) ? parsed.drawingScale : parsed.shapes?.length ? null : DEFAULT_DRAWING_SCALE : null
     const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
     if (pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
       this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {
@@ -1171,7 +1178,7 @@ export class CadleApp extends LiteElement {
       migrationComplete = migrated || !hasOneWireShapes
       if (migrationComplete) this.#documentSizeMigrated = true
     }
-    if (parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
+    if (!hasPlanScale && parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
       const paper = PAPER_PRESETS[this.#paperPreset]
       const fitted = fitLegacyGroundPlanToPrintArea(this.#document.shapes, {
         width: this.#worldWidth,
@@ -1185,7 +1192,7 @@ export class CadleApp extends LiteElement {
         this.#documentSizeMigrated = true
       }
     }
-    if (parsed.paperLayoutVersion !== 1 && pageType !== 'onewire') {
+    if (!hasPlanScale && parsed.paperLayoutVersion !== 1 && pageType !== 'onewire') {
       const fitted = fitShapesToContentArea(this.#document.shapes, this.#safeAreaRect())
       this.#document.shapes = fitted.shapes
       this.#documentSizeMigrated = true
@@ -1210,6 +1217,7 @@ export class CadleApp extends LiteElement {
     this.#worldWidth = DEFAULT_WORLD_WIDTH
     this.#worldHeight = DEFAULT_WORLD_HEIGHT
     this.#paperPreset = 'a4-landscape'
+    this.#drawingScale = DEFAULT_DRAWING_SCALE
     this.#printMargin = DEFAULT_PRINT_MARGIN_MM
     this.#oneWireAnchor = null
     this.#oneWireLastPoint = null
@@ -1265,6 +1273,7 @@ export class CadleApp extends LiteElement {
     this.#document.history.push(
       {
         shapes: this.#document.shapes,
+        drawingScale: this.#drawingScale,
         selectedId: this.#document.selectedId,
         worldWidth: this.#worldWidth,
         worldHeight: this.#worldHeight,
@@ -1278,6 +1287,7 @@ export class CadleApp extends LiteElement {
   }
 
   #restoreSnapshot(snapshot: Snapshot) {
+    this.#drawingScale = snapshot.drawingScale ?? null
     this.#document.shapes = cloneShapes(snapshot.shapes)
     this.#rebindAllOpeningsToWalls()
     this.#document.selectedId = snapshot.selectedId
@@ -1333,11 +1343,25 @@ export class CadleApp extends LiteElement {
     if (snapshot) this.#restoreSnapshot(snapshot)
   }
 
+  #gridSize(): number {
+    return this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' && this.#drawingScale
+      ? drawingUnitsForMetres(0.1, this.#drawingScale) : GRID_SIZE
+  }
+
+  #planExceedsPage(): boolean {
+    if (this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return false
+    const area = this.#safeAreaRect()
+    return this.#document.shapes.filter((shape) => !shape.hidden).some((shape) => {
+      const box = shapeBounds(shape)
+      return box.x < area.x || box.y < area.y || box.x + box.width > area.x + area.width || box.y + box.height > area.y + area.height
+    })
+  }
+
   #snapPoint(point: Point): Point {
     if (!this.#snap) return point
     return {
-      x: Math.round(point.x / GRID_SIZE) * GRID_SIZE,
-      y: Math.round(point.y / GRID_SIZE) * GRID_SIZE
+      x: Math.round(point.x / this.#gridSize()) * this.#gridSize(),
+      y: Math.round(point.y / this.#gridSize()) * this.#gridSize()
     }
   }
 
@@ -2394,13 +2418,13 @@ export class CadleApp extends LiteElement {
       case 'nudge-right-precision':
         return this.#nudgeNativeSelection(NUDGE_PRECISION_STEP, 0)
       case 'nudge-up-grid':
-        return this.#nudgeNativeSelection(0, -GRID_SIZE)
+        return this.#nudgeNativeSelection(0, -this.#gridSize())
       case 'nudge-down-grid':
-        return this.#nudgeNativeSelection(0, GRID_SIZE)
+        return this.#nudgeNativeSelection(0, this.#gridSize())
       case 'nudge-left-grid':
-        return this.#nudgeNativeSelection(-GRID_SIZE, 0)
+        return this.#nudgeNativeSelection(-this.#gridSize(), 0)
       case 'nudge-right-grid':
-        return this.#nudgeNativeSelection(GRID_SIZE, 0)
+        return this.#nudgeNativeSelection(this.#gridSize(), 0)
       case 'rotate-left':
         return this.#transformNativeSelection('rotate-left')
       case 'rotate-right':
@@ -4082,7 +4106,7 @@ export class CadleApp extends LiteElement {
   }
 
   #measurementTemplate(from: Point | null, to: Point | null) {
-    return measurementTemplate(from, to)
+    return measurementTemplate(from, to, this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : null)
   }
 
   #publishNativeSelection(selectedShape: Shape | null) {
@@ -4150,6 +4174,7 @@ export class CadleApp extends LiteElement {
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
         symbolStrokeWidthPreference: this.#symbolStrokeWidth,
+        drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : null,
         canConvertToRoom
       }),
       pageKey: this.#pageKey
@@ -4161,6 +4186,7 @@ export class CadleApp extends LiteElement {
     return {
       version: 2,
       paperLayoutVersion: 1,
+      ...(pageType === 'groundplan' && this.#drawingScale ? { drawingScale: this.#drawingScale } : {}),
       ...(pageType === 'onewire' ? { oneWireLayoutVersion: this.#oneWireController.layoutVersion } : {}),
       shapes: this.#document.shapes,
       selectedId: null,
@@ -4199,13 +4225,18 @@ export class CadleApp extends LiteElement {
     viewBox?: { x: number; y: number; width: number; height: number },
     monochrome = false,
     pageName?: string,
-    pageKey?: string
+    pageKey?: string,
+    paperOverride?: PaperPresetConfig
   ) {
+    const exportPaper = paperOverride ?? this.#paperMeta()
+    const exportFactor = viewBox ? viewBox.width / (exportPaper.widthMm * PAPER_WORLD_UNITS_PER_MM) : 1
     const buildDocument = buildSvgDocument as unknown as (options: Record<string, unknown>) => string
     const exportOptions: Record<string, unknown> = {
       shapes: this.#displayShapes(),
       selectedShape: this.#shapeById(this.#document.selectedId),
-      paper: this.#paperMeta(),
+      paper: exportPaper,
+      drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan'
+        ? this.#drawingScale ? this.#drawingScale * exportFactor : null : undefined,
       worldWidth: this.#worldWidth,
       worldHeight: this.#worldHeight,
       project: this.#project,
@@ -4236,7 +4267,8 @@ export class CadleApp extends LiteElement {
         1,
         0,
         0,
-        this.#printMargin
+        this.#printMargin,
+        this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : undefined
       )
     )
   }
@@ -4482,8 +4514,9 @@ export class CadleApp extends LiteElement {
     const selectedShape = this.#shapeById(this.#document.selectedId)
     const { zoom, panX, panY } = this.#viewport.state
     const worldTransform = `translate(${panX} ${panY}) scale(${zoom})`
-    const minorGrid = GRID_SIZE * 4 * zoom
-    const majorGrid = GRID_SIZE * 20 * zoom
+    const metricGrid = this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' && this.#drawingScale
+    const minorGrid = this.#gridSize() * (metricGrid ? 5 : 4) * zoom
+    const majorGrid = this.#gridSize() * (metricGrid ? 10 : 20) * zoom
     const gridStyle =
       `left:${panX}px;top:${panY}px;width:${this.#worldWidth * zoom}px;height:${this.#worldHeight * zoom}px; ` +
       `background-position: 0 0; ` +
@@ -4947,6 +4980,10 @@ export class CadleApp extends LiteElement {
       canRedo: this.#document.history.canRedo,
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
+      pageType: this.#project?.pages?.[this.#pageKey]?.pageType,
+      drawingScale: this.#drawingScale,
+      planExceedsPage: this.#planExceedsPage(),
+      canCalibratePlan: this.#document.selectedIds.size <= 1 && Boolean(this.#calibrationReference()),
       oneWirePreset: this.#oneWirePreset,
       oneWireBindingId: this.#oneWireBindingId,
       oneWireComposeKind: this.#oneWireComposeKind,
@@ -4969,13 +5006,58 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
+  #calibrationReference(): LineShape | null {
+    const shape = this.#shapeById(this.#document.selectedId)
+    if (!shape || !['wall', 'line', 'door', 'window', 'gate'].includes(shape.kind) || !('start' in shape)) return null
+    return shape as LineShape
+  }
+
+  async #calibrateDrawingScale() {
+    if (this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
+    const reference = this.#calibrationReference()
+    if (!reference) return
+    const pageKey = this.#pageKey
+    const length = connectionSegments(reference).reduce((sum, segment) => sum + Math.hypot(segment.end.x - segment.start.x, segment.end.y - segment.start.y), 0)
+    if (length <= 0) return
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Planschaal kalibreren',
+      description: 'Vul de werkelijke lengte van de geselecteerde muur of lijn in. Het hele plan wordt daarop aangepast; symbolen en tekst behouden hun papiergrootte.',
+      submitLabel: 'Kalibreren',
+      fields: [
+        { name: 'length', label: 'Werkelijke lengte (m)', type: 'number', step: 'any', min: 0.001, required: true, placeholder: 'Bijv. 5' },
+        { name: 'scale', label: 'Planschaal', value: String(this.#drawingScale ?? DEFAULT_DRAWING_SCALE), required: true,
+          options: [{ label: '1:50', value: '50' }, { label: '1:100', value: '100' }] }
+      ]
+    })
+    const metres = Number(values?.length?.replace(',', '.'))
+    const scale = Number(values?.scale)
+    if (!values || pageKey !== this.#pageKey || !Number.isFinite(metres) || metres <= 0 || !isDrawingScale(scale)) return
+    this.#document.shapes = scaleGroundPlanGeometry(this.#document.shapes, drawingUnitsForMetres(metres, scale) / length)
+    this.#drawingScale = scale
+    this.#rebindAllOpeningsToWalls()
+    this.#pushHistory()
+    this.#render()
+  }
+
   #onNativeControlsCommand = (payload: {
     connectionKind?: ConnectionKind
     paper?: PaperPreset
     onewirePreset?: OneWirePreset
     onewireCompose?: 'breaker' | 'switch' | 'kamrail' | 'load'
     action?: string
+    drawingScale?: DrawingScale
   }) => {
+    if (isDrawingScale(payload.drawingScale) && this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan') {
+      if (payload.drawingScale === this.#drawingScale) return
+      if (this.#drawingScale) this.#document.shapes = rescaleGroundPlan(this.#document.shapes, this.#drawingScale, payload.drawingScale)
+      this.#drawingScale = payload.drawingScale
+      this.#draft = null
+      this.#drag = null
+      this.#rebindAllOpeningsToWalls()
+      this.#pushHistory()
+      this.#render()
+      return
+    }
     if (isConnectionKind(payload.connectionKind)) {
       this.#activateTool('line')
       this.#connectionKind = payload.connectionKind
@@ -5018,6 +5100,9 @@ export class CadleApp extends LiteElement {
     }
 
     switch (payload.action) {
+      case 'calibrate-drawing-scale':
+        void this.#calibrateDrawingScale()
+        return
       case 'margin-inc':
         this.#printMargin = Math.min(this.#printMargin + 1, 50)
         this.#persist()

@@ -1,3 +1,5 @@
+import { drawingLengthMetres } from './layout/drawing-scale.js'
+import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
@@ -680,20 +682,20 @@ export const roomDraftTemplate = (start: Point, end: Point) => svg`
   </g>
 `
 
-export const measurementTemplate = (from: Point | null, to: Point | null) => {
+export const measurementTemplate = (from: Point | null, to: Point | null, drawingScale: number | null = null) => {
   if (!from || !to) return nothing
   const dx = to.x - from.x
   const dy = to.y - from.y
   const length = Math.hypot(dx, dy)
   if (length < 2) return nothing
-  const meters = length / 50
+  const measure = drawingScale ? `${drawingLengthMetres(length, drawingScale).toFixed(2)} m` : `${(length / PAPER_WORLD_UNITS_PER_MM).toFixed(1)} mm`
   const angle = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360
   const midX = (from.x + to.x) / 2
   const midY = (from.y + to.y) / 2
   return svg`
     <g class="measurement-overlay">
-      <rect class="measurement-label-bg" x=${midX - 44} y=${midY - 26} width="88" height="20" rx="6"></rect>
-      <text class="measurement-label" x=${midX} y=${midY - 12} text-anchor="middle">${meters.toFixed(2)}m · ${angle.toFixed(0)}°</text>
+      <rect class="measurement-label-bg" x=${midX - 66} y=${midY - 26} width="132" height="20" rx="6"></rect>
+      <text class="measurement-label" x=${midX} y=${midY - 12} text-anchor="middle">${measure} · ${angle.toFixed(0)}°</text>
     </g>
   `
 }

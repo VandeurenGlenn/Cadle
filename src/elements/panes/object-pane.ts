@@ -24,7 +24,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
-  @property({ attribute: false }) private accessor _nativeDimensions: { length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
+  @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
   @property()
   private accessor _activeObjectLabel = 'No selection'
@@ -612,10 +612,10 @@ export class ObjectPane extends LiteElement {
     const measures = dimensions.length !== null ? [['Lengte', 'length', dimensions.length]] as const
       : [['Breedte', 'width', dimensions.width], ['Hoogte', 'height', dimensions.height]] as const
     return html`<div class="dimension-summary" aria-label="Afmetingen op blad">
-      <div class="dimension-caption">Afmetingen op blad</div>
+      <div class="dimension-caption">${dimensions.drawingScale ? `Afmetingen · 1:${dimensions.drawingScale}` : 'Afmetingen op blad'}</div>
       <dl class="dimension-values">
         ${measures.filter(([, , value]) => value !== null).map(([label, key, value]) => html`
-          <div><dt>${label}</dt><dd data-dimension=${key}>${number(value! / PAPER_WORLD_UNITS_PER_MM)} <span>mm</span></dd></div>`)}
+          <div><dt>${label}</dt><dd data-dimension=${key}>${number(value! / PAPER_WORLD_UNITS_PER_MM * (dimensions.drawingScale ?? 1) / (dimensions.drawingScale ? 1000 : 1))} <span>${dimensions.drawingScale ? 'm' : 'mm'}</span></dd></div>`)}
         ${dimensions.strokeWidth !== null ? html`<div><dt>Lijndikte</dt>
           <dd data-dimension="strokeWidth">${number(dimensions.strokeWidth)} <span>px</span></dd></div>` : ''}
       </dl>

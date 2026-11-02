@@ -1,3 +1,4 @@
+import { isDrawingScale, type DrawingScale } from '../layout/drawing-scale.js'
 import type { UUID } from '../../types.js'
 import { sanitizeShapes } from './model.js'
 import type { PaperPreset, Shape } from './types.js'
@@ -6,6 +7,7 @@ export type NativeDocumentState = {
   version: 1 | 2
   oneWireLayoutVersion?: number
   paperLayoutVersion?: number
+  drawingScale?: DrawingScale
   shapes: Shape[]
   selectedId: UUID | null
   paperPreset: PaperPreset
@@ -47,6 +49,7 @@ export const asNativeState = (value: unknown): NativeDocumentState | null => {
     version: candidate.version === 2 ? 2 : 1,
     ...(typeof oneWireLayoutVersion === 'number' ? { oneWireLayoutVersion } : {}),
     ...(candidate.paperLayoutVersion === 1 ? { paperLayoutVersion: 1 } : {}),
+    ...(isDrawingScale(candidate.drawingScale) ? { drawingScale: candidate.drawingScale } : {}),
     shapes: sanitizeShapes(candidate.shapes),
     selectedId: null,
     paperPreset: candidate.paperPreset,

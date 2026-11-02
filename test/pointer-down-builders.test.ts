@@ -6,6 +6,7 @@ import {
   resolveCatalogSymbolScale
 } from '../src/editor/interaction/pointer-down-builders.js'
 import { oneWireSymbolScaleFor } from '../src/editor/layout/onewire-symbol-nodes.js'
+import { sanitizeShapes } from '../src/editor/model/model.js'
 
 test('uses a two-pixel stroke for newly drawn lines and outline shapes', () => {
   const point = { x: 10, y: 20 }
@@ -214,4 +215,21 @@ test('enlarges newly placed lights and sockets while keeping custom catalog size
   }
   assert.equal(resolveCatalogSymbolScale({ name: 'Custom', path: 'symbols/Switches/Switch general symbol.svg',
     metadata: { symbolDefaults: { scale: 2.4 } } }, 'onewire'), 2.4)
+})
+
+test('gives refrigerators and meters readable paper sizes and upgrades only their old defaults', () => {
+  for (const [name, scale] of [['Refrigerator', 3], ['kWh meter', 8 / 3]] as const) {
+    const symbol = { name, path: `symbols/Consumption appliances/${name}.svg` }
+    assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, scale)
+    const original = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.15, strokeWidth: 0.5 }
+    const upgraded = sanitizeShapes([original])[0]
+    assert.equal(upgraded.kind === 'symbol' && upgraded.scale, scale)
+    assert.equal(upgraded.strokeWidth! * scale, 0.5 * 1.15)
+    assert.deepEqual(sanitizeShapes([upgraded]), [upgraded])
+    const custom = sanitizeShapes([{ ...original, scale: 2.4 }])[0]
+    assert.equal(custom.kind === 'symbol' && custom.scale, 2.4)
+    const generated = sanitizeShapes([{ ...original, groupId: 'onewire-example' }])[0]
+    assert.equal(generated.kind === 'symbol' && generated.scale, 1.15)
+    assert.equal(createSymbolShape('custom', { x: 0, y: 0 }, { ...symbol, metadata: { symbolDefaults: { scale: 2.4 } } }).scale, 2.4)
+  }
 })

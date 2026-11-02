@@ -3,7 +3,7 @@ import type { Point, Shape } from '../model/types.js'
 
 export const DRAWING_SCALES = [50, 100] as const
 export type DrawingScale = typeof DRAWING_SCALES[number]
-export const DEFAULT_DRAWING_SCALE: DrawingScale = 50
+export const DEFAULT_DRAWING_SCALE: DrawingScale = 100
 export const isDrawingScale = (value: unknown): value is DrawingScale => value === 50 || value === 100
 export const drawingLengthMetres = (length: number, scale: number): number => length / PAPER_WORLD_UNITS_PER_MM * scale / 1000
 export const drawingUnitsForMetres = (metres: number, scale: number): number => metres * 1000 * PAPER_WORLD_UNITS_PER_MM / scale

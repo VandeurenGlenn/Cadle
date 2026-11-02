@@ -24,7 +24,7 @@ custom-drawer-item {
   padding-left: var(--cadle-space-3) !important;
   padding-right: var(--cadle-space-3) !important;
   border-radius: var(--cadle-radius-sm) !important;
-  font: var(--md-sys-typescale-body-medium);
+  font: var(--cadle-navigation-font);
   color: var(--md-sys-color-on-surface);
   background: transparent;
   transition:
@@ -61,7 +61,7 @@ custom-drawer-item:focus-visible {
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   border-radius: var(--cadle-radius-sm);
   padding: var(--cadle-space-2) var(--cadle-space-3);
@@ -80,7 +80,7 @@ custom-drawer-item:focus-visible {
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   border-radius: var(--cadle-radius-sm);
   padding: var(--cadle-space-2) var(--cadle-space-3);

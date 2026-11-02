@@ -4,6 +4,7 @@ import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
 import { paperTextScale } from '../layout/page-layout.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import { oneWireSymbolScaleFor } from '../layout/onewire-symbol-nodes.js'
+import { appliancePaperScale } from '../model/symbol-scale.js'
 export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
@@ -62,6 +63,8 @@ export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick, context: Sy
     return Math.max(0.1, Math.min(20, defaults.scale))
   }
   if (context === 'onewire') return oneWireSymbolScaleFor(symbol.path) ?? inferSymbolScale(symbol.path)
+  const applianceScale = appliancePaperScale(symbol.path)
+  if (applianceScale !== null) return applianceScale
   const switchScale = floorPlanSwitchScale(symbol.path)
   if (switchScale !== null) return switchScale * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
   if (/\/socket outlets\//i.test(symbol.path)) return inferSymbolScale(symbol.path) * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR

@@ -253,7 +253,7 @@ export const shellStyles = css`
     gap: 10px;
     flex: 1 1 auto;
     min-width: 0;
-    font: 13px var(--cadle-font-sans);
+    font: var(--cadle-navigation-font);
   }
   .drawing-project {
     min-width: 0;
@@ -270,7 +270,7 @@ export const shellStyles = css`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font: 600 13px var(--cadle-font-sans);
+    font: 600 12px/18px var(--cadle-font-sans);
     color: var(--md-sys-color-on-surface);
   }
   .drawing-kind {

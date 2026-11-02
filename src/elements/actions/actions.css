@@ -82,7 +82,7 @@ button.menu-tool {
   padding: 0 10px;
   gap: 12px;
   justify-content: flex-start;
-  font: 13px var(--cadle-font-sans);
+  font: var(--cadle-navigation-font);
 }
 .menu-tool .tool-check { margin-left: auto; font-size: 16px; }
 @media (pointer: coarse) {

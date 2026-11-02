@@ -18,7 +18,11 @@ custom-dropdown {
   pointer-events: auto;
 }
 .submenu-toggle {
+  font: var(--cadle-navigation-font);
   border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 55%, transparent);
+}
+custom-list-item {
+  font: var(--cadle-navigation-font);
 }
 .submenu-item {
   margin-left: 12px;

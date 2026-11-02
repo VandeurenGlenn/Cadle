@@ -17,13 +17,13 @@ test('keeps architectural measurements correct through scale changes, calibratio
     name: 'scale.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state))
   })
   await importState(base)
-  await expect(scale).toHaveValue('50')
+  await expect(scale).toHaveValue('100')
   const shapes = [
     { id: 'arch-wall', kind: 'wall', start: { x: 400, y: 500 }, end: { x: 1200, y: 500 }, strokeWidth: 6 },
     { id: 'arch-switch', kind: 'symbol', name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg', position: { x: 600, y: 530 }, scale: 2 },
     { id: 'arch-text', kind: 'text', position: { x: 800, y: 600 }, text: 'Living', scale: 1.25 }
   ]
-  await importState({ ...base, shapes })
+  await importState({ ...base, shapes, drawingScale: 50 })
   await expect(app.locator('line[data-shape-id="arch-wall"]')).toBeAttached()
   await expect(scale).toHaveValue('50')
   await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal 1:50')

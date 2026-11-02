@@ -62,7 +62,7 @@
 }
 
 .browse-section-title strong {
-  font: var(--md-sys-typescale-title-small);
+  font: var(--cadle-navigation-font);
   font-weight: 650;
 }
 
@@ -92,7 +92,7 @@
 .browse-category-copy strong {
   overflow: hidden;
   color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-title-small);
+  font: var(--cadle-navigation-font);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -140,7 +140,7 @@
 
 .browse-header strong {
   overflow: hidden;
-  font: var(--md-sys-typescale-title-small);
+  font: var(--cadle-navigation-font);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;

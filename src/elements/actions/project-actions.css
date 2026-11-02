@@ -84,12 +84,8 @@ custom-list-item {
   padding: 0 var(--cadle-space-3);
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-label-large-font-family-name);
-  font-style: var(--md-sys-typescale-label-large-font-family-style);
-  font-weight: var(--md-sys-typescale-label-large-font-weight);
-  font-size: var(--md-sys-typescale-label-large-font-size);
+  font: var(--cadle-navigation-font);
   letter-spacing: var(--md-sys-typescale-label-large-tracking);
-  line-height: var(--md-sys-typescale-label-large-height);
   text-transform: var(--md-sys-typescale-label-large-text-transform);
   text-decoration: var(--md-sys-typescale-label-large-text-decoration);
   border-bottom: 1px solid color-mix(in srgb, var(--cadle-glass-border) 90%, transparent);
@@ -107,9 +103,9 @@ custom-list-item:last-of-type {
 .submenu-chevron {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  font-size: 24px;
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
   line-height: 1;
   transition: transform var(--cadle-motion-fast);
 }
@@ -120,7 +116,7 @@ custom-list-item:last-of-type {
   min-height: 36px;
   padding-left: var(--cadle-space-7);
   background: color-mix(in srgb, var(--md-sys-color-surface-container) 72%, var(--md-sys-color-surface-container-high));
-  font-size: var(--md-sys-typescale-label-medium-font-size);
+  font-size: 11px;
   border-bottom-color: color-mix(in srgb, var(--cadle-glass-border) 58%, transparent);
 }
 custom-list-item:hover,

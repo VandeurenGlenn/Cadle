@@ -30,6 +30,15 @@ type RecentSymbolEntry = {
   symbol: CatalogSymbol
 }
 
+const uniqueRecentSymbols = (entries: RecentSymbolEntry[]): RecentSymbolEntry[] => {
+  const seen = new Set<string>()
+  return entries.filter(({ symbol }) => {
+    if (seen.has(symbol.path)) return false
+    seen.add(symbol.path)
+    return true
+  }).slice(0, MAX_RECENT_SYMBOLS)
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     'catalog-element': CatalogElement
@@ -65,6 +74,7 @@ export class CatalogElement extends LiteElement {
   async firstRender() {
     await Promise.all([ensureCustomCatalogLoaded(), ensureCatalogSymbolOverridesLoaded()])
     this._recentSymbols = this.#readRecentSymbols()
+    this.#writeRecentSymbols()
     this.addListener('dragover', this.#dragover)
     this.addListener('dragleave', () => this.removeAttribute('show-drop'))
     this.addListener('drop', this.#drop)
@@ -83,7 +93,7 @@ export class CatalogElement extends LiteElement {
       if (!raw) return []
       const parsed = JSON.parse(raw) as unknown
       if (!Array.isArray(parsed)) return []
-      return parsed
+      return uniqueRecentSymbols(parsed
         .map((entry) => {
           if (!entry || typeof entry !== 'object') return null
           const candidate = entry as Record<string, unknown>
@@ -107,23 +117,26 @@ export class CatalogElement extends LiteElement {
             }
           } as RecentSymbolEntry
         })
-        .filter((entry): entry is RecentSymbolEntry => Boolean(entry))
-        .slice(0, MAX_RECENT_SYMBOLS)
+        .filter((entry): entry is RecentSymbolEntry => Boolean(entry)))
     } catch {
       return []
     }
   }
 
   #writeRecentSymbols() {
-    localStorage.setItem(RECENT_SYMBOLS_KEY, JSON.stringify(this._recentSymbols.slice(0, MAX_RECENT_SYMBOLS)))
+    try {
+      localStorage.setItem(RECENT_SYMBOLS_KEY, JSON.stringify(this._recentSymbols))
+    } catch {
+      // Recent symbols remain usable when browser storage is unavailable.
+    }
   }
 
   #rememberRecentSymbol(entry: RecentSymbolEntry) {
-    const key = `${entry.category}::${entry.symbol.name}::${entry.symbol.path}`
-    const deduped = this._recentSymbols.filter(
-      (item) => `${item.category}::${item.symbol.name}::${item.symbol.path}` !== key
-    )
-    this._recentSymbols = [entry, ...deduped].slice(0, MAX_RECENT_SYMBOLS)
+    const previous = this._recentSymbols.find((item) => item.symbol.path === entry.symbol.path)
+    if (entry.category === 'Recent symbols' && previous) {
+      entry = { ...entry, category: previous.category, folder: previous.folder }
+    }
+    this._recentSymbols = uniqueRecentSymbols([entry, ...this._recentSymbols])
     this.#writeRecentSymbols()
   }
 

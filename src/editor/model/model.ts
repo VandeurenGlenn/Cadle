@@ -1,6 +1,6 @@
 import type { DraftShape, ImageShape, LineShape, Point, RectShape, Shape, SymbolShape, TextShape } from './types.js'
 import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata } from './electrical.js'
-import { renderedSymbolScale } from './symbol-scale.js'
+import { appliancePaperScale, renderedSymbolScale, resizedSymbolStrokeWidth } from './symbol-scale.js'
 import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
@@ -83,6 +83,8 @@ const currentSymbolPath = (path: string, name: string): string => {
 
 const migratedSymbolScale = (path: string, scale: number, groupId: unknown): number => {
   if (typeof groupId === 'string' && groupId.startsWith('onewire-')) return scale
+  const applianceScale = appliancePaperScale(path)
+  if (applianceScale !== null && (scale === 1 || scale === 1.15)) return applianceScale
   if (/\/consumption appliances\/wall light\.svg$/i.test(path)) {
     return scale === 1 || scale === 1.2 || scale === 1.3 || scale === 1.4 ? 1.5 : scale
   }
@@ -274,7 +276,10 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
             ? 5
             : /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path) && raw.strokeWidth === 1.35
               ? 1.15
-              : Math.max(0.5, raw.strokeWidth)
+              : Math.max(appliancePaperScale(path) !== null ? 0.01 : 0.5, raw.strokeWidth)
+        if (appliancePaperScale(path) !== null && typeof raw.scale === 'number' && symbol.scale !== raw.scale) {
+          symbol.strokeWidth = resizedSymbolStrokeWidth({ path, scale: raw.scale, strokeWidth: symbol.strokeWidth }, symbol.scale)
+        }
       }
       if (typeof raw.bindingId === 'string' && raw.bindingId.trim())
         symbol.bindingId = raw.bindingId.trim().toUpperCase()

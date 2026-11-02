@@ -20,7 +20,7 @@
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   border-radius: 8px;
-  font: 500 13px var(--cadle-font-sans);
+  font: var(--cadle-navigation-font);
   transition: background-color var(--cadle-motion-fast), color var(--cadle-motion-fast);
 }
 .onewire-action-btn:hover,

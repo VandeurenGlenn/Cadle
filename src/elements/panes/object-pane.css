@@ -533,3 +533,5 @@ textarea.native-input { min-height: 60px; resize: vertical; }
 .dimension-values dt { font: 11px/1.3 var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
 .dimension-values dd { margin: 2px 0 0; font: 600 12px/1.3 var(--cadle-font-sans); color: var(--md-sys-color-on-surface); }
 .dimension-values dd span { font-weight: 400; color: var(--md-sys-color-on-surface-variant); }
+.dimension-values dd.dimension-paper, .dimension-hint { font: 400 10px/1.4 var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
+.dimension-hint { margin: 6px 0 0; }

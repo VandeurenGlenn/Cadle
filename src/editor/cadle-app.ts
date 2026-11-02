@@ -4174,7 +4174,7 @@ export class CadleApp extends LiteElement {
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
         symbolStrokeWidthPreference: this.#symbolStrokeWidth,
-        drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : null,
+        drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : undefined,
         canConvertToRoom
       }),
       pageKey: this.#pageKey

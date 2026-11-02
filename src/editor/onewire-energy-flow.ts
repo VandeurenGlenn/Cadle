@@ -1,4 +1,5 @@
 import type { LineShape, Point } from './model/types.js'
+import { connectionSegments } from './model/electrical-connection.js'
 
 export type OneWireEnergyFlowSegment = {
   from: Point
@@ -59,7 +60,7 @@ const flowSegments = (
       ]
     : [{ from, to, source: source === 'generator' ? 'generator' : 'default' }]
 
-export const oneWireEnergyFlowSegments = (shape: LineShape): OneWireEnergyFlowSegment[] => {
+const logicalEnergyFlows = (shape: LineShape): OneWireEnergyFlowSegment[] => {
   const role = shape.sourceLink?.role
   const roleSource = shape.energySource ?? sourceForRole(role)
   if (shape.energyFlow === 'forward') return flowSegments(shape.start, shape.end, roleSource)
@@ -88,6 +89,16 @@ export const oneWireEnergyFlowSegments = (shape: LineShape): OneWireEnergyFlowSe
   }
   if (REVERSE_ROLES.has(role)) return flowSegments(shape.end, shape.start, roleSource)
   return []
+}
+
+export const oneWireEnergyFlowSegments = (shape: LineShape): OneWireEnergyFlowSegment[] => {
+  const segments = connectionSegments(shape)
+  return logicalEnergyFlows(shape).flatMap((flow) => {
+    const forward = Math.hypot(flow.from.x - shape.start.x, flow.from.y - shape.start.y) < 0.01
+    return (forward ? segments : [...segments].reverse()).map((segment) => ({
+      from: forward ? segment.start : segment.end, to: forward ? segment.end : segment.start, source: flow.source
+    }))
+  })
 }
 
 export const oneWireEnergyFlowSegment = (shape: LineShape): OneWireEnergyFlowSegment | null =>

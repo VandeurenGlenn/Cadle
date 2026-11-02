@@ -2,6 +2,7 @@ import { connectedWallIds, dragEndpointSnapDelta, translateShape, updateConnecte
 import { oneWireSymbolNodeInfo } from '../layout/onewire-symbol-nodes.js'
 import { symbolContentBounds } from '../layout/symbol-layout.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { followConnectedConductors } from './connected-conductors.js'
 import type { DraftShape, DragState, LineShape, Point, Shape, SymbolShape } from '../../editor/model/types.js'
 
 const closestPointOnSegment = (point: Point, start: Point, end: Point): Point => {
@@ -252,8 +253,10 @@ export const applyDragMove = (
   drag: DragState,
   snapPoint: (point: Point) => Point,
   allShapes: Shape[],
-  zoom = 1
+  zoom = 1,
+  followElectrical = false
 ): Shape[] => {
+  if (followElectrical && !drag.connectionInitial) drag.connectionInitial = [...allShapes]
   const point = snapPoint(rawPoint)
   const pointerStart = snapPoint(drag.pointerStart)
   const dx = point.x - pointerStart.x
@@ -324,5 +327,6 @@ export const applyDragMove = (
 
   const movedById = new Map(finalShapes.map((shape) => [shape.id, shape]))
   const after = allShapes.map((shape) => movedById.get(shape.id) ?? shape)
-  return updateConnectedWalls(allShapes, after, targetIds)
+  const connected = followElectrical ? followConnectedConductors(drag.connectionInitial!, after, targetIds) : after
+  return updateConnectedWalls(allShapes, connected, targetIds)
 }

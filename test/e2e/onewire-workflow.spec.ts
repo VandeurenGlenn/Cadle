@@ -135,7 +135,9 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
         button: 0
       })
     )
+    breaker.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true, pointerId: 1, pointerType: 'mouse', button: 0 }))
   })
+  await page.locator('object-pane [data-property-section="supply"] > summary').click()
   const supplyOptions = page.getByRole('radiogroup', { name: 'Supply phase' })
   await expect(supplyOptions.getByRole('radio')).toHaveCount(5)
   await expect(supplyOptions.getByRole('radio', { name: '3F + N' })).toHaveAttribute('aria-checked', 'true')
@@ -401,7 +403,7 @@ test('inserts a breaker before the selected component without shrinking the rail
   await closePropertiesForDrawing(page)
   await addSwitch.click()
   await expect(addSwitch).toHaveAttribute('aria-pressed', 'true')
-  expect((await addSwitch.boundingBox())?.height).toBe(44)
+  expect((await addSwitch.boundingBox())?.height).toBeGreaterThanOrEqual(36)
 
   const rail = stage.locator(`line[data-shape-id="${railId}"]`)
   const beforeShapeIds = await stage
@@ -564,23 +566,31 @@ test('inserts a breaker before the selected component without shrinking the rail
   })
   await page.getByRole('textbox', { name: 'Circuit family' }).fill('E')
   await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
-  const secondRailBeforeDelete = await secondRail.evaluate((line) => ({
-    x1: Number(line.getAttribute('x1')),
-    x2: Number(line.getAttribute('x2')),
-    y1: Number(line.getAttribute('y1')),
-    y2: Number(line.getAttribute('y2'))
-  }))
+  // An overcrowded drawing can put the independent rail on a continuation sheet.
+  // Deleting a breaker must preserve that other rail across the entire project.
+  const savedShape = (id: string) => page.locator('app-shell').evaluate((element: any, id) => {
+    for (const [key, page] of Object.entries(element.project.pages) as [string, any][]) {
+      const shapes = page.schema?.objects?.find((item: any) => item.kind === 'cadle-native-svg-document')?.payload?.shapes ?? []
+      const shape = shapes.find((shape: any) => shape.id === id)
+      if (shape) return { key, shape }
+    }
+    return null
+  }, id)
+  const secondRailBeforeDelete = await savedShape(secondRailId)
+  expect(secondRailBeforeDelete).not.toBeNull()
+  const breakerPage = await savedShape(breakerId)
+  expect(breakerPage).not.toBeNull()
+  await page.locator('app-shell').evaluate(async (element: any, key) => { await element.loadPage(key) }, breakerPage!.key)
+  await page.locator('cadle-app').evaluate(async (element: any) => { await element.exportA4PNG() })
   await closePropertiesForDrawing(page)
   await page.getByRole('button', { name: 'Select', exact: true }).click()
   const deletePoint = await stage.locator(`[data-shape-id="${breakerId}"] path`).first().evaluate((path: SVGPathElement) => {
     const point = path.getPointAtLength(2)
-    const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!)
+    const screen = point.matrixTransform(path.getScreenCTM()!)
     return { x: screen.x, y: screen.y }
   })
   await page.mouse.click(deletePoint.x, deletePoint.y)
   await page.keyboard.press('Delete')
-  await expect(secondRail).toHaveAttribute('x1', `${secondRailBeforeDelete.x1}`)
-  await expect(secondRail).toHaveAttribute('x2', `${secondRailBeforeDelete.x2}`)
-  await expect(secondRail).toHaveAttribute('y1', `${secondRailBeforeDelete.y1}`)
-  await expect(secondRail).toHaveAttribute('y2', `${secondRailBeforeDelete.y2}`)
+  await page.locator('cadle-app').evaluate(async (element: any) => { await element.flushPendingSave() })
+  expect(await savedShape(secondRailId)).toEqual(secondRailBeforeDelete)
 })

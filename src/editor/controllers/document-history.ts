@@ -3,7 +3,8 @@ import type { Snapshot } from '../../editor/model/types.js'
 
 const cloneSnapshot = (snapshot: Snapshot): Snapshot => ({
   ...snapshot,
-  shapes: cloneShapes(snapshot.shapes)
+  shapes: cloneShapes(snapshot.shapes),
+  ...(snapshot.overflowPages ? { overflowPages: structuredClone(snapshot.overflowPages) } : {})
 })
 
 /**
@@ -13,6 +14,9 @@ const cloneSnapshot = (snapshot: Snapshot): Snapshot => ({
 export class DocumentHistory {
   #entries: Snapshot[] = []
   #index = -1
+
+  get canUndo(): boolean { return this.#index > 0 }
+  get canRedo(): boolean { return this.#index >= 0 && this.#index < this.#entries.length - 1 }
 
   reset(): void {
     this.#entries = []

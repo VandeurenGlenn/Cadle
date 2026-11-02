@@ -102,6 +102,7 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
         ...metadata,
         cableConductors: metadata?.cableConductors ?? cable?.conductors,
         cableSectionMm2: metadata?.cableSectionMm2 ?? cable?.sectionMm2,
+        cableFireClass: metadata?.cableFireClass ?? cable?.fireClass,
         cableType: metadata?.cableType ?? cable?.cableType,
         hasProtectiveConductor: metadata?.hasProtectiveConductor ?? cable?.hasProtectiveConductor,
         amps: metadata?.breakerCurrentA ?? 20,

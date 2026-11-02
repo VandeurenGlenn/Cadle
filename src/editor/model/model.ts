@@ -3,6 +3,7 @@ import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata }
 import { renderedSymbolScale } from './symbol-scale.js'
 import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
+import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -375,7 +376,7 @@ export const cloneShape = (shape: Shape): Shape => {
       if (typeof shape.strokeWidth === 'number') cloned.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) cloned.energyFlow = shape.energyFlow
       if (shape.energySource) cloned.energySource = shape.energySource
-      if (shape.connection) cloned.connection = { ...shape.connection }
+      if (shape.connection) cloned.connection = sanitizeConnection(shape.connection)
       if (shape.bindingId) cloned.bindingId = shape.bindingId
       if (shape.groupId) cloned.groupId = shape.groupId
       if (shape.bindingLabelOffset) cloned.bindingLabelOffset = { ...shape.bindingLabelOffset }
@@ -497,7 +498,8 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) scaled.energyFlow = shape.energyFlow
       if (shape.energySource) scaled.energySource = shape.energySource
-      if (shape.connection) scaled.connection = { ...shape.connection }
+      if (shape.connection) scaled.connection = { ...shape.connection,
+        ...(shape.connection.via ? { via: shape.connection.via.map((point) => scalePoint(point, scaleX, scaleY)) } : {}) }
       if (shape.bindingId) scaled.bindingId = shape.bindingId
       if (shape.groupId) scaled.groupId = shape.groupId
       copyGeneratedMetadata(shape, scaled)
@@ -660,6 +662,7 @@ export const shapeBounds = (shape: Shape) => {
     }
     case 'text': {
       const scale = shape.scale ?? 1
+      if (paperTextLinesForShape(shape).length > 1) return paperTextBounds(shape)
       const textWidth = Math.max(36, shape.text.length * 9 * scale)
       const textHeight = 28 * scale
       const x =

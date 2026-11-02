@@ -1,3 +1,4 @@
+import { cableLabelText } from '../model/cable-designation.js'
 import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, ONE_WIRE_BUS_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
@@ -286,7 +287,7 @@ export const buildOneWireTopology = (
   if (plan.incomingCable) {
     const cableLabel = text(
       'incoming-cable-label',
-      `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`,
+      cableLabelText(plan.incomingCable, 'x'),
       // Leave 3 mm from the conductor, including its diagonal cable marker.
       mainTap.x + 24,
       incomingCableY

@@ -22,6 +22,7 @@ export type CircuitSpecification = {
   cableSectionMm2: number
   cableConductors: number
   hasProtectiveConductor: boolean
+  cableFireClass?: string
   cableType: 'none' | 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   cableInstallation: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
   showCableInstallation: boolean
@@ -146,6 +147,7 @@ const suggestedSpecification = (
     cableSectionMm2: explicit.cableSectionMm2 ?? defaults.cableSectionMm2,
     cableConductors,
     hasProtectiveConductor: explicit.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors),
+    cableFireClass: explicit.cableFireClass,
     cableType: explicit.cableType ?? defaults.cableType,
     cableInstallation: explicit.cableInstallation ?? defaults.cableInstallation,
     showCableInstallation: explicit.showCableInstallation ?? true,

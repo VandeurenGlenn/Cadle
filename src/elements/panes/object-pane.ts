@@ -551,7 +551,6 @@ export class ObjectPane extends LiteElement {
     const connection = this._nativeConnection
     const conductor = connection?.kind === 'wire' || connection?.kind === 'cable'
     return html`
-      <div class="native-section-title">Elektrische verbinding</div>
       <label><span class="native-label">Verbindingstype</span>
         <select class="native-select" @change=${(event: Event) => {
           const kind = (event.target as HTMLSelectElement).value as ConnectionKind | ''
@@ -584,6 +583,10 @@ export class ObjectPane extends LiteElement {
               ${['none', 'VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].map((type) => html`<option value=${type} ?selected=${(connection.cableType ?? 'none') === type}>${type === 'none' ? 'Geen' : type === 'other' ? 'Ander' : type.replace('-', ' ')}</option>`)}
             </select>
           </label>
+          <label><span class="native-label">Brandklasse (optioneel)</span>
+            <input class="native-input" type="text" maxlength="80" placeholder="Bijv. Cca" .value=${connection.fireClass ?? ''}
+              @change=${(event: Event) => this.#updateConnection({ fireClass: (event.target as HTMLInputElement).value.trim() })} />
+          </label>
           <label class="native-check"><input type="checkbox" .checked=${connection.hasProtectiveConductor ?? false}
             @change=${(event: Event) => this.#updateConnection({ hasProtectiveConductor: (event.target as HTMLInputElement).checked })} /> Met beschermingsgeleider (G)</label>
         ` : ''}
@@ -597,6 +600,20 @@ export class ObjectPane extends LiteElement {
           @change=${(event: Event) => this.#updateConnection({ showLabel: (event.target as HTMLInputElement).checked })} /> Toon aanduiding</label>
       ` : ''}
     `
+  }
+
+  #expandedSections = new Map<string, boolean>()
+
+  #propertySection(key: string, title: string, content: ReturnType<typeof html>, initiallyOpen = false) {
+    return html`<details class="property-section" data-property-section=${key}
+      .open=${this.#expandedSections.get(key) ?? initiallyOpen}
+      @toggle=${(event: Event) => {
+        const section = event.currentTarget as HTMLDetailsElement
+        this.#expandedSections.set(key, section.open)
+      }}>
+      <summary>${title}</summary>
+      <div class="property-section-body">${content}</div>
+    </details>`
   }
 
   #renderNativeSelection() {
@@ -626,29 +643,6 @@ export class ObjectPane extends LiteElement {
         </div>
       </cadle-header>
       <section>
-        ${multiple
-          ? html`<div class="native-note">Binding updates apply to all selected objects.</div>`
-          : html`
-              <div class="native-kv"><span>Type</span><strong>${this._nativeConnection ? CONNECTION_NAMES[this._nativeConnection.kind] : this._nativeSelectedKind || '-'}</strong></div>
-              <div class="native-kv">
-                <span>Id</span>
-                <span
-                  class="native-mono native-kv-value native-kv-truncate"
-                  title=${this._nativeSelectedId || '-'}
-                  >${this._nativeSelectedId || '-'}</span
-                >
-              </div>
-              ${this._nativeName
-                ? html`<div class="native-kv">
-                    <span>Name</span>
-                    <span
-                      class="native-kv-value native-kv-truncate"
-                      title=${this._nativeName}
-                      >${this._nativeName}</span
-                    >
-                  </div>`
-                : ''}
-            `}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
               <label>
@@ -657,7 +651,6 @@ export class ObjectPane extends LiteElement {
                   @input=${(event: Event) => this.#onSymbolTextInput(field.key, (event.target as HTMLInputElement).value)} />
               </label>
             `) : ''}
-        ${!multiple && this._nativeSelectedKind === 'line' ? this.#renderConnectionProperties() : ''}
         <label class="native-label">Binding ID</label>
         <input
           class="native-input native-binding-input"
@@ -666,45 +659,22 @@ export class ObjectPane extends LiteElement {
           @input=${this.#onNativeBindingInput}
           @change=${this.#saveNativeBinding}
           placeholder="e.g. Q1" />
-        <div
-          class="circuit-actions"
-          aria-label="Circuit operations">
-          <button
-            type="button"
-            class="native-button"
-            title="Rename the entire selected circuit"
-            @click=${() => this.#runCircuitOperation('replace')}>
-            <custom-icon icon="swap_horiz"></custom-icon><span>Replace</span>
-          </button>
-          <button
-            type="button"
-            class="native-button"
-            title="Combine all circuits represented by the selection"
-            @click=${() => this.#runCircuitOperation('combine')}>
-            <custom-icon icon="merge"></custom-icon><span>Combine</span>
-          </button>
-          <button
-            type="button"
-            class="native-button"
-            title="Move selected points to a new circuit"
-            @click=${() => this.#runCircuitOperation('split')}>
-            <custom-icon icon="call_split"></custom-icon><span>Split</span>
-          </button>
-        </div>
-        ${this._nativeIsRoom
-          ? html`
-              <div class="native-section-title">Room</div>
+
+        ${!multiple && this._nativeSelectedKind === 'line' ? this.#propertySection('connection', 'Cable & wire', html`
+${this.#renderConnectionProperties()}
+`, true) : ''}
+        ${this._nativeIsRoom ? this.#propertySection('room', 'Room', html`
+
               <label class="native-label">Room name</label>
               <input
                 class="native-input room-name-input"
                 .value=${this._nativeRoomName}
                 @input=${this.#onRoomNameInput}
                 placeholder="e.g. Living" />
-            `
-          : ''}
-        ${!multiple && this._nativeSelectedKind === 'symbol'
-          ? html`
-              <div class="native-section-title">Circuit properties</div>
+
+`, true) : ''}
+        ${!multiple && this._nativeSelectedKind === 'symbol' ? html`
+          ${this.#propertySection('product', 'Product info', html`
               <label class="native-label">Manufacturer</label>
               <input
                 data-electrical-field="manufacturer"
@@ -743,35 +713,11 @@ export class ObjectPane extends LiteElement {
                     placeholder="e.g. R9F64216"
                 /></label>
               </div>
-              <label class="native-label">Role</label>
-              <select
-                class="native-select"
-                .value=${this.#effectiveElectrical().role ?? ''}
-                @change=${(event: Event) => this.#updateElectrical('role', (event.target as HTMLSelectElement).value)}>
-                <option value="">Not classified</option>
-                <option value="switch">Switch</option>
-                <option value="load">Load</option>
-                <option value="protection">Protection</option>
-                <option value="junction">Junction</option>
-                <option value="neutral">Other</option>
-              </select>
-              <label class="native-label">Circuit type</label>
-              <select
-                class="native-select"
-                .value=${this.#effectiveElectrical().circuitType ?? ''}
-                @change=${(event: Event) =>
-                  this.#updateElectrical('circuitType', (event.target as HTMLSelectElement).value)}>
-                <option value="">Infer from symbol</option>
-                <option value="lighting">Lighting</option>
-                <option value="sockets">Sockets</option>
-                <option value="motor">Motor</option>
-                <option value="mixed">Mixed</option>
-                <option value="other">Other</option>
-              </select>
-              ${isProtectionDevice
-                ? html`
-                    <div class="native-row">
-                      <label
+
+`, false)}
+          ${isProtectionDevice ? html`
+${this.#propertySection('protection', 'Protection', html`
+<label
                         ><span class="native-label">${isResidualBreaker ? 'Rated current (A)' : 'Breaker (A)'}</span
                         ><input
                           data-electrical-field="breakerCurrentA"
@@ -781,8 +727,58 @@ export class ObjectPane extends LiteElement {
                           .value=${String(this.#effectiveElectrical().breakerCurrentA ?? '')}
                           @input=${(event: Event) =>
                             this.#updateElectrical('breakerCurrentA', (event.target as HTMLInputElement).value)}
-                      /></label>
-                      <label
+                      /></label>                    ${isResidualBreaker
+                      ? ''
+                      : html`<div class="native-row">
+                          <label
+                            ><span class="native-label">Breaker curve</span
+                            ><select
+                              data-electrical-field="breakerCurve"
+                              class="native-select"
+                              .value=${this.#effectiveElectrical().breakerCurve ?? ''}
+                              @change=${(event: Event) =>
+                                this.#updateElectrical('breakerCurve', (event.target as HTMLSelectElement).value)}>
+                              <option value="">Not set</option>
+                              <option value="B">B</option>
+                              <option value="C">C</option>
+                              <option value="D">D</option>
+                              <option value="other">Other</option>
+                            </select></label
+                          >
+                        </div>`}
+                    ${isResidualBreaker
+                      ? html`<div class="native-row">
+                          <label
+                            ><span class="native-label">RCD (mA)</span
+                            ><input
+                              class="native-input"
+                              type="number"
+                              min="1"
+                              .value=${String(this.#effectiveElectrical().rcdSensitivityMa ?? '')}
+                              @change=${(event: Event) =>
+                                this.#updateElectrical('rcdSensitivityMa', (event.target as HTMLInputElement).value)}
+                          /></label>
+                          <label
+                            ><span class="native-label">RCD type</span
+                            ><select
+                              class="native-select"
+                              .value=${this.#effectiveElectrical().rcdType ?? ''}
+                              @change=${(event: Event) =>
+                                this.#updateElectrical('rcdType', (event.target as HTMLSelectElement).value)}>
+                              <option value="">Not set</option>
+                              <option value="AC">AC</option>
+                              <option value="A">A</option>
+                              <option value="F">F</option>
+                              <option value="B">B</option>
+                              <option value="other">Other</option>
+                            </select></label
+                          >
+                        </div>`
+                      : ''}
+
+`, true)}
+${this.#propertySection('cable', 'Cable', html`
+<div class="native-row"><label
                         ><span class="native-label">Cable (mm²)</span
                         ><input
                           data-electrical-field="cableSectionMm2"
@@ -793,10 +789,7 @@ export class ObjectPane extends LiteElement {
                           .value=${String(this.#effectiveElectrical().cableSectionMm2 ?? '')}
                           @input=${(event: Event) =>
                             this.#updateElectrical('cableSectionMm2', (event.target as HTMLInputElement).value)}
-                      /></label>
-                    </div>
-                    <div class="native-row">
-                      <label
+                      /></label><label
                         ><span class="native-label">Conductors</span
                         ><input
                           data-electrical-field="cableConductors"
@@ -807,8 +800,8 @@ export class ObjectPane extends LiteElement {
                           .value=${String(this.#effectiveElectrical().cableConductors ?? '')}
                           @input=${(event: Event) =>
                             this.#updateElectrical('cableConductors', (event.target as HTMLInputElement).value)}
-                      /></label>
-                      <label
+                      /></label></div>
+<div class="native-row"><label
                         ><span class="native-label">Cable type</span
                         ><select
                           data-electrical-field="cableType"
@@ -825,8 +818,11 @@ export class ObjectPane extends LiteElement {
                           <option value="EXVB">EXVB</option>
                           <option value="other">Other</option>
                         </select></label
-                      >
-                    </div>
+                      ><label><span class="native-label">Brandklasse (optioneel)</span>
+                      <input data-electrical-field="cableFireClass" class="native-input" type="text" maxlength="80"
+                        placeholder="Bijv. Cca" .value=${this.#effectiveElectrical().cableFireClass ?? ''}
+                        @change=${(event: Event) => this.#updateElectrical('cableFireClass', (event.target as HTMLInputElement).value.trim())} />
+                    </label></div>
                     <label class="native-label">Protective conductor</label>
                     <select
                       data-electrical-field="hasProtectiveConductor"
@@ -854,6 +850,9 @@ export class ObjectPane extends LiteElement {
                       <option value="recessed">Recessed in wall</option>
                       <option value="underground">Underground</option>
                     </select>
+
+`, true)}
+${this.#propertySection('supply', 'Supply & neutral', html`
                     <label class="native-label">Supply</label>
                     <div
                       class="native-chip-row native-supply-options"
@@ -924,56 +923,36 @@ export class ObjectPane extends LiteElement {
                         `
                       )}
                     </div>
-                    <div class="native-note">Values apply to this circuit and are stored with the project.</div>
-                    ${isResidualBreaker
-                      ? ''
-                      : html`<div class="native-row">
-                          <label
-                            ><span class="native-label">Breaker curve</span
-                            ><select
-                              data-electrical-field="breakerCurve"
-                              class="native-select"
-                              .value=${this.#effectiveElectrical().breakerCurve ?? ''}
-                              @change=${(event: Event) =>
-                                this.#updateElectrical('breakerCurve', (event.target as HTMLSelectElement).value)}>
-                              <option value="">Not set</option>
-                              <option value="B">B</option>
-                              <option value="C">C</option>
-                              <option value="D">D</option>
-                              <option value="other">Other</option>
-                            </select></label
-                          >
-                        </div>`}
-                    ${isResidualBreaker
-                      ? html`<div class="native-row">
-                          <label
-                            ><span class="native-label">RCD (mA)</span
-                            ><input
-                              class="native-input"
-                              type="number"
-                              min="1"
-                              .value=${String(this.#effectiveElectrical().rcdSensitivityMa ?? '')}
-                              @change=${(event: Event) =>
-                                this.#updateElectrical('rcdSensitivityMa', (event.target as HTMLInputElement).value)}
-                          /></label>
-                          <label
-                            ><span class="native-label">RCD type</span
-                            ><select
-                              class="native-select"
-                              .value=${this.#effectiveElectrical().rcdType ?? ''}
-                              @change=${(event: Event) =>
-                                this.#updateElectrical('rcdType', (event.target as HTMLSelectElement).value)}>
-                              <option value="">Not set</option>
-                              <option value="AC">AC</option>
-                              <option value="A">A</option>
-                              <option value="F">F</option>
-                              <option value="B">B</option>
-                              <option value="other">Other</option>
-                            </select></label
-                          >
-                        </div>`
-                      : ''}
-                    <div class="native-row">
+
+`, false)}
+` : ''}
+${this.#propertySection('circuit', 'Circuit', html`
+              <label class="native-label">Role</label>
+              <select
+                class="native-select"
+                .value=${this.#effectiveElectrical().role ?? ''}
+                @change=${(event: Event) => this.#updateElectrical('role', (event.target as HTMLSelectElement).value)}>
+                <option value="">Not classified</option>
+                <option value="switch">Switch</option>
+                <option value="load">Load</option>
+                <option value="protection">Protection</option>
+                <option value="junction">Junction</option>
+                <option value="neutral">Other</option>
+              </select>
+              <label class="native-label">Circuit type</label>
+              <select
+                class="native-select"
+                .value=${this.#effectiveElectrical().circuitType ?? ''}
+                @change=${(event: Event) =>
+                  this.#updateElectrical('circuitType', (event.target as HTMLSelectElement).value)}>
+                <option value="">Infer from symbol</option>
+                <option value="lighting">Lighting</option>
+                <option value="sockets">Sockets</option>
+                <option value="motor">Motor</option>
+                <option value="mixed">Mixed</option>
+                <option value="other">Other</option>
+              </select>
+${isProtectionDevice ? html`                    <div class="native-row">
                       <label
                         ><span class="native-label">Board</span
                         ><input
@@ -997,10 +976,63 @@ export class ObjectPane extends LiteElement {
                       .value=${this.#effectiveElectrical().notes ?? ''}
                       @change=${(event: Event) =>
                         this.#updateElectrical('notes', (event.target as HTMLTextAreaElement).value)}></textarea>
-                  `
-                : ''}
-            `
-          : ''}
+` : ''}        <div
+          class="circuit-actions"
+          aria-label="Circuit operations">
+          <button
+            type="button"
+            class="native-button"
+            title="Rename the entire selected circuit"
+            @click=${() => this.#runCircuitOperation('replace')}>
+            <custom-icon icon="swap_horiz"></custom-icon><span>Replace</span>
+          </button>
+          <button
+            type="button"
+            class="native-button"
+            title="Combine all circuits represented by the selection"
+            @click=${() => this.#runCircuitOperation('combine')}>
+            <custom-icon icon="merge"></custom-icon><span>Combine</span>
+          </button>
+          <button
+            type="button"
+            class="native-button"
+            title="Move selected points to a new circuit"
+            @click=${() => this.#runCircuitOperation('split')}>
+            <custom-icon icon="call_split"></custom-icon><span>Split</span>
+          </button>
+        </div>
+
+`, false)}
+` : ''}
+        ${multiple || this._nativeSelectedKind !== 'symbol' ? this.#propertySection('circuit-operations', 'Circuit operations', html`
+        <div
+          class="circuit-actions"
+          aria-label="Circuit operations">
+          <button
+            type="button"
+            class="native-button"
+            title="Rename the entire selected circuit"
+            @click=${() => this.#runCircuitOperation('replace')}>
+            <custom-icon icon="swap_horiz"></custom-icon><span>Replace</span>
+          </button>
+          <button
+            type="button"
+            class="native-button"
+            title="Combine all circuits represented by the selection"
+            @click=${() => this.#runCircuitOperation('combine')}>
+            <custom-icon icon="merge"></custom-icon><span>Combine</span>
+          </button>
+          <button
+            type="button"
+            class="native-button"
+            title="Move selected points to a new circuit"
+            @click=${() => this.#runCircuitOperation('split')}>
+            <custom-icon icon="call_split"></custom-icon><span>Split</span>
+          </button>
+        </div>
+
+`, false) : ''}
+        ${this.#propertySection('layout', 'Position & layout', html`
         <label class="native-label">Label position</label>
         <div
           class="native-chip-row native-label-options"
@@ -1139,6 +1171,36 @@ export class ObjectPane extends LiteElement {
               </div>
             `
           : ''}
+        ${this._nativeFlipX !== null || this._nativeFlipY !== null
+          ? html`
+              <label class="native-label">Flip</label>
+              <div class="native-row">
+                ${this._nativeFlipX !== null
+                  ? html`<button
+                      type="button"
+                      class="native-btn-icon"
+                      title="Flip horizontally"
+                      data-active=${this._nativeFlipX ? 'true' : 'false'}
+                      @click=${this.#toggleFlipX}>
+                      ⇋
+                    </button>`
+                  : ''}
+                ${this._nativeFlipY !== null
+                  ? html`<button
+                      type="button"
+                      class="native-btn-icon"
+                      title="Flip vertically"
+                      data-active=${this._nativeFlipY ? 'true' : 'false'}
+                      @click=${this.#toggleFlipY}>
+                      ⇵
+                    </button>`
+                  : ''}
+              </div>
+            `
+          : ''}
+
+`, false)}
+        ${this._nativeSelectedKind === 'text' ? this.#propertySection('text', 'Text', html`
         ${this._nativeSelectedKind === 'text'
           ? html`
               <label class="native-label">Text</label>
@@ -1198,6 +1260,9 @@ export class ObjectPane extends LiteElement {
                 : ''}
             `
           : ''}
+
+`, true) : ''}
+        ${!multiple && this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description') ? this.#propertySection('symbol-text', 'Symbol labels', html`
         ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description')
           ? html`
               <label class="native-label">Symbol text fields</label>
@@ -1215,33 +1280,9 @@ export class ObjectPane extends LiteElement {
               )}
             `
           : ''}
-        ${this._nativeFlipX !== null || this._nativeFlipY !== null
-          ? html`
-              <label class="native-label">Flip</label>
-              <div class="native-row">
-                ${this._nativeFlipX !== null
-                  ? html`<button
-                      type="button"
-                      class="native-btn-icon"
-                      title="Flip horizontally"
-                      data-active=${this._nativeFlipX ? 'true' : 'false'}
-                      @click=${this.#toggleFlipX}>
-                      ⇋
-                    </button>`
-                  : ''}
-                ${this._nativeFlipY !== null
-                  ? html`<button
-                      type="button"
-                      class="native-btn-icon"
-                      title="Flip vertically"
-                      data-active=${this._nativeFlipY ? 'true' : 'false'}
-                      @click=${this.#toggleFlipY}>
-                      ⇵
-                    </button>`
-                  : ''}
-              </div>
-            `
-          : ''}
+
+`, false) : ''}
+        ${this.#propertySection('appearance', 'Appearance', html`
         <label class="native-label">Fill color</label>
         <div class="native-row">
           <input
@@ -1294,7 +1335,36 @@ export class ObjectPane extends LiteElement {
               </div>
             `
           : ''}
-        <div class="native-actions">
+
+`, false)}
+        ${this.#propertySection('details', 'Object details', html`
+        ${multiple
+          ? html`<div class="native-note">Binding updates apply to all selected objects.</div>`
+          : html`
+              <div class="native-kv"><span>Type</span><strong>${this._nativeConnection ? CONNECTION_NAMES[this._nativeConnection.kind] : this._nativeSelectedKind || '-'}</strong></div>
+              <div class="native-kv">
+                <span>Id</span>
+                <span
+                  class="native-mono native-kv-value native-kv-truncate"
+                  title=${this._nativeSelectedId || '-'}
+                  >${this._nativeSelectedId || '-'}</span
+                >
+              </div>
+              ${this._nativeName
+                ? html`<div class="native-kv">
+                    <span>Name</span>
+                    <span
+                      class="native-kv-value native-kv-truncate"
+                      title=${this._nativeName}
+                      >${this._nativeName}</span
+                    >
+                  </div>`
+                : ''}
+            `}
+
+`, false)}
+      </section>
+        <div class="native-actions selection-actions">
           ${this._canConvertToRoom
             ? html`<button
                 type="button"
@@ -1318,7 +1388,7 @@ export class ObjectPane extends LiteElement {
             Delete
           </button>
         </div>
-      </section>
+
     `
   }
 

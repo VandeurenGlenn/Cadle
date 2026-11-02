@@ -40,6 +40,7 @@ export type OneWireTopologyPlan = {
   incomingCable?: {
     conductors: number
     sectionMm2: number
+    fireClass?: string
     cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   }
   mainSwitch?: {
@@ -84,6 +85,7 @@ export type ProjectCircuitSpecification = {
   cableSectionMm2?: number
   cableConductors?: number
   hasProtectiveConductor?: boolean
+  cableFireClass?: string
   cableType?: 'none' | 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
   showCableInstallation?: boolean
@@ -153,6 +155,7 @@ export interface Project extends ProjectInput {
       pageType?: PageType
       schema: { version: string; objects: object[] }
       order?: number
+      oneWireOverflowOf?: UUID
     }
   }
 }

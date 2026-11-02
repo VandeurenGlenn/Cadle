@@ -206,3 +206,22 @@ test('continues on a new page only after all family slots are occupied', () => {
     ]
   )
 })
+
+test('packs circuits by actual rows without reserving empty space above breaker labels', () => {
+  const families = [
+    { family: 'A', anchorX: 0, minX: -40, maxX: 190, ink: [
+      { x: 0, y: 0, width: 190, height: 30 }, { x: -40, y: 300, width: 90, height: 100 }
+    ] },
+    { family: 'B', anchorX: 400, minX: 360, maxX: 470, ink: [
+      { x: 390, y: 0, width: 80, height: 30 }, { x: 360, y: 300, width: 90, height: 100 }
+    ] }
+  ]
+  const compact = packOneWireFamilyBounds(families, 1000)
+  const rectangular = packOneWireFamilyBounds(families.map(({ ink, ...bounds }) => bounds), 1000)
+  assert.ok(compact.endX - compact.startX < rectangular.endX - rectangular.startX)
+  const a = compact.familyXs.get('A')!, b = compact.familyXs.get('B')!
+  for (const left of families[0].ink) for (const right of families[1].ink) {
+    if (left.y + left.height + 8 < right.y || right.y + right.height + 8 < left.y) continue
+    assert.ok(b + right.x - 400 - (a + left.x + left.width) >= 10 - 1e-8)
+  }
+})

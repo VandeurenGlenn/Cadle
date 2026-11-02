@@ -56,6 +56,7 @@ type OneWireBundleOptions = {
   cableSectionMm2?: number
   cableConductors?: number
   hasProtectiveConductor?: boolean
+  cableFireClass?: string
   cableType?: string
   cableInstallation?: OneWireCableInstallation
   showCableInstallation?: boolean
@@ -209,6 +210,7 @@ export const buildOneWireBreakerSection = (
     | 'cableSectionMm2'
     | 'cableConductors'
     | 'hasProtectiveConductor'
+    | 'cableFireClass'
     | 'cableType'
     | 'cableInstallation'
     | 'showCableInstallation'
@@ -333,6 +335,7 @@ export const buildOneWireBreakerSection = (
     conductors: specification?.cableConductors,
     sectionMm2: specification?.cableSectionMm2,
     hasProtectiveConductor: specification?.hasProtectiveConductor,
+    fireClass: specification?.cableFireClass,
     cableType: specification?.cableType
   })
   const cableSectionLabel: TextShape = {
@@ -860,7 +863,7 @@ export const buildKamrailCircuitBundle = (
       return { ...shape, connection: trunk ? sanitizeConnection({ kind: 'cable', showLabel: true, labelOwner: 'circuit',
         conductors: options.cableConductors ?? 3, sectionMm2: options.cableSectionMm2 ?? 2.5,
         hasProtectiveConductor: options.hasProtectiveConductor ?? options.cableConductors !== 4,
-        cableType: options.cableType ?? 'VOB' }) : { kind: 'wire', showLabel: false } }
+        fireClass: options.cableFireClass, cableType: options.cableType ?? 'VOB' }) : { kind: 'wire', showLabel: false } }
     }),
     createdIds,
     // Breaker sections always put their protection symbol first. Selecting it

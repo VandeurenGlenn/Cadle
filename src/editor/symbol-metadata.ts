@@ -1,6 +1,7 @@
 import type { SymbolShape } from './model/types.js'
 import { protectionAnnotationLayout, PROTECTION_FONT_FAMILY, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './layout/protection-label-layout.js'
 import { rcdTypeLabel } from './model/electrical.js'
+import { paperTextContentMarkup } from './layout/paper-text-layout.js'
 
 
 export type SymbolTextFieldDefinition = {
@@ -165,7 +166,8 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
   const description = shape.symbolTextOverrides?.description
   const descriptionLayout = description ? layout?.description : null
   const descriptionText = description && descriptionLayout
-    ? `<text class="onewire-device-description" x="${descriptionLayout.x}" y="${descriptionLayout.y}" font-family="${PROTECTION_FONT_FAMILY}" font-size="${PROTECTION_TEXT_SIZE}" font-weight="600" fill="#000000" stroke="none">${escapeXml(description)}</text>` : ''
+    ? `<text class="onewire-device-description" x="${descriptionLayout.x}" y="${descriptionLayout.y}" font-family="${PROTECTION_FONT_FAMILY}" font-size="${PROTECTION_TEXT_SIZE}" font-weight="600" fill="#000000" stroke="none">${paperTextContentMarkup({ id: shape.id, kind: 'text', position: descriptionLayout,
+      text: descriptionLayout.lines.join('\n'), scale: PROTECTION_TEXT_SIZE / 18 })}</text>` : ''
   if (!protection) {
     return { inner: symbolTextLayer(shape.path, shape.symbolTextOverrides), annotations: descriptionText }
   }

@@ -147,12 +147,14 @@ export type Snapshot = {
   selectedId: string | null
   worldWidth: number
   worldHeight: number
+  overflowPages?: import('../../types.js').Project['pages']
 }
 
 export type DragState = {
   ids: string[]
   pointerStart: Point
   initial: Shape[]
+  connectionInitial?: Shape[]
 }
 
 export type PaperPreset = 'a4-portrait' | 'a4-landscape' | 'a3-portrait' | 'a3-landscape'

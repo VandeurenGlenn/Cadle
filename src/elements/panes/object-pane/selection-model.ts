@@ -44,6 +44,7 @@ export type SelectionShape = {
     cableSectionMm2?: number
     cableConductors?: number
     hasProtectiveConductor?: boolean
+    cableFireClass?: string
     cableType?: string
     cableInstallation?: string
     showCableInstallation?: boolean

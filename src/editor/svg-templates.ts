@@ -7,6 +7,7 @@ import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextPresentation } from './symbol-metadata.js'
 import { electricalConnectionMarkup } from './electrical-connection-markup.js'
+import { paperTextContentMarkup } from './layout/paper-text-layout.js'
 import type { LineShape, Point, Shape } from '../editor/model/types.js'
 import { symbolContentBounds, symbolOpticalMetrics } from './layout/symbol-layout.js'
 import {
@@ -274,7 +275,7 @@ export const shapeTemplate = (
           stroke=${shape.stroke ?? nothing}
           text-anchor=${shape.textAnchor ?? 'start'}
           x=${shape.position.x}
-          y=${shape.position.y}>${shape.text}</text>
+          y=${shape.position.y}>${unsafeSVG(paperTextContentMarkup(shape))}</text>
       `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)

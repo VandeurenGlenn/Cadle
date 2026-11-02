@@ -1,3 +1,4 @@
+import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
@@ -6,6 +7,7 @@ import type jsPDFType from 'jspdf'
 import styles from './cadle-app.css' with { type: 'css' }
 import {
   loadNativeState,
+  asNativeState,
   migrateOneWireProjectPages,
   nativeStateForProjectPage,
   saveNativeState,
@@ -84,6 +86,9 @@ import {
   wallMaskTemplate
 } from './svg-templates.js'
 import { translateShape } from './interaction/shape-transforms.js'
+import { followConnectedConductors } from './interaction/connected-conductors.js'
+import { findConnectionIssues, type ConnectionIssue } from './layout/connection-issues.js'
+import { paginateOneWireCircuits } from './layout/onewire-overflow.js'
 import {
   buildKamrailCircuitBundle,
   ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
@@ -103,7 +108,10 @@ import {
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
-import { fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
+import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
+import { paperTextLinesForShape } from './layout/paper-text-layout.js'
 import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -239,6 +247,8 @@ export class CadleApp extends LiteElement {
   #draft: DraftShape | null = null
   #connectionKind: ConnectionKind | null = null
   #drag: DragState | null = null
+  #issueShapes: Shape[] = []
+  #issueCache: ConnectionIssue[] = []
   #logoDrag: { pointerStart: Point; initial: Point } | null = null
   #labelDrag: {
     shapeId: string
@@ -803,13 +813,14 @@ export class CadleApp extends LiteElement {
       groupedSelection: this.#selectedGroupId() !== null
     })
     if (!nextShapes) return
-    this.#document.shapes = nextShapes
+    this.#document.shapes = this.#followOneWireConnections(this.#document.shapes, nextShapes)
     if (payload.connection && selectedShape?.kind === 'line') {
       const connection = (nextShapes.find((shape) => shape.id === selectedShape.id) as LineShape | undefined)?.connection
       if (connection?.labelOwner === 'circuit' && selectedShape.sourceLink) {
         const update: CircuitPropertyUpdate = {}
         if ('sectionMm2' in payload.connection) update.cableSectionMm2 = connection.sectionMm2
         if ('conductors' in payload.connection) update.cableConductors = connection.conductors
+        if ('fireClass' in payload.connection) update.cableFireClass = connection.fireClass?.trim() || null
         if ('cableType' in payload.connection) update.cableType = connection.cableType
         if ('hasProtectiveConductor' in payload.connection) update.hasProtectiveConductor = connection.hasProtectiveConductor
         const circuitKey = selectedShape.sourceLink.kind === 'board' ? selectedShape.sourceLink.id : circuitKeyForShape(selectedShape)
@@ -822,13 +833,15 @@ export class CadleApp extends LiteElement {
         const cable = this.#project.oneWireTopology.incomingCable
         if (connection.sectionMm2) cable.sectionMm2 = connection.sectionMm2
         if (connection.conductors) cable.conductors = connection.conductors
+        if ('fireClass' in payload.connection) cable.fireClass = connection.fireClass?.trim() || undefined
         if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
         this.#document.shapes = this.#document.shapes.map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'incoming-cable-label'
-          ? { ...shape, text: connection.name?.trim() || `${cable.conductors}x${cable.sectionMm2} mm² ${cable.cableType.replace('-', ' ')}`, hidden: connection.showLabel === false } : shape)
+          ? { ...shape, text: connection.name?.trim() ? withCableFireClass(connection.name.trim(), cable.fireClass) : cableLabelText(cable, 'x'), hidden: connection.showLabel === false } : shape)
         cadleShell.project = this.#project
         void this.#persistProjectMetadata()
       }
     }
+    if (currentPageType === 'onewire' && (payload.connection || payload.symbolTextOverrides)) this.#layoutOneWireLabels(true)
     this.#pushHistory()
     this.#render()
   }
@@ -1153,6 +1166,8 @@ export class CadleApp extends LiteElement {
         this.#compactExistingOneWireRail()
         migrated = true
       }
+      this.#layoutOneWireLabels(true)
+      this.#document.shapes = centerOneWireContent(this.#document.shapes, this.#safeAreaRect()).shapes
       migrationComplete = migrated || !hasOneWireShapes
       if (migrationComplete) this.#documentSizeMigrated = true
     }
@@ -1170,7 +1185,7 @@ export class CadleApp extends LiteElement {
         this.#documentSizeMigrated = true
       }
     }
-    if (parsed.paperLayoutVersion !== 1) {
+    if (parsed.paperLayoutVersion !== 1 && pageType !== 'onewire') {
       const fitted = fitShapesToContentArea(this.#document.shapes, this.#safeAreaRect())
       this.#document.shapes = fitted.shapes
       this.#documentSizeMigrated = true
@@ -1201,13 +1216,61 @@ export class CadleApp extends LiteElement {
     this.#oneWireBusBarId = null
   }
 
+  #redistributeOverflow() {
+    if (!this.#project || !this.#pageKey || this.#project.pages[this.#pageKey]?.pageType !== 'onewire') return
+    const source = this.#project.pages[this.#pageKey]
+    const layout = paginateOneWireCircuits(this.#document.shapes.filter((shape) => shape.sourceLink?.role !== 'overflow-reference'), this.#safeAreaRect(), nextShapeId)
+    if (!layout.changed || !layout.fits) return
+    const previousChildren = Object.entries(this.#project.pages).filter(([, page]) => page.oneWireOverflowOf === this.#pageKey)
+    const lowOrder = Math.max(source.order ?? 0, ...previousChildren.map(([, page]) => page.order ?? 0))
+    const highOrder = Math.min(...Object.values(this.#project.pages).flatMap((page) =>
+      typeof page.order === 'number' && page.order > lowOrder ? [page.order] : []), lowOrder + 1)
+    const state = this.#nativeDocumentState()
+    const keys = [this.#pageKey]
+    for (let index = 1; index < layout.pages.length; index++) {
+      const key = nextShapeId() as UUID
+      keys.push(key)
+      this.#project.pages[key] = { name: `${source.name} · vervolg ${previousChildren.length + index}`,
+        creationTime: Date.now(), pageType: 'onewire', oneWireOverflowOf: this.#pageKey,
+        ...(typeof source.order === 'number' ? { order: lowOrder + (highOrder - lowOrder) * index / layout.pages.length } : {}),
+        schema: { version: 'native-svg-1', objects: [] } }
+    }
+    const ordered = Object.entries(this.#project.pages).sort(([, a], [, b]) =>
+      (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.creationTime - b.creationTime)
+    for (const [index, key] of keys.entries()) {
+      const shapes = layout.pages[index]
+      const rail = shapes.find((shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape))
+      if (rail && keys.length > 1) {
+        const from = index ? ordered.findIndex(([id]) => id === keys[index - 1]) + 1 : null
+        const to = index < keys.length - 1 ? ordered.findIndex(([id]) => id === keys[index + 1]) + 1 : null
+        const hasHeader = shapes.some((shape) => shape.sourceLink?.role.startsWith('sheet-reference:'))
+        shapes.push({ id: nextShapeId(), kind: 'text', position: { x: rail.start.x, y: rail.start.y + (hasHeader ? 76 : 56) },
+          text: [from ? `VAN BLAD ${from}` : '', to ? `VERVOLG OP BLAD ${to}` : ''].filter(Boolean).join('\n'),
+          scale: paperTextScale(2.5), fill: '#000000', stroke: 'none',
+          sourceLink: { kind: 'board', id: this.#pageKey, role: 'overflow-reference' } })
+      }
+      const centered = centerOneWireContent(shapes, this.#safeAreaRect()).shapes
+      this.#project.pages[key].schema = { version: 'native-svg-1', objects: [
+        { kind: 'cadle-native-svg-document', payload: { ...state, shapes: centered, selectedId: null } }
+      ] }
+      if (!index) this.#document.shapes = centered
+    }
+    this.#document.retainExistingSelection()
+    cadleShell.project = this.#project
+    void this.#persistProjectMetadata()
+  }
+
   #pushHistory(persist = true, replaceCurrent = false) {
+    if (!this.readOnly) this.#redistributeOverflow()
     this.#document.history.push(
       {
         shapes: this.#document.shapes,
         selectedId: this.#document.selectedId,
         worldWidth: this.#worldWidth,
-        worldHeight: this.#worldHeight
+        worldHeight: this.#worldHeight,
+        ...(this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire' ? {
+          overflowPages: Object.fromEntries(Object.entries(this.#project.pages).filter(([, page]) => page.oneWireOverflowOf === this.#pageKey))
+        } : {})
       },
       replaceCurrent
     )
@@ -1220,6 +1283,16 @@ export class CadleApp extends LiteElement {
     this.#document.selectedId = snapshot.selectedId
     this.#worldWidth = snapshot.worldWidth
     this.#worldHeight = snapshot.worldHeight
+    if (snapshot.overflowPages && this.#project) {
+      for (const [key, page] of Object.entries(this.#project.pages)) {
+        if (page.oneWireOverflowOf === this.#pageKey) delete this.#project.pages[key]
+      }
+      Object.assign(this.#project.pages, structuredClone(snapshot.overflowPages))
+      this.#project.pages[this.#pageKey].schema = { version: 'native-svg-1',
+        objects: [{ kind: 'cadle-native-svg-document', payload: this.#nativeDocumentState() }] }
+      cadleShell.project = this.#project
+      void this.#persistProjectMetadata()
+    }
     this.#draft = null
     this.#drag = null
     this.#persist()
@@ -1738,6 +1811,7 @@ export class CadleApp extends LiteElement {
     if (!ids.length || deltaDegrees === 0) return false
     const center = this.#selectionCenter()
     if (!center) return false
+    const before = [...this.#document.shapes]
     for (const id of ids) {
       const shape = this.#shapeById(id)
       if (!shape) continue
@@ -1788,6 +1862,7 @@ export class CadleApp extends LiteElement {
       }
     }
 
+    this.#document.shapes = this.#followOneWireConnections(before, this.#document.shapes)
     this.#pushHistory(true, replaceHistory)
     this.#render()
     return true
@@ -1804,6 +1879,7 @@ export class CadleApp extends LiteElement {
       y: center.y + (point.y - center.y) * factor
     })
 
+    const before = [...this.#document.shapes]
     for (const id of ids) {
       const shape = this.#shapeById(id)
       if (!shape) continue
@@ -1859,6 +1935,7 @@ export class CadleApp extends LiteElement {
       }
     }
 
+    this.#document.shapes = this.#followOneWireConnections(before, this.#document.shapes)
     this.#pushHistory(true, replaceHistory)
     this.#render()
     return true
@@ -1874,12 +1951,14 @@ export class CadleApp extends LiteElement {
     const center = this.#selectionCenter()
     if (!center) return false
 
+    const before = [...this.#document.shapes]
     for (const id of ids) {
       const shape = this.#shapeById(id)
       if (!shape) continue
       this.#setShape(transformShapeForSelection(shape, center, action))
     }
 
+    this.#document.shapes = this.#followOneWireConnections(before, this.#document.shapes)
     this.#pushHistory()
     this.#render()
     return true
@@ -2141,6 +2220,7 @@ export class CadleApp extends LiteElement {
         cableSectionMm2: null,
         cableConductors: null,
         hasProtectiveConductor: null,
+        cableFireClass: null,
         cableType: null,
         cableInstallation: null,
         showCableInstallation: null,
@@ -2171,12 +2251,14 @@ export class CadleApp extends LiteElement {
     const ids = this.#selectedShapeIds()
     if (!ids.length) return false
 
+    const before = [...this.#document.shapes]
     for (const id of ids) {
       const shape = this.#shapeById(id)
       if (!shape) continue
       this.#setShape(this.#translateShape(cloneShape(shape), dx, dy))
     }
 
+    this.#document.shapes = this.#followOneWireConnections(before, this.#document.shapes)
     this.#pushHistory()
     this.#render()
     return true
@@ -2744,6 +2826,21 @@ export class CadleApp extends LiteElement {
     return changed
   }
 
+  #followOneWireConnections(before: Shape[], after: Shape[]): Shape[] {
+    if (!this.#pageKey || this.#project?.pages?.[this.#pageKey]?.pageType !== 'onewire') return after
+    const originals = new Map(before.map((shape) => [shape.id, shape]))
+    const moved = new Set(after.filter((shape) => originals.get(shape.id) !== shape).map((shape) => shape.id))
+    return followConnectedConductors(before, after, moved)
+  }
+
+  #layoutOneWireLabels(repack = false) {
+    let shapes = presentConnectionLabels(this.#document.shapes)
+    const families = new Set(shapes.flatMap((shape) => shape.sourceLink?.role === 'breaker' ? [shape.sourceLink.id] : []))
+    for (const family of families) shapes = spaceOneWireCircuitAnnotations(shapes, family).shapes
+    this.#document.shapes = spaceOneWireTopologyAnnotations(shapes)
+    if (repack) this.#compactExistingOneWireRail()
+  }
+
   #compactExistingOneWireRail(): boolean {
     let changed = false
     // Keep the saved circuit names, but omit the duplicate headings from
@@ -2827,7 +2924,8 @@ export class CadleApp extends LiteElement {
           family: anchor.id,
           anchorX: anchor.x,
           minX: xs.length ? Math.min(...xs) : anchor.x,
-          maxX: xs.length ? Math.max(...xs) : anchor.x
+          maxX: xs.length ? Math.max(...xs) : anchor.x,
+          ink: boxes
         }
       })
       const safeArea = this.#safeAreaRect()
@@ -3370,6 +3468,7 @@ export class CadleApp extends LiteElement {
           cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
           cableConductors: Math.max(...familyGroups.map((group) => group.specification.cableConductors)),
           hasProtectiveConductor: familyGroups[0]?.specification.hasProtectiveConductor ?? true,
+          cableFireClass: familyGroups[0]?.specification.cableFireClass,
           cableType: familyGroups[0]?.specification.cableType ?? 'VOB',
           cableInstallation: familyGroups[0]?.specification.cableInstallation ?? 'conduit-recessed',
           showCableInstallation: familyGroups[0]?.specification.showCableInstallation ?? true,
@@ -3401,6 +3500,8 @@ export class CadleApp extends LiteElement {
       const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
       const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
       this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
+      this.#layoutOneWireLabels(true)
+      this.#document.shapes = centerOneWireContent(this.#document.shapes, safeArea).shapes
       this.#document.selectedId = null
       this.#document.selectedIds = new Set()
 
@@ -3496,6 +3597,7 @@ export class CadleApp extends LiteElement {
       cableSectionMm2?: number
       cableConductors?: number
       hasProtectiveConductor?: boolean
+      cableFireClass?: string
       cableType?: string
       cableInstallation?: 'conduit' | 'conduit-recessed' | 'without-conduit' | 'on-wall' | 'recessed' | 'underground'
       showCableInstallation?: boolean
@@ -3960,6 +4062,8 @@ export class CadleApp extends LiteElement {
     })
     if (!result.changed) return false
     this.#document.shapes = result.shapes
+    this.#layoutOneWireLabels(result.shapes.some((shape) => shape.kind === 'text' && !shape.hidden &&
+      shape.sourceLink?.role === 'cable-section' && paperTextLinesForShape(shape).length > 1))
     this.#pushHistory(persist)
     this.#render()
     return true
@@ -4355,7 +4459,7 @@ export class CadleApp extends LiteElement {
         const nativeShapes =
           parsed && typeof parsed === 'object' && 'shapes' in parsed ? (parsed as { shapes?: unknown }).shapes : null
 
-        if (Array.isArray(nativeShapes)) this.#applyPersistedState({ shapes: nativeShapes })
+        if (Array.isArray(nativeShapes)) this.#applyPersistedState(asNativeState(parsed) ?? { shapes: nativeShapes })
         else return
         this.#document.selectedId = null
         this.#draft = null
@@ -4694,6 +4798,30 @@ export class CadleApp extends LiteElement {
       : shapes
   }
 
+  #connectionIssuesTemplate() {
+    if (this.readOnly || this.#project?.pages?.[this.#pageKey]?.pageType !== 'onewire') return nothing
+    const shapes = this.#document.shapes
+    if (this.#issueShapes.length !== shapes.length || this.#issueShapes.some((shape, index) => shape !== shapes[index])) {
+      this.#issueShapes = [...shapes]
+      this.#issueCache = findConnectionIssues(shapes)
+    }
+    const area = this.#safeAreaRect()
+    const boxes = shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
+    const tooLarge = boxes.length && (Math.max(...boxes.map((box) => box.x + box.width)) - Math.min(...boxes.map((box) => box.x)) > area.width ||
+      Math.max(...boxes.map((box) => box.y + box.height)) - Math.min(...boxes.map((box) => box.y)) > area.height)
+    return svg`<g class="onewire-connection-issues" data-issue-count=${this.#issueCache.length} pointer-events="none" aria-label="Losse aansluitingen">
+      ${this.#issueCache.map((issue) => svg`<g data-wire-id=${issue.shapeId} data-endpoint=${issue.endpoint}>
+        <title>${issue.nearby ? 'Aansluiting net gemist' : 'Los draaduiteinde'}</title>
+        ${issue.nearby ? svg`<line x1=${issue.point.x} y1=${issue.point.y} x2=${issue.nearby.x} y2=${issue.nearby.y}
+          stroke="#d97706" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>` : nothing}
+        <circle cx=${issue.point.x} cy=${issue.point.y} r="6" fill="#ffffff" fill-opacity="0.85"
+          stroke=${issue.nearby ? '#d97706' : '#dc2626'} stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      </g>`)}
+      ${this.#issueCache.length || tooLarge ? svg`<text class="connection-guidance" x=${area.x + 12} y=${area.y + 24}
+        fill="#92400e" stroke="none" font-size="18">${tooLarge ? 'Tekening past niet op dit blad. Verdeel de te brede kring.' : `${this.#issueCache.length} losse aansluiting${this.#issueCache.length === 1 ? '' : 'en'}`}</text>` : nothing}
+    </g>`
+  }
+
   #committedTemplate(selectedShape: Shape | null) {
     const displayShapes = this.#displayShapes()
     const wallShapes = displayShapes.filter((shape) => shape.kind === 'wall')
@@ -4769,6 +4897,7 @@ export class CadleApp extends LiteElement {
       ${groupedTemplate(restShapes)}
       ${groupedTemplate(openingShapes)}
       ${groupedTemplate(symbolShapes)}
+      ${this.#connectionIssuesTemplate()}
       ${roomLabelsTemplate(this.#document.shapes)}
       ${this.#bindingLabelsTemplate()}
       ${this.#projectTitleBlockTemplate()}
@@ -4809,6 +4938,8 @@ export class CadleApp extends LiteElement {
   #publishNativeControlsState() {
     if (this.readOnly) return
     pubsub.publish('editor.controls.state', {
+      canUndo: this.#document.history.canUndo,
+      canRedo: this.#document.history.canRedo,
       paperPreset: this.#paperPreset,
       printMargin: this.#printMargin,
       oneWirePreset: this.#oneWirePreset,
@@ -5235,6 +5366,7 @@ export class CadleApp extends LiteElement {
           cableSectionMm2,
           cableConductors,
           hasProtectiveConductor,
+          cableFireClass: primarySpecification?.cableFireClass,
           cableType: primarySpecification?.cableType ?? 'VOB',
           cableInstallation: primarySpecification?.cableInstallation ?? 'conduit-recessed',
           showCableInstallation,
@@ -5406,6 +5538,9 @@ export class CadleApp extends LiteElement {
   }
 
   #onPointerMove = (event: PointerEvent) => {
+    // Recover when a mouse release occurred outside the stage/capture.
+    if (event.pointerType === 'mouse' && event.buttons === 0 && this.#stagePointerId === event.pointerId &&
+      (this.#drag || this.#labelDrag || this.#isPanning)) this.#onPointerUp(event)
     // Space-drag pan
     if (this.#isPanning && this.#panStart && this.#stagePointerId === event.pointerId) {
       const panel = this.shadowRoot?.querySelector<HTMLElement>('.panel')
@@ -5449,7 +5584,8 @@ export class CadleApp extends LiteElement {
         drag,
         (point) => this.#snapPoint(point),
         this.#document.shapes,
-        this.#viewport.state.zoom
+        this.#viewport.state.zoom,
+        Boolean(this.#pageKey && this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire')
       )
       this.#setShapes(movedShapes)
       this.#render()

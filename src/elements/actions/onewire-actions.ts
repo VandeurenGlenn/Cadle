@@ -24,6 +24,7 @@ type OneWireComposeKind = 'breaker' | 'switch' | 'kamrail' | 'load'
 export class OneWireActions extends LiteElement {
   static styles = [styles]
 
+  @property({ type: Boolean }) accessor menuOpen = false
   @property({ type: Boolean }) accessor isVisible = false
   @property({ type: String }) accessor activeKind: OneWireComposeKind = 'switch'
   @property({ attribute: false }) accessor connectionKind: ConnectionKind | null = null
@@ -77,6 +78,23 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
+  #openConnections = (event: MouseEvent) => {
+    const trigger = event.currentTarget as HTMLElement
+    const menu = this.shadowRoot?.querySelector<HTMLElement>('#connection-options')
+    if (!menu) return
+    if (menu.matches(':popover-open')) { menu.hidePopover(); return }
+    const rect = trigger.getBoundingClientRect()
+    menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 232))}px`
+    menu.style.top = `${rect.bottom + 8}px`
+    menu.showPopover({ source: trigger })
+    if (!event.detail) menu.querySelector<HTMLButtonElement>('button')?.focus()
+  }
+
+  @listen('resize', { target: 'window' })
+  closeConnectionsOnResize() {
+    this.shadowRoot?.querySelector<HTMLElement>('#connection-options')?.hidePopover()
+  }
+
   #handleAction = (kind: OneWireComposeKind) => {
     pubsub.publish('editor.controls.command', { onewireCompose: kind })
   }
@@ -85,7 +103,7 @@ export class OneWireActions extends LiteElement {
     if (!this.isVisible) return html``
 
     return html`
-      <div class="onewire-actions-container">
+      <div class="onewire-actions-container" role="group" aria-label="Electrical tools">
         ${this.#actions.map(
           (action) => html`
             <button
@@ -99,22 +117,33 @@ export class OneWireActions extends LiteElement {
             </button>
           `
         )}
-        <details class="connection-menu">
-          <summary title="Elektrische verbindingen" aria-label="Elektrische verbindingen" data-active=${this.connectionKind ? 'true' : 'false'}>
+        <div class="connection-menu">
+          <button type="button" class="connection-trigger" title="Elektrische verbindingen" aria-label="Elektrische verbindingen"
+            aria-controls="connection-options" aria-expanded=${this.menuOpen ? 'true' : 'false'}
+            @click=${this.#openConnections} data-active=${this.connectionKind ? 'true' : 'false'}>
             ${this.#connectionIcon(this.connectionKind ?? 'cable')}
             <span>${this.connectionKind ? CONNECTION_NAMES[this.connectionKind] : 'Verbinding'}</span>
-          </summary>
-          <div class="connection-options">
+            <custom-icon class="menu-chevron" icon="keyboard_arrow_down"></custom-icon>
+          </button>
+          <div id="connection-options" class="connection-options" popover="auto" aria-label="Electrical connections"
+        @keydown=${(event: KeyboardEvent) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          this.shadowRoot?.querySelector<HTMLElement>('#connection-options')?.hidePopover()
+          requestAnimationFrame(() => this.shadowRoot?.querySelector<HTMLButtonElement>('.connection-trigger')?.focus())
+        }}
+            @toggle=${(event: ToggleEvent) => { this.menuOpen = event.newState === 'open' }}>
+            <div class="popover-heading">Electrical connections</div>
             ${this.#connections.map((kind) => html`
               <button class="onewire-action-btn" aria-label=${`Teken ${CONNECTION_NAMES[kind].toLowerCase()}`}
                 aria-pressed=${this.connectionKind === kind ? 'true' : 'false'} @click=${(event: Event) => {
                   pubsub.publish('editor.controls.command', { connectionKind: kind })
-                  const details = (event.currentTarget as HTMLElement).closest('details')
-                  if (details) details.open = false
+                  ;(event.currentTarget as HTMLElement).closest<HTMLElement>('[popover]')?.hidePopover()
                 }}>${this.#connectionIcon(kind)}<span>${CONNECTION_NAMES[kind]}</span></button>
             `)}
           </div>
-        </details>
+        </div>
       </div>
     `
   }

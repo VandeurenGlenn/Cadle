@@ -1,5 +1,6 @@
 import { LiteElement, html, property, customElement, query, listen } from '@vandeurenglenn/lite'
 import { shellStyles } from './styles.js'
+import { ref } from 'lit/directives/ref.js'
 import { parseHash } from './routing.js'
 import { PresenceController } from '../sharing/presence.js'
 import { iconSetTemplate } from '../ui/icon-set.js'
@@ -361,6 +362,18 @@ export class AppShell extends LiteElement {
 
   private _presence = new PresenceController(this._presenceName, this._presenceColor, () => this.#syncRemotePresence())
   #nativeEditorModules: Promise<unknown> | null = null
+  #editorHeaderObserver?: ResizeObserver
+  #editorHeaderElement?: Element
+  #observeEditorHeader = (element?: Element) => {
+    if (element === this.#editorHeaderElement) return
+    this.#editorHeaderObserver?.disconnect()
+    this.#editorHeaderElement = element
+    if (!element) return
+    this.#editorHeaderObserver = new ResizeObserver(([entry]) => {
+      this.style.setProperty('--cadle-editor-header-height', `${entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height}px`)
+    })
+    this.#editorHeaderObserver.observe(element)
+  }
 
   #ensureNativeEditorLoaded(): Promise<unknown> {
     this.#nativeEditorModules ??= Promise.all([
@@ -939,6 +952,8 @@ export class AppShell extends LiteElement {
   }
 
   disconnectedCallback(): void {
+    this.#editorHeaderObserver?.disconnect()
+    this.#editorHeaderElement = undefined
     this.#broadcastPresence(undefined, true)
     this._presence.disconnect()
     window.removeEventListener('hashchange', this.#onhashchange)
@@ -1570,7 +1585,8 @@ export class AppShell extends LiteElement {
               .catalog=${this.catalog}></project-pane>
           </aside>
           <main class="center-stage">
-            <div class="center-stage-toolbar">
+            <header class="editor-header" ${ref(this.#observeEditorHeader)}>
+            <div class="editor-context-bar">
               <button
                 class="mobile-drawer-toggle"
                 type="button"
@@ -1580,19 +1596,12 @@ export class AppShell extends LiteElement {
                 @click=${this.#toggleMobileDrawer}>
                 <custom-icon icon=${this.mobileDrawerOpen ? 'menu_open' : 'menu'}></custom-icon>
               </button>
-              ${circuitSchedulePage
-                ? ''
-                : html`
-                    <div class="editor-actions">
-                      ${this.currentPage?.pageType === 'onewire' ? html`<onewire-actions></onewire-actions>` : ''}
-                      <cadle-actions></cadle-actions>
-                    </div>
-                  `}
-              ${this.loadedPage && this.project?.pages?.[this.loadedPage]
-                ? html`<span style="font-size: 14px; color: var(--md-sys-color-on-surface-variant);"
-                    >${this.project.pages[this.loadedPage].name}</span
-                  >`
-                : ''}
+              <div class="drawing-context">
+                <span class="drawing-project" title=${this.currentProjectName}>${this.currentProjectName}</span>
+                <span class="context-separator" aria-hidden="true">/</span>
+                <h1 class="drawing-title" title=${this.currentPageName}>${this.currentPageName || 'Drawing'}</h1>
+              </div>
+              <span class="drawing-kind">${circuitSchedulePage ? 'Circuit overview' : this.currentPage?.pageType === 'onewire' ? 'One-wire' : 'Floor plan'}</span>
               <button
                 class="settings-navigation"
                 type="button"
@@ -1620,6 +1629,14 @@ export class AppShell extends LiteElement {
                     </button>
                   `}
             </div>
+              ${circuitSchedulePage ? '' : html`
+                <div class="center-stage-toolbar" role="toolbar" aria-label="Drawing toolbar">
+                  <cadle-actions page-type=${this.currentPage?.pageType ?? 'groundplan'}>
+                    ${this.currentPage?.pageType === 'onewire' ? html`<onewire-actions></onewire-actions>` : ''}
+                  </cadle-actions>
+                </div>
+              `}
+            </header>
             <custom-pages attr-for-selected="data-route">
               <home-field data-route="home"></home-field>
               <div

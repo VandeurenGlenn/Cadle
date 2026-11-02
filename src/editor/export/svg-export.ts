@@ -3,6 +3,7 @@ import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextPresentation } from '../symbol-metadata.js'
 import { electricalConnectionMarkup } from '../electrical-connection-markup.js'
+import { paperTextContentMarkup } from '../layout/paper-text-layout.js'
 import type { LineShape, Point, Shape } from '../../editor/model/types.js'
 import type { PaperPresetConfig } from '../constants.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
@@ -318,7 +319,7 @@ export const shapeMarkup = (
             ${textFillAttr}${textStrokeAttr}
             text-anchor="${shape.textAnchor ?? 'start'}"
             x="${shape.position.x}"
-            y="${shape.position.y}">${escapeHtml(shape.text)}</text>
+            y="${shape.position.y}">${paperTextContentMarkup(shape)}</text>
         `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)

@@ -27,8 +27,8 @@ section {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 4px;
-  font-size: 14px;
+  margin-bottom: 0;
+  font-size: 12px;
 }
 
 .meta {
@@ -87,7 +87,7 @@ section {
 
 .toolbar-label {
   flex: 1 1 auto;
-  font: var(--md-sys-typescale-label-medium);
+  font: 500 11px/1.3 var(--cadle-font-sans);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--md-sys-color-primary);
@@ -156,10 +156,11 @@ custom-button:active {
 }
 
 .native-label {
-  margin-top: var(--cadle-space-2);
-  font: var(--md-sys-typescale-label-small);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  display: block;
+  margin-top: 4px;
+  font: 500 11px/1.3 var(--cadle-font-sans);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -179,19 +180,19 @@ custom-button:active {
 
 .native-row > label > .native-label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .native-input {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--md-sys-color-outline-variant);
-  min-height: var(--cadle-control-height);
+  min-height: 30px;
   border-radius: var(--cadle-radius-sm);
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-body-medium);
-  padding: 8px 10px;
+  font: 12px/1.35 var(--cadle-font-sans);
+  padding: 5px 7px;
   outline: none;
 }
 
@@ -207,12 +208,12 @@ custom-button:active {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--md-sys-color-outline-variant);
-  min-height: var(--cadle-control-height);
+  min-height: 30px;
   border-radius: var(--cadle-radius-sm);
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
-  font: var(--md-sys-typescale-body-medium);
-  padding: 8px 10px;
+  font: 12px/1.35 var(--cadle-font-sans);
+  padding: 5px 7px;
   outline: none;
   cursor: pointer;
 }
@@ -229,7 +230,7 @@ custom-button:active {
 .native-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
 }
 
 .native-chip {
@@ -239,8 +240,9 @@ custom-button:active {
   border-radius: var(--cadle-radius-sm);
   background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 92%, transparent);
   color: var(--md-sys-color-on-surface-variant);
-  padding: 7px 12px;
-  font: var(--md-sys-typescale-label-medium);
+  padding: 4px 7px;
+  min-height: 28px;
+  font: 500 11px/1.3 var(--cadle-font-sans);
   cursor: pointer;
 }
 
@@ -293,15 +295,15 @@ custom-button:active {
 
 .native-actions {
   display: flex;
-  gap: var(--cadle-space-2);
-  margin-top: var(--cadle-space-2);
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .circuit-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--cadle-space-2);
-  margin-top: var(--cadle-space-2);
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .circuit-actions .native-button {
@@ -315,12 +317,15 @@ custom-button:active {
 
 .circuit-actions custom-icon {
   flex: 0 0 auto;
-  --custom-icon-size: 18px;
+  --custom-icon-size: 14px;
+  font-size: 14px;
 }
 
 .circuit-actions span {
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .native-button {
@@ -329,8 +334,8 @@ custom-button:active {
   border-radius: var(--cadle-radius-md);
   background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface-container-high));
   color: var(--md-sys-color-on-surface);
-  padding: 8px 10px;
-  font: var(--md-sys-typescale-label-medium);
+  padding: 5px 7px;
+  font: 500 11px/1.3 var(--cadle-font-sans);
   cursor: pointer;
 }
 
@@ -366,7 +371,7 @@ custom-button:active {
 .native-input-sm {
   width: 68px;
   text-align: center;
-  padding: 6px 8px;
+  padding: 4px 6px;
 }
 
 .native-unit {
@@ -376,8 +381,8 @@ custom-button:active {
 }
 
 .native-btn-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--cadle-radius-md);
@@ -402,8 +407,8 @@ custom-button:active {
 }
 
 .native-color {
-  width: 36px;
-  height: 32px;
+  width: 30px;
+  height: 28px;
   padding: 2px;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--cadle-radius-md);
@@ -441,4 +446,77 @@ custom-button:active {
 .native-btn-clear:hover {
   background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
   color: var(--md-sys-color-error);
+}
+
+/* Keep the common fields close, with secondary controls one disclosure away. */
+cadle-header { --cadle-header-height: 32px; }
+.meta { font-size: 10px; letter-spacing: 0.03em; }
+.native-binding-input { min-height: 28px; }
+.property-section {
+  flex: 0 0 auto;
+  min-width: 0;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.property-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 6px 2px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--md-sys-color-on-surface);
+  font: 600 12px/1.3 var(--cadle-font-sans);
+}
+.property-section > summary::-webkit-details-marker { display: none; }
+.property-section > summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  opacity: 0.65;
+}
+.property-section[open] > summary::after { transform: rotate(45deg); }
+.property-section > summary:hover { color: var(--md-sys-color-primary); }
+.property-section > summary:focus-visible,
+.native-button:focus-visible, .native-btn-icon:focus-visible, .native-color:focus-visible {
+  outline: none;
+  box-shadow: var(--cadle-focus-ring);
+}
+.property-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 1px 10px;
+}
+.property-section-body > .native-label:first-child { margin-top: 0; }
+.native-row:has(> label) { align-items: flex-end; }
+.native-check, .native-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  font: 12px/1.4 var(--cadle-font-sans);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.native-check input, .native-check-row input { margin: 0; accent-color: var(--md-sys-color-primary); }
+textarea.native-input { min-height: 60px; resize: vertical; }
+.selection-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 7px 8px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+}
+.selection-actions .native-button { min-height: 28px; }
+@media (pointer: coarse) {
+  .property-section > summary { min-height: 40px; }
+  .native-button, .native-btn-icon, .native-chip { min-height: 36px; }
+  .native-input, .native-select { min-height: 36px; font-size: 16px; }
 }

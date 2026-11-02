@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test'
+
+test('uses compact disclosures and keeps their state while editing and switching selection', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  await page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000104"]').click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element: any) => element.waitForPageReady('00000000-0000-4000-8000-000000000104'))).toBe(true)
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const selectBreaker = async (index = 0) => {
+    const point = await app.getByRole('img', { name: 'Automaat', exact: true }).nth(index).locator('path').first()
+      .evaluate((node: SVGPathElement) => {
+        const point = node.getPointAtLength(2).matrixTransform(node.getScreenCTM()!)
+        return { x: point.x, y: point.y }
+      })
+    await page.mouse.click(point.x, point.y)
+  }
+  await selectBreaker()
+  const pane = page.locator('#object-inspector')
+  const section = (key: string) => pane.locator(`[data-property-section="${key}"]`)
+  await expect(section('product')).not.toHaveAttribute('open')
+  await expect(section('layout')).not.toHaveAttribute('open')
+  await expect(section('protection')).toHaveAttribute('open', '')
+  await expect(section('cable')).toHaveAttribute('open', '')
+  await expect(pane.getByRole('button', { name: 'Delete', exact: true })).toBeInViewport()
+  await page.screenshot({ path: '/private/tmp/cadle-properties-compact.png' })
+  await section('product').locator('summary').click()
+  await pane.locator('[data-electrical-field="productSeries"]').fill('Resi9')
+  await pane.locator('[data-electrical-field="productSeries"]').press('Tab')
+  await expect(section('product')).toHaveAttribute('open', '')
+  await expect(pane.locator('[data-electrical-field="productSeries"]')).toHaveValue('Resi9')
+  await section('product').locator('summary').click()
+  await section('layout').locator('summary').click()
+  await expect(section('layout').getByRole('radiogroup', { name: 'Label position' })).toBeVisible()
+  await expect(section('layout').getByTitle('Flip horizontally')).toBeVisible()
+  await section('layout').locator('summary').focus()
+  await page.keyboard.press('Enter')
+  await expect(section('layout')).not.toHaveAttribute('open')
+  await selectBreaker(1)
+  await expect(section('product')).not.toHaveAttribute('open')
+  await expect(section('layout')).not.toHaveAttribute('open')
+  const compact = await pane.locator('[data-electrical-field="cableSectionMm2"]').evaluate((node) => ({
+    height: node.getBoundingClientRect().height, font: Number.parseFloat(getComputedStyle(node).fontSize),
+    label: Number.parseFloat(getComputedStyle(node.closest('label')!.querySelector('.native-label')!).fontSize)
+  }))
+  expect(compact.height).toBeLessThanOrEqual(32)
+  expect(compact.font).toBeLessThanOrEqual(12)
+  expect(compact.label).toBeLessThanOrEqual(11)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  expect(await page.locator('app-shell').evaluate((element: any) => element.project.circuitSpecifications.A.productSeries)).toBe('Resi9')
+  await page.screenshot({ path: '/private/tmp/cadle-properties-sections.png' })
+})

@@ -2,6 +2,8 @@ import type { Point, Shape, SymbolShape } from '../model/types.js'
 import { shapeBounds } from '../model/model.js'
 import { symbolContentBounds } from './symbol-layout.js'
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolPortInfo, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
+import { paperTextBounds } from './paper-text-layout.js'
+import { protectionAnnotationBounds } from './protection-label-layout.js'
 
 export type ConnectionSide = 'top' | 'bottom' | 'left' | 'right'
 export type SymbolConnectionAnchor = { side: ConnectionSide; point: Point }
@@ -11,21 +13,16 @@ const directions: Record<ConnectionSide, Point> = {
 }
 
 export const oneWireLayoutBounds = (shape: Shape) => {
-  if (shape.kind === 'symbol') return oneWireSymbolBounds(shape) ?? symbolContentBounds(shape)
+  if (shape.kind === 'symbol') {
+    const body = oneWireSymbolBounds(shape) ?? symbolContentBounds(shape)
+    const text = protectionAnnotationBounds(shape)
+    if (!text) return body
+    const x = Math.min(body.x, text.x), y = Math.min(body.y, text.y)
+    return { x, y, width: Math.max(body.x + body.width, text.x + text.width) - x,
+      height: Math.max(body.y + body.height, text.y + text.height) - y }
+  }
   if (shape.kind !== 'text') return shapeBounds(shape)
-  const size = 18 * (shape.scale ?? 1)
-  const width = shape.text.length * size * 0.68
-  const x = shape.textAnchor === 'middle' ? -width / 2 : shape.textAnchor === 'end' ? -width : 0
-  const radians = (shape.rotation ?? 0) * Math.PI / 180
-  const corners = [{ x, y: -size }, { x: x + width, y: -size }, { x, y: size * 0.2 }, { x: x + width, y: size * 0.2 }]
-    .map((point) => ({ x: point.x * (shape.flipX ? -1 : 1), y: point.y * (shape.flipY ? -1 : 1) }))
-    .map((point) => ({
-      x: shape.position.x + point.x * Math.cos(radians) - point.y * Math.sin(radians),
-      y: shape.position.y + point.x * Math.sin(radians) + point.y * Math.cos(radians)
-    }))
-  const xs = corners.map(({ x }) => x)
-  const ys = corners.map(({ y }) => y)
-  return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+  return paperTextBounds(shape)
 }
 
 export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnectionAnchor[] => {

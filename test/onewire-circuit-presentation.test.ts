@@ -7,6 +7,7 @@ import {
   updateCircuitSpecifications
 } from '../src/editor/layout/onewire-circuit-presentation.ts'
 import type { Shape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
+import { oneWireSymbolNodeInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 
 const linkedText = (id: string, role: string, text: string): TextShape => ({
   id,
@@ -137,14 +138,18 @@ test('keeps the conductor mark anchored when switching installation methods', ()
   })
   const updated = underground.shapes[0]
   assert.ok(updated.kind === 'symbol')
-  assert.deepEqual(updated.position, { x: 393, y: 500 })
+  const anchor = (shape: SymbolShape) => {
+    const node = oneWireSymbolNodeInfo(shape.path, shape.scale)!.offset
+    return { x: shape.position.x + node.x, y: shape.position.y + node.y }
+  }
+  assert.deepEqual(anchor(updated), anchor(installation))
   const restored = applyOneWireCircuitPresentation({
     shapes: underground.shapes,
     circuitKey: 'A',
     stored: { cableInstallation: 'conduit' }
   })
   assert.ok(restored.shapes[0].kind === 'symbol')
-  assert.deepEqual(restored.shapes[0].position, installation.position)
+  assert.deepEqual(anchor(restored.shapes[0]), anchor(installation))
 })
 
 test('resolves standalone inspector values from project metadata', () => {

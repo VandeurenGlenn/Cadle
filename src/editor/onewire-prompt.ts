@@ -1,3 +1,4 @@
+import { cableLabelText } from './model/cable-designation.js'
 import type { OneWireTopologyPlan } from '../types.js'
 import { validateOneWireTopology } from './onewire-topology-schema.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
@@ -265,7 +266,7 @@ export const interpretOneWirePrompt = async (
 
 export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
   const cable = plan.incomingCable
-    ? `${plan.incomingCable.conductors}x${plan.incomingCable.sectionMm2} mm² ${plan.incomingCable.cableType}`
+    ? cableLabelText(plan.incomingCable, 'x')
     : 'inkomende kabel'
   const differential = plan.mainDifferential
     ? `hoofddifferentieel ${plan.mainDifferential.ratedCurrentA} A / ${plan.mainDifferential.sensitivityMa} mA`

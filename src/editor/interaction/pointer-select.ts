@@ -41,6 +41,7 @@ export const dragIdsForSelectedShape = (
   const isOneWireBreaker =
     shape?.kind === 'symbol' &&
     shape.groupId?.startsWith('onewire-') &&
+    !shape.groupId.startsWith('onewire-topology-') &&
     (shape.sourceLink?.role === 'breaker' || /automaat|breaker/i.test(`${shape.name} ${shape.path}`))
   if (!isOneWireBreaker || !shape.groupId) return [...selectedIds]
 

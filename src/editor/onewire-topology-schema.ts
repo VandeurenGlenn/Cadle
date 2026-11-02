@@ -15,6 +15,7 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
       properties: {
         conductors: { type: 'integer', minimum: 1, maximum: 12 },
         sectionMm2: { type: 'number', exclusiveMinimum: 0, maximum: 500 },
+        fireClass: { type: 'string', maxLength: 80 },
         cableType: { enum: ['VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'] }
       }
     },
@@ -143,9 +144,12 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
   if (value.incomingCable !== undefined && !cable) errors.push('incomingCable moet een object zijn.')
   if (cable) {
     for (const key of Object.keys(cable)) {
-      if (!['conductors', 'sectionMm2', 'cableType'].includes(key)) {
+      if (!['conductors', 'sectionMm2', 'cableType', 'fireClass'].includes(key)) {
         errors.push(`Onbekend incomingCable-veld: ${key}.`)
       }
+    }
+    if (cable.fireClass !== undefined && (typeof cable.fireClass !== 'string' || cable.fireClass.length > 80)) {
+      errors.push('incomingCable.fireClass moet tekst zijn van maximaal 80 tekens.')
     }
     if (!Number.isInteger(cable.conductors) || Number(cable.conductors) < 1) {
       errors.push('incomingCable.conductors moet een positief geheel getal zijn.')

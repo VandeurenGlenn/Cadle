@@ -1,3 +1,4 @@
+import { withCableFireClass } from '../model/cable-designation.js'
 import type { CircuitGroup, CircuitSpecification } from '../circuit-analysis.js'
 import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../circuit-defaults.js'
@@ -112,6 +113,7 @@ export const effectiveCircuitElectrical = (shape: Shape, group: CircuitGroup): E
     cableSectionMm2: group.specification.cableSectionMm2,
     cableConductors: group.specification.cableConductors,
     hasProtectiveConductor: group.specification.hasProtectiveConductor,
+    cableFireClass: group.specification.cableFireClass,
     cableType: group.specification.cableType,
     cableInstallation: group.specification.cableInstallation,
     showCableInstallation: group.specification.showCableInstallation,
@@ -161,6 +163,7 @@ export const applyOneWireCircuitPresentation = ({
       stored.hasProtectiveConductor ??
       groupSpecification?.hasProtectiveConductor ??
       defaultHasProtectiveConductor(cableConductors),
+    cableFireClass: stored.cableFireClass ?? groupSpecification?.cableFireClass,
     cableType: stored.cableType ?? groupSpecification?.cableType ?? defaults.cableType,
     cableInstallation: stored.cableInstallation ?? groupSpecification?.cableInstallation ?? defaults.cableInstallation,
     showCableInstallation: stored.showCableInstallation ?? groupSpecification?.showCableInstallation ?? true,
@@ -190,10 +193,11 @@ export const applyOneWireCircuitPresentation = ({
     'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
       ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
       : '',
-    'cable-section': cableConnection?.name?.trim() || oneWireCableLabelText({
+    'cable-section': cableConnection?.name?.trim() ? withCableFireClass(cableConnection.name.trim(), specification.cableFireClass) : oneWireCableLabelText({
       conductors: specification.cableConductors,
       sectionMm2: specification.cableSectionMm2,
       hasProtectiveConductor: specification.hasProtectiveConductor,
+      fireClass: specification.cableFireClass,
       cableType: specification.cableType
     }),
     'cable-installation-label': oneWireCableInstallationLabel(cableInstallation)
@@ -241,7 +245,7 @@ export const applyOneWireCircuitPresentation = ({
     if (shape.kind === 'line' && shape.connection?.kind === 'cable') {
       changed = true
       return { ...shape, connection: { ...shape.connection, conductors: specification.cableConductors,
-        sectionMm2: specification.cableSectionMm2, cableType: specification.cableType,
+        sectionMm2: specification.cableSectionMm2, fireClass: specification.cableFireClass, cableType: specification.cableType,
         hasProtectiveConductor: specification.hasProtectiveConductor } }
     }
     if (shape.kind === 'text' && link.role && labels[link.role] !== undefined) {

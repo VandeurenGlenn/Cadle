@@ -50,6 +50,7 @@ export const shellStyles = css`
   }
 
   .shell-frame {
+    isolation: isolate;
     display: grid;
     grid-template-rows: minmax(0, 1fr) var(--cadle-status-bar, 28px);
     width: 100%;
@@ -102,7 +103,7 @@ export const shellStyles = css`
     box-sizing: border-box;
     position: absolute;
     z-index: 10025;
-    top: calc(var(--cadle-header-height) + var(--cadle-space-3));
+    top: calc(var(--cadle-editor-header-height, 92px) + var(--cadle-space-3));
     right: var(--cadle-space-3);
     bottom: var(--cadle-space-3);
     width: min(var(--cadle-rail-right, 288px), calc(100% - var(--cadle-rail-left, 224px) - 48px));
@@ -172,7 +173,7 @@ export const shellStyles = css`
   .object-action-rail {
     position: absolute;
     z-index: 10024;
-    top: calc(var(--cadle-header-height) + var(--cadle-space-3));
+    top: calc(var(--cadle-editor-header-height, 92px) + var(--cadle-space-3));
     right: var(--cadle-space-3);
     display: grid;
     gap: var(--cadle-space-1);
@@ -227,57 +228,68 @@ export const shellStyles = css`
     position: relative;
   }
 
-  .center-stage-toolbar {
+  .editor-header {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: var(--cadle-space-2);
-    height: var(--cadle-header-height);
-    min-height: var(--cadle-header-height);
-    padding: 0 var(--cadle-space-2);
+    flex: 0 0 auto;
+    min-width: 0;
     background: var(--cadle-glass-bg-strong);
-    backdrop-filter: blur(var(--cadle-glass-blur));
-    -webkit-backdrop-filter: blur(var(--cadle-glass-blur));
     border-bottom: 1px solid var(--md-sys-color-outline-variant);
-    box-shadow: var(--cadle-glass-shadow);
-    flex: 0 0 auto;
     z-index: 10030;
-    overflow: visible;
   }
 
-  .editor-actions {
+  .editor-context-bar {
     display: flex;
     align-items: center;
+    gap: 10px;
+    min-height: var(--cadle-header-height);
+    padding: 0 12px;
+    box-sizing: border-box;
+    border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 65%, transparent);
+  }
+
+  .drawing-context {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     flex: 1 1 auto;
     min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
+    font: 13px var(--cadle-font-sans);
   }
-
-  .editor-actions::-webkit-scrollbar {
-    display: none;
+  .drawing-project {
+    min-width: 0;
+    max-width: 30%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--md-sys-color-on-surface-variant);
   }
-
-  .editor-actions cadle-actions,
-  .editor-actions onewire-actions {
+  .context-separator { color: var(--md-sys-color-outline); }
+  .drawing-title {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 600 13px var(--cadle-font-sans);
+    color: var(--md-sys-color-on-surface);
+  }
+  .drawing-kind {
     flex: 0 0 auto;
+    padding: 4px 8px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 6px;
+    color: var(--md-sys-color-on-surface-variant);
+    font: 500 11px var(--cadle-font-sans);
   }
-
-  .editor-actions cadle-actions {
-    width: max-content;
+  .center-stage-toolbar {
+    display: flex;
+    align-items: center;
+    min-height: 50px;
+    padding: 6px 10px;
+    box-sizing: border-box;
     overflow: visible;
   }
-
-  .center-stage-toolbar onewire-actions {
-    flex: 0 0 auto;
-  }
-
-  .center-stage-toolbar > span {
-    flex: 1 1 auto;
-    min-width: 0;
-    text-align: center;
-  }
+  .center-stage-toolbar cadle-actions { flex: 1 1 auto; min-width: 0; }
 
   .split-view-toggle {
     appearance: none;
@@ -516,10 +528,10 @@ export const shellStyles = css`
     place-items: center;
     width: 40px;
     height: 40px;
-    margin-left: auto;
+    margin-left: 0;
     padding: 0;
     border: 0;
-    border-radius: 50%;
+    border-radius: 8px;
     color: var(--md-sys-color-on-surface-variant);
     background: transparent;
     cursor: pointer;
@@ -587,9 +599,9 @@ export const shellStyles = css`
       flex: 0 0 auto;
     }
 
-    .center-stage-toolbar > span {
-      display: none;
-    }
+    .editor-context-bar { gap: 6px; padding: 0 6px; }
+    .drawing-project, .context-separator, .drawing-kind { display: none; }
+    .center-stage-toolbar { padding: 6px; }
 
     .mobile-drawer-backdrop {
       position: fixed;
@@ -627,7 +639,7 @@ export const shellStyles = css`
 
     .object-action-rail,
     .object-action-rail[data-inspector-open='true'] {
-      top: calc(var(--cadle-header-height) + var(--cadle-space-2));
+      top: calc(var(--cadle-editor-header-height, 92px) + var(--cadle-space-2));
       right: var(--cadle-space-2);
     }
 

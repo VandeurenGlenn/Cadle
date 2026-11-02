@@ -8,6 +8,13 @@ import { renderedSymbolScale } from '../model/symbol-scale.js'
 const PROTECTION_HEIGHT_MM = 16
 const EARTHING_HEIGHT_MM = 16
 const ROW_SYMBOL_SCALE_FACTOR = 1.5
+// Compact control drawings need extra optical size beside the classic switch
+// and circular lamps. Keep that reference pair unchanged.
+const COMPACT_ROW_SYMBOL_FACTOR = 1.25
+const COMPACT_ROW_SYMBOL = /(?:switches\/impulse relay|consumption appliances\/fluorescent lamp)\.svg$/i
+// A 5 mm button circle keeps both rings and illuminated marks readable on A4.
+const PUSH_BUTTON_SYMBOL_FACTOR = 5 / 3
+const PUSH_BUTTON_SYMBOL = /switches\/(?:illuminated |double )?push button\.svg$/i
 export const ONE_WIRE_DEFAULT_SCALE = (6 * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_BREAKER_SCALE = (PROTECTION_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_METER_SCALE = (8 * PAPER_WORLD_UNITS_PER_MM) / 24
@@ -510,10 +517,12 @@ export const oneWireProtectionBodyEdges = (shape: { path: string; scale: number;
 export const oneWireSymbolScaleFor = (path: string): number | null => {
   const spec = findSpec(path)
   if (!spec) return TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec.oneWireScale ?? ONE_WIRE_DEFAULT_SCALE
-  if (typeof spec.oneWireScale === 'number') return spec.oneWireScale
-  if (spec.cutRadius === null) return ONE_WIRE_DEFAULT_SCALE
   const maxViewBox = Math.max(spec.viewBox.width, spec.viewBox.height)
-  return Math.min(MAX_NODE_NORMALIZED_SCALE, (TARGET_NODE_RADIUS * maxViewBox) / (24 * spec.cutRadius))
+  const scale = typeof spec.oneWireScale === 'number' ? spec.oneWireScale
+    : spec.cutRadius === null ? ONE_WIRE_DEFAULT_SCALE
+      : Math.min(MAX_NODE_NORMALIZED_SCALE, (TARGET_NODE_RADIUS * maxViewBox) / (24 * spec.cutRadius))
+  return scale * (PUSH_BUTTON_SYMBOL.test(path) ? PUSH_BUTTON_SYMBOL_FACTOR
+    : COMPACT_ROW_SYMBOL.test(path) ? COMPACT_ROW_SYMBOL_FACTOR : 1)
 }
 
 export const oneWireSymbolStrokeWidthFor = (path: string, scale: number): number => {

@@ -1,3 +1,4 @@
+import { cableLabelText } from './model/cable-designation.js'
 import type { CircuitScheduleLayout, Project } from '../types.js'
 import type { CircuitAnalysis, CircuitGroup } from './circuit-analysis.js'
 
@@ -94,14 +95,14 @@ export const circuitScheduleRows = (analysis: CircuitAnalysis): ScheduleCircuit[
   return [...families.entries()].map(([id, groups]) => {
     const specification = groups[0].specification
     const curve = specification.breakerCurve && specification.breakerCurve !== 'other' ? specification.breakerCurve : ''
-    const cableType = specification.cableType === 'none' ? '' : ` ${specification.cableType}`
-    const conductor = specification.hasProtectiveConductor ? 'G' : 'x'
     return {
       id,
       boardId: specification.boardId ?? 'main',
       protection: `${curve}${specification.breakerCurrentA}A`,
       poles: `${specification.poles}P`,
-      cable: `${specification.cableConductors}${conductor}${specification.cableSectionMm2} mm²${cableType}`,
+      cable: cableLabelText({ conductors: specification.cableConductors, sectionMm2: specification.cableSectionMm2,
+        cableType: specification.cableType, fireClass: specification.cableFireClass, hasProtectiveConductor: specification.hasProtectiveConductor },
+        specification.hasProtectiveConductor ? undefined : 'x'),
       consumers: countedNames(groups),
       rooms: [
         ...new Set(

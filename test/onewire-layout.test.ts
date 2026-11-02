@@ -84,7 +84,7 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 6.3 && node.cutHalfWidth <= 12.001)
+    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 6.3 && node.cutHalfWidth <= (/push button/i.test(path) ? 20.001 : 12.001))
   }
 
   for (const path of classicSwitchPaths) {
@@ -102,8 +102,8 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
     if (/impulse relay/i.test(path)) {
-      assert.equal(scale! * 24 / 8, 6)
-      assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 9.92125 * 48 / 20.0825) < 1e-8)
+      assert.equal(scale! * 24 / 8, 7.5)
+      assert.ok(node?.cutHalfWidth !== null && Math.abs(node.cutHalfWidth - 9.92125 * 60 / 20.0825) < 1e-8)
     } else {
       assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 11.999 && node.cutHalfWidth <= 12.001)
       assert.ok(scale! >= 1.01 && scale! <= 1.03)
@@ -466,7 +466,7 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.hidden : null, false)
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.position.x : null, 400)
   assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.scale : null, 4.5)
-  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.strokeWidth : null, 2)
+  assert.equal(cableInstallation?.kind === 'symbol' ? cableInstallation.strokeWidth! * 24 * cableInstallation.scale / 54 : null, 2)
   const restoredCable = sanitizeShapes(result.shapes).find((shape) => shape.sourceLink?.role === 'cable-section')
   assert.ok(restoredCable?.kind === 'text' && cableSection?.kind === 'text')
   assert.deepEqual(restoredCable.position, cableSection.position)

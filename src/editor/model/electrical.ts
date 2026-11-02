@@ -1,3 +1,4 @@
+import { sanitizeCableFireClass } from './cable-designation.js'
 export type ElectricalRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 export type ElectricalCircuitType = 'lighting' | 'sockets' | 'motor' | 'mixed' | 'other'
 export type ElectricalPhaseConfiguration =
@@ -32,6 +33,7 @@ export type ElectricalDeviceMetadata = {
   cableSectionMm2?: number
   cableConductors?: number
   hasProtectiveConductor?: boolean
+  cableFireClass?: string
   cableType?: ElectricalCableType
   cableInstallation?: ElectricalCableInstallation
   showCableInstallation?: boolean
@@ -202,6 +204,7 @@ export const electricalMetadataFromCatalog = (
     productReference: typeof explicit.productReference === 'string' ? explicit.productReference.trim() || undefined : undefined,
     showPhaseLabel:
       typeof explicit.showPhaseLabel === 'boolean' ? explicit.showPhaseLabel : undefined,
+    cableFireClass: sanitizeCableFireClass(explicit.cableFireClass),
     cableSectionMm2: finitePositive(explicit.cableSectionMm2),
     cableConductors: finitePositive(explicit.cableConductors),
     hasProtectiveConductor:
@@ -276,6 +279,7 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
     productReference: typeof raw.productReference === 'string' ? raw.productReference.trim() || undefined : undefined,
     showPhaseLabel:
       typeof raw.showPhaseLabel === 'boolean' ? raw.showPhaseLabel : undefined,
+    cableFireClass: sanitizeCableFireClass(raw.cableFireClass),
     cableSectionMm2: finitePositive(raw.cableSectionMm2),
     cableConductors: finitePositive(raw.cableConductors),
     hasProtectiveConductor:

@@ -119,6 +119,8 @@ export const translateShape = (shape: Shape, dx: number, dy: number): Shape => {
     case 'gate': {
       return {
         ...shape,
+        ...(shape.connection?.via ? { connection: { ...shape.connection,
+          via: shape.connection.via.map((point) => ({ x: point.x + dx, y: point.y + dy })) } } : {}),
         start: { x: shape.start.x + dx, y: shape.start.y + dy },
         end: { x: shape.end.x + dx, y: shape.end.y + dy }
       }

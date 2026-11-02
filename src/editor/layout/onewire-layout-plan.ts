@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 89
+export const ONE_WIRE_LAYOUT_VERSION = 94
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
@@ -51,6 +51,7 @@ export type OneWireFamilyBounds = {
   anchorX: number
   minX: number
   maxX: number
+  ink?: readonly { x: number; y: number; width: number; height: number }[]
 }
 
 export type PackedOneWireRailGeometry = {
@@ -104,17 +105,32 @@ export const packOneWireFamilyBounds = (
   endPadding = ONE_WIRE_RAIL_END_PADDING
 ): PackedOneWireRailGeometry => {
   if (!families.length) return { startX: centerX, endX: centerX, familyXs: new Map() }
-  const provisional: Array<{ family: string; x: number; maxX: number }> = []
+  const provisional: Array<{ family: string; x: number; minX: number; maxX: number }> = []
   let previousMaxX = 0
   for (const [index, family] of families.entries()) {
     const leftReach = Math.max(0, family.anchorX - family.minX)
     const rightReach = Math.max(0, family.maxX - family.anchorX)
-    const x = index === 0 ? leftReach : previousMaxX + gap + leftReach
-    previousMaxX = x + rightReach
-    provisional.push({ family: family.family, x, maxX: previousMaxX })
+    let x = index === 0 ? leftReach : previousMaxX + gap + leftReach
+    if (index && family.ink?.length && families.slice(0, index).every((previous) => previous.ink?.length)) {
+      // Only reserve horizontal space where ink overlaps vertically. A wide
+      // upper lighting row need not reserve room for the next breaker's poles.
+      // Keep 4 mm of visible breathing room between neighboring circuits;
+      // collision clearance alone makes the row numbers look attached.
+      const rowGap = Math.max(gap, 32)
+      x = provisional[index - 1].x + rowGap
+      for (let prior = 0; prior < index; prior++) {
+        const previous = families[prior]
+        for (const a of previous.ink!) for (const b of family.ink) {
+          if (a.y + a.height + 8 < b.y || b.y + b.height + 8 < a.y) continue
+          x = Math.max(x, provisional[prior].x + a.x + a.width - previous.anchorX + rowGap - (b.x - family.anchorX))
+        }
+      }
+    }
+    previousMaxX = Math.max(previousMaxX, x + rightReach)
+    provisional.push({ family: family.family, x, minX: x - leftReach, maxX: x + rightReach })
   }
-  const contentMinX = 0
-  const contentMaxX = provisional.at(-1)?.maxX ?? 0
+  const contentMinX = Math.min(...provisional.map((placement) => placement.minX))
+  const contentMaxX = Math.max(...provisional.map((placement) => placement.maxX))
   const offsetX = centerX - (contentMinX + contentMaxX) / 2
   const familyXs = new Map(provisional.map((placement) => [placement.family, placement.x + offsetX]))
   const firstX = provisional[0].x + offsetX

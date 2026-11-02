@@ -57,7 +57,7 @@ test('defaults RCDs to A and retains an explicit type through reopening and rege
   const regenerated = await app.evaluate((element: any) => element.generateAutoOneWire())
   expect(regenerated.generated).toBe(true)
   await expect.poll(() => app.evaluate((element: any) => element.toSVG())).toContain('Type F')
-  await expect.poll(() => app.evaluate((element: any) => element.toSVG())).toContain('Algemene differentieel')
+  await expect(app.locator('.onewire-device-description').filter({ hasText: 'Algemene differentieel' })).toHaveCount(1)
   await expect(mainSwitch.locator('text').filter({ hasText: /^N-L1$/ })).toHaveCount(0)
   expect(await app.evaluate((element: any) => element.toSVG())).not.toContain('>N-L1</text>')
   const switchPoint = await mainSwitch.locator('path').first().evaluate((path: SVGPathElement) => {

@@ -1,5 +1,5 @@
 import type { ElectricalConnection } from '../model/electrical-connection.js'
-import { cableLabelText } from '../model/electrical-connection.js'
+import { cableLabelText, withCableFireClass } from '../model/cable-designation.js'
 import type { Shape } from '../model/types.js'
 
 /** Connection properties own their caption, including after regeneration. */
@@ -18,9 +18,8 @@ export const presentConnectionLabels = (shapes: readonly Shape[]): Shape[] => {
     if (!owner) return shape
     const connection = owners.get(key(shape, owner))
     if (!connection) return shape
-    const text = connection.name?.trim() || (owner === 'topology'
-      ? `${connection.conductors ?? 4}x${connection.sectionMm2 ?? 10} mm² ${connection.cableType?.replace('-', ' ') ?? ''}`.trim()
-      : cableLabelText(connection))
+    const text = connection.name?.trim() ? withCableFireClass(connection.name.trim(), connection.fireClass)
+      : owner === 'topology' ? cableLabelText(connection, 'x') : cableLabelText(connection)
     const hidden = connection.showLabel === false
     return shape.text === text && Boolean(shape.hidden) === hidden ? shape : { ...shape, text, hidden }
   })

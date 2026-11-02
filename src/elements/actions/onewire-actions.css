@@ -1,116 +1,74 @@
-:host {
-  display: flex;
-  align-items: center;
-}
-
+:host { display: flex; align-items: center; min-width: 0; }
 .onewire-actions-container {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--cadle-space-1);
-  padding: 0 var(--cadle-space-2);
+  gap: 2px;
+  padding: 0 6px;
   border-left: 1px solid var(--md-sys-color-outline-variant);
-  border-right: 1px solid var(--md-sys-color-outline-variant);
-  margin: 0 0.25rem;
 }
-
-.connection-menu summary {
+.onewire-action-btn,
+.connection-trigger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-height: var(--cadle-touch-target);
-  padding: 0 8px;
-  border-radius: var(--cadle-radius-sm);
+  min-width: 36px;
+  height: 36px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  list-style: none;
-  font: var(--md-sys-typescale-label-medium);
+  border-radius: 8px;
+  font: 500 13px var(--cadle-font-sans);
+  transition: background-color var(--cadle-motion-fast), color var(--cadle-motion-fast);
 }
-.connection-menu summary::-webkit-details-marker { display: none; }
-.connection-menu summary[data-active='true'], .connection-menu summary:hover {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
+.onewire-action-btn:hover,
+.connection-trigger:hover { background: var(--cadle-hover-bg); color: var(--md-sys-color-on-surface); }
+.onewire-action-btn[aria-pressed='true'],
+.connection-trigger[data-active='true'] {
+  color: var(--md-sys-color-primary);
+  background: var(--cadle-selected-bg);
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
 }
+.onewire-action-btn:focus-visible,
+.connection-trigger:focus-visible { outline: none; box-shadow: var(--cadle-focus-ring); }
+.onewire-action-btn custom-icon { width: 20px; height: 20px; --custom-icon-color: currentColor; font-size: 20px; }
+.onewire-action-btn span, .connection-trigger span { white-space: nowrap; }
+.connection-icon { width: 20px; height: 20px; flex: 0 0 20px; }
+.connection-trigger .menu-chevron { width: 14px; font-size: 14px; --custom-icon-color: currentColor; }
 .connection-options {
-  position: absolute;
-  z-index: 1000;
-  top: calc(100% + 6px);
-  right: 0;
-  display: grid;
-  min-width: 200px;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 216px;
+  max-height: min(360px, 70dvh);
+  overflow-y: auto;
   padding: 6px;
-  border: var(--cadle-panel-border);
+  box-sizing: border-box;
+  border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--cadle-radius-md);
-  background: var(--cadle-panel-bg);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
   box-shadow: var(--cadle-elevation-3);
 }
-.connection-options .onewire-action-btn { justify-content: flex-start; }
+.connection-options:popover-open { display: grid; }
+.connection-options::backdrop { background: transparent; }
+.connection-options .onewire-action-btn { justify-content: flex-start; height: 38px; }
 .connection-options .onewire-action-btn span { display: inline; }
-.connection-icon { width: 20px; height: 20px; flex: 0 0 20px; }
-@media (max-width: 720px) {
-  .connection-menu summary > span { display: none; }
+.popover-heading {
+  padding: 8px 10px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: 600 11px var(--cadle-font-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-
-.onewire-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--cadle-space-1);
-  min-width: var(--cadle-touch-target);
-  height: var(--cadle-touch-target);
-  padding: 0 var(--cadle-space-2);
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface);
-  cursor: pointer;
-  border-radius: var(--cadle-radius-sm);
-  transition:
-    background-color var(--cadle-motion-fast),
-    color var(--cadle-motion-fast);
-  font-family: inherit;
+@media (max-width: 1100px) {
+  .onewire-actions-container > .onewire-action-btn,
+  .connection-trigger { padding: 0 7px; }
+  .onewire-actions-container > .onewire-action-btn span,
+  .connection-trigger > span { display: none; }
 }
-
-.onewire-action-btn:hover {
-  background-color: var(--md-sys-color-surface-dim);
-}
-
-.onewire-action-btn:active {
-  background-color: var(--md-sys-color-surface-variant);
-}
-
-.onewire-action-btn[aria-pressed='true'] {
-  color: var(--md-sys-color-on-primary-container);
-  background: var(--md-sys-color-primary-container);
-}
-
-.onewire-action-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--cadle-focus-ring);
-}
-
-.onewire-action-btn custom-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--md-sys-color-primary);
-}
-
-.onewire-action-btn[aria-pressed='true'] custom-icon {
-  color: currentColor;
-}
-
-.onewire-action-btn span {
-  font: var(--md-sys-typescale-label-medium);
-  white-space: nowrap;
-}
-
-@media (max-width: 720px) {
-  .onewire-action-btn {
-    padding: 0;
-  }
-
-  .onewire-action-btn span {
-    display: none;
-  }
+@media (pointer: coarse) {
+  .onewire-action-btn, .connection-trigger { min-width: 44px; min-height: 44px; }
 }

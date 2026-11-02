@@ -84,7 +84,7 @@ test('defines stable nodes and relative sizes for every one-wire switch symbol',
     const scale = oneWireSymbolScaleFor(path)
     assert.notEqual(scale, null)
     const node = oneWireSymbolNodeInfo(path, scale!)
-    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 6.3 && node.cutHalfWidth <= (/push button/i.test(path) ? 20.001 : 12.001))
+    assert.ok(node?.cutHalfWidth !== null && node.cutHalfWidth >= 6.3 && node.cutHalfWidth <= (/push button/i.test(path) ? 17.001 : 12.001))
   }
 
   for (const path of classicSwitchPaths) {

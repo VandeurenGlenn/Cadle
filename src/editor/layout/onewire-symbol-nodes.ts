@@ -12,8 +12,8 @@ const ROW_SYMBOL_SCALE_FACTOR = 1.5
 // and circular lamps. Keep that reference pair unchanged.
 const COMPACT_ROW_SYMBOL_FACTOR = 1.25
 const COMPACT_ROW_SYMBOL = /(?:switches\/impulse relay|consumption appliances\/fluorescent lamp)\.svg$/i
-// A 5 mm button circle keeps both rings and illuminated marks readable on A4.
-const PUSH_BUTTON_SYMBOL_FACTOR = 5 / 3
+// Keep button rings readable at a balanced 4.25 mm paper diameter.
+const PUSH_BUTTON_SYMBOL_FACTOR = 4.25 / 3
 const PUSH_BUTTON_SYMBOL = /switches\/(?:illuminated |double )?push button\.svg$/i
 export const ONE_WIRE_DEFAULT_SCALE = (6 * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_BREAKER_SCALE = (PROTECTION_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM) / 24

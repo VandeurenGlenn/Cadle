@@ -1,8 +1,10 @@
 import type { Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
-import { listEditableSymbolTextFields } from '../symbol-svg-cache.js'
+import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-cache.js'
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
-import { CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
+import { connectionSegments, CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { DEFAULT_SYMBOL_STROKE_WIDTH } from '../../preferences/symbol-stroke-width.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
 
 export type NativeSelectionSymbolTextField = {
@@ -12,6 +14,7 @@ export type NativeSelectionSymbolTextField = {
 }
 
 export type NativeSelectionShapePayload = {
+  dimensions?: { length?: number; width?: number; height?: number; strokeWidth?: number }
   connection?: ElectricalConnection
   id: string
   kind: string
@@ -83,6 +86,7 @@ export const createNativeSelectionChangedPayload = (
     circuitPropertiesEditable?: boolean
     hideSymbolTextFields?: boolean
     canConvertToRoom?: boolean
+    symbolStrokeWidthPreference?: number
   }
 ): NativeSelectionChangedPayload => {
   const selectionCount = selectedIdsCount > 0 ? selectedIdsCount : selectedShape ? 1 : 0
@@ -219,6 +223,31 @@ export const createNativeSelectionChangedPayload = (
     }
   }
   const bounds = shapeBounds(selectedShape)
+  if (options?.kindOverride !== 'group' && selectedShape.kind !== 'text') {
+    const strokeWidth = typeof selectedShape.strokeWidth === 'number' ? selectedShape.strokeWidth : defaultStrokeWidth
+    if (['wall', 'line', 'door', 'window', 'gate'].includes(selectedShape.kind) && 'start' in selectedShape) {
+      const segments = selectedShape.kind === 'line' ? connectionSegments(selectedShape)
+        : [{ start: selectedShape.start, end: selectedShape.end }]
+      shapePayload.dimensions = { length: segments.reduce((length, segment) =>
+        length + Math.hypot(segment.end.x - segment.start.x, segment.end.y - segment.start.y), 0),
+        ...(strokeWidth !== null ? { strokeWidth } : {}) }
+    } else {
+      let width = bounds.width, height = bounds.height
+      let pen = strokeWidth
+      if (selectedShape.kind === 'symbol') {
+        const size = 24 * renderedSymbolScale(selectedShape.path, selectedShape.scale)
+        const viewBox = getCachedSymbolSvg(selectedShape.path)?.viewBox.trim().split(/[\s,]+/).map(Number)
+        if (viewBox?.length === 4 && viewBox[2] > 0 && viewBox[3] > 0) {
+          const factor = size / Math.max(viewBox[2], viewBox[3])
+          width = viewBox[2] * factor; height = viewBox[3] * factor
+          pen = typeof selectedShape.strokeWidth === 'number' ? selectedShape.strokeWidth * factor
+            : options?.symbolStrokeWidthPreference ?? DEFAULT_SYMBOL_STROKE_WIDTH
+        } else pen = options?.symbolStrokeWidthPreference ?? DEFAULT_SYMBOL_STROKE_WIDTH
+      }
+      shapePayload.dimensions = { width, height,
+        ...(pen !== null && selectedShape.kind !== 'image' ? { strokeWidth: pen } : {}) }
+    }
+  }
   shapePayload.x = bounds.x + bounds.width / 2
   shapePayload.y = bounds.y + bounds.height / 2
 

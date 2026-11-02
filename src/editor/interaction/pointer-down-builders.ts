@@ -3,6 +3,7 @@ import type { DraftShape, NativeCatalogPick, Point, SymbolShape, TextShape, Tool
 import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
 import { paperTextScale } from '../layout/page-layout.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
+import { oneWireSymbolScaleFor } from '../layout/onewire-symbol-nodes.js'
 export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
@@ -25,6 +26,12 @@ const FLUORESCENT_LAMP_SCALE = 2
 const DISTRIBUTION_BOARD_SCALE = 2
 const BATTERY_BANK_SCALE = 2
 const INVERTER_SCALE = 1.4
+const FLOOR_PLAN_ELECTRICAL_FACTOR = 1.5
+const FLOOR_PLAN_SYMBOL_FACTOR = 1.15
+export type SymbolPlacementContext = 'groundplan' | 'onewire'
+
+const isLightingPath = (path: string): boolean =>
+  /\/consumption appliances\/(?:lighting(?: luminaire with built-in switch)?|(?:independent )?emergency lighting(?: connected to a dedicated circuit)?|wall light|fluorescent lamp|(?:recessed )?spot(?:light)?|projector(?: with (?:little )?divergent beam)?)\.svg$/i.test(path)
 
 const isBatteryBankPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)
 const isInverterPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)
@@ -49,17 +56,24 @@ const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefau
   return defaults as SymbolStyleDefaults
 }
 
-export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick): number => {
+export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick, context: SymbolPlacementContext = 'groundplan'): number => {
   const defaults = resolveSymbolStyleDefaults(symbol)
   if (typeof defaults.scale === 'number' && Number.isFinite(defaults.scale)) {
     return Math.max(0.1, Math.min(20, defaults.scale))
   }
-  if (/\/consumption appliances\/wall light\.svg$/i.test(symbol.path)) return WALL_LIGHT_SCALE
-  if (/\/consumption appliances\/fluorescent lamp\.svg$/i.test(symbol.path)) return FLUORESCENT_LAMP_SCALE
-  if (isDistributionBoardPath(symbol.path)) return DISTRIBUTION_BOARD_SCALE
-  if (isBatteryBankPath(symbol.path)) return BATTERY_BANK_SCALE
-  if (isInverterPath(symbol.path)) return INVERTER_SCALE
-  return floorPlanSwitchScale(symbol.path) ?? inferSymbolScale(symbol.path)
+  if (context === 'onewire') return oneWireSymbolScaleFor(symbol.path) ?? inferSymbolScale(symbol.path)
+  const switchScale = floorPlanSwitchScale(symbol.path)
+  if (switchScale !== null) return switchScale * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
+  if (/\/socket outlets\//i.test(symbol.path)) return inferSymbolScale(symbol.path) * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
+  if (isLightingPath(symbol.path)) {
+    const base = /\/wall light\.svg$/i.test(symbol.path) ? WALL_LIGHT_SCALE
+      : /\/fluorescent lamp\.svg$/i.test(symbol.path) ? FLUORESCENT_LAMP_SCALE : inferSymbolScale(symbol.path)
+    return base * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
+  }
+  if (isDistributionBoardPath(symbol.path)) return DISTRIBUTION_BOARD_SCALE * FLOOR_PLAN_SYMBOL_FACTOR
+  if (isBatteryBankPath(symbol.path)) return BATTERY_BANK_SCALE * FLOOR_PLAN_SYMBOL_FACTOR
+  if (isInverterPath(symbol.path)) return INVERTER_SCALE * FLOOR_PLAN_SYMBOL_FACTOR
+  return inferSymbolScale(symbol.path) * FLOOR_PLAN_SYMBOL_FACTOR
 }
 
 export const createTextShape = (id: string, position: Point, text: string): TextShape => ({
@@ -71,7 +85,7 @@ export const createTextShape = (id: string, position: Point, text: string): Text
   fill: '#000000'
 })
 
-export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalogPick): SymbolShape => {
+export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalogPick, context: SymbolPlacementContext = 'groundplan'): SymbolShape => {
   const defaults = resolveSymbolStyleDefaults(symbol)
   const shape: SymbolShape = {
     id,
@@ -79,7 +93,7 @@ export const createSymbolShape = (id: string, point: Point, symbol: NativeCatalo
     position: point,
     name: symbol.name,
     path: symbol.path,
-    scale: resolveCatalogSymbolScale(symbol),
+    scale: resolveCatalogSymbolScale(symbol, context),
     electrical: electricalMetadataFromCatalog(symbol.metadata, symbol.name, symbol.path)
   }
   if (typeof defaults.rotation === 'number' && Number.isFinite(defaults.rotation)) {

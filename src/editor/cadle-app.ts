@@ -2628,12 +2628,16 @@ export class CadleApp extends LiteElement {
     return best ? { point: best, snapped: true } : { point, snapped: false }
   }
 
+  #symbolPlacementContext(): 'groundplan' | 'onewire' {
+    return this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire' ? 'onewire' : 'groundplan'
+  }
+
   // Takes the raw (unsnapped) world point; skips grid snapping when a wall is in range.
   #snapSymbolPlacementPoint(rawPoint: Point): { point: Point; snapped: boolean; kind: SnapIndicatorKind } {
-    const symbolScale = this.#pendingCatalogSymbol ? resolveCatalogSymbolScale(this.#pendingCatalogSymbol) : 1
+    const symbolScale = this.#pendingCatalogSymbol ? resolveCatalogSymbolScale(this.#pendingCatalogSymbol, this.#symbolPlacementContext()) : 1
     const symbolHalfExtent = (24 * Math.max(0.4, symbolScale)) / 2
     const previewShape = this.#pendingCatalogSymbol
-      ? createSymbolShape('symbol-preview', rawPoint, this.#pendingCatalogSymbol)
+      ? createSymbolShape('symbol-preview', rawPoint, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
       : null
 
     const wall = this.#snapSymbolToWallOffset(rawPoint, symbolHalfExtent, previewShape)
@@ -4145,6 +4149,7 @@ export class CadleApp extends LiteElement {
         electricalOverride: effectiveElectrical,
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
+        symbolStrokeWidthPreference: this.#symbolStrokeWidth,
         canConvertToRoom
       }),
       pageKey: this.#pageKey
@@ -4908,7 +4913,7 @@ export class CadleApp extends LiteElement {
   #previewTemplate() {
     let symbolPreviewShape: SymbolShape | null = null
     if (this.#tools.current === 'symbol' && this.#pendingCatalogSymbol && this.#symbolPreviewPoint) {
-      symbolPreviewShape = createSymbolShape('__symbol-preview__', this.#symbolPreviewPoint, this.#pendingCatalogSymbol)
+      symbolPreviewShape = createSymbolShape('__symbol-preview__', this.#symbolPreviewPoint, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
       if (this.#symbolPlacement?.rotation) symbolPreviewShape.rotation = this.#symbolPlacement.rotation
     }
     return svg`
@@ -5771,7 +5776,7 @@ export class CadleApp extends LiteElement {
       this.#stagePointerId = null
       if (stage?.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId)
       if (this.#pendingCatalogSymbol) {
-        const shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol)
+        const shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
         if (placement.rotation) shape.rotation = placement.rotation
         this.#document.shapes.push(shape)
         this.#document.selectedId = shape.id

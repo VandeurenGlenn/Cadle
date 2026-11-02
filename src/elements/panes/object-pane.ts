@@ -13,7 +13,7 @@ import {
 import { effectiveSelectionElectrical } from './object-pane/electrical-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
-import { GRID_SIZE } from '../../editor/constants.js'
+import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
@@ -24,6 +24,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
+  @property({ attribute: false }) private accessor _nativeDimensions: { length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
   @property()
   private accessor _activeObjectLabel = 'No selection'
@@ -149,6 +150,7 @@ export class ObjectPane extends LiteElement {
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
+      this._nativeDimensions = null
       this._nativeConnection = null
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
       this._nativeSelectedId = ''
@@ -182,6 +184,7 @@ export class ObjectPane extends LiteElement {
     }
 
     const shape = selection.shape
+    this._nativeDimensions = shape.dimensions
     this._nativeConnection = shape.connection
     this._nativeSelectedId = shape.id
     this._nativeSelectedKind = shape.kind
@@ -602,6 +605,23 @@ export class ObjectPane extends LiteElement {
     `
   }
 
+  #dimensionSummary() {
+    const dimensions = this._nativeDimensions
+    if (!dimensions) return ''
+    const number = (value: number) => new Intl.NumberFormat('nl-BE', { maximumFractionDigits: 2 }).format(value)
+    const measures = dimensions.length !== null ? [['Lengte', 'length', dimensions.length]] as const
+      : [['Breedte', 'width', dimensions.width], ['Hoogte', 'height', dimensions.height]] as const
+    return html`<div class="dimension-summary" aria-label="Afmetingen op blad">
+      <div class="dimension-caption">Afmetingen op blad</div>
+      <dl class="dimension-values">
+        ${measures.filter(([, , value]) => value !== null).map(([label, key, value]) => html`
+          <div><dt>${label}</dt><dd data-dimension=${key}>${number(value! / PAPER_WORLD_UNITS_PER_MM)} <span>mm</span></dd></div>`)}
+        ${dimensions.strokeWidth !== null ? html`<div><dt>Lijndikte</dt>
+          <dd data-dimension="strokeWidth">${number(dimensions.strokeWidth)} <span>px</span></dd></div>` : ''}
+      </dl>
+    </div>`
+  }
+
   #expandedSections = new Map<string, boolean>()
 
   #propertySection(key: string, title: string, content: ReturnType<typeof html>, initiallyOpen = false) {
@@ -643,6 +663,7 @@ export class ObjectPane extends LiteElement {
         </div>
       </cadle-header>
       <section>
+        ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
               <label>

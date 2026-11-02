@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createSymbolShape,
-  createDraftShape
+  createDraftShape,
+  resolveCatalogSymbolScale
 } from '../src/editor/interaction/pointer-down-builders.js'
+import { oneWireSymbolScaleFor } from '../src/editor/layout/onewire-symbol-nodes.js'
 
 test('uses a two-pixel stroke for newly drawn lines and outline shapes', () => {
   const point = { x: 10, y: 20 }
@@ -34,7 +36,7 @@ test('places floor-plan switches at a readable default scale', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.3)
+  assert.equal(shape.scale, 1.3 * 1.5 * 1.15)
 })
 
 test('uses a compact scale for push buttons', () => {
@@ -47,7 +49,7 @@ test('uses a compact scale for push buttons', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 0.8, name)
+    assert.equal(shape.scale, 0.8 * 1.5 * 1.15, name)
   }
 })
 
@@ -61,7 +63,7 @@ test('compensates the wide view box of a double push button', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.25)
+  assert.equal(shape.scale, 1.25 * 1.5 * 1.15)
 })
 
 test('compensates tall change-over switches for their larger view box', () => {
@@ -78,7 +80,7 @@ test('compensates tall change-over switches for their larger view box', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1.7, name)
+    assert.equal(shape.scale, 1.7 * 1.5 * 1.15, name)
   }
 })
 
@@ -92,10 +94,10 @@ test('uses a smaller scale for a dual switch in one casing', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.15)
+  assert.equal(shape.scale, 1.15 * 1.5 * 1.15)
 })
 
-test('keeps wide switch control symbols at normal scale', () => {
+test('uses readable floor-plan sizes for wide switch controls', () => {
   for (const name of ['Timer', 'Thermostat', 'Impulse relay']) {
     const shape = createSymbolShape(
       name,
@@ -105,7 +107,7 @@ test('keeps wide switch control symbols at normal scale', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1, name)
+    assert.equal(shape.scale, 1.5 * 1.15, name)
   }
 })
 
@@ -119,7 +121,7 @@ test('uses a larger scale for wall lights', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.5)
+  assert.equal(shape.scale, 2.25 * 1.15)
 })
 
 test('compensates the wide view box of fluorescent lamps', () => {
@@ -132,7 +134,7 @@ test('compensates the wide view box of fluorescent lamps', () => {
     }
   )
 
-  assert.equal(shape.scale, 2)
+  assert.equal(shape.scale, 3 * 1.15)
 })
 
 test('compensates the wide view box of distribution boards', () => {
@@ -145,7 +147,7 @@ test('compensates the wide view box of distribution boards', () => {
     }
   )
 
-  assert.equal(shape.scale, 2)
+  assert.equal(shape.scale, 2 * 1.15)
   assert.equal(shape.strokeWidth, undefined)
 })
 
@@ -159,7 +161,7 @@ test('uses a larger size and the shared paper pen for battery banks', () => {
     }
   )
 
-  assert.equal(shape.scale, 2)
+  assert.equal(shape.scale, 2 * 1.15)
   assert.equal(shape.strokeWidth, undefined)
 })
 
@@ -173,7 +175,7 @@ test('uses a larger size and the shared paper pen for inverters', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.4)
+  assert.equal(shape.scale, 1.4 * 1.15)
   assert.equal(shape.strokeWidth, undefined)
 })
 
@@ -189,4 +191,27 @@ test('keeps an explicit catalog scale for switches', () => {
   )
 
   assert.equal(shape.scale, 2.4)
+})
+
+test('catalog placement on one-wire uses the same sizes as generated components', () => {
+  for (const path of [
+    'symbols/Switches/Switch general symbol.svg',
+    'symbols/Switches/Push button.svg',
+    'symbols/Switches/Double push button.svg',
+    'symbols/Consumption appliances/Lighting.svg',
+    'symbols/Socket outlets/Wall outlet with grounding.svg'
+  ]) {
+    const symbol = { name: 'Component', path }
+    const shape = createSymbolShape('placed', { x: 0, y: 0 }, symbol, 'onewire')
+    assert.equal(shape.scale, oneWireSymbolScaleFor(path))
+    assert.equal(resolveCatalogSymbolScale(symbol, 'onewire'), shape.scale)
+  }
+})
+
+test('enlarges newly placed lights and sockets while keeping custom catalog sizes', () => {
+  for (const path of ['symbols/Consumption appliances/Lighting.svg', 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg']) {
+    assert.equal(createSymbolShape('placed', { x: 0, y: 0 }, { name: 'Component', path }).scale, 1.5 * 1.15)
+  }
+  assert.equal(resolveCatalogSymbolScale({ name: 'Custom', path: 'symbols/Switches/Switch general symbol.svg',
+    metadata: { symbolDefaults: { scale: 2.4 } } }, 'onewire'), 2.4)
 })

@@ -11,6 +11,7 @@ export const iconSetTemplate = html`
       <span name="add">@symbol-add</span>
       <span name="check_box">@symbol-check_box</span>
       <span name="check_box_outline_blank">@symbol-check_box_outline_blank</span>
+      <span name="cloud_off">@symbol-cloud_off</span>
       <span name="delete">@symbol-delete</span>
       <span name="check">@symbol-check</span>
       <span name="menu">@symbol-menu</span>

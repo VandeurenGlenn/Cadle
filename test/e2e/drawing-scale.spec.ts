@@ -24,8 +24,9 @@ test('keeps architectural measurements correct through scale changes, calibratio
     { id: 'arch-text', kind: 'text', position: { x: 800, y: 600 }, text: 'Living', scale: 1.25 }
   ]
   await importState({ ...base, shapes })
-  await expect(scale).toHaveValue('')
-  await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal niet ingesteld')
+  await expect(app.locator('line[data-shape-id="arch-wall"]')).toBeAttached()
+  await expect(scale).toHaveValue('50')
+  await expect(app.locator('.drawing-scale-label')).toHaveText('Schaal 1:50')
   await app.evaluate(async (element: any) => { await element.exportA4PNG() })
   const wall = app.locator('line[data-shape-id="arch-wall"]')
   const width = () => wall.evaluate((node) => Math.hypot(Number(node.getAttribute('x2')) - Number(node.getAttribute('x1')), Number(node.getAttribute('y2')) - Number(node.getAttribute('y1'))))
@@ -51,6 +52,11 @@ test('keeps architectural measurements correct through scale changes, calibratio
   await page.mouse.click(point.x, point.y)
   await expect(page.locator('[data-dimension="length"]')).toHaveText('5 m')
   await expect(page.locator('[data-paper-dimension="length"]')).toHaveText('50 mm op blad')
+  await page.getByRole('combobox', { name: 'Planschaal voor dit blad', exact: true }).selectOption('50')
+  await expect(scale).toHaveValue('50')
+  await expect.poll(width).toBe(800)
+  await expect(page.locator('[data-dimension="length"]')).toHaveText('5 m')
+  await expect(page.locator('[data-paper-dimension="length"]')).toHaveText('100 mm op blad')
   await page.getByRole('button', { name: 'Planschaal kalibreren', exact: true }).click()
   const dialog = page.locator('input-form-dialog')
   await dialog.getByLabel('Werkelijke lengte (m)').fill('5.5')

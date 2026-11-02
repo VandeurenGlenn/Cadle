@@ -528,6 +528,10 @@ textarea.native-input { min-height: 60px; resize: vertical; }
   background: color-mix(in srgb, var(--md-sys-color-primary) 4%, transparent);
 }
 .dimension-caption { font: 500 10px/1.3 var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
+.dimension-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.dimension-scale { display: inline-flex; align-items: center; gap: 4px; font: 400 10px var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
+.dimension-scale select { width: auto; min-height: 24px; padding: 2px 4px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 4px; background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); font: 500 11px var(--cadle-font-sans); }
+.dimension-scale select:focus-visible { outline: none; box-shadow: var(--cadle-focus-ring); }
 .dimension-values { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 5px 0 0; }
 .dimension-values > div { flex: 1 0 auto; }
 .dimension-values dt { font: 11px/1.3 var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }

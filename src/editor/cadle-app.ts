@@ -1135,7 +1135,9 @@ export class CadleApp extends LiteElement {
     }
     this.#worldWidth = target.width
     this.#worldHeight = target.height
-    this.#drawingScale = pageType === 'groundplan' ? isDrawingScale(parsed.drawingScale) ? parsed.drawingScale : parsed.shapes?.length ? null : DEFAULT_DRAWING_SCALE : null
+    this.#drawingScale = pageType === 'groundplan'
+      ? isDrawingScale(parsed.drawingScale) ? parsed.drawingScale : DEFAULT_DRAWING_SCALE
+      : null
     const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
     if (pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
       this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {

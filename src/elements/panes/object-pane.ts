@@ -14,6 +14,7 @@ import { effectiveSelectionElectrical } from './object-pane/electrical-model.js'
 import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
+import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
@@ -612,7 +613,18 @@ export class ObjectPane extends LiteElement {
     const measures = dimensions.length !== null ? [['Lengte', 'length', dimensions.length]] as const
       : [['Breedte', 'width', dimensions.width], ['Hoogte', 'height', dimensions.height]] as const
     return html`<div class="dimension-summary" aria-label="Afmetingen">
-      <div class="dimension-caption">${dimensions.drawingScale ? `Werkelijke afmetingen · 1:${dimensions.drawingScale}` : 'Afmetingen op blad'}</div>
+      <div class="dimension-heading">
+        <div class="dimension-caption">${dimensions.drawingScale ? 'Werkelijke afmetingen' : 'Afmetingen op blad'}</div>
+        ${dimensions.drawingScale ? html`<label class="dimension-scale"><span>Planschaal</span>
+          <select aria-label="Planschaal voor dit blad" .value=${String(dimensions.drawingScale)}
+            @change=${(event: Event) => {
+              const drawingScale = Number((event.target as HTMLSelectElement).value)
+              if (isDrawingScale(drawingScale)) pubsub.publish('editor.controls.command', { drawingScale })
+            }}>
+            ${DRAWING_SCALES.map((scale) => html`<option value=${String(scale)}>1:${scale}</option>`)}
+          </select>
+        </label>` : ''}
+      </div>
       <dl class="dimension-values">
         ${measures.filter(([, , value]) => value !== null).map(([label, key, value]) => html`
           <div><dt>${label}</dt><dd data-dimension=${key}>${number(value! / PAPER_WORLD_UNITS_PER_MM * (dimensions.drawingScale ?? 1) / (dimensions.drawingScale ? 1000 : 1))} <span>${dimensions.drawingScale ? 'm' : 'mm'}</span></dd>

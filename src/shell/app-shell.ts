@@ -1086,6 +1086,27 @@ export class AppShell extends LiteElement {
     this.shadowRoot?.querySelector('page-operation-dialog')?.show('clone', pageKey, page.name)
   }
 
+  async createUnderfloorHeatingPlan() {
+    if (!this.projectKey) return
+    await (await this.#nativeAppForPage(this.loadedPage))?.flushPendingSave?.()
+    const project = await getProjectData(this.projectKey)
+    const sourceKey = project.pages[this.loadedPage]?.pageType === 'groundplan' ? this.loadedPage
+      : Object.keys(project.pages).find((key) => project.pages[key].pageType === 'groundplan')
+    const state = sourceKey ? nativeStateForProjectPage(project, sourceKey as UUID) : null
+    const schema = state ? { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
+      ...state, selectedId: null,
+      shapes: structuredClone(state.shapes.filter((shape) => ['wall', 'door', 'window', 'gate', 'image'].includes(shape.kind)))
+    } }] } : { version: 'native-svg-1', objects: [] }
+    const base = 'Legplan vloerverwarming'
+    const names = new Set(Object.values(project.pages).map((page) => page.name))
+    let name = base, index = 2
+    while (names.has(name)) name = `${base} ${index++}`
+    const pageKey = await addPage(this.projectKey, name, schema, 'groundplan')
+    this.project = await getProjectData(this.projectKey)
+    await this.loadPage(pageKey)
+    this.action = 'draw-heating-zone'
+  }
+
   async openRenamePageDialog(pageKey: string) {
     const page = this.project.pages?.[pageKey]
     if (!page) return

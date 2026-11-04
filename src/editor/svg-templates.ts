@@ -4,6 +4,7 @@ import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { lineMetrics, shapeBounds } from '../editor/model/model.js'
 import { renderedSymbolScale } from './model/symbol-scale.js'
+import { heatingMarkup } from './heating-plan.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from './constants.js'
 import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
@@ -84,6 +85,7 @@ export const shapeTemplate = (
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH
 ) => {
   if (shape.hidden) return nothing
+  if (shape.kind === 'rect' && shape.heating) return unsafeSVG(heatingMarkup(shape, selected))
   const selectedAttr = selected ? 'true' : 'false'
   const generatedLabelClass =
     shape.kind === 'text' && shape.generationKey && shape.sourceLink ? 'onewire-generated-label' : ''

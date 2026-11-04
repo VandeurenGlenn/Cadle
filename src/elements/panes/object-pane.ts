@@ -15,6 +15,7 @@ import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
+import type { HeatingData, HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
@@ -26,6 +27,8 @@ import '@vandeurenglenn/lite-elements/icon.js'
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale?: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
+  @property({ attribute: false }) private accessor _nativeHeating: HeatingData | null = null
+  @property({ attribute: false }) private accessor _nativeHeatingLayout: HeatingLayout | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
   @property()
   private accessor _activeObjectLabel = 'No selection'
@@ -151,6 +154,8 @@ export class ObjectPane extends LiteElement {
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
+      this._nativeHeating = null
+      this._nativeHeatingLayout = null
       this._nativeDimensions = null
       this._nativeConnection = null
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
@@ -185,6 +190,8 @@ export class ObjectPane extends LiteElement {
     }
 
     const shape = selection.shape
+    this._nativeHeating = shape.heating ?? null
+    this._nativeHeatingLayout = shape.heatingLayout ?? null
     this._nativeDimensions = shape.dimensions
     this._nativeConnection = shape.connection
     this._nativeSelectedId = shape.id
@@ -236,7 +243,7 @@ export class ObjectPane extends LiteElement {
     } else {
       this._nativeElectrical = null
     }
-    this._activeObjectLabel = shape.connection ? CONNECTION_NAMES[shape.connection.kind] : shape.label
+    this._activeObjectLabel = shape.heating ? shape.name : shape.connection ? CONNECTION_NAMES[shape.connection.kind] : shape.label
   }
 
   #setBindingLabelSide = (side: BindingLabelSide) => {
@@ -621,7 +628,7 @@ export class ObjectPane extends LiteElement {
               const drawingScale = Number((event.target as HTMLSelectElement).value)
               if (isDrawingScale(drawingScale)) pubsub.publish('editor.controls.command', { drawingScale })
             }}>
-            ${DRAWING_SCALES.map((scale) => html`<option value=${String(scale)}>1:${scale}</option>`)}
+            ${DRAWING_SCALES.map((scale) => html`<option value=${String(scale)} .selected=${scale === dimensions.drawingScale}>1:${scale}</option>`)}
           </select>
         </label>` : ''}
       </div>
@@ -635,6 +642,41 @@ export class ObjectPane extends LiteElement {
       </dl>
       ${dimensions.drawingScale === null ? html`<p class="dimension-hint">Werkelijke maten: stel de planschaal in of kalibreer met een bekende lengte.</p>` : ''}
     </div>`
+  }
+
+  #heatingProperties() {
+    const data = this._nativeHeating, layout = this._nativeHeatingLayout
+    if (!data) return ''
+    const update = (heating: Partial<HeatingData>) => pubsub.publish('editor.object.update', { heating })
+    const numeric = (key: 'spacingMm' | 'edgeMm' | 'diameterMm' | 'circuits', label: string, min: number, max: number) => html`
+      <label><span class="native-label">${label}</span><input class="native-input" type="number" min=${min} max=${max} step="1"
+        data-heating-field=${key} .value=${String(data[key])}
+        @change=${(event: Event) => {
+          const input = event.target as HTMLInputElement
+          if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) update({ [key]: input.valueAsNumber })
+        }} /></label>`
+    return this.#propertySection('heating', 'Vloerverwarming', html`
+      <label><span class="native-label">Benaming</span><input class="native-input" data-heating-field="name" maxlength="100" .value=${data.name}
+        @change=${(event: Event) => update({ name: (event.target as HTMLInputElement).value })} /></label>
+      ${data.kind !== 'manifold' ? numeric('diameterMm', 'Buisdiameter (mm)', 6, 50) : ''}
+      ${data.kind === 'zone' ? html`
+        <div class="native-row">${numeric('spacingMm', 'Buisafstand h.o.h. (mm)', 50, 500)}${numeric('edgeMm', 'Randafstand (mm)', 0, 1000)}</div>
+        ${numeric('circuits', 'Aantal lussen', 1, 24)}
+        <label><span class="native-label">Legrichting</span><select class="native-select" data-heating-field="direction" .value=${data.direction}
+          @change=${(event: Event) => update({ direction: (event.target as HTMLSelectElement).value as HeatingData['direction'] })}>
+          <option value="horizontal">Horizontale meander</option><option value="vertical">Verticale meander</option>
+        </select></label>
+        <div class="dimension-caption">Zone ${layout?.areaM2.toFixed(2)} m² · buis ${layout?.lengthM.toFixed(1)} m (zonder aansluitleidingen)</div>
+        ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Lus ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
+      ` : data.kind === 'manifold' ? numeric('circuits', 'Aantal groepen', 1, 24) : html`
+        <label><span class="native-label">Buisfunctie</span><select class="native-select" data-heating-field="pipeRole" .value=${data.pipeRole}
+          @change=${(event: Event) => update({ pipeRole: (event.target as HTMLSelectElement).value as HeatingData['pipeRole'] })}>
+          <option value="supply">Aanvoer (rood)</option><option value="return">Retour (blauw)</option>
+        </select></label>
+        <div class="dimension-caption">Trajectlengte ${layout?.lengthM.toFixed(2)} m</div>
+      `}
+      ${layout?.warning ? html`<p class="dimension-hint" role="alert">${layout.warning}</p>` : ''}
+    `, true)
   }
 
   #expandedSections = new Map<string, boolean>()
@@ -679,6 +721,7 @@ export class ObjectPane extends LiteElement {
       </cadle-header>
       <section>
         ${!multiple ? this.#dimensionSummary() : ''}
+        ${!multiple ? this.#heatingProperties() : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
               <label>
@@ -687,14 +730,14 @@ export class ObjectPane extends LiteElement {
                   @input=${(event: Event) => this.#onSymbolTextInput(field.key, (event.target as HTMLInputElement).value)} />
               </label>
             `) : ''}
-        <label class="native-label">Binding ID</label>
+        ${!this._nativeHeating ? html`<label class="native-label">Binding ID</label>
         <input
           class="native-input native-binding-input"
           .value=${this._nativeBindingId}
           maxlength="24"
           @input=${this.#onNativeBindingInput}
           @change=${this.#saveNativeBinding}
-          placeholder="e.g. Q1" />
+          placeholder="e.g. Q1" />` : ''}
 
         ${!multiple && this._nativeSelectedKind === 'line' ? this.#propertySection('connection', 'Cable & wire', html`
 ${this.#renderConnectionProperties()}
@@ -1040,7 +1083,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
 
 `, false)}
 ` : ''}
-        ${multiple || this._nativeSelectedKind !== 'symbol' ? this.#propertySection('circuit-operations', 'Circuit operations', html`
+        ${!this._nativeHeating && (multiple || this._nativeSelectedKind !== 'symbol') ? this.#propertySection('circuit-operations', 'Circuit operations', html`
         <div
           class="circuit-actions"
           aria-label="Circuit operations">

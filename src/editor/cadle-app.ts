@@ -1,6 +1,7 @@
 import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
+import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingMarkup } from './heating-plan.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
@@ -44,6 +45,7 @@ import {
 import { parseHash } from '../shell/routing.js'
 import type {
   DraftShape,
+  RectShape,
   DragState,
   LineShape,
   NativeCatalogPick,
@@ -263,6 +265,8 @@ export class CadleApp extends LiteElement {
   #stagePointerId: number | null = null
   #paperPreset: PaperPreset = 'a4-landscape'
   #drawingScale: DrawingScale | null = DEFAULT_DRAWING_SCALE
+  #heatingPipePoints: Point[] = []
+  #heatingPipeHover: Point | null = null
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
@@ -1138,6 +1142,8 @@ export class CadleApp extends LiteElement {
     this.#drawingScale = pageType === 'groundplan'
       ? isDrawingScale(parsed.drawingScale) ? parsed.drawingScale : DEFAULT_DRAWING_SCALE
       : null
+    if (this.#drawingScale) this.#document.shapes = this.#document.shapes.map((shape) =>
+      shape.heating ? { ...shape, heating: { ...shape.heating, drawingScale: this.#drawingScale! } } : shape)
     const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
     if (pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
       this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {
@@ -1203,6 +1209,8 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
+    this.#heatingPipePoints = []
+    this.#heatingPipeHover = null
     this.#document.shapes = []
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
@@ -1629,6 +1637,10 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
+    if (tool !== 'heating-pipe') {
+      this.#heatingPipePoints = []
+      this.#heatingPipeHover = null
+    }
     this.#connectionKind = null
     if (!this.#tools.select(tool)) { this.#render(); return }
     const shellAction = this.#tools.shellAction()
@@ -2016,6 +2028,11 @@ export class CadleApp extends LiteElement {
   }
 
   #onStageDoubleClick = async (event: MouseEvent) => {
+    if (this.#tools.current === 'heating-pipe') {
+      event.preventDefault()
+      this.#commitHeatingPipe()
+      return
+    }
     const point = this.#pointFromEvent(event as PointerEvent)
     if (!point) return
 
@@ -4965,6 +4982,9 @@ export class CadleApp extends LiteElement {
       ${this.#draft ? this.#measurementTemplate(this.#draft.start, this.#draft.end) : nothing}
       ${this.#wallChain ? this.#measurementTemplate(this.#wallChain.startPoint, this.#chainPreviewEnd) : nothing}
       ${this.#rubberBandTemplate()}
+      ${this.#heatingPipePoints.length && this.#heatingPipeHover
+        ? unsafeSVG(heatingMarkup(createHeatingPipe('__heating-preview__', [...this.#heatingPipePoints, this.#heatingPipeHover], heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))))
+        : nothing}
     `
   }
 
@@ -5034,7 +5054,7 @@ export class CadleApp extends LiteElement {
     const metres = Number(values?.length?.replace(',', '.'))
     const scale = Number(values?.scale)
     if (!values || pageKey !== this.#pageKey || !Number.isFinite(metres) || metres <= 0 || !isDrawingScale(scale)) return
-    this.#document.shapes = scaleGroundPlanGeometry(this.#document.shapes, drawingUnitsForMetres(metres, scale) / length)
+    this.#document.shapes = scaleGroundPlanGeometry(this.#document.shapes, drawingUnitsForMetres(metres, scale) / length, scale)
     this.#drawingScale = scale
     this.#rebindAllOpeningsToWalls()
     this.#pushHistory()
@@ -5162,6 +5182,31 @@ export class CadleApp extends LiteElement {
     if (file) this.#importJson(file)
   }
 
+  #commitHeatingPipe() {
+    if (this.#heatingPipePoints.length < 2) return
+    const shape = createHeatingPipe(nextShapeId(), this.#heatingPipePoints, heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))
+    this.#document.shapes.push(shape)
+    this.#document.selectedId = shape.id
+    this.#document.selectedIds = new Set([shape.id])
+    this.#heatingPipePoints = []
+    this.#heatingPipeHover = null
+    this.#pushHistory()
+    this.#activateTool('select')
+  }
+
+  #snapHeatingPoint(point: Point): Point {
+    if (!this.#snap) return point
+    let nearest = this.#snapPoint(point), distance = 12 / this.#viewport.state.zoom
+    for (const shape of this.#document.shapes) {
+      if (shape.hidden || shape.kind !== 'rect' || !shape.heating) continue
+      for (const anchor of heatingAnchors(shape)) {
+        const delta = Math.hypot(point.x - anchor.x, point.y - anchor.y)
+        if (delta < distance) { nearest = anchor; distance = delta }
+      }
+    }
+    return nearest
+  }
+
   #onPointerDown = async (event: PointerEvent) => {
     this.#hideStageContextMenu()
     const stage = event.currentTarget as SVGSVGElement
@@ -5186,6 +5231,26 @@ export class CadleApp extends LiteElement {
 
     const rawPoint = this.#pointFromEvent(event)
     if (!rawPoint) return
+
+    if (this.#tools.current === 'heating-pipe' && event.button === 0) {
+      const point = this.#snapHeatingPoint(rawPoint)
+      if (!samePoint(point, this.#heatingPipePoints.at(-1) ?? null)) this.#heatingPipePoints.push(point)
+      this.#heatingPipeHover = point
+      this.#renderPreviewOnly()
+      return
+    }
+    if (this.#tools.current === 'heating-manifold' && event.button === 0) {
+      const point = this.#snapPoint(rawPoint)
+      const shape: RectShape = { id: nextShapeId(), kind: 'rect', start: point,
+        end: { x: point.x + 120, y: point.y + 64 }, strokeWidth: 2,
+        heating: heatingDefaults('manifold', this.#drawingScale ?? DEFAULT_DRAWING_SCALE) }
+      this.#document.shapes.push(shape)
+      this.#document.selectedId = shape.id
+      this.#document.selectedIds = new Set([shape.id])
+      this.#pushHistory()
+      this.#activateTool('select')
+      return
+    }
 
     if (this.#tools.current === 'wall') {
       // Wall chain must win before shape selection so existing walls can be used as click targets.
@@ -5619,6 +5684,7 @@ export class CadleApp extends LiteElement {
           ? this.#snapToEndpoints(gridSnapped).point
           : gridSnapped
     this.#draft = createDraftShape(nextShapeId(), point, this.#tools.current)
+    if (this.#tools.current === 'heating-zone') this.#draft.heating = heatingDefaults('zone', this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
     if (this.#draft.kind === 'line' && this.#connectionKind) {
       this.#draft.connection = connectionDefaults(this.#connectionKind)
       const host = this.#nearestElectricalAnchor(point).hostSymbol
@@ -5651,6 +5717,11 @@ export class CadleApp extends LiteElement {
     if (!rawPoint) return
     this.#stageContextPastePoint = rawPoint
     pubsub.publish('shell.pointer', rawPoint)
+    if (this.#tools.current === 'heating-pipe' && this.#heatingPipePoints.length) {
+      this.#heatingPipeHover = this.#snapHeatingPoint(rawPoint)
+      this.#renderPreviewOnly()
+      return
+    }
 
     if (this.#labelDrag && this.#stagePointerId === event.pointerId) {
       const ld = this.#labelDrag
@@ -5927,6 +5998,7 @@ export class CadleApp extends LiteElement {
         this.#document.selectedId = committedShape.id
         this.#document.selectedIds = new Set([committedShape.id])
         this.#pushHistory()
+        if (committedShape.heating) this.#activateTool('select')
       }
       this.#draft = null
       this.#stagePointerId = null
@@ -5951,6 +6023,12 @@ export class CadleApp extends LiteElement {
 
   #onKeyDown = (event: KeyboardEvent) => {
     if (isEditableKeyboardEvent(event)) return
+    if (this.#tools.current === 'heating-pipe' && (event.key === 'Enter' || event.key === 'Escape')) {
+      event.preventDefault()
+      if (event.key === 'Enter') this.#commitHeatingPipe()
+      else this.#activateTool('select')
+      return
+    }
 
     if (isEscape(event) && this.#stageContextMenuOpen) {
       this.#hideStageContextMenu()

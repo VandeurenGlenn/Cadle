@@ -36,7 +36,7 @@ export class DrawingScaleControl extends LiteElement {
           if (isDrawingScale(drawingScale)) pubsub.publish('editor.controls.command', { drawingScale })
         }}>
         ${this.scale === null ? html`<option value="">Instellen…</option>` : ''}
-        ${DRAWING_SCALES.map((scale) => html`<option value=${String(scale)}>1:${scale}</option>`)}
+        ${DRAWING_SCALES.map((scale) => html`<option value=${String(scale)} .selected=${scale === this.scale}>1:${scale}</option>`)}
       </select></label>
       <button type="button" aria-label="Planschaal kalibreren"
         title=${this.canCalibrate ? 'Kalibreer het plan met de echte lengte van de geselecteerde muur of lijn' : 'Selecteer een muur of lijn om het plan te kalibreren'}

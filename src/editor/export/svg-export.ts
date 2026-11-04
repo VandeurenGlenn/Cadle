@@ -1,5 +1,6 @@
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
 import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
+import { heatingMarkup } from '../heating-plan.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextPresentation } from '../symbol-metadata.js'
 import { electricalConnectionMarkup } from '../electrical-connection-markup.js'
@@ -161,9 +162,11 @@ export const shapeMarkup = (
   shape: Shape,
   selected: boolean,
   extraClass = '',
-  symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH
+  symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
+  monochrome = false
 ): string => {
   if (shape.hidden) return ''
+  if (shape.kind === 'rect' && shape.heating) return heatingMarkup(shape, selected, monochrome)
   const selectedAttr = selected ? 'true' : 'false'
   switch (shape.kind) {
     case 'wall':
@@ -475,9 +478,9 @@ export const buildSvgDocument = (options: {
     return entries
       .map((entry) =>
         entry.type === 'single'
-          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth)
+          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome)
           : `<g class="shape-group" data-group-id="${entry.groupId}">${entry.shapes
-              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth))
+              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome))
               .join('')}</g>`
       )
       .join('')

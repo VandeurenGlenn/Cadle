@@ -31,6 +31,7 @@ export class ProjectActions extends LiteElement {
       { title: 'Manage catalog', action: 'manage-catalog', icon: 'settings' }
     ],
     more: [
+      { title: 'Nieuw legplan vloerverwarming', action: 'create-heating-plan', icon: 'grid_on' },
       { title: 'Set distribution structure', action: 'describe-one-wire', icon: 'account_tree' },
       { title: 'Auto-number circuits', action: 'auto-name-electrical', icon: 'format_list_numbered' },
       { title: 'Check circuit data', action: 'validate-bindings', icon: 'check' },
@@ -68,6 +69,9 @@ export class ProjectActions extends LiteElement {
 
   #handleMenuAction(action: string) {
     switch (action) {
+      case 'create-heating-plan':
+        void cadleShell.createUnderfloorHeatingPlan()
+        break
       case 'import-pdf':
         importPlan()
         break

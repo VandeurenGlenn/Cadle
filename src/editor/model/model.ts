@@ -3,6 +3,7 @@ import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata }
 import { appliancePaperScale, renderedSymbolScale, resizedSymbolStrokeWidth } from './symbol-scale.js'
 import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
+import { sanitizeHeating } from '../heating-plan.js'
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
@@ -39,6 +40,7 @@ export const isPoint = (value: unknown): value is Point => {
 
 const copyGeneratedMetadata = (
   source: {
+    heating?: unknown
     generationKey?: unknown
     sourceLink?: unknown
     oneWireRailId?: unknown
@@ -47,6 +49,8 @@ const copyGeneratedMetadata = (
   },
   target: Shape
 ): void => {
+  const heating = target.kind === 'rect' ? sanitizeHeating(source.heating) : undefined
+  if (heating) target.heating = heating
   if (source.hidden === true) target.hidden = true
   if (source.locked === true) target.locked = true
   if (typeof source.generationKey === 'string' && source.generationKey.trim()) {

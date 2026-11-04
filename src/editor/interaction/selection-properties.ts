@@ -5,6 +5,7 @@ import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import { sanitizeConnection, type ElectricalConnection } from '../model/electrical-connection.js'
+import { sanitizeHeating, type HeatingData } from '../heating-plan.js'
 import {
   inferCircuitType,
   inferElectricalRole,
@@ -18,6 +19,7 @@ import {
 const phaseLabel = phaseConfigurationLabel
 
 export type SelectionPropertyUpdate = {
+  heating?: Partial<HeatingData>
   connection?: Partial<ElectricalConnection> | null
   text?: string
   symbolTextOverrides?: Record<string, string>
@@ -223,6 +225,10 @@ const applyProperties = (
   context: SelectionUpdateContext
 ): Shape => {
   const updated = cloneShape(shape) as Shape & { fill?: string }
+  if (updated.kind === 'rect' && updated.heating && payload.heating) {
+    updated.heating = sanitizeHeating({ ...updated.heating, ...payload.heating, kind: updated.heating.kind,
+      drawingScale: updated.heating.drawingScale, points: updated.heating.points })
+  }
   if ('connection' in payload && updated.kind === 'line') {
     if (payload.connection === null) delete updated.connection
     else updated.connection = sanitizeConnection({ ...updated.connection, ...payload.connection })

@@ -4,6 +4,7 @@ import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import { connectionSegments, CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { heatingLayout, type HeatingData, type HeatingLayout } from '../heating-plan.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH } from '../../preferences/symbol-stroke-width.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
 
@@ -14,6 +15,8 @@ export type NativeSelectionSymbolTextField = {
 }
 
 export type NativeSelectionShapePayload = {
+  heating?: HeatingData
+  heatingLayout?: HeatingLayout
   dimensions?: { drawingScale?: number | null; length?: number; width?: number; height?: number; strokeWidth?: number }
   connection?: ElectricalConnection
   id: string
@@ -106,6 +109,11 @@ export const createNativeSelectionChangedPayload = (
   const shapePayload: NativeSelectionShapePayload = {
     id: selectedShape.id,
     kind
+  }
+  if (selectedShape.kind === 'rect' && selectedShape.heating) {
+    shapePayload.heating = selectedShape.heating
+    shapePayload.heatingLayout = heatingLayout(selectedShape)
+    shapePayload.name = selectedShape.heating.kind === 'zone' ? 'Verwarmingszone' : selectedShape.heating.kind === 'pipe' ? 'Verwarmingsbuis' : 'Verdeler'
   }
   if (selectedShape.kind === 'line' && selectedShape.connection) {
     shapePayload.connection = { ...selectedShape.connection }

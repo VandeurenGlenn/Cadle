@@ -10,8 +10,11 @@ declare global {
     'cadle-actions': CadleActions
   }
 }
-type DrawTool = { action: string; icon: string; title: string; nativeOnly?: boolean; classicOnly?: boolean }
+type DrawTool = { action: string; icon: string; title: string; hint?: string; nativeOnly?: boolean; classicOnly?: boolean }
 const DRAW_TOOLS: DrawTool[] = [
+  { action: 'draw-heating-zone', icon: 'grid_on', title: 'Verwarmingszone tekenen', hint: 'Sleep een rechthoek voor automatische verwarmingslussen. Pas buisafstand en aantal lussen aan in Object properties.', nativeOnly: true },
+  { action: 'draw-heating-pipe', icon: 'polyline', title: 'Verwarmingsbuis tekenen', hint: 'Klik de punten van het buistraject. Enter of dubbelklik om af te werken; Escape om te annuleren.', nativeOnly: true },
+  { action: 'draw-heating-manifold', icon: 'view_week', title: 'Verdeler plaatsen', nativeOnly: true },
   { action: 'select', icon: 'arrow_selector_tool', title: 'Select' },
   { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
   { action: 'draw-room', icon: 'pentagon', title: 'Draw room' },
@@ -106,6 +109,7 @@ export class CadleActions extends LiteElement {
 
   #visibleTools(): DrawTool[] {
     return DRAW_TOOLS.filter((t) => {
+      if (t.action.startsWith('draw-heating-') && this.pageType !== 'groundplan') return false
       if (this.isNativeRoute && t.classicOnly) return false
       if (!this.isNativeRoute && t.nativeOnly) return false
       return true
@@ -114,7 +118,7 @@ export class CadleActions extends LiteElement {
 
   #toolButton(tool: DrawTool, menu = false) {
     return html`<button type="button" class=${menu ? 'tool menu-tool' : 'tool'}
-      title=${tool.title} aria-label=${tool.title}
+      title=${tool.hint ?? tool.title} aria-label=${tool.title}
       aria-pressed=${this.#isToolActive(tool) ? 'true' : 'false'}
       ?active=${this.#isToolActive(tool)} @click=${() => this.#pickTool(tool)}>
       <custom-icon icon=${tool.icon}></custom-icon>
@@ -143,9 +147,10 @@ export class CadleActions extends LiteElement {
   render() {
     const tools = this.#visibleTools()
     const oneWire = this.pageType === 'onewire'
+    const heatingTools = tools.filter((tool) => tool.action.startsWith('draw-heating-'))
     const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-door', 'draw-window', 'draw-gate'].includes(tool.action))
     const extraTools = tools.filter((tool) => tool.action !== 'select' && !['draw-text', 'draw-symbol'].includes(tool.action) &&
-      (oneWire || !planTools.includes(tool)))
+      !heatingTools.includes(tool) && (oneWire || !planTools.includes(tool)))
     const extraActive = extraTools.find((tool) => this.#isToolActive(tool))
     return html`
       <div class="tool-group history-tools" role="group" aria-label="Undo and redo">
@@ -172,6 +177,9 @@ export class CadleActions extends LiteElement {
           <custom-icon class="menu-chevron" icon="keyboard_arrow_down"></custom-icon>
         </button>
       </div>
+      ${heatingTools.length ? html`<div class="tool-group drawing-tools" role="group" aria-label="Vloerverwarming">
+        ${heatingTools.map((tool) => this.#toolButton(tool))}
+      </div>` : ''}
       <div class="tool-group view-tools" role="group" aria-label="Drawing aids">
         <button type="button" class="tool" title="Toggle measurements" aria-label="Toggle measurements"
           aria-pressed=${this.measurements ? 'true' : 'false'} ?active=${this.measurements} @click=${this.#toggleMeasurements}>

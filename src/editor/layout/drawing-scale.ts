@@ -10,8 +10,8 @@ export const drawingUnitsForMetres = (metres: number, scale: number): number => 
 export const drawingScaleLabel = (scale: number): string => `1:${new Intl.NumberFormat('nl-BE', { maximumFractionDigits: 2 }).format(scale)}`
 
 /** Change construction geometry while keeping annotations and devices readable on paper. */
-export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number): Shape[] => {
-  if (!Number.isFinite(factor) || factor <= 0 || factor === 1 || !shapes.length) return [...shapes]
+export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number, drawingScale?: DrawingScale): Shape[] => {
+  if (!Number.isFinite(factor) || factor <= 0 || (factor === 1 && !drawingScale) || !shapes.length) return [...shapes]
   const anchors = shapes.flatMap((shape): Point[] => {
     if ('start' in shape) return [shape.start, shape.end]
     if (shape.kind === 'image') return [
@@ -27,6 +27,7 @@ export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number
   const point = (value: Point): Point => ({ x: center.x + (value.x - center.x) * factor, y: center.y + (value.y - center.y) * factor })
   return shapes.map((shape): Shape => {
     if ('start' in shape) return { ...shape, start: point(shape.start), end: point(shape.end),
+      ...(shape.heating && drawingScale ? { heating: { ...shape.heating, drawingScale } } : {}),
       ...(shape.kind === 'line' && shape.connection?.via ? { connection: { ...shape.connection, via: shape.connection.via.map(point) } } : {}) }
     if (shape.kind === 'image') return { ...shape, position: point(shape.position), width: shape.width * factor, height: shape.height * factor }
     return { ...shape, position: point(shape.position) }
@@ -34,4 +35,4 @@ export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number
 }
 
 export const rescaleGroundPlan = (shapes: readonly Shape[], from: DrawingScale, to: DrawingScale): Shape[] =>
-  scaleGroundPlanGeometry(shapes, from / to)
+  scaleGroundPlanGeometry(shapes, from / to, to)

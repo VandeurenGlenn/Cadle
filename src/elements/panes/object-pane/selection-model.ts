@@ -1,4 +1,5 @@
 import type { ElectricalConnection } from '../../../editor/model/electrical-connection.js'
+import { sanitizeHeating, type HeatingData, type HeatingLayout } from '../../../editor/heating-plan.js'
 export type BindingLabelSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
 
 export type SymbolTextField = {
@@ -10,6 +11,8 @@ export type SymbolTextField = {
 export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
 
 export type SelectionShape = {
+  heating?: HeatingData
+  heatingLayout?: HeatingLayout
   dimensions?: { drawingScale?: number | null; length?: number; width?: number; height?: number; strokeWidth?: number }
   connection?: ElectricalConnection
   id?: string
@@ -110,6 +113,8 @@ export const normalizeSelection = (payload: SelectionPayload) => {
     ...(payload?.canConvertToRoom === true ? { canConvertToRoom: true } : {}),
     shape: {
       id: typeof shape.id === 'string' ? shape.id : '',
+      heating: sanitizeHeating(shape.heating),
+      heatingLayout: shape.heatingLayout,
       kind,
       connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',

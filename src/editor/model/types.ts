@@ -14,6 +14,9 @@ export type Tool =
   | 'text'
   | 'symbol'
   | 'onewire'
+  | 'heating-zone'
+  | 'heating-pipe'
+  | 'heating-manifold'
 
 export type Point = { x: number; y: number }
 
@@ -24,6 +27,7 @@ export type OneWireSourceLink = {
 }
 
 type GeneratedShapeMetadata = {
+  heating?: import('../heating-plan.js').HeatingData
   generationKey?: string
   sourceLink?: OneWireSourceLink
   oneWireRailId?: string

@@ -1,6 +1,9 @@
 import type { Tool } from '../../editor/model/types.js'
 
 const ACTION_TO_TOOL: Readonly<Record<string, Tool>> = {
+  'draw-heating-zone': 'heating-zone',
+  'draw-heating-pipe': 'heating-pipe',
+  'draw-heating-manifold': 'heating-manifold',
   'draw-wall': 'wall',
   'draw-room': 'room',
   'draw-door': 'door',
@@ -20,6 +23,9 @@ const ACTION_TO_TOOL: Readonly<Record<string, Tool>> = {
 }
 
 const TOOL_TO_ACTION: Readonly<Record<Tool, string>> = {
+  'heating-zone': 'draw-heating-zone',
+  'heating-pipe': 'draw-heating-pipe',
+  'heating-manifold': 'draw-heating-manifold',
   select: 'select',
   wall: 'draw-wall',
   room: 'draw-room',

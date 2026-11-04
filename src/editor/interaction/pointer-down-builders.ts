@@ -119,7 +119,7 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc'
+  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'heating-zone'
     ? {
         id,
         kind: 'rect',

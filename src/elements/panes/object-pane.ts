@@ -15,6 +15,7 @@ import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
+import { heatingDesignLimits, heatingOutputBasis, type HeatingDesignInputs } from '../../editor/heating-design.js'
 import type { HeatingData, HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
@@ -647,6 +648,11 @@ export class ObjectPane extends LiteElement {
   #heatingProperties() {
     const data = this._nativeHeating, layout = this._nativeHeatingLayout
     if (!data) return ''
+    if (data.kind === 'table') return this.#propertySection('heating', 'Kringentabel', html`
+      <div class="dimension-caption">Meters omvatten de verwarmingslus en beide aansluittrajecten vanaf de verdeler. De tabel volgt de kringen van het legplan.</div>
+      <div class="dimension-caption">Concept: controleer geometrie, productgegevens en hydrauliek vóór uitvoering. * bij een debiet betekent dat aannames gebruikt zijn.</div>
+      <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>
+    `, true)
     const update = (heating: Partial<HeatingData>) => pubsub.publish('editor.object.update', { heating })
     const numeric = (key: 'spacingMm' | 'edgeMm' | 'diameterMm' | 'circuits', label: string, min: number, max: number) => html`
       <label><span class="native-label">${label}</span><input class="native-input" type="number" min=${min} max=${max} step="1"
@@ -655,10 +661,23 @@ export class ObjectPane extends LiteElement {
           const input = event.target as HTMLInputElement
           if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) update({ [key]: input.valueAsNumber })
         }} /></label>`
-    return this.#propertySection('heating', 'Vloerverwarming', html`
+    const limits = heatingDesignLimits(data.diameterMm, data.design)
+    const designNumeric = (key: keyof HeatingDesignInputs, label: string, min: number, max: number, fallback: string) => html`
+      <label><span class="native-label">${label}</span><input class="native-input" type="number" min=${min} max=${max} step="any"
+        data-heating-design=${key} placeholder=${fallback} .value=${data.design?.[key] === undefined ? '' : String(data.design[key])}
+        @change=${(event: Event) => {
+          const input = event.target as HTMLInputElement
+          if (!input.value || (input.checkValidity() && Number.isFinite(input.valueAsNumber))) {
+            const design = { ...data.design, [key]: input.value ? input.valueAsNumber : undefined }
+            if (key === 'systemOutputWm2') design.systemOutputBasis = input.value ? heatingOutputBasis(data.diameterMm, data.spacingMm, design) : undefined
+            update({ design })
+          }
+        }} /></label>`
+    const audit = data.audit
+    return html`${this.#propertySection('heating', 'Vloerverwarming', html`
       <label><span class="native-label">Benaming</span><input class="native-input" data-heating-field="name" maxlength="100" .value=${data.name}
         @change=${(event: Event) => update({ name: (event.target as HTMLInputElement).value })} /></label>
-      ${data.kind !== 'manifold' ? numeric('diameterMm', 'Buisdiameter (mm)', 6, 50) : ''}
+      ${data.kind !== 'manifold' || data.automatic ? numeric('diameterMm', 'Buisdiameter (mm)', 6, 50) : ''}
       ${data.kind === 'zone' ? html`
         <div class="native-row">${numeric('spacingMm', 'Buisafstand h.o.h. (mm)', 50, 500)}${numeric('edgeMm', 'Randafstand (mm)', 0, 1000)}</div>
         ${numeric('circuits', 'Aantal lussen', 1, 24)}
@@ -668,15 +687,90 @@ export class ObjectPane extends LiteElement {
         </select></label>
         <div class="dimension-caption">Zone ${layout?.areaM2.toFixed(2)} m² · buis ${layout?.lengthM.toFixed(1)} m (zonder aansluitleidingen)</div>
         ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Lus ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
-      ` : data.kind === 'manifold' ? numeric('circuits', 'Aantal groepen', 1, 24) : html`
+      ` : data.kind === 'manifold' ? data.automatic ? html`
+        ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
+        <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
+        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
+      ` : numeric('circuits', 'Aantal groepen', 1, 24) : html`
         <label><span class="native-label">Buisfunctie</span><select class="native-select" data-heating-field="pipeRole" .value=${data.pipeRole}
           @change=${(event: Event) => update({ pipeRole: (event.target as HTMLSelectElement).value as HeatingData['pipeRole'] })}>
-          <option value="supply">Aanvoer (rood)</option><option value="return">Retour (blauw)</option>
+          <option value="supply">Aanvoer (rood)</option><option value="return">Retour (blauw)</option><option value="loop">Verwarmingslus</option>
         </select></label>
-        <div class="dimension-caption">Trajectlengte ${layout?.lengthM.toFixed(2)} m</div>
+        <div class="dimension-caption">Trajectlengte ${layout?.lengthM.toFixed(2)} m${data.circuitId ? ` · kring ${data.circuitId}` : ''}</div>
+        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'redraw-heating-route' })}>Traject opnieuw tekenen</button>
+        <div class="dimension-caption">Enter bewaart; Escape annuleert. Automatisch herberekenen vervangt handmatige trajecten.</div>
       `}
       ${layout?.warning ? html`<p class="dimension-hint" role="alert">${layout.warning}</p>` : ''}
-    `, true)
+    `, true)}
+      ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-design', 'Ontwerpgegevens', html`
+        <p class="dimension-caption">Optioneel invullen uit productblad en warmteverliesberekening. Pas daarna het legplan opnieuw aan met ‘opnieuw berekenen’.</p>
+        <label><span class="native-label">Buisproduct</span><input class="native-input" maxlength="160" data-heating-design="product" .value=${data.design?.product ?? ''}
+          @change=${(event: Event) => update({ design: { ...data.design, product: (event.target as HTMLInputElement).value } })} /></label>
+        ${designNumeric('minBendRadiusMm', 'Minimale buigradius (mm)', 10, 1000, `${limits.minBendRadiusMm} (aanname 5×Ø)`)}
+        ${designNumeric('maxCircuitLengthM', 'Max. kringlengte incl. reserve (m)', 20, 300, '100 (aanname)')}
+        ${designNumeric('allowanceM', 'Opstanden + snijreserve per kring (m)', 0, 30, 'Nog invullen')}
+        ${designNumeric('deltaTK', 'Ontwerp-ΔT (K)', 1, 20, '5 (aanname)')}
+        ${[...new Set(data.rows?.map((row) => row.room) ?? [])].map((room) => html`
+          <label><span class="native-label">Warmtelast ${room} (W)</span><input class="native-input" type="number" min="0" max="100000" step="any" data-heating-room=${room}
+            placeholder="Nog invullen" .value=${data.design?.roomHeatLoadsW && Object.hasOwn(data.design.roomHeatLoadsW, room) ? String(data.design.roomHeatLoadsW[room]) : ''}
+            @change=${(event: Event) => {
+              const input = event.target as HTMLInputElement
+              if (input.value && (!input.checkValidity() || !Number.isFinite(input.valueAsNumber))) return
+              const loads = { ...data.design?.roomHeatLoadsW }
+              if (input.value) loads[room] = input.valueAsNumber
+              else delete loads[room]
+              update({ design: { ...data.design, roomHeatLoadsW: loads } })
+            }} /></label>`)}
+      `) : ''}
+      ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-hydraulics', 'Hydrauliek en inregeling', html`
+        <p class="dimension-caption">Water, Darcy–Weisbach/Colebrook. Vul waarden uit het productblad in. Beschikbare druk geldt aan de verdeler, na verlies in toevoerleidingen.</p>
+        ${designNumeric('pipeWallMm', 'Buiswanddikte (mm)', .1, 15, 'Productblad; nodig voor binnendiameter')}
+        ${designNumeric('roughnessMm', 'Absolute buisruwheid (mm)', 0, 1, '0,007 (aanname)')}
+        ${designNumeric('fluidTemperatureC', 'Gemiddelde watertemperatuur (°C)', 10, 80, 'Afgeleid uit aanvoer/retour; standaard 32,5')}
+        ${designNumeric('localLossK', 'Totale lokale ζ (bochten + koppelingen)', 0, 1000, 'Nog invullen; 0 indien onderbouwd')}
+        ${designNumeric('manifoldKv', 'Kv volledig verdelertraject per kring (m³/h)', .01, 20, 'Productblad, aanvoer én retour')}
+        ${designNumeric('availablePressureKpa', 'Verschildruk aan verdeler op werkpunt (kPa)', .1, 300, 'Pompwerkpunt na toevoerverliezen')}
+        ${designNumeric('maxVelocityMs', 'Ontwerpgrens watersnelheid (m/s)', .05, 3, '0,5 (planaanname)')}
+        ${(data.rows ?? []).map((row) => html`<div class="dimension-summary" data-heating-hydraulics=${row.id}>
+          <strong>${row.id}</strong>
+          ${row.hydraulics ? html`<div class="dimension-caption">Ø inw. ${row.hydraulics.innerDiameterMm.toFixed(1)} mm · ${row.hydraulics.velocityMs.toFixed(2)} m/s · Re ${row.hydraulics.reynolds.toFixed(0)}</div>
+            <div class="dimension-caption">Buis ${row.hydraulics.pipeKpa.toFixed(2)} + lokaal ${row.hydraulics.localKpa.toFixed(2)} + verdeler ${row.hydraulics.manifoldKpa?.toFixed(2) ?? '?'} = ${row.hydraulics.totalKpa.toFixed(2)} kPa${row.hydraulics.complete ? '' : ' (gedeeltelijk)'}</div>
+            <div class="dimension-caption">Extra smoordruk ${row.hydraulics.balanceKpa?.toFixed(2) ?? '—'} kPa${row.hydraulics.targetKv !== undefined ? ` · Kv extra weerstand ${row.hydraulics.targetKv.toFixed(3)}` : ''}</div>
+            ${row.hydraulics.pumpMarginKpa !== undefined ? html`<div class="dimension-caption">Druk boven minimum benodigd ${row.hydraulics.pumpMarginKpa.toFixed(2)} kPa</div>` : ''}
+          ` : html`<div class="dimension-caption">Wanddikte en geldige watertemperatuur nodig.</div>`}
+        </div>`)}
+        <p class="dimension-caption">Extra smoordruk is een ontwerpwaarde. Ventielstanden volgen uit de fabrikantcurve; geen glycolberekening.</p>
+      `) : ''}
+      ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-floor', 'Vloeropbouw en warmteafgifte', html`
+        <p class="dimension-caption">Deze opbouw en temperaturen gelden voor alle ruimten op dit blad. Laagweerstand R = dikte/λ. Het vlakke 1D-model geeft een optimistische bovengrens; bevestig de systeemafgifte uit fabrikantgegevens.</p>
+        <div class="native-row">${designNumeric('coveringThicknessMm', 'Afwerking dikte (mm)', 0, 200, 'Nog invullen')}${designNumeric('coveringLambda', 'Afwerking λ (W/mK)', .01, 10, 'Nog invullen')}</div>
+        <div class="native-row">${designNumeric('screedCoverMm', 'Dekvloer boven buis (mm)', 0, 300, 'Nog invullen')}${designNumeric('screedLambda', 'Dekvloer λ (W/mK)', .01, 10, 'Nog invullen')}</div>
+        <div class="native-row">${designNumeric('insulationThicknessMm', 'Isolatie dikte (mm)', 0, 500, 'Nog invullen')}${designNumeric('insulationLambda', 'Isolatie λ (W/mK)', .01, 1, 'Nog invullen')}</div>
+        ${designNumeric('minimumInsulationR', 'Ontwerpminimum isolatie R (m²K/W)', 0, 20, '1,25 (planaanname; projectsituatie controleren)')}
+        ${designNumeric('supplyTemperatureC', 'Aanvoertemperatuur (°C)', 10, 80, '35 (aanname)')}
+        ${designNumeric('roomTemperatureC', 'Ruimtetemperatuur (°C)', 5, 35, '20 (aanname)')}
+        ${designNumeric('surfaceLimitC', 'Max. gemiddelde vloertemperatuur (°C)', 10, 40, '29 (planaanname)')}
+        ${designNumeric('belowTemperatureC', 'Temperatuur onderliggende ruimte (°C)', -30, 35, 'Nodig voor bovengrens benedenverlies')}
+        ${designNumeric('downwardDesignWm2', 'Ontwerpverlies naar beneden (W/m²)', 0, 1000, 'Nog invullen; wordt bij debiet opgeteld')}
+        <label><span class="native-label">Referentie fabrikantafgifte</span><input class="native-input" data-heating-design="systemReference" maxlength="160" .value=${data.design?.systemReference ?? ''}
+          @change=${(event: Event) => update({ design: { ...data.design, systemReference: (event.target as HTMLInputElement).value } })} /></label>
+        ${designNumeric('systemOutputWm2', 'Fabrikantafgifte bij deze ontwerpgegevens (W/m²)', 0, 300, 'Bij gekozen max. legafstand, temperaturen en vloer')}
+        <p class="dimension-caption">Vul de afgifte als laatste in; wijzigen van de ontwerpgegevens maakt die onderbouwing ongeldig.</p>
+        ${[...new Map((data.rows ?? []).map((row) => [row.room, row])).values()].map((row) => html`<div class="dimension-summary" data-heating-floor=${row.room}>
+          <strong>${row.room}</strong>
+          <div class="dimension-caption">R afwerking ${row.floor?.coveringR?.toFixed(3) ?? '—'} · dekvloer ${row.floor?.screedR?.toFixed(3) ?? '—'} · isolatie ${row.floor?.insulationR?.toFixed(2) ?? '—'} m²K/W</div>
+          <div class="dimension-caption">Warmtevraag ${row.floor?.demandWm2?.toFixed(1) ?? '—'} W/m² · vloer nodig ${row.floor?.requiredSurfaceC?.toFixed(1) ?? '—'} °C</div>
+          <div class="dimension-caption">1D-bovengrens ${row.floor?.upperBoundWm2?.toFixed(1) ?? '—'} W/m² · fabrikant ${row.floor?.systemOutputWm2?.toFixed(1) ?? '—'} W/m²${row.floor?.outputStale ? ' (onderbouwing vervallen)' : ''}</div>
+          <div class="dimension-caption">Benedenverlies 1D-bovengrens ${row.floor?.downwardUpperWm2?.toFixed(1) ?? '—'} W/m²; ontwerpwaarde afzonderlijk invullen.</div>
+        </div>`)}
+      `) : ''}
+      ${data.automatic && (audit || data.checks?.length) ? this.#propertySection('heating-checks', 'Legplancontrole', html`
+        <div class="dimension-caption" role="status">Concept${audit ? ` · ${audit.errors} fouten · ${audit.reviews} controles` : ''}</div>
+        ${(audit?.issues ?? data.checks ?? []).length > 30 ? html`<p class="dimension-caption">Eerste 30 punten; de volledige lijst staat in de CSV.</p>` : ''}
+        ${(audit?.issues ?? data.checks ?? []).slice(0, 30).map((issue) => html`<p class="dimension-hint" data-heating-check=${issue.code}>${issue.severity === 'error' ? '⚠' : '•'} ${issue.message}</p>`)}
+        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>
+      `, Boolean(audit?.errors)) : ''}
+    `
   }
 
   #expandedSections = new Map<string, boolean>()

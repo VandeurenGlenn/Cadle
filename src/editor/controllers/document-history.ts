@@ -4,6 +4,7 @@ import type { Snapshot } from '../../editor/model/types.js'
 const cloneSnapshot = (snapshot: Snapshot): Snapshot => ({
   ...snapshot,
   shapes: cloneShapes(snapshot.shapes),
+  ...(snapshot.heatingSchedulePages ? { heatingSchedulePages: structuredClone(snapshot.heatingSchedulePages) } : {}),
   ...(snapshot.overflowPages ? { overflowPages: structuredClone(snapshot.overflowPages) } : {})
 })
 

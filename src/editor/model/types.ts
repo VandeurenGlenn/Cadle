@@ -147,6 +147,7 @@ export type NativeCatalogPick = {
 }
 
 export type Snapshot = {
+  heatingSchedulePages?: import('../../types.js').Project['pages']
   drawingScale?: import('../layout/drawing-scale.js').DrawingScale | null
   shapes: Shape[]
   selectedId: string | null

@@ -226,7 +226,8 @@ const applyProperties = (
 ): Shape => {
   const updated = cloneShape(shape) as Shape & { fill?: string }
   if (updated.kind === 'rect' && updated.heating && payload.heating) {
-    updated.heating = sanitizeHeating({ ...updated.heating, ...payload.heating, kind: updated.heating.kind,
+    updated.heating = sanitizeHeating({ ...updated.heating, ...payload.heating,
+      design: payload.heating.design ? { ...updated.heating.design, ...payload.heating.design } : updated.heating.design, kind: updated.heating.kind,
       drawingScale: updated.heating.drawingScale, points: updated.heating.points })
   }
   if ('connection' in payload && updated.kind === 'line') {

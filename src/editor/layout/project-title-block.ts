@@ -124,7 +124,7 @@ export const buildProjectTitleBlockMarkup = (
     </g>`
   }
   const pageType = project?.pages?.[currentPageKey]?.pageType
-  const scaleCaption = typeof drawingScale === 'number' ? `Schaal ${drawingScaleLabel(drawingScale)}`
+  const scaleCaption = project?.pages?.[currentPageKey]?.heatingScheduleOf ? 'Kringentabel · niet op schaal' : typeof drawingScale === 'number' ? `Schaal ${drawingScaleLabel(drawingScale)}`
     : drawingScale === null || pageType === 'groundplan' ? 'Schaal niet ingesteld' : pageType === 'onewire' ? 'Schematisch' : ''
   const addressLabel = missingRequiredFields.length ? 'Installatieadres · aanvullen' : 'Installatieadres'
   const metaAvailable = metaWidth - pad * 2

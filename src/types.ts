@@ -156,6 +156,8 @@ export interface Project extends ProjectInput {
       schema: { version: string; objects: object[] }
       order?: number
       oneWireOverflowOf?: UUID
+      heatingPlanOf?: string
+      heatingScheduleOf?: string
     }
   }
 }

@@ -257,7 +257,7 @@ export const createNativeSelectionChangedPayload = (
         ...(pen !== null && selectedShape.kind !== 'image' ? { strokeWidth: pen } : {}) }
     }
   }
-  if (shapePayload.dimensions && options?.drawingScale !== undefined && selectedShape.kind !== 'symbol') {
+  if (shapePayload.dimensions && options?.drawingScale !== undefined && selectedShape.kind !== 'symbol' && selectedShape.heating?.kind !== 'table') {
     shapePayload.dimensions.drawingScale = options.drawingScale
   }
   shapePayload.x = bounds.x + bounds.width / 2

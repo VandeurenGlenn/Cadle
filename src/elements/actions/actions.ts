@@ -12,6 +12,7 @@ declare global {
 }
 type DrawTool = { action: string; icon: string; title: string; hint?: string; nativeOnly?: boolean; classicOnly?: boolean }
 const DRAW_TOOLS: DrawTool[] = [
+  { action: 'draw-heating-auto', icon: 'grid_on', title: 'Legplan automatisch maken', hint: 'Vul de buisdiameter en legafstand in en klik de positie van de verdeler aan. Het legplan en de kringentabel worden automatisch gemaakt.', nativeOnly: true },
   { action: 'draw-heating-zone', icon: 'grid_on', title: 'Verwarmingszone tekenen', hint: 'Sleep een rechthoek voor automatische verwarmingslussen. Pas buisafstand en aantal lussen aan in Object properties.', nativeOnly: true },
   { action: 'draw-heating-pipe', icon: 'polyline', title: 'Verwarmingsbuis tekenen', hint: 'Klik de punten van het buistraject. Enter of dubbelklik om af te werken; Escape om te annuleren.', nativeOnly: true },
   { action: 'draw-heating-manifold', icon: 'view_week', title: 'Verdeler plaatsen', nativeOnly: true },
@@ -98,6 +99,7 @@ export class CadleActions extends LiteElement {
   #pickTool = (tool: DrawTool) => {
     const sh = window.cadleShell
     if (!sh) return
+    if (tool.action === 'draw-heating-auto') { void sh.createUnderfloorHeatingPlan(); return }
     sh.action = tool.action
     this.shadowRoot?.querySelector<HTMLElement>('#drawing-tools')?.hidePopover()
   }
@@ -117,12 +119,13 @@ export class CadleActions extends LiteElement {
   }
 
   #toolButton(tool: DrawTool, menu = false) {
-    return html`<button type="button" class=${menu ? 'tool menu-tool' : 'tool'}
+    return html`<button type="button" class=${menu ? 'tool menu-tool' : tool.action === 'draw-heating-auto' ? 'tool heating-auto' : 'tool'}
       title=${tool.hint ?? tool.title} aria-label=${tool.title}
       aria-pressed=${this.#isToolActive(tool) ? 'true' : 'false'}
       ?active=${this.#isToolActive(tool)} @click=${() => this.#pickTool(tool)}>
       <custom-icon icon=${tool.icon}></custom-icon>
       ${menu ? html`<span>${tool.title}</span>${this.#isToolActive(tool) ? html`<custom-icon class="tool-check" icon="check"></custom-icon>` : ''}` : ''}
+      ${!menu && tool.action === 'draw-heating-auto' ? html`<span>Legplan</span>` : ''}
     </button>`
   }
 
@@ -147,7 +150,7 @@ export class CadleActions extends LiteElement {
   render() {
     const tools = this.#visibleTools()
     const oneWire = this.pageType === 'onewire'
-    const heatingTools = tools.filter((tool) => tool.action.startsWith('draw-heating-'))
+    const heatingTools = tools.filter((tool) => tool.action === 'draw-heating-auto')
     const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-door', 'draw-window', 'draw-gate'].includes(tool.action))
     const extraTools = tools.filter((tool) => tool.action !== 'select' && !['draw-text', 'draw-symbol'].includes(tool.action) &&
       !heatingTools.includes(tool) && (oneWire || !planTools.includes(tool)))

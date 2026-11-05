@@ -1,7 +1,8 @@
 import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
-import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingMarkup } from './heating-plan.js'
+import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingMarkup, heatingScheduleCSV, presentHeatingTables } from './heating-plan.js'
+import { generateAutomaticHeatingPlan, type AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
@@ -266,7 +267,10 @@ export class CadleApp extends LiteElement {
   #paperPreset: PaperPreset = 'a4-landscape'
   #drawingScale: DrawingScale | null = DEFAULT_DRAWING_SCALE
   #heatingPipePoints: Point[] = []
+  #heatingPipeReplacement: RectShape | null = null
   #heatingPipeHover: Point | null = null
+  #automaticHeatingSettings: AutomaticHeatingSettings | null = null
+  #automaticHeatingBusy = false
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
@@ -1209,7 +1213,10 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
+    this.#automaticHeatingSettings = null
+    this.#automaticHeatingBusy = false
     this.#heatingPipePoints = []
+    this.#heatingPipeReplacement = null
     this.#heatingPipeHover = null
     this.#document.shapes = []
     this.#document.selectedId = null
@@ -1287,6 +1294,9 @@ export class CadleApp extends LiteElement {
         selectedId: this.#document.selectedId,
         worldWidth: this.#worldWidth,
         worldHeight: this.#worldHeight,
+        ...(this.#project?.pages?.[this.#pageKey]?.heatingPlanOf ? {
+          heatingSchedulePages: Object.fromEntries(Object.entries(this.#project.pages).filter(([, page]) => page.heatingScheduleOf === this.#pageKey))
+        } : {}),
         ...(this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire' ? {
           overflowPages: Object.fromEntries(Object.entries(this.#project.pages).filter(([, page]) => page.oneWireOverflowOf === this.#pageKey))
         } : {})
@@ -1310,6 +1320,14 @@ export class CadleApp extends LiteElement {
       Object.assign(this.#project.pages, structuredClone(snapshot.overflowPages))
       this.#project.pages[this.#pageKey].schema = { version: 'native-svg-1',
         objects: [{ kind: 'cadle-native-svg-document', payload: this.#nativeDocumentState() }] }
+      cadleShell.project = this.#project
+      void this.#persistProjectMetadata()
+    }
+    if (snapshot.heatingSchedulePages && this.#project) {
+      this.#document.selectedIds = this.#document.selectedId ? this.#expandSelectionWithGroup(this.#document.selectedId) : new Set()
+      for (const [key, page] of Object.entries(this.#project.pages)) if (page.heatingScheduleOf === this.#pageKey) delete this.#project.pages[key]
+      Object.assign(this.#project.pages, structuredClone(snapshot.heatingSchedulePages))
+      this.#project.pages[this.#pageKey].schema = { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: this.#nativeDocumentState() }] }
       cadleShell.project = this.#project
       void this.#persistProjectMetadata()
     }
@@ -1637,7 +1655,9 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
+    if (tool !== 'heating-manifold') this.#automaticHeatingSettings = null
     if (tool !== 'heating-pipe') {
+      this.#heatingPipeReplacement = null
       this.#heatingPipePoints = []
       this.#heatingPipeHover = null
     }
@@ -3237,13 +3257,14 @@ export class CadleApp extends LiteElement {
       shapes.map((shape) => translateShape(cloneShape(shape), pageIndex * 10_000_000, 0))
     const pageKeys = Object.keys(this.#project?.pages ?? {}) as UUID[]
     const currentPageIndex = this.#pageKey ? Math.max(0, pageKeys.indexOf(this.#pageKey)) : 0
-    const pool: Shape[] = currentPageType === 'onewire' ? [] : pageOffset(this.#document.shapes, currentPageIndex)
+    const pageMetadata = this.#project?.pages?.[this.#pageKey]
+    const pool: Shape[] = currentPageType === 'onewire' || pageMetadata?.heatingPlanOf || pageMetadata?.heatingScheduleOf ? [] : pageOffset(this.#document.shapes, currentPageIndex)
     if (!this.#project?.pages) return pool
 
     for (const [pageIndex, pageKey] of pageKeys.entries()) {
       if (pageKey === this.#pageKey) continue
       const page = this.#project.pages[pageKey]
-      if (page?.pageType === 'onewire') continue
+      if (page?.pageType === 'onewire' || page.heatingPlanOf || page.heatingScheduleOf) continue
       const state = this.#nativeStateForPage(pageKey)
       if (!state || !Array.isArray(state.shapes)) continue
       pool.push(...pageOffset(sanitizeShapes(state.shapes), pageIndex))
@@ -4130,6 +4151,7 @@ export class CadleApp extends LiteElement {
 
   #publishNativeSelection(selectedShape: Shape | null) {
     if (this.readOnly) return
+    if (selectedShape?.heating?.automatic) selectedShape = this.#displayShapes().find((shape) => shape.id === selectedShape!.id) ?? selectedShape
     if (this.#document.selectedId === PROJECT_LOGO_SHAPE_ID && isProjectLogoVisible(this.#project)) {
       const logoBounds = getProjectLogoBounds(this.#project)
       const logoScaleRaw =
@@ -4541,6 +4563,8 @@ export class CadleApp extends LiteElement {
       `background-position: 0 0; ` +
       `background-size: ${minorGrid}px ${minorGrid}px, ${minorGrid}px ${minorGrid}px, ` +
       `${majorGrid}px ${majorGrid}px, ${majorGrid}px ${majorGrid}px`
+    const heatingManifold = this.#document.shapes.some((shape) => shape.heating?.automatic && shape.heating.kind === 'manifold') ? this.#displayShapes().find((shape) => shape.heating?.kind === 'manifold') : undefined
+    const heatingAudit = heatingManifold?.heating?.audit
     const cursor = this.#isPanning || this.#spaceDown ? 'grab' : 'default'
     const dialogCategoryOptions = this.#catalogDialogCategoryOptionsForFolder()
     const selectedReplaceOption = this.#catalogDialogReplaceOptions.find(
@@ -4551,6 +4575,13 @@ export class CadleApp extends LiteElement {
       <div class="canvas-host">
         <div class="stage-shell">
           <div class="panel">
+            ${this.#automaticHeatingSettings || this.#automaticHeatingBusy || this.#heatingPipeReplacement ? html`<div class="heating-planner-status" role="status">
+              ${this.#automaticHeatingBusy ? 'Legplan berekenen…' : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
+            </div>` : ''}
+            ${heatingAudit && !this.#automaticHeatingSettings && !this.#automaticHeatingBusy && !this.#heatingPipeReplacement && !this.readOnly ? html`<button type="button" class="heating-quality-status"
+              @click=${() => { this.#document.selectedId = heatingManifold!.id; this.#document.selectedIds = new Set([heatingManifold!.id]); this.#render() }}>
+              Concept · ${heatingAudit.errors} fouten · ${heatingAudit.reviews} controles — bekijk
+            </button>` : ''}
             <div
               class="grid"
               style=${gridStyle}></div>
@@ -4849,7 +4880,8 @@ export class CadleApp extends LiteElement {
   }
 
   #displayShapes(): Shape[] {
-    const shapes = presentConnectionLabels(this.#document.shapes)
+    const shapes = presentHeatingTables(presentConnectionLabels(this.#document.shapes), (key) =>
+      key === this.#pageKey ? this.#document.shapes : this.#nativeStateForPage(key as UUID)?.shapes, shapeBounds)
     return this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire'
       ? presentInheritedPhaseLabels(shapes, this.#project)
       : shapes
@@ -4983,7 +5015,7 @@ export class CadleApp extends LiteElement {
       ${this.#wallChain ? this.#measurementTemplate(this.#wallChain.startPoint, this.#chainPreviewEnd) : nothing}
       ${this.#rubberBandTemplate()}
       ${this.#heatingPipePoints.length && this.#heatingPipeHover
-        ? unsafeSVG(heatingMarkup(createHeatingPipe('__heating-preview__', [...this.#heatingPipePoints, this.#heatingPipeHover], heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))))
+        ? unsafeSVG(heatingMarkup(createHeatingPipe('__heating-preview__', [...this.#heatingPipePoints, this.#heatingPipeHover], this.#heatingPipeReplacement?.heating ?? heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))))
         : nothing}
     `
   }
@@ -5122,6 +5154,32 @@ export class CadleApp extends LiteElement {
     }
 
     switch (payload.action) {
+      case 'redraw-heating-route': {
+        const shape = this.#shapeById(this.#document.selectedId)
+        if (shape?.kind === 'rect' && shape.heating?.kind === 'pipe' && !shape.locked) {
+          this.#activateTool('heating-pipe')
+          this.#heatingPipeReplacement = cloneShape(shape) as RectShape
+          this.#heatingPipePoints = []
+          this.#render()
+        }
+        return
+      }
+      case 'export-heating-csv': {
+        let data = this.#displayShapes().find((shape) => shape.heating?.kind === 'manifold' || shape.heating?.kind === 'table')?.heating
+        if (data?.sourcePageKey && data.sourcePageKey !== this.#pageKey) {
+          const source = this.#nativeStateForPage(data.sourcePageKey as UUID)?.shapes
+          if (source) data = presentHeatingTables(source, undefined, shapeBounds).find((shape) => shape.heating?.kind === 'manifold')?.heating ?? data
+        }
+        if (data?.rows) this.#download('vloerverwarming-kringen.csv', heatingScheduleCSV(data.rows, data.audit), 'text/csv;charset=utf-8')
+        return
+      }
+      case 'regenerate-heating-plan': {
+        const manifold = this.#document.shapes.find((shape) => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
+        if (manifold?.kind === 'rect') void this.#generateHeatingAt(manifold.start, {
+          diameterMm: manifold.heating!.diameterMm, spacingMm: manifold.heating!.spacingMm, design: manifold.heating!.design
+        })
+        return
+      }
       case 'calibrate-drawing-scale':
         void this.#calibrateDrawingScale()
         return
@@ -5184,14 +5242,64 @@ export class CadleApp extends LiteElement {
 
   #commitHeatingPipe() {
     if (this.#heatingPipePoints.length < 2) return
-    const shape = createHeatingPipe(nextShapeId(), this.#heatingPipePoints, heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))
-    this.#document.shapes.push(shape)
+    const original = this.#heatingPipeReplacement
+    if (original && !this.#document.shapes.some((shape) => shape.id === original.id)) { this.#activateTool('select'); return }
+    const data = original?.heating ? { ...original.heating, manualRoute: true } : heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+    const shape = { ...original, ...createHeatingPipe(original?.id ?? nextShapeId(), this.#heatingPipePoints, data), ...(original ? { rotation: 0, flipX: false, flipY: false } : {}) }
+    if (original) this.#document.shapes = this.#document.shapes.map((item) => item.id === original.id ? shape : item)
+    else this.#document.shapes.push(shape)
     this.#document.selectedId = shape.id
     this.#document.selectedIds = new Set([shape.id])
     this.#heatingPipePoints = []
     this.#heatingPipeHover = null
     this.#pushHistory()
     this.#activateTool('select')
+  }
+
+  startAutomaticHeatingPlan(settings: AutomaticHeatingSettings) {
+    if (this.readOnly || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
+    this.#automaticHeatingSettings = settings
+    this.#activateTool('heating-manifold')
+  }
+
+  async #generateHeatingAt(point: Point, settings: AutomaticHeatingSettings) {
+    if (this.#automaticHeatingBusy || !this.#project || !this.#pageKey) return
+    const pageKey = this.#pageKey
+    this.#automaticHeatingBusy = true
+    this.#render()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    try {
+      const scene = this.#document.shapes.filter((shape) => !shape.heating?.automatic && !shape.generationKey?.startsWith('heating-penetration:'))
+      const result = generateAutomaticHeatingPlan(scene, point, settings, this.#drawingScale ?? DEFAULT_DRAWING_SCALE, nextShapeId, this.#safeAreaRect())
+      if (pageKey !== this.#pageKey) return
+      const oldTables = Object.entries(this.#project.pages).filter(([, page]) => page.heatingScheduleOf === pageKey).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+      const tables = result.shapes.filter((shape) => shape.heating?.kind === 'table')
+      for (const table of tables) table.heating!.sourcePageKey = pageKey
+      for (const [key] of oldTables) delete this.#project.pages[key]
+      const firstOrder = Math.max(0, ...Object.values(this.#project.pages).map((page) => page.order ?? 0)) + 1
+      if (result.tableOnSeparatePage) for (const [index, table] of tables.entries()) {
+        const key = (oldTables[index]?.[0] ?? crypto.randomUUID()) as UUID
+        const state = { ...this.#nativeDocumentState(), shapes: [table], paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }
+        this.#project.pages[key] = { creationTime: oldTables[index]?.[1].creationTime ?? Date.now(),
+          name: `Kringentabel vloerverwarming${tables.length > 1 ? ` ${index + 1}/${tables.length}` : ''}`, pageType: 'groundplan', heatingScheduleOf: pageKey,
+          order: oldTables[index]?.[1].order ?? firstOrder + index,
+          schema: { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: state }] } }
+      }
+      const generated = result.shapes.filter((shape) => !result.tableOnSeparatePage || shape.heating?.kind !== 'table')
+      this.#document.shapes = [...scene, ...generated]
+      this.#document.selectedId = generated[0]?.id ?? null
+      this.#document.selectedIds = new Set(this.#document.selectedId ? [this.#document.selectedId] : [])
+      cadleShell.project = this.#project
+      this.#pushHistory()
+      await this.#persistProjectMetadata()
+      this.#automaticHeatingSettings = null
+      this.#activateTool('select')
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Het legplan kon niet worden gemaakt.')
+    } finally {
+      this.#automaticHeatingBusy = false
+      this.#render()
+    }
   }
 
   #snapHeatingPoint(point: Point): Point {
@@ -5241,6 +5349,10 @@ export class CadleApp extends LiteElement {
     }
     if (this.#tools.current === 'heating-manifold' && event.button === 0) {
       const point = this.#snapPoint(rawPoint)
+      if (this.#automaticHeatingSettings) {
+        await this.#generateHeatingAt(point, this.#automaticHeatingSettings)
+        return
+      }
       const shape: RectShape = { id: nextShapeId(), kind: 'rect', start: point,
         end: { x: point.x + 120, y: point.y + 64 }, strokeWidth: 2,
         heating: heatingDefaults('manifold', this.#drawingScale ?? DEFAULT_DRAWING_SCALE) }

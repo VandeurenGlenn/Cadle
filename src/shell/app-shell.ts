@@ -73,6 +73,7 @@ type ShellPagesElement = HTMLElement & {
 }
 
 type NativeAppElement = HTMLElement & {
+  startAutomaticHeatingPlan?: (settings: import('../editor/automatic-heating-plan.js').AutomaticHeatingSettings) => void
   undo?: () => void
   redo?: () => void
   exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
@@ -1088,14 +1089,28 @@ export class AppShell extends LiteElement {
 
   async createUnderfloorHeatingPlan() {
     if (!this.projectKey) return
+    const settings = await this.requestInput({
+      title: 'Legplan vloerverwarming',
+      description: 'Vul de buisdiameter en maximale legafstand in. Rond obstakels kan plaatselijk dichter worden gelegd; de werkelijke afstanden staan in de tabel. Klik daarna waar de verdeler moet komen.',
+      submitLabel: 'Verdeler plaatsen',
+      fields: [
+        { name: 'diameterMm', label: 'Buisdiameter (mm)', type: 'number', value: '16', min: 6, max: 50, required: true },
+        { name: 'spacingMm', label: 'Legafstand h.o.h. (mm)', type: 'number', value: '150', min: 50, max: 500, required: true }
+      ]
+    })
+    if (!settings) return
+    const diameterMm = Number(settings.diameterMm), spacingMm = Number(settings.spacingMm)
+    if (!Number.isFinite(diameterMm) || !Number.isFinite(spacingMm) || diameterMm < 6 || diameterMm > 50 || spacingMm < 50 || spacingMm > 500) return
     await (await this.#nativeAppForPage(this.loadedPage))?.flushPendingSave?.()
     const project = await getProjectData(this.projectKey)
-    const sourceKey = project.pages[this.loadedPage]?.pageType === 'groundplan' ? this.loadedPage
+    const preferredSource = project.pages[this.loadedPage]?.heatingScheduleOf ?? this.loadedPage
+    const sourceKey = project.pages[preferredSource]?.pageType === 'groundplan' ? preferredSource
       : Object.keys(project.pages).find((key) => project.pages[key].pageType === 'groundplan')
     const state = sourceKey ? nativeStateForProjectPage(project, sourceKey as UUID) : null
     const schema = state ? { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
       ...state, selectedId: null,
-      shapes: structuredClone(state.shapes.filter((shape) => ['wall', 'door', 'window', 'gate', 'image'].includes(shape.kind)))
+      shapes: structuredClone(state.shapes.filter((shape) => !shape.heating && !shape.generationKey?.startsWith('heating-penetration:') &&
+        ['wall', 'door', 'window', 'gate', 'image', 'symbol', 'rect', 'text'].includes(shape.kind))).map((shape) => ({ ...shape, locked: true }))
     } }] } : { version: 'native-svg-1', objects: [] }
     const base = 'Legplan vloerverwarming'
     const names = new Set(Object.values(project.pages).map((page) => page.name))
@@ -1103,8 +1118,10 @@ export class AppShell extends LiteElement {
     while (names.has(name)) name = `${base} ${index++}`
     const pageKey = await addPage(this.projectKey, name, schema, 'groundplan')
     this.project = await getProjectData(this.projectKey)
+    this.project.pages[pageKey].heatingPlanOf = sourceKey
+    await setProjectData(this.projectKey, this.project)
     await this.loadPage(pageKey)
-    this.action = 'draw-heating-zone'
+    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm })
   }
 
   async openRenamePageDialog(pageKey: string) {

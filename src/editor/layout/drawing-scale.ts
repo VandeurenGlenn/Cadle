@@ -13,6 +13,7 @@ export const drawingScaleLabel = (scale: number): string => `1:${new Intl.Number
 export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number, drawingScale?: DrawingScale): Shape[] => {
   if (!Number.isFinite(factor) || factor <= 0 || (factor === 1 && !drawingScale) || !shapes.length) return [...shapes]
   const anchors = shapes.flatMap((shape): Point[] => {
+    if (shape.kind === 'rect' && shape.heating?.kind === 'table') return [{ x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 }]
     if ('start' in shape) return [shape.start, shape.end]
     if (shape.kind === 'image') return [
       { x: shape.position.x - shape.width / 2, y: shape.position.y - shape.height / 2 },
@@ -26,6 +27,12 @@ export const scaleGroundPlanGeometry = (shapes: readonly Shape[], factor: number
   }
   const point = (value: Point): Point => ({ x: center.x + (value.x - center.x) * factor, y: center.y + (value.y - center.y) * factor })
   return shapes.map((shape): Shape => {
+    if (shape.kind === 'rect' && shape.heating?.kind === 'table') {
+      const middle = point({ x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 })
+      const dx = (shape.end.x - shape.start.x) / 2, dy = (shape.end.y - shape.start.y) / 2
+      return { ...shape, start: { x: middle.x - dx, y: middle.y - dy }, end: { x: middle.x + dx, y: middle.y + dy },
+        heating: { ...shape.heating, ...(drawingScale ? { drawingScale } : {}) } }
+    }
     if ('start' in shape) return { ...shape, start: point(shape.start), end: point(shape.end),
       ...(shape.heating && drawingScale ? { heating: { ...shape.heating, drawingScale } } : {}),
       ...(shape.kind === 'line' && shape.connection?.via ? { connection: { ...shape.connection, via: shape.connection.via.map(point) } } : {}) }

@@ -88,3 +88,4 @@ button.menu-tool {
 @media (pointer: coarse) {
   button.tool { min-width: 44px; min-height: 44px; }
 }
+button.tool.heating-auto { width: auto; gap: 6px; padding-inline: 8px; font: var(--cadle-navigation-font); }

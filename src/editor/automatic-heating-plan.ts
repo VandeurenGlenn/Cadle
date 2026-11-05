@@ -1,0 +1,414 @@
+import type { Point, RectShape, Shape } from './model/types.js'
+import { drawingLengthMetres, drawingUnitsForMetres, type DrawingScale } from './layout/drawing-scale.js'
+import { createHeatingPipe, createHeatingScheduleTables, heatingDefaults, heatingSchedule, heatingTableSize, HEATING_TABLE_ROW_HEIGHT, type HeatingScheduleRow } from './heating-plan.js'
+import { buildHeatingGrid, routeHeating, simplifyHeatingPath, type HeatingGrid } from './heating-routing.js'
+import { shapeBounds } from './model/model.js'
+import { heatingDesignLimits, sanitizeHeatingDesign, type HeatingDesignInputs } from './heating-design.js'
+import { heatingPipeGeometry } from './heating-geometry.js'
+import { checkHeatingPlan } from './heating-checks.js'
+
+/** Open paired meander bends slightly near their ends when half the pitch is below the product radius.
+ * The straight runs retain the requested pitch; shallow transitions avoid forcing a tighter U-bend.
+ */
+export const openHeatingTurns = (points: Point[], radius: number): Point[] => {
+  const result: Point[] = []
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], c = points[i + 1], d = points[i + 2]
+    if (a && c && d) {
+      const ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y, wx = d.x - c.x, wy = d.y - c.y
+      const before = Math.hypot(ux, uy), gap = Math.hypot(vx, vy), after = Math.hypot(wx, wy), delta = radius - gap / 2
+      if (gap > 0 && delta > 1e-6 && delta <= gap / 4 && before > 8 * radius && after > 8 * radius &&
+        Math.abs(ux * vx + uy * vy) < 1e-6 && Math.abs(wx * vx + wy * vy) < 1e-6 && ux * wx + uy * wy < 0) {
+        const u = { x: ux / before, y: uy / before }, v = { x: vx / gap, y: vy / gap }
+        result.push({ x: b.x - u.x * radius * 4, y: b.y - u.y * radius * 4 },
+          { x: b.x - u.x * radius * 2 - v.x * delta, y: b.y - u.y * radius * 2 - v.y * delta },
+          { x: b.x - v.x * delta, y: b.y - v.y * delta },
+          { x: c.x + v.x * delta, y: c.y + v.y * delta },
+          { x: c.x - u.x * radius * 2 + v.x * delta, y: c.y - u.y * radius * 2 + v.y * delta },
+          { x: c.x - u.x * radius * 4, y: c.y - u.y * radius * 4 })
+        i++; continue
+      }
+    }
+    result.push(b)
+  }
+  return result
+}
+
+/** Replace a short square sideways step with a gradual transition, where the floor is free. */
+export const softenHeatingJogs = (points: Point[], radius: number, free: (p: Point) => boolean, step: number): Point[] => {
+  const result: Point[] = []
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], c = points[i + 1], d = points[i + 2]
+    if (a && c && d) {
+      const before = Math.hypot(b.x - a.x, b.y - a.y), gap = Math.hypot(c.x - b.x, c.y - b.y), after = Math.hypot(d.x - c.x, d.y - c.y)
+      const reach = Math.min(2 * radius, before / 3, after / 3)
+      const ux = (b.x - a.x) / before, uy = (b.y - a.y) / before
+      if (gap > 0 && gap < 2 * radius && reach >= radius && (d.x - c.x) * ux + (d.y - c.y) * uy > 0 &&
+        Math.abs((c.x - b.x) * ux + (c.y - b.y) * uy) < 1e-7) {
+        const from = { x: b.x - ux * reach, y: b.y - uy * reach }, to = { x: c.x + ux * reach, y: c.y + uy * reach }
+        const n = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / (step / 2))
+        if (Array.from({ length: n + 1 }, (_, j) => ({ x: from.x + (to.x - from.x) * j / n, y: from.y + (to.y - from.y) * j / n })).every(free)) {
+          result.push(from, to); i++; continue
+        }
+      }
+    }
+    result.push(points[i])
+  }
+  return result
+}
+
+export type AutomaticHeatingSettings = { diameterMm: number; spacingMm: number; design?: HeatingDesignInputs }
+type HeatingWorkBudget = { routes: number; grid?: HeatingGrid }
+type CircuitJob = { cells: number[]; roomName: string; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
+
+const routeLength = (cells: number[], grid: HeatingGrid, scale: number) => drawingLengthMetres(Math.max(0, cells.length - 1) * grid.step, scale)
+
+const loopJobs = (grid: HeatingGrid, settings: AutomaticHeatingSettings, scale: number, manifold: Point, budgetFactor: number, rotated = false, halfPitch = false) => {
+  const jobs: CircuitJob[] = [], occupied = new Set<number>(), size = grid.width * grid.height
+  const distance = new Uint16Array(size).fill(65535), queue = new Int32Array(size)
+  let read = 0, write = 0
+  for (let i = 0; i < size; i++) if (grid.wall[i]) { distance[i] = 0; queue[write++] = i }
+  const clearance = Math.ceil(drawingUnitsForMetres(Math.max(.1, heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm * .004), scale) / grid.step)
+  while (read < write) {
+    const i = queue[read++], x = i % grid.width, y = Math.floor(i / grid.width)
+    if (distance[i] >= clearance) continue
+    for (const n of [x ? i - 1 : -1, x + 1 < grid.width ? i + 1 : -1, y ? i - grid.width : -1, y + 1 < grid.height ? i + grid.width : -1]) {
+      if (n >= 0 && distance[n] > distance[i] + 1) { distance[n] = distance[i] + 1; queue[write++] = n }
+    }
+  }
+  const interval = Math.round(drawingUnitsForMetres(settings.spacingMm / 1000, scale) / grid.step)
+  for (const room of grid.rooms) {
+    const usable = (i: number) => i >= 0 && grid.room[i] === room.id && !grid.obstacle[i] && !grid.loopObstacle[i] && distance[i] >= clearance
+    const areaM2 = room.cells.filter(usable).length * drawingLengthMetres(grid.step, scale) ** 2
+    const vertical = (room.maxY - room.minY > room.maxX - room.minX) !== rotated
+    const axisMin = vertical ? room.minX : room.minY, axisMax = vertical ? room.maxX : room.maxY
+    const runMin = vertical ? room.minY : room.minX, runMax = vertical ? room.maxY : room.maxX
+    const key = (a: number, b: number) => vertical ? b * grid.width + a : a * grid.width + b
+    // Split at changes in free-floor topology: never snake around an obstacle on a
+    // succession of grid-cell-wide connectors. Each stable strip gets its own meander.
+    const bands: number[][][][] = []
+    let previous: number[][] | undefined
+    for (let a = axisMin + clearance + (halfPitch ? Math.round(interval / 2) : 0); a <= axisMax - clearance; a += interval) {
+      const row: number[][] = []
+      let run: number[] = []
+      for (let b = runMin; b <= runMax + 1; b++) {
+        const i = key(a, b)
+        if (b <= runMax && usable(i)) run.push(i)
+        else { if (run.length >= interval * 2) row.push(run); run = [] }
+      }
+      const compatible = previous && previous.length === row.length && row.every((r, i) => {
+        const p = previous![i], coordinate = (cell: number) => vertical ? Math.floor(cell / grid.width) : cell % grid.width
+        return Math.abs(coordinate(p[0]) - coordinate(r[0])) <= interval / 2 &&
+          Math.abs(coordinate(p.at(-1)!) - coordinate(r.at(-1)!)) <= interval / 2
+      })
+      if (!compatible) bands.push(row.map(() => []))
+      for (const [i, cells] of row.entries()) bands.at(-1)![i].push(cells)
+      previous = row
+    }
+    const roomJobs: CircuitJob[] = []
+    const roomCenter = grid.point(room.cells[Math.floor(room.cells.length / 2)])
+    const allowanceM = Math.min(55, 2 * drawingLengthMetres(Math.abs(roomCenter.x - manifold.x) + Math.abs(roomCenter.y - manifold.y), scale))
+    const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+    const budgetM = Math.max(8, (Math.min(settings.diameterMm < 16 ? 70 : 90, limits.maxCircuitLengthM - limits.allowanceM) - allowanceM) * budgetFactor)
+    for (const band of bands) for (const originalStrip of band) {
+      const strip = originalStrip
+      const pairs = Array.from({ length: Math.ceil(strip.length / 2) }, (_, pair) => strip.slice(pair * 2, pair * 2 + 2)
+        .reduce((sum, cells) => sum + routeLength(cells, grid, scale) + settings.spacingMm / 1000, 0))
+      const estimatedM = pairs.reduce((sum, length) => sum + length, 0), count = Math.min(pairs.length, Math.max(1, Math.ceil(estimatedM / budgetM)))
+      const prefix = [0], cuts = new Set<number>()
+      for (const length of pairs) prefix.push(prefix.at(-1)! + length)
+      let previousCut = 0
+      for (let group = 1; group < count; group++) {
+        let best = previousCut + 1
+        for (let candidate = best + 1; candidate <= pairs.length - (count - group); candidate++) {
+          if (Math.abs(prefix[candidate] - estimatedM * group / count) < Math.abs(prefix[best] - estimatedM * group / count)) best = candidate
+        }
+        cuts.add(best * 2); previousCut = best
+      }
+      const probe = (reverse: boolean) => {
+        let blocked = 0
+        for (const row of [strip[0], strip.at(-1)!]) {
+          const end = reverse ? row.at(-1)! : row[0], outward = reverse ? row.at(-1)! - row.at(-2)! : row[0] - row[1]
+          for (let n = 1; n <= Math.ceil(drawingUnitsForMetres(limits.minBendRadiusMm * .002, scale) / grid.step); n++) {
+            const cell = end + outward * n
+            if (cell < 0 || cell >= size || grid.obstacle[cell]) blocked++
+          }
+        }
+        return blocked
+      }
+      const mirrored = probe(true) < probe(false)
+      let current: number[] = []
+      const pitches = strip.slice(1).map((r, i) => drawingLengthMetres(Math.abs(vertical ? grid.point(r[0]).x - grid.point(strip[i][0]).x : grid.point(r[0]).y - grid.point(strip[i][0]).y), scale) * 1000)
+      const finish = () => { if (current.length > 1) roomJobs.push({ cells: current, roomName: room.name, areaM2: 0,
+        spacingMinMm: pitches.length ? Math.min(...pitches) : settings.spacingMm, spacingMaxMm: pitches.length ? Math.max(...pitches) : settings.spacingMm }); current = [] }
+      for (const [row, cells] of strip.entries()) {
+        if (cuts.has(row)) finish()
+        const segment = Boolean(row % 2) !== mirrored ? [...cells].reverse() : cells
+        if (current.length) {
+          const protectedCells = new Set(occupied)
+          for (const cell of segment.slice(1)) protectedCells.add(cell)
+          const connection = routeHeating(grid, current.at(-1)!, segment[0], { roomId: room.id, occupied: protectedCells })
+          if (!connection) finish()
+          else { current.push(...connection.slice(1)); for (const cell of connection) occupied.add(cell) }
+        }
+        current.push(...(current.at(-1) === segment[0] ? segment.slice(1) : segment))
+        for (const cell of segment) occupied.add(cell)
+      }
+      finish()
+    }
+    const total = roomJobs.reduce((sum, job) => sum + routeLength(job.cells, grid, scale), 0)
+    for (const job of roomJobs) job.areaM2 = total ? areaM2 * routeLength(job.cells, grid, scale) / total : 0
+    jobs.push(...roomJobs)
+  }
+  if (!jobs.length) throw new Error('Er blijft geen voldoende groot, vrij vloeroppervlak over bij deze legafstand.')
+  if (jobs.length > 24) throw new Error('Dit plan vraagt meer dan 24 kringen. Verdeel het grondplan over meerdere legplannen.')
+  return { jobs, occupied }
+}
+
+/** Join adjacent leg fields in series before assigning manifold ports. This preserves
+ * obstacle-free strips without turning every strip into a separate hydraulic circuit. */
+const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<number>, settings: AutomaticHeatingSettings, scale: DrawingScale, position: Point, budgetFactor: number, variant: number, budget: HeatingWorkBudget) => {
+  const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
+  const shape = (cells: number[], id: number) => createHeatingPipe(`merge-${id}`, openHeatingTurns(simplifyHeatingPath(cells.map(grid.point)), radius),
+    { ...heatingDefaults('pipe', scale), ...settings, automatic: true, circuitId: `VV${id}`, pipeRole: 'loop' })
+  for (let pass = 0; pass < 24; pass++) {
+    const choices: { a: number; b: number; reverseA: boolean; reverseB: boolean; distance: number }[] = []
+    for (let a = 0; a < jobs.length; a++) for (let b = a + 1; b < jobs.length; b++) {
+      if (jobs[a].roomName !== jobs[b].roomName || grid.room[jobs[a].cells[0]] !== grid.room[jobs[b].cells[0]]) continue
+      const limit = heatingDesignLimits(settings.diameterMm, settings.design), p = grid.point(jobs[a].cells[0])
+      const leads = 2 * drawingLengthMetres(Math.abs(p.x - position.x) + Math.abs(p.y - position.y), scale)
+      if (routeLength(jobs[a].cells, grid, scale) + routeLength(jobs[b].cells, grid, scale) + leads + limit.allowanceM > limit.maxCircuitLengthM * budgetFactor) continue
+      for (const reverseA of [false, true]) for (const reverseB of [false, true]) {
+        const from = grid.point(reverseA ? jobs[a].cells[0] : jobs[a].cells.at(-1)!), to = grid.point(reverseB ? jobs[b].cells.at(-1)! : jobs[b].cells[0])
+        choices.push({ a, b, reverseA, reverseB, distance: Math.abs(from.x - to.x) + Math.abs(from.y - to.y) })
+      }
+    }
+    choices.sort((a, b) => variant === 1 ? b.distance - a.distance : a.distance - b.distance)
+    if (variant === 2 && choices.length > 4) choices.push(...choices.splice(0, 4))
+    if (variant === 3) choices.sort((a, b) => a.a - b.a || b.b - a.b || a.distance - b.distance)
+    let merged = false
+    for (const choice of choices) {
+      const a = choice.reverseA ? [...jobs[choice.a].cells].reverse() : jobs[choice.a].cells,
+        b = choice.reverseB ? [...jobs[choice.b].cells].reverse() : jobs[choice.b].cells
+      const mergeBlocked = new Set(occupied), reach = Math.ceil(radius / grid.step)
+      for (const [j, job] of jobs.entries()) for (const endpoint of [0, 1]) {
+        if ((j === choice.a && endpoint === (choice.reverseA ? 0 : 1)) || (j === choice.b && endpoint === (choice.reverseB ? 1 : 0))) continue
+        const cells = job.cells, root = endpoint ? cells.at(-1)! : cells[0], direction = endpoint ? root - cells.at(-2)! : root - cells[1]
+        for (let n = 1; n <= reach; n++) mergeBlocked.add(root + direction * n)
+      }
+      if (--budget.routes < 0) return
+      const connection = routeHeating(grid, a.at(-1)!, b[0], { roomId: grid.room[a[0]], occupied: mergeBlocked, radiusCells: Math.ceil(2 * radius / grid.step),
+        startDirection: a.at(-1)! - a.at(-2)!, endDirection: b[1] - b[0] })
+      if (!connection) continue
+      const cells = [...a, ...connection.slice(1), ...b.slice(1)], candidate = shape(cells, choice.a)
+      const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+      const p = grid.point(cells[0]), q = grid.point(cells.at(-1)!), leadM = drawingLengthMetres(Math.abs(p.x - position.x) + Math.abs(p.y - position.y) + Math.abs(q.x - position.x) + Math.abs(q.y - position.y), scale)
+      if (drawingLengthMetres(heatingPipeGeometry(candidate).length, scale) + leadM + limits.allowanceM > limits.maxCircuitLengthM * budgetFactor) continue
+      const geometry = heatingPipeGeometry(candidate)
+      if (geometry.pieces.some((piece) => {
+        const n = Math.max(1, Math.ceil(Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y) / grid.step))
+        return Array.from({ length: n + 1 }, (_, j) => grid.index({ x: piece.a.x + (piece.b.x - piece.a.x) * j / n, y: piece.a.y + (piece.b.y - piece.a.y) * j / n }))
+          .some((i) => i < 0 || grid.wall[i] || grid.obstacle[i] || grid.room[i] !== grid.room[a[0]])
+      })) continue
+      const others = jobs.flatMap((job, i) => i === choice.a || i === choice.b ? [] : [shape(job.cells, i)])
+      const exits = [candidate, ...others].flatMap((coil) => {
+        const points = heatingPipeGeometry(coil).localPoints
+        return [0, 1].map((end) => {
+          const p = end ? points.at(-1)! : points[0], near = end ? points.at(-2)! : points[1], length = Math.hypot(p.x - near.x, p.y - near.y)
+          return createHeatingPipe(`exit-${coil.id}-${end}`, [p, { x: p.x + (p.x - near.x) / length * radius, y: p.y + (p.y - near.y) / length * radius }],
+            { ...coil.heating!, pipeRole: end ? 'return' : 'supply' })
+        })
+      })
+      if (checkHeatingPlan([candidate, ...others, ...exits], [], settings.design).issues.some((issue) => issue.code === 'collision' || issue.code === 'bend')) continue
+      jobs[choice.a] = { ...jobs[choice.a], cells, areaM2: jobs[choice.a].areaM2 + jobs[choice.b].areaM2, spacingMinMm: Math.min(jobs[choice.a].spacingMinMm, jobs[choice.b].spacingMinMm), spacingMaxMm: Math.max(jobs[choice.a].spacingMaxMm, jobs[choice.b].spacingMaxMm) }
+      jobs.splice(choice.b, 1)
+      for (const cell of connection) occupied.add(cell)
+      merged = true; break
+    }
+    if (!merged) break
+  }
+}
+
+export type AutomaticHeatingResult = { shapes: RectShape[]; rows: HeatingScheduleRow[]; tableOnSeparatePage: boolean; wallCrossings: number }
+
+export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: Point, settings: AutomaticHeatingSettings,
+  scale: DrawingScale, nextId: () => string, pageArea: { x: number; y: number; width: number; height: number },
+  lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult => {
+  if (!Number.isFinite(settings.diameterMm) || settings.diameterMm < 6 || settings.diameterMm > 50 ||
+    !Number.isFinite(settings.spacingMm) || settings.spacingMm < 50 || settings.spacingMm > 500) throw new Error('Controleer de buisdiameter en legafstand.')
+  settings = { ...settings, design: sanitizeHeatingDesign(settings.design) }
+  const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+  // Inputs remain fixed throughout this search; only strip direction/phase and splitting
+  // vary. Reuse room rasterisation while isolating each attempt's temporary obstacles.
+  const template = budget.grid ??= buildHeatingGrid(scene, scale, settings.spacingMm, position, {
+    pipeDiameterMm: settings.diameterMm, minBendRadiusMm: limits.minBendRadiusMm
+  })
+  const grid = { ...template, obstacle: template.obstacle.slice() }
+  if (grid.obstacle[grid.index(position)]) throw new Error('De verdeler staat op een symbool. Kies een vrije positie.')
+  const reservedWidth = Math.max(120, 75 * grid.step)
+  const heatOnly: number[] = []
+  for (let i = 0; i < grid.obstacle.length; i++) {
+    const p = grid.point(i)
+    if (p.x >= position.x - grid.step && p.x <= position.x + reservedWidth && p.y >= position.y - grid.step && p.y < position.y + 64 - grid.step) grid.obstacle[i] = 1
+    if (!grid.obstacle[i] && p.x >= position.x - grid.step && p.x <= position.x + reservedWidth &&
+      p.y >= position.y + 64 - grid.step && p.y <= position.y + 64 + 4 * grid.step) { heatOnly.push(i); grid.obstacle[i] = 1 }
+  }
+  const { jobs, occupied } = loopJobs(grid, settings, scale, position, Math.pow(.75, lengthPass), Math.floor(mergeVariant / 2) % 2 === 1, mergeVariant % 2 === 1)
+  for (const i of heatOnly) grid.obstacle[i] = 0
+  mergeHeatingJobs(grid, jobs, occupied, settings, scale, position, Math.pow(.85, lengthPass), mergeVariant < 4 ? 1 : 0, budget)
+  // Keep ports in angular floor order; arbitrary room/band order forces crossing pairs at the manifold.
+  const angle = (job: CircuitJob) => {
+    const points = job.cells.map(grid.point), x = (Math.min(...points.map((p) => p.x)) + Math.max(...points.map((p) => p.x))) / 2,
+      y = (Math.min(...points.map((p) => p.y)) + Math.max(...points.map((p) => p.y))) / 2
+    return Math.atan2(y - position.y, x - position.x)
+  }
+  jobs.sort((a, b) => angle(b) - angle(a))
+
+  const width = Math.max(120, (jobs.length * 3 + 3) * grid.step), height = 64
+  for (const shape of scene) {
+    if (shape.hidden || shape.kind !== 'symbol') continue
+    const b = shapeBounds(shape)
+    if (position.x < b.x + b.width && position.x + width > b.x && position.y < b.y + b.height && position.y + height > b.y) {
+      throw new Error('De verdeler overlapt een symbool. Kies een vrije positie voor de verdeler.')
+    }
+  }
+  const bottom = grid.point(grid.index({ x: position.x, y: position.y + height })).y
+  const manifold: RectShape = { id: nextId(), kind: 'rect', start: position,
+    end: { x: position.x + width, y: bottom }, strokeWidth: 2,
+    heating: { ...heatingDefaults('manifold', scale), ...settings, automatic: true, circuits: jobs.length, name: 'Verdeler', points: [] } }
+  const shapes: RectShape[] = [manifold], baseOccupied = new Set(occupied)
+  const centreX = grid.point(grid.index({ x: position.x + grid.step * 2, y: bottom })).x
+  const radius = drawingUnitsForMetres(limits.minBendRadiusMm / 1000, scale), radiusCells = Math.ceil(2 * radius / grid.step)
+  const stemLength = Math.max(4, radiusCells + 1)
+  const stems = Array.from({ length: jobs.length }, (_, i) => [centreX + i * grid.step * 3, centreX + (i * 3 + 1) * grid.step]
+    .map((x, offset) => Array.from({ length: stemLength + (jobs.length * 2 - 1 - (i * 2 + offset)) * radiusCells }, (_, j) => grid.index({ x, y: bottom + j * grid.step }))))
+  if (stems.some((pair) => pair.some((stem) => stem.some((cell) => cell < 0 || grid.obstacle[cell])))) {
+    throw new Error('Er is onvoldoende vrije ruimte voor de aansluitingen onder de verdeler.')
+  }
+  for (const pair of stems) for (const stem of pair) for (const cell of stem) baseOccupied.add(cell)
+  // The vertical connection apron has no sideways passages between neighbouring ports.
+  // Keep routed bends below it, rather than letting A* squeeze back through the stem bundle.
+  const apronBottom = Math.min(...stems.flat().map((stem) => grid.point(stem.at(-1)!).y))
+  for (let i = 0; i < grid.obstacle.length; i++) {
+    const p = grid.point(i)
+    if (p.x >= position.x - radius && p.x <= position.x + width + radius && p.y >= position.y - grid.step && p.y < apronBottom) grid.obstacle[i] = 1
+  }
+
+  const routePoints = (cells: number[]) => cells.length === 1 ? [grid.point(cells[0]), grid.point(cells[0])] : simplifyHeatingPath(cells.map(grid.point))
+  const stemCells = new Set(stems.flat(2))
+  const escapes = jobs.map((job, index) => {
+    const cells = job.cells, first = cells[0], last = cells.at(-1)!
+    return [[stems[index][0].at(-1)!, grid.width], [stems[index][1].at(-1)!, grid.width],
+      [first, first - cells[1]], [last, last - cells.at(-2)!]].map(([root, direction]) =>
+        Array.from({ length: Math.ceil(radiusCells / 2) }, (_, n) => root + direction * (n + 1)))
+  })
+  for (const escape of escapes.flat()) for (const cell of escape) baseOccupied.add(cell)
+  const ids = jobs.map(() => [nextId(), nextId(), nextId()])
+  const common = jobs.map((job, index) => ({ ...heatingDefaults('pipe', scale), ...settings, automatic: true,
+    circuitId: `VV${String(index + 1).padStart(2, '0')}`, roomName: job.roomName, spacingMinMm: job.spacingMinMm, spacingMaxMm: job.spacingMaxMm }))
+  const coils = jobs.map((job, index) => {
+    for (const offset of [0, 1]) manifold.heating!.points![2 * index + offset] = { x: (grid.point(stems[index][offset][0]).x - position.x) / width, y: 1 }
+    return createHeatingPipe(ids[index][0], openHeatingTurns(routePoints(job.cells), radius),
+      { ...common[index], name: common[index].circuitId, pipeRole: 'loop', servedAreaM2: job.areaM2 })
+  })
+  const obstacles = scene.filter((s) => s.kind === 'symbol' && !s.hidden).map(shapeBounds)
+  type Connection = { index: number; parts: RectShape[]; paths: number[][] }
+  const pair = (index: number, reverse: boolean, returnFirst: boolean, blocked: Set<number>, completed: Connection[]): Connection | null => {
+    const cells = reverse ? [...jobs[index].cells].reverse() : jobs[index].cells, first = cells[0], last = cells.at(-1)!
+    const [aStem, bStem] = stems[index], firstDirection = cells[1] - first, lastDirection = last - cells.at(-2)!
+    const localBlocked = new Set(blocked)
+    for (const escape of escapes[index]) for (const cell of escape) if (!occupied.has(cell) && !stemCells.has(cell)) localBlocked.delete(cell)
+    const aBlocked = new Set(localBlocked)
+    const coilStartEscape = escapes[index][reverse ? 3 : 2], coilEndEscape = escapes[index][reverse ? 2 : 3]
+    for (const cell of returnFirst ? [...escapes[index][0], ...coilStartEscape] : [...escapes[index][1], ...coilEndEscape]) aBlocked.add(cell)
+    const aOptions = { allowWalls: true, radiusCells, occupied: aBlocked,
+      startDirection: returnFirst ? lastDirection : grid.width, endDirection: returnFirst ? -grid.width : firstDirection }
+    if (--budget.routes < 0) return null
+    const a = returnFirst ? routeHeating(grid, last, bStem.at(-1)!, aOptions) : routeHeating(grid, aStem.at(-1)!, first, aOptions)
+    if (!a) return null
+    const bOptions = { allowWalls: true, radiusCells, occupied: new Set([...localBlocked, ...a]),
+      startDirection: returnFirst ? grid.width : lastDirection, endDirection: returnFirst ? firstDirection : -grid.width }
+    if (--budget.routes < 0) return null
+    const b = returnFirst ? routeHeating(grid, aStem.at(-1)!, first, bOptions) : routeHeating(grid, last, bStem.at(-1)!, bOptions)
+    if (!b) return null
+    const supply = [...aStem.slice(0, -1), ...(returnFirst ? b : a)], returning = [...(returnFirst ? a : b), ...bStem.slice(0, -1).reverse()]
+    const loop = reverse ? createHeatingPipe(ids[index][0], openHeatingTurns(routePoints(cells), radius), coils[index].heating!) : coils[index]
+    const parts = [loop, createHeatingPipe(ids[index][1], routePoints(supply), { ...common[index], name: `${common[index].circuitId} aanvoer`, pipeRole: 'supply' }),
+      createHeatingPipe(ids[index][2], routePoints(returning), { ...common[index], name: `${common[index].circuitId} retour`, pipeRole: 'return' })]
+    if (parts.reduce((sum, part) => sum + drawingLengthMetres(heatingPipeGeometry(part).length, scale), 0) + limits.allowanceM > limits.maxCircuitLengthM + .05) return null
+    const geometry = checkHeatingPlan([...coils.filter((_, i) => i !== index && !completed.some((c) => c.index === i)), ...completed.flatMap((c) => c.parts), ...parts], [], settings.design, obstacles)
+    if (geometry.issues.some((issue) => ['collision', 'bend', 'obstacle'].includes(issue.code))) return null
+    return { index, parts, paths: [supply, returning] }
+  }
+  // Backtrack whole pairs when a greedy connection blocks the next circuit.
+  // Validation checks the rendered curves, not just orthogonal grid centre lines.
+  let attempts = 0
+  const failed = new Set<string>()
+  const search = (order: number[], blocked: Set<number>, completed: Connection[]): Connection[] | null => {
+    if (!order.length) return completed
+    const fingerprint = order.join(',') + ':' + completed.map((c) => c.index + '=' + c.paths.map((p) => p.join(',')).join('/')).join(';')
+    if (failed.has(fingerprint) || budget.routes <= 0) return null
+    const index = order[0]
+    for (const reverse of [true, false]) for (const returnFirst of [false, true]) {
+      if (++attempts > 240) return null
+      const connection = pair(index, reverse, returnFirst, blocked, completed)
+      if (!connection) continue
+      const result = search(order.slice(1), new Set([...blocked, ...connection.paths.flat()]), [...completed, connection])
+      if (result) return result
+    }
+    failed.add(fingerprint)
+    return null
+  }
+  const byDistance = jobs.map((job, index) => ({ index, distance: Math.hypot(grid.point(job.cells[0]).x - position.x, grid.point(job.cells[0]).y - position.y) }))
+    .sort((a, b) => b.distance - a.distance).map((item) => item.index)
+  const ascending = jobs.map((_, index) => index)
+  let connections: Connection[] | null = null
+  for (const order of [ascending, [...ascending].reverse(), byDistance, [...byDistance].reverse()]) {
+    attempts = 0; connections = search(order, baseOccupied, [])
+    if (connections) break
+  }
+  if (!connections && budget.routes <= 0) throw new Error('Geen passende aansluiting gevonden binnen deze indeling. Kies een vrijere verdelerpositie of verdeel het grondplan over meerdere verdelers.')
+  if (!connections && mergeVariant < 7) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant + 1, budget)
+  if (!connections && lengthPass < 3) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass + 1, 0, budget)
+  if (!connections) throw new Error('Geen kruisingsvrije aansluitingen met deze buigradius gevonden. Kies een vrijere verdelerpositie of verdeel het plan over meer verdelers.')
+  let wallCrossings = 0
+  for (const connection of connections) {
+    shapes.push(...connection.parts)
+    for (const path of connection.paths) {
+      let insideWall = false
+      for (const cell of path) {
+        const crossing = Boolean(grid.wall[cell] && !grid.door[cell])
+        if (crossing && !insideWall) {
+          const p = grid.point(cell)
+          shapes.push({ id: nextId(), kind: 'rect', start: { x: p.x - 4, y: p.y - 4 }, end: { x: p.x + 4, y: p.y + 4 }, variant: 'circle',
+            fill: 'white', stroke: '#b42318', strokeWidth: 1, generationKey: `heating-penetration:${common[connection.index].circuitId}:${wallCrossings++}` })
+        }
+        insideWall = crossing
+      }
+    }
+  }
+  let rows = heatingSchedule(shapes)
+  if (lengthPass < 3 && rows.some((row) => (row.cutM ?? row.totalM) > limits.maxCircuitLengthM + .05)) {
+    return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass + 1, 0, budget)
+  }
+  const audit = checkHeatingPlan([...scene, ...shapes], rows, settings.design,
+    scene.filter((shape) => shape.kind === 'symbol' && !shape.hidden).map(shapeBounds))
+  rows = rows.map((row) => ({ ...row, checkMessages: audit.issues.filter((issue) => issue.circuits.includes(row.id)).map((issue) => issue.message) }))
+  manifold.heating!.audit = audit; manifold.heating!.rows = rows
+  for (const shape of shapes) if (shape.heating?.pipeRole === 'loop') shape.heating.checks = audit.issues.filter((issue) => issue.circuits.includes(shape.heating!.circuitId!))
+  const maxRows = Math.max(1, Math.floor((1384 - heatingTableSize(0).height) / HEATING_TABLE_ROW_HEIGHT))
+  const tableSize = heatingTableSize(rows.length)
+  const collisions = [...scene.filter((shape) => !shape.hidden && shape.kind !== 'image'), ...shapes].map(shapeBounds)
+  const candidates = [
+    { x: pageArea.x + pageArea.width - tableSize.width, y: pageArea.y + pageArea.height - tableSize.height },
+    { x: pageArea.x, y: pageArea.y + pageArea.height - tableSize.height },
+    { x: pageArea.x + pageArea.width - tableSize.width, y: pageArea.y },
+    { x: pageArea.x, y: pageArea.y }
+  ]
+  const fits = rows.length <= maxRows && candidates.find((p) => p.x >= pageArea.x && p.y >= pageArea.y && p.x + tableSize.width <= pageArea.x + pageArea.width &&
+    p.y + tableSize.height <= pageArea.y + pageArea.height && !collisions.some((b) => p.x < b.x + b.width + 24 && p.x + tableSize.width > b.x - 24 &&
+      p.y < b.y + b.height + 24 && p.y + tableSize.height > b.y - 24))
+  const tablePosition = fits || { x: 80, y: 80 }
+  shapes.push(...createHeatingScheduleTables(rows, { ...heatingDefaults('table', scale), ...settings, name: 'Kringentabel', audit }, nextId, tablePosition))
+  return { shapes, rows, tableOnSeparatePage: !fits, wallCrossings }
+}

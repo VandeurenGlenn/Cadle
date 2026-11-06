@@ -672,6 +672,9 @@ output,
   }
 }
 .heating-planner-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   position: absolute;
   top: 12px;
   left: 50%;
@@ -694,3 +697,17 @@ output,
   background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface);
   font: var(--cadle-navigation-font); cursor: pointer;
 }
+
+.heating-planner-status button {
+  pointer-events: auto;
+  flex-shrink: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  background: var(--md-sys-color-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.heating-planner-error { pointer-events: auto; flex-wrap: wrap; }
+.heating-planner-error span { flex: 1 1 240px; }

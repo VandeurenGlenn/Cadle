@@ -2,7 +2,9 @@ import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
 import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingMarkup, heatingScheduleCSV, presentHeatingTables } from './heating-plan.js'
-import { generateAutomaticHeatingPlan, type AutomaticHeatingSettings } from './automatic-heating-plan.js'
+import type { AutomaticHeatingSettings } from './automatic-heating-plan.js'
+import { runHeatingPlanner } from './heating-planner.js'
+import { heatingProgressText, type HeatingPlanningProgress } from './heating-planner-protocol.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
@@ -271,6 +273,10 @@ export class CadleApp extends LiteElement {
   #heatingPipeHover: Point | null = null
   #automaticHeatingSettings: AutomaticHeatingSettings | null = null
   #automaticHeatingBusy = false
+  #automaticHeatingAbort: AbortController | null = null
+  #automaticHeatingProgress: HeatingPlanningProgress | null = null
+  #automaticHeatingError: string | null = null
+  #automaticHeatingRetry: { point: Point; settings: AutomaticHeatingSettings } | null = null
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
@@ -364,6 +370,7 @@ export class CadleApp extends LiteElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     this.#connected = false
+    this.#cancelHeatingCalculation()
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
     pubsub.unsubscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
@@ -1213,6 +1220,9 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
+    this.#cancelHeatingCalculation()
+    this.#automaticHeatingError = null
+    this.#automaticHeatingRetry = null
     this.#automaticHeatingSettings = null
     this.#automaticHeatingBusy = false
     this.#heatingPipePoints = []
@@ -1655,7 +1665,10 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
-    if (tool !== 'heating-manifold') this.#automaticHeatingSettings = null
+    if (tool !== 'heating-manifold') {
+      this.#cancelHeatingCalculation()
+      this.#automaticHeatingSettings = null
+    }
     if (tool !== 'heating-pipe') {
       this.#heatingPipeReplacement = null
       this.#heatingPipePoints = []
@@ -4576,7 +4589,13 @@ export class CadleApp extends LiteElement {
         <div class="stage-shell">
           <div class="panel">
             ${this.#automaticHeatingSettings || this.#automaticHeatingBusy || this.#heatingPipeReplacement ? html`<div class="heating-planner-status" role="status">
-              ${this.#automaticHeatingBusy ? 'Legplan berekenen…' : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
+              ${this.#automaticHeatingBusy ? heatingProgressText(this.#automaticHeatingProgress) : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
+              ${this.#automaticHeatingBusy ? html`<button type="button" @click=${() => { this.#cancelHeatingCalculation(); this.#activateTool('select') }}>Berekening annuleren</button>` : ''}
+            </div>` : ''}
+            ${this.#automaticHeatingError ? html`<div class="heating-planner-status heating-planner-error" role="alert">
+              <span>${this.#automaticHeatingError}</span>
+              ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => { const retry = this.#automaticHeatingRetry!; void this.#generateHeatingAt(retry.point, retry.settings) }}>Opnieuw proberen</button>` : ''}
+              <button type="button" @click=${() => { this.#automaticHeatingError = null; this.#automaticHeatingRetry = null; this.#render() }}>Sluiten</button>
             </div>` : ''}
             ${heatingAudit && !this.#automaticHeatingSettings && !this.#automaticHeatingBusy && !this.#heatingPipeReplacement && !this.readOnly ? html`<button type="button" class="heating-quality-status"
               @click=${() => { this.#document.selectedId = heatingManifold!.id; this.#document.selectedIds = new Set([heatingManifold!.id]); this.#render() }}>
@@ -5258,20 +5277,45 @@ export class CadleApp extends LiteElement {
 
   startAutomaticHeatingPlan(settings: AutomaticHeatingSettings) {
     if (this.readOnly || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
+    this.#cancelHeatingCalculation()
+    this.#automaticHeatingError = null
+    this.#automaticHeatingRetry = null
     this.#automaticHeatingSettings = settings
     this.#activateTool('heating-manifold')
   }
 
+  #cancelHeatingCalculation() {
+    this.#automaticHeatingAbort?.abort()
+    this.#automaticHeatingAbort = null
+    this.#automaticHeatingBusy = false
+    this.#automaticHeatingProgress = null
+    this.#automaticHeatingSettings = null
+  }
+
   async #generateHeatingAt(point: Point, settings: AutomaticHeatingSettings) {
     if (this.#automaticHeatingBusy || !this.#project || !this.#pageKey) return
-    const pageKey = this.#pageKey
+    const pageKey = this.#pageKey, project = this.#project
+    const signature = JSON.stringify(this.#nativeDocumentState())
+    const controller = new AbortController()
+    this.#automaticHeatingAbort = controller
     this.#automaticHeatingBusy = true
+    this.#automaticHeatingProgress = null
+    this.#automaticHeatingError = null
+    this.#automaticHeatingRetry = { point, settings }
     this.#render()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     try {
       const scene = this.#document.shapes.filter((shape) => !shape.heating?.automatic && !shape.generationKey?.startsWith('heating-penetration:'))
-      const result = generateAutomaticHeatingPlan(scene, point, settings, this.#drawingScale ?? DEFAULT_DRAWING_SCALE, nextShapeId, this.#safeAreaRect())
-      if (pageKey !== this.#pageKey) return
+      const result = await runHeatingPlanner({ scene, position: point, settings,
+        scale: this.#drawingScale ?? DEFAULT_DRAWING_SCALE, pageArea: this.#safeAreaRect() }, {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (this.#automaticHeatingAbort !== controller) return
+          this.#automaticHeatingProgress = progress
+          this.#render()
+        }
+      })
+      if (this.#automaticHeatingAbort !== controller || pageKey !== this.#pageKey || project !== this.#project) return
+      if (signature !== JSON.stringify(this.#nativeDocumentState())) throw new Error('De tekening is tijdens de berekening gewijzigd. Bereken het legplan opnieuw met de aangepaste tekening.')
       const oldTables = Object.entries(this.#project.pages).filter(([, page]) => page.heatingScheduleOf === pageKey).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
       const tables = result.shapes.filter((shape) => shape.heating?.kind === 'table')
       for (const table of tables) table.heating!.sourcePageKey = pageKey
@@ -5290,14 +5334,21 @@ export class CadleApp extends LiteElement {
       this.#document.selectedId = generated[0]?.id ?? null
       this.#document.selectedIds = new Set(this.#document.selectedId ? [this.#document.selectedId] : [])
       cadleShell.project = this.#project
+      this.#automaticHeatingRetry = null
       this.#pushHistory()
-      await this.#persistProjectMetadata()
-      this.#automaticHeatingSettings = null
+      this.#cancelHeatingCalculation()
       this.#activateTool('select')
+      await this.#persistProjectMetadata()
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Het legplan kon niet worden gemaakt.')
+      if (this.#automaticHeatingAbort !== controller || controller.signal.aborted) return
+      this.#automaticHeatingError = error instanceof Error ? error.message : 'Het legplan kon niet worden gemaakt.'
+      this.#activateTool('select')
     } finally {
-      this.#automaticHeatingBusy = false
+      if (this.#automaticHeatingAbort === controller) {
+        this.#automaticHeatingAbort = null
+        this.#automaticHeatingBusy = false
+        this.#automaticHeatingProgress = null
+      }
       this.#render()
     }
   }
@@ -6134,6 +6185,12 @@ export class CadleApp extends LiteElement {
   }
 
   #onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && this.#automaticHeatingBusy) {
+      event.preventDefault()
+      this.#cancelHeatingCalculation()
+      this.#activateTool('select')
+      return
+    }
     if (isEditableKeyboardEvent(event)) return
     if (this.#tools.current === 'heating-pipe' && (event.key === 'Enter' || event.key === 'Escape')) {
       event.preventDefault()

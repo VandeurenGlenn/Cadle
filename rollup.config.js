@@ -35,6 +35,7 @@ export default [
       './src/shell/app-shell.ts',
       './src/bootstrap.ts',
       './src/editor/cadle-app.ts',
+      './src/editor/heating-planner-worker.ts',
       './src/sw.ts',
       './src/fields/projects.ts',
       './src/fields/settings.ts',

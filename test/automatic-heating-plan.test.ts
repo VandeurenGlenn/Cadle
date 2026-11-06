@@ -29,7 +29,16 @@ test('combines more than 24 provisional leg fields into twelve complete circuits
   }
   const position = { x: 180, y: 280 }, settings = { diameterMm: 16, spacingMm: 300 }
   const grid = buildHeatingGrid(shapes, 100, settings.spacingMm, position, { pipeDiameterMm: 16, minBendRadiusMm: 80 })
-  const result = planHeatingCircuits(grid, settings, 100, position)
+  const progress: number[] = [], rooms: string[] = []
+  const budget = { routes: 1, onProgress: (value: { completedRooms?: number; roomName?: string }) => {
+    progress.push(value.completedRooms ?? 0)
+    if (value.roomName) rooms.push(value.roomName)
+  } }
+  const result = planHeatingCircuits(grid, settings, 100, position, { budget })
+  assert.equal(budget.routes, 1, 'room merging must not consume the manifold routing budget')
+  assert.equal(progress.at(-1), 12)
+  assert.equal(rooms[0], 'Room 12', 'start merging the farthest room')
+  assert.equal(rooms.at(-1), 'Room 1', 'finish with the nearest room')
   assert.equal(result.initialFieldCount, 48)
   assert.equal(result.jobs.length, 12)
   assert.equal(result.combiningFinished, true)
@@ -142,4 +151,9 @@ test('the reported two-room plan has no geometry conflicts at 200 mm and a 90 m 
   const audit = result.shapes.find((s) => s.heating?.kind === 'manifold')!.heating!.audit!
   assert.equal(audit.errors, 0)
   assert.ok(result.rows.every((row) => row.cutM! <= 90.05))
+})
+
+test('stops an expired calculation before searching', () => {
+  assert.throws(() => generateAutomaticHeatingPlan(scene(), { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 150 },
+    100, () => 'unused', area, 0, 0, { routes: 600, deadline: Date.now() - 1 }), /rekentijd/)
 })

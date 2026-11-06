@@ -5,6 +5,7 @@ import { buildHeatingGrid, routeHeating, simplifyHeatingPath, type HeatingGrid }
 import { shapeBounds } from './model/model.js'
 import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
+import type { HeatingPlanningProgress } from './heating-planner-protocol.js'
 import { checkHeatingPlan } from './heating-checks.js'
 
 /** Open paired meander bends slightly near their ends when half the pitch is below the product radius.
@@ -58,10 +59,33 @@ export const softenHeatingJogs = (points: Point[], radius: number, free: (p: Poi
 }
 
 export type AutomaticHeatingSettings = { diameterMm: number; spacingMm: number; design?: HeatingDesignInputs }
-type HeatingWorkBudget = { routes: number; grid?: HeatingGrid }
+type HeatingWorkBudget = { routes: number; grid?: HeatingGrid; deadline?: number; onProgress?: (value: HeatingPlanningProgress) => void }
+const checkHeatingDeadline = (budget: HeatingWorkBudget) => {
+  if (budget.deadline !== undefined && Date.now() >= budget.deadline) throw new Error('De planner heeft binnen de rekentijd geen geldige indeling gevonden. Het bestaande plan is behouden.')
+}
 type CircuitJob = { cells: number[]; roomName: string; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
 
 const routeLength = (cells: number[], grid: HeatingGrid, scale: number) => drawingLengthMetres(Math.max(0, cells.length - 1) * grid.step, scale)
+
+/** Keep a room's circuits together. Distance controls planning order, while angular
+ * order still controls manifold ports to avoid crossing the connection bundle. */
+const roomsFarthestFirst = (grid: HeatingGrid, jobs: CircuitJob[], position: Point) => {
+  const rooms = new Map<number, { jobs: CircuitJob[]; minX: number; maxX: number; minY: number; maxY: number }>()
+  for (const job of jobs) {
+    const id = grid.room[job.cells[0]], room = rooms.get(id) ?? { jobs: [], minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+    room.jobs.push(job)
+    for (const cell of job.cells) {
+      const p = grid.point(cell)
+      room.minX = Math.min(room.minX, p.x); room.maxX = Math.max(room.maxX, p.x)
+      room.minY = Math.min(room.minY, p.y); room.maxY = Math.max(room.maxY, p.y)
+    }
+    rooms.set(id, room)
+  }
+  const distance = (room: { minX: number; maxX: number; minY: number; maxY: number }) =>
+    Math.abs((room.minX + room.maxX) / 2 - position.x) + Math.abs((room.minY + room.maxY) / 2 - position.y)
+  return [...rooms.values()].sort((a, b) => distance(b) - distance(a)).map((room) => room.jobs)
+}
+
 
 const loopJobs = (grid: HeatingGrid, settings: AutomaticHeatingSettings, scale: number, manifold: Point, budgetFactor: number, rotated = false, halfPitch = false) => {
   const jobs: CircuitJob[] = [], occupied = new Set<number>(), size = grid.width * grid.height
@@ -196,6 +220,7 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
         const cells = job.cells, root = endpoint ? cells.at(-1)! : cells[0], direction = endpoint ? root - cells.at(-2)! : root - cells[1]
         for (let n = 1; n <= reach; n++) mergeBlocked.add(root + direction * n)
       }
+      checkHeatingDeadline(budget)
       if (--budget.routes < 0) return false
       const connection = routeHeating(grid, a.at(-1)!, b[0], { roomId: grid.room[a[0]], occupied: mergeBlocked, radiusCells: Math.ceil(2 * radius / grid.step),
         startDirection: a.at(-1)! - a.at(-2)!, endDirection: b[1] - b[0] })
@@ -210,7 +235,7 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
         return Array.from({ length: n + 1 }, (_, j) => grid.index({ x: piece.a.x + (piece.b.x - piece.a.x) * j / n, y: piece.a.y + (piece.b.y - piece.a.y) * j / n }))
           .some((i) => i < 0 || grid.wall[i] || grid.obstacle[i] || grid.room[i] !== grid.room[a[0]])
       })) continue
-      const others = jobs.flatMap((job, i) => i === choice.a || i === choice.b ? [] : [shape(job.cells, i)])
+      const others = jobs.flatMap((job, i) => i === choice.a || i === choice.b || grid.room[job.cells[0]] !== grid.room[a[0]] ? [] : [shape(job.cells, i)])
       const exits = [candidate, ...others].flatMap((coil) => {
         const points = heatingPipeGeometry(coil).localPoints
         return [0, 1].map((end) => {
@@ -238,21 +263,37 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
   for (const cell of reservedForCoils) fieldGrid.obstacle[cell] = 1
   const { jobs, occupied } = loopJobs(fieldGrid, settings, scale, position, Math.pow(.75, lengthPass), Math.floor(mergeVariant / 2) % 2 === 1, mergeVariant % 2 === 1)
   const initialFieldCount = jobs.length
-  const combiningFinished = mergeHeatingJobs(grid, jobs, occupied, settings, scale, position, Math.pow(.85, lengthPass), mergeVariant < 4 ? 1 : 0, budget)
-  return { jobs, occupied, initialFieldCount, combiningFinished }
+  budget.onProgress?.({ phase: 'circuits', fields: initialFieldCount, rooms: grid.rooms.length, completedRooms: 0 })
+  if (budget.routes <= 0) return { jobs, occupied, initialFieldCount, combiningFinished: false }
+  const fieldsByRoom = roomsFarthestFirst(grid, jobs, position)
+  const combined: CircuitJob[] = []
+  let combiningFinished = true, completedRooms = 0
+  for (const fields of fieldsByRoom) {
+    checkHeatingDeadline(budget)
+    // Merging cannot cross room boundaries. Solve each room independently and
+    // reserve the global routing budget for the subsequent manifold connections.
+    const roomBudget: HeatingWorkBudget = { routes: Math.min(600, Math.max(80, fields.length * 32)), deadline: budget.deadline }
+    const variant = initialFieldCount > MAX_HEATING_CIRCUITS ? (mergeVariant < 4 ? 0 : 1) : (mergeVariant < 4 ? 1 : 0)
+    combiningFinished = mergeHeatingJobs(grid, fields, occupied, settings, scale, position, Math.pow(.85, lengthPass), variant, roomBudget) && combiningFinished
+    combined.push(...fields)
+    budget.onProgress?.({ phase: 'circuits', fields: initialFieldCount, circuits: combined.length, rooms: fieldsByRoom.length, completedRooms: ++completedRooms, roomName: fields[0].roomName })
+  }
+  return { jobs: combined, occupied, initialFieldCount, combiningFinished }
 }
 
 export type AutomaticHeatingResult = { shapes: RectShape[]; rows: HeatingScheduleRow[]; tableOnSeparatePage: boolean; wallCrossings: number }
 
-export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: Point, settings: AutomaticHeatingSettings,
+const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settings: AutomaticHeatingSettings,
   scale: DrawingScale, nextId: () => string, pageArea: { x: number; y: number; width: number; height: number },
-  lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult => {
+  lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult | { retry: { lengthPass: number; mergeVariant: number } } => {
   if (!Number.isFinite(settings.diameterMm) || settings.diameterMm < 6 || settings.diameterMm > 50 ||
     !Number.isFinite(settings.spacingMm) || settings.spacingMm < 50 || settings.spacingMm > 500) throw new Error('Controleer de buisdiameter en legafstand.')
   settings = { ...settings, design: sanitizeHeatingDesign(settings.design) }
   const limits = heatingDesignLimits(settings.diameterMm, settings.design)
   // Inputs remain fixed throughout this search; only strip direction/phase and splitting
   // vary. Reuse room rasterisation while isolating each attempt's temporary obstacles.
+  checkHeatingDeadline(budget)
+  if (!budget.grid) budget.onProgress?.({ phase: 'rooms' })
   const template = budget.grid ??= buildHeatingGrid(scene, scale, settings.spacingMm, position, {
     pipeDiameterMm: settings.diameterMm, minBendRadiusMm: limits.minBendRadiusMm
   })
@@ -269,8 +310,8 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   const { jobs, occupied, combiningFinished } = planHeatingCircuits(grid, settings, scale, position,
     { lengthPass, mergeVariant, budget, reservedForCoils: heatOnly })
   if (jobs.length > MAX_HEATING_CIRCUITS) {
-    if (!combiningFinished) throw new Error('De planner kon de deelvlakken nog niet volledig tot kringen samenvoegen. Probeer een andere verdelerpositie.')
-    if (mergeVariant < 7 && budget.routes > 0) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant + 1, budget)
+    if (!combiningFinished) throw new Error('De planner kon de deelvlakken nog niet volledig tot kringen samenvoegen. Er is nog geen definitief aantal kringen bepaald.')
+    if (mergeVariant < 7 && budget.routes > 0) return { retry: { lengthPass, mergeVariant: mergeVariant + 1 } }
     throw new Error(`Deze automatische indeling komt na samenvoegen op ${jobs.length} kringen. De planner ondersteunt maximaal ${MAX_HEATING_CIRCUITS} kringen per verdeler.`)
   }
   // Keep ports in angular floor order; arbitrary room/band order forces crossing pairs at the manifold.
@@ -340,11 +381,13 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
     for (const cell of returnFirst ? [...escapes[index][0], ...coilStartEscape] : [...escapes[index][1], ...coilEndEscape]) aBlocked.add(cell)
     const aOptions = { allowWalls: true, radiusCells, occupied: aBlocked,
       startDirection: returnFirst ? lastDirection : grid.width, endDirection: returnFirst ? -grid.width : firstDirection }
+    checkHeatingDeadline(budget)
     if (--budget.routes < 0) return null
     const a = returnFirst ? routeHeating(grid, last, bStem.at(-1)!, aOptions) : routeHeating(grid, aStem.at(-1)!, first, aOptions)
     if (!a) return null
     const bOptions = { allowWalls: true, radiusCells, occupied: new Set([...localBlocked, ...a]),
       startDirection: returnFirst ? grid.width : lastDirection, endDirection: returnFirst ? firstDirection : -grid.width }
+    checkHeatingDeadline(budget)
     if (--budget.routes < 0) return null
     const b = returnFirst ? routeHeating(grid, aStem.at(-1)!, first, bOptions) : routeHeating(grid, last, bStem.at(-1)!, bOptions)
     if (!b) return null
@@ -359,34 +402,60 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   }
   // Backtrack whole pairs when a greedy connection blocks the next circuit.
   // Validation checks the rendered curves, not just orthogonal grid centre lines.
-  let attempts = 0
+  budget.onProgress?.({ phase: 'connections', circuits: jobs.length, completedCircuits: 0, attempt: lengthPass * 8 + mergeVariant + 1 })
+  let attempts = 0, furthestConnection = 0
   const failed = new Set<string>()
-  const search = (order: number[], blocked: Set<number>, completed: Connection[]): Connection[] | null => {
-    if (!order.length) return completed
-    const fingerprint = order.join(',') + ':' + completed.map((c) => c.index + '=' + c.paths.map((p) => p.join(',')).join('/')).join(';')
-    if (failed.has(fingerprint) || budget.routes <= 0) return null
-    const index = order[0]
-    for (const reverse of [true, false]) for (const returnFirst of [false, true]) {
-      if (++attempts > 240) return null
-      const connection = pair(index, reverse, returnFirst, blocked, completed)
-      if (!connection) continue
-      const result = search(order.slice(1), new Set([...blocked, ...connection.paths.flat()]), [...completed, connection])
-      if (result) return result
-    }
-    failed.add(fingerprint)
-    return null
-  }
-  const byDistance = jobs.map((job, index) => ({ index, distance: Math.hypot(grid.point(job.cells[0]).x - position.x, grid.point(job.cells[0]).y - position.y) }))
-    .sort((a, b) => b.distance - a.distance).map((item) => item.index)
+  const jobIndex = new Map(jobs.map((job, index) => [job, index]))
+  const byDistance = roomsFarthestFirst(grid, jobs, position).flatMap((room) => room.map((job) => jobIndex.get(job)!))
   const ascending = jobs.map((_, index) => index)
   let connections: Connection[] | null = null
-  for (const order of [ascending, [...ascending].reverse(), byDistance, [...byDistance].reverse()]) {
-    attempts = 0; connections = search(order, baseOccupied, [])
+  for (const order of [byDistance, ascending, [...ascending].reverse()]) {
+    // Retry only the current and preceding room. Do not revisit all the completed
+    // rooms whenever one new connection fails: that search grows exponentially.
+    let roomNumber = -1, previousRoom = -1, furthestRoom = 0
+    const roomNumbers = order.map((index) => {
+      const room = grid.room[jobs[index].cells[0]]
+      if (room !== previousRoom) { roomNumber++; previousRoom = room }
+      return roomNumber
+    })
+    const search = (offset: number, blocked: Set<number>, completed: Connection[], decisions: string): Connection[] | null => {
+      checkHeatingDeadline(budget)
+      if (completed.length > furthestConnection) {
+        furthestConnection = completed.length
+        budget.onProgress?.({ phase: 'connections', circuits: jobs.length, completedCircuits: completed.length,
+          roomName: jobs[order[Math.min(offset, order.length - 1)]].roomName, attempt: lengthPass * 8 + mergeVariant + 1 })
+      }
+      if (offset === order.length) return [...completed]
+      furthestRoom = Math.max(furthestRoom, roomNumbers[offset])
+      if (failed.has(decisions) || budget.routes <= 0) return null
+      const index = order[offset]
+      for (const reverse of [true, false]) for (const returnFirst of [false, true]) {
+        if (roomNumbers[offset] < furthestRoom - 1 || ++attempts > 240) return null
+        const connection = pair(index, reverse, returnFirst, blocked, completed)
+        if (!connection) continue
+        // Mutate and undo the occupied mask instead of retaining a full copy of
+        // every completed route at each level of the search tree.
+        const added: number[] = []
+        for (const path of connection.paths) for (const cell of path) if (!blocked.has(cell)) { blocked.add(cell); added.push(cell) }
+        completed.push(connection)
+        const result = search(offset + 1, blocked, completed, `${decisions}/${index}:${+reverse}${+returnFirst}`)
+        completed.pop()
+        for (const cell of added) blocked.delete(cell)
+        if (result) return result
+      }
+      failed.add(decisions)
+      return null
+    }
+    attempts = 0
+    // A decision prefix uniquely determines deterministic routes; storing all
+    // their cell coordinates in a fingerprint wastes memory without adding state.
+    failed.clear()
+    connections = search(0, baseOccupied, [], '')
     if (connections) break
   }
   if (!connections && budget.routes <= 0) throw new Error('Geen passende aansluiting gevonden binnen deze indeling. Kies een vrijere verdelerpositie of verdeel het grondplan over meerdere verdelers.')
-  if (!connections && mergeVariant < 7) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant + 1, budget)
-  if (!connections && lengthPass < 3) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass + 1, 0, budget)
+  if (!connections && mergeVariant < 7) return { retry: { lengthPass, mergeVariant: mergeVariant + 1 } }
+  if (!connections && lengthPass < 3) return { retry: { lengthPass: lengthPass + 1, mergeVariant: 0 } }
   if (!connections) throw new Error('Geen kruisingsvrije aansluitingen met deze buigradius gevonden. Kies een vrijere verdelerpositie of verdeel het plan over meer verdelers.')
   let wallCrossings = 0
   for (const connection of connections) {
@@ -406,8 +475,9 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   }
   let rows = heatingSchedule(shapes)
   if (lengthPass < 3 && rows.some((row) => (row.cutM ?? row.totalM) > limits.maxCircuitLengthM + .05)) {
-    return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass + 1, 0, budget)
+    return { retry: { lengthPass: lengthPass + 1, mergeVariant: 0 } }
   }
+  budget.onProgress?.({ phase: 'checks', circuits: rows.length })
   const audit = checkHeatingPlan([...scene, ...shapes], rows, settings.design,
     scene.filter((shape) => shape.kind === 'symbol' && !shape.hidden).map(shapeBounds))
   rows = rows.map((row) => ({ ...row, checkMessages: audit.issues.filter((issue) => issue.circuits.includes(row.id)).map((issue) => issue.message) }))
@@ -428,4 +498,18 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   const tablePosition = fits || { x: 80, y: 80 }
   shapes.push(...createHeatingScheduleTables(rows, { ...heatingDefaults('table', scale), ...settings, name: 'Kringentabel', audit }, nextId, tablePosition))
   return { shapes, rows, tableOnSeparatePage: !fits, wallCrossings }
+}
+
+
+/** Each unsuccessful layout is released before the next variant starts. Recursive
+ * retries would retain its grid overlays, paths and search sets on the call stack. */
+export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: Point, settings: AutomaticHeatingSettings,
+  scale: DrawingScale, nextId: () => string, pageArea: { x: number; y: number; width: number; height: number },
+  lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult => {
+  for (;;) {
+    const result = generateHeatingAttempt(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant, budget)
+    if (!('retry' in result)) return result
+    lengthPass = result.retry.lengthPass
+    mergeVariant = result.retry.mergeVariant
+  }
 }

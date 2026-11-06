@@ -223,6 +223,12 @@ export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRo
 }
 
 export const HEATING_TABLE_ROW_HEIGHT = 64
+export const heatingScheduleTotals = (rows: readonly HeatingScheduleRow[]) => rows.reduce((total, row) => ({
+  circuits: total.circuits + 1, areaM2: total.areaM2 + row.areaM2,
+  loopM: total.loopM + row.loopM, supplyM: total.supplyM + row.supplyM, returnM: total.returnM + row.returnM,
+  totalM: total.totalM + row.totalM, allowanceM: total.allowanceM + (row.allowanceM ?? 0),
+  cutM: total.cutM + (row.cutM ?? row.totalM), flowLmin: total.flowLmin + row.flowLmin
+}), { circuits: 0, areaM2: 0, loopM: 0, supplyM: 0, returnM: 0, totalM: 0, allowanceM: 0, cutM: 0, flowLmin: 0 })
 export const heatingTableSize = (rows: number) => ({ width: 1320, height: 560 + rows * HEATING_TABLE_ROW_HEIGHT })
 
 /** One readable A4 schedule per chunk; the editor assigns each overflow chunk its own page. */
@@ -293,7 +299,9 @@ const heatingTableMarkup = (shape: RectShape): string => {
     content += `<text x="90" y="${y + 37}" font-size="15">${escape(wrapPaperText(checks.length ? `${checks[0]}${checks.length > 1 ? ` (+${checks.length - 1})` : ''}` : thermal, 15, natural.width - 110)[0] ?? '')}</text></g>`
   })
   const y = 116 + rows.length * HEATING_TABLE_ROW_HEIGHT
-  content += cell(0, y, 'Subtotaal', true) + cell(6, y, number(rows.reduce((sum, row) => sum + (row.cutM ?? row.totalM), 0)), true)
+  const totals = heatingScheduleTotals(rows)
+  content += cell(0, y, 'Subtotaal', true) + cell(4, y, number(totals.loopM), true) + cell(5, y, number(totals.supplyM + totals.returnM), true)
+    + cell(6, y, number(totals.cutM), true) + cell(7, y, number(totals.flowLmin, 2), true)
   const floor = rows[0]?.floor, worst = Math.max(0, ...rows.map((r) => r.hydraulics?.totalKpa ?? 0))
   const notes = [
     `Kniplengte = lus + aanvoer + retour + ${number(limits.allowanceM)} m opstanden/snijreserve per kring${data.design?.allowanceM === undefined ? ' (reserve nog invullen)' : ''}.`,
@@ -379,11 +387,14 @@ export const heatingScheduleCSV = (rows: readonly HeatingScheduleRow[], audit?: 
     return `"${safe.replace(/"/g, '""')}"`
   }
   const decimal = (value: number) => value.toFixed(2).replace('.', ',')
+  const totals = heatingScheduleTotals(rows)
   const records: (string | number)[][] = [
     ['CONCEPT — controle vóór uitvoering vereist'],
-    ['Kring', 'Ruimte', 'Buis Ø mm', 'Legafstand mm', 'Oppervlakte m²', 'Lus m', 'Aanvoer m', 'Retour m', 'Reserve m', 'Kniplengte m', 'Debiet l/min', 'Debietbasis', 'Δp buis kPa', 'Δp lokaal kPa', 'Δp verdeler kPa', 'Δp totaal kPa', 'Extra smoordruk kPa', 'Kv equivalente extra weerstand', 'Snelheid m/s', 'Reynolds', 'Drukberekening', 'Drukmarge zwaarste kring kPa', 'R afwerking m²K/W', 'R dekvloer m²K/W', 'R isolatie m²K/W', 'Warmtevraag W/m²', 'Vloer benodigd °C', '1D afgiftebovengrens W/m²', 'Fabrikantafgifte W/m²', '1D bovengrens benedenverlies W/m²', 'Werkelijke min. legafstand mm', 'Werkelijke max. legafstand mm', 'Controlepunten'],
-    ...rows.map((r) => [r.id, r.room, r.diameterMm, r.spacingMm, decimal(r.areaM2), decimal(r.loopM), decimal(r.supplyM), decimal(r.returnM),
+    ['Kring', 'Ruimte', 'Buis Ø mm', 'Legafstand mm', 'Oppervlakte m²', 'Lus m', 'Aanvoer m', 'Retour m', 'Getekend m', 'Reserve m', 'Kniplengte m', 'Debiet l/min', 'Debietbasis', 'Δp buis kPa', 'Δp lokaal kPa', 'Δp verdeler kPa', 'Δp totaal kPa', 'Extra smoordruk kPa', 'Kv equivalente extra weerstand', 'Snelheid m/s', 'Reynolds', 'Drukberekening', 'Drukmarge zwaarste kring kPa', 'R afwerking m²K/W', 'R dekvloer m²K/W', 'R isolatie m²K/W', 'Warmtevraag W/m²', 'Vloer benodigd °C', '1D afgiftebovengrens W/m²', 'Fabrikantafgifte W/m²', '1D bovengrens benedenverlies W/m²', 'Werkelijke min. legafstand mm', 'Werkelijke max. legafstand mm', 'Controlepunten'],
+    ...rows.map((r) => [r.id, r.room, r.diameterMm, r.spacingMm, decimal(r.areaM2), decimal(r.loopM), decimal(r.supplyM), decimal(r.returnM), decimal(r.totalM),
       decimal(r.allowanceM ?? 0), decimal(r.cutM ?? r.totalM), decimal(r.flowLmin), r.flowEstimated !== false ? 'Richtwaarde (aannames)' : 'Ingevoerde ruimtelast en ΔT', ...[r.hydraulics?.pipeKpa, r.hydraulics?.localKpa, r.hydraulics?.manifoldKpa, r.hydraulics?.totalKpa, r.hydraulics?.balanceKpa, r.hydraulics?.targetKv, r.hydraulics?.velocityMs, r.hydraulics?.reynolds].map((n) => n === undefined ? '' : decimal(n)), r.hydraulics?.complete ? 'Buis + lokale verliezen + verdeler' : 'Gedeeltelijk / ontbrekend', ...[r.hydraulics?.pumpMarginKpa, r.floor?.coveringR, r.floor?.screedR, r.floor?.insulationR, r.floor?.demandWm2, r.floor?.requiredSurfaceC, r.floor?.upperBoundWm2, r.floor?.systemOutputWm2, r.floor?.downwardUpperWm2].map((n) => n === undefined ? '' : decimal(n)), decimal(r.spacingMinMm ?? r.spacingMm), decimal(r.spacingMaxMm ?? r.spacingMm), (r.checkMessages ?? []).join(' | ')]),
+    ['TOTAAL', '', '', '', decimal(totals.areaM2), decimal(totals.loopM), decimal(totals.supplyM), decimal(totals.returnM),
+      decimal(totals.totalM), decimal(totals.allowanceM), decimal(totals.cutM), decimal(totals.flowLmin)],
     [], ['Algemene controles'], ...(audit?.issues.filter((i) => !i.circuits.length).map((i) => [i.message]) ?? [])
   ]
   return '\uFEFF' + records.map((row) => row.map(text).join(';')).join('\r\n')

@@ -16,7 +16,7 @@ import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/cir
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
 import { heatingDesignLimits, heatingOutputBasis, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from '../../editor/heating-design.js'
-import type { HeatingData, HeatingLayout } from '../../editor/heating-plan.js'
+import { heatingScheduleTotals, type HeatingData, type HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
@@ -645,6 +645,36 @@ export class ObjectPane extends LiteElement {
     </div>`
   }
 
+  #heatingCircuitOverview(data: HeatingData) {
+    if (data.kind !== 'manifold' || !data.rows?.length) return ''
+    const totals = heatingScheduleTotals(data.rows)
+    const number = (value: number, digits = 1) => value.toLocaleString('nl-BE', { maximumFractionDigits: digits })
+    const measure = (label: string, key: string, value: number, unit = 'm', digits = 1) => html`<div>
+      <dt>${label}</dt><dd data-heating-measure=${key}>${number(value, digits)} <span>${unit}</span></dd>
+    </div>`
+    return this.#propertySection('heating-circuits', 'Kringenoverzicht', html`
+      <div class="dimension-summary heating-circuit-total" data-heating-circuit-totals>
+        <strong>${totals.circuits} kringen · ${number(totals.cutM)} m kniplengte</strong>
+        <div class="dimension-caption">${number(totals.areaM2)} m² verwarmd · ${number(totals.flowLmin, 2)} l/min totaal</div>
+      </div>
+      <p class="dimension-caption">Kniplengte = lus + aanvoer + retour + reserve. Lengtes volgen de getekende trajecten.</p>
+      <div class="heating-circuit-list" role="list" aria-label="Kringen vloerverwarming">
+        ${data.rows.map((row) => html`<article class="dimension-summary heating-circuit-card" role="listitem" data-heating-circuit=${row.id}>
+          <div class="heating-circuit-heading"><strong>${row.id}</strong><span>${row.room}</span></div>
+          <dl class="heating-circuit-measures">
+            ${measure('Lus', 'loopM', row.loopM)}${measure('Aanvoer', 'supplyM', row.supplyM)}${measure('Retour', 'returnM', row.returnM)}
+            ${measure('Getekend', 'totalM', row.totalM)}${measure('Reserve', 'allowanceM', row.allowanceM ?? 0)}${measure('Kniplengte', 'cutM', row.cutM ?? row.totalM)}
+            ${measure(row.flowEstimated !== false ? 'Richtdebiet*' : 'Debiet', 'flowLmin', row.flowLmin, 'l/min', 2)}${measure('Verwarmd', 'areaM2', row.areaM2, 'm²')}
+          </dl>
+          <div class="dimension-caption">Ø ${number(row.diameterMm)} mm · h.o.h. ${number(row.spacingMaxMm ?? row.spacingMm)} mm</div>
+          ${(row.checkMessages ?? []).length ? html`<p class="dimension-hint heating-circuit-check">${row.checkMessages![0]}${row.checkMessages!.length > 1 ? ` (+${row.checkMessages!.length - 1})` : ''}</p>` : ''}
+        </article>`)}
+      </div>
+      ${data.rows.some((row) => row.flowEstimated !== false) ? html`<p class="dimension-caption">* Richtdebiet op basis van aannames; vul ruimtelast en ontwerp-ΔT in voor het ontwerpdebiet.</p>` : ''}
+      <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>
+    `, true)
+  }
+
   #heatingProperties() {
     const data = this._nativeHeating, layout = this._nativeHeatingLayout
     if (!data) return ''
@@ -702,6 +732,7 @@ export class ObjectPane extends LiteElement {
       `}
       ${layout?.warning ? html`<p class="dimension-hint" role="alert">${layout.warning}</p>` : ''}
     `, true)}
+      ${this.#heatingCircuitOverview(data)}
       ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-design', 'Ontwerpgegevens', html`
         <p class="dimension-caption">Optioneel invullen uit productblad en warmteverliesberekening. Pas daarna het legplan opnieuw aan met ‘opnieuw berekenen’.</p>
         <label><span class="native-label">Buisproduct</span><input class="native-input" maxlength="160" data-heating-design="product" .value=${data.design?.product ?? ''}
@@ -768,7 +799,7 @@ export class ObjectPane extends LiteElement {
         <div class="dimension-caption" role="status">Concept${audit ? ` · ${audit.errors} fouten · ${audit.reviews} controles` : ''}</div>
         ${(audit?.issues ?? data.checks ?? []).length > 30 ? html`<p class="dimension-caption">Eerste 30 punten; de volledige lijst staat in de CSV.</p>` : ''}
         ${(audit?.issues ?? data.checks ?? []).slice(0, 30).map((issue) => html`<p class="dimension-hint" data-heating-check=${issue.code}>${issue.severity === 'error' ? '⚠' : '•'} ${issue.message}</p>`)}
-        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>
+        ${data.kind !== 'manifold' || !data.rows?.length ? html`<button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>` : ''}
       `, Boolean(audit?.errors)) : ''}
     `
   }

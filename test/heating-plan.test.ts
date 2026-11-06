@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createHeatingPipe, heatingDefaults, heatingLayout, heatingManifoldSize, heatingMarkup, sanitizeHeating } from '../src/editor/heating-plan.ts'
+import { createHeatingPipe, heatingDefaults, heatingLayout, heatingManifoldSize, heatingMarkup, heatingScheduleTotals, heatingScheduleCSV, sanitizeHeating } from '../src/editor/heating-plan.ts'
 import { cloneShapes, sanitizeShapes } from '../src/editor/model/model.ts'
 import { rescaleGroundPlan } from '../src/editor/layout/drawing-scale.ts'
 import { translateShape } from '../src/editor/interaction/shape-transforms.ts'
@@ -73,4 +73,24 @@ test('uses a compact transparent manifold and preserves connected or custom geom
   assert.deepEqual(sanitizeShapes([old, pipe], 'groundplan'), [old, pipe])
   const custom = { ...old, end: { x: 200, y: 150 } }
   assert.deepEqual(sanitizeShapes([custom], 'groundplan')[0], custom)
+})
+
+test('summarizes actual pipe lengths separately from reserve and exports aligned circuit columns', () => {
+  const rows = [
+    { id: 'VV01', room: 'Living', diameterMm: 16, spacingMm: 150, areaM2: 10, loopM: 60, supplyM: 4, returnM: 5,
+      totalM: 69, allowanceM: 3, cutM: 72, flowLmin: 1.5 },
+    { id: 'VV02', room: 'Kitchen', diameterMm: 16, spacingMm: 150, areaM2: 12, loopM: 70, supplyM: 6, returnM: 7,
+      totalM: 83, flowLmin: 2 }
+  ]
+  assert.deepEqual(heatingScheduleTotals(rows), { circuits: 2, areaM2: 22, loopM: 130, supplyM: 10, returnM: 12,
+    totalM: 152, allowanceM: 3, cutM: 155, flowLmin: 3.5 })
+  assert.equal(heatingScheduleTotals([]).cutM, 0)
+  const records = heatingScheduleCSV(rows).split('\r\n').map((line) => line.split(';').map((cell) => cell.replace(/^"|"$/g, '')))
+  const header = records[1], first = records[2], total = records.find((record) => record[0] === 'TOTAAL')!
+  assert.equal(first.length, header.length)
+  assert.equal(first[header.indexOf('Getekend m')], '69,00')
+  assert.equal(first[header.indexOf('Reserve m')], '3,00')
+  assert.equal(first[header.indexOf('Kniplengte m')], '72,00')
+  assert.equal(first[header.indexOf('Debiet l/min')], '1,50')
+  assert.equal(total[header.indexOf('Kniplengte m')], '155,00')
 })

@@ -78,6 +78,20 @@ test('asks only pipe diameter and spacing, then lays rooms and full manifold rou
   })
   expect(cutsThroughSymbol).toBe(false)
   const inspector = page.locator('#object-inspector')
+  const overview = inspector.locator('[data-property-section="heating-circuits"]')
+  await expect(overview).toBeVisible()
+  const expectedRows = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes
+    .find((shape: any) => shape.heating?.kind === 'manifold').heating.rows)
+  await expect(overview.locator('[data-heating-circuit]')).toHaveCount(expectedRows.length)
+  for (const row of expectedRows) {
+    const card = overview.locator(`[data-heating-circuit="${row.id}"]`)
+    await expect(card).toContainText(row.room)
+    await expect(card.locator('[data-heating-measure="cutM"]')).toHaveText(`${row.cutM.toLocaleString('nl-BE', { maximumFractionDigits: 1 })} m`)
+    await expect(card.locator('[data-heating-measure="supplyM"]')).toContainText('m')
+    await expect(card.locator('[data-heating-measure="returnM"]')).toContainText('m')
+  }
+  await expect(overview.locator('[data-heating-circuit-totals]')).toContainText(`${expectedRows.length} kringen`)
+  await expect(overview).toContainText('Richtdebiet*')
   await expect(inspector.locator('[data-heating-field="diameterMm"]')).toHaveValue('16')
   await inspector.locator('[data-heating-field="spacingMm"]').fill('200')
   await inspector.locator('[data-heating-field="spacingMm"]').press('Tab')

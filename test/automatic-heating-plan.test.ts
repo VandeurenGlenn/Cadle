@@ -78,6 +78,19 @@ test('automatically detects rooms and connects full circuits to the manifold', (
   assert.ok(Math.abs(heatingFlowLmin(10) - 1.43485) < .001)
 })
 
+test('generates a complete 16 mm / 100 mm plan rather than repeatedly rejecting its own bends', () => {
+  let id = 0
+  const result = generateAutomaticHeatingPlan(scene(), { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 100 },
+    100, () => `pitch100-${id++}`, area, 0, 0, { routes: 600, deadline: Date.now() + 10000 })
+  assert.ok(result.rows.length > 0)
+  assert.equal(result.shapes.find((shape) => shape.heating?.kind === 'manifold')!.heating!.audit!.errors, 0)
+  for (const row of result.rows) {
+    assert.equal(row.spacingMm, 100)
+    assert.ok(row.supplyM > 0 && row.loopM > 0 && row.returnM > 0)
+    assert.ok(row.cutM! <= 100.05)
+  }
+})
+
 test('never runs a heating loop or its tails through a symbol footprint', () => {
   const obstacle: Shape = { id: 'cabinet', kind: 'symbol', name: 'Cabinet', path: 'custom.svg', position: { x: 600, y: 550 }, scale: 4 }
   const result = build([...scene(), obstacle]), box = shapeBounds(obstacle)

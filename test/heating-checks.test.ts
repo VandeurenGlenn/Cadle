@@ -33,6 +33,27 @@ test('opens a tight 150 mm meander end to fit an 80 mm product bend', () => {
   assert.deepEqual(geometry.points.at(-1), { x: 0, y: 12 })
 })
 
+test('16 mm pipe at 100 mm pitch retains R80 bends and clearance between adjacent widened turns', () => {
+  // Four adjacent pairs exercise both ends of the meander, not just an isolated U.
+  const original = Array.from({ length: 8 }, (_, i) => [{ x: i * 8, y: i % 2 ? 200 : 0 }, { x: i * 8, y: i % 2 ? 0 : 200 }]).flat()
+  for (const mirrored of [false, true]) {
+    const points = original.map(({ x, y }) => ({ x: mirrored && x !== 0 ? -x : x, y }))
+    const opened = openHeatingTurns(points, 6.4, 1.28)
+    const shape = pipe('VV01', opened)
+    shape.heating!.spacingMm = 100
+    const geometry = heatingPipeGeometry(shape)
+    assert.ok(opened.length > original.length, '100 mm turns must be widened instead of left at R50')
+    assert.ok(geometry.bends.every((bend) => bend.radiusMm >= 79.9))
+    assert.equal(checkHeatingPlan([shape], []).errors, 0)
+    assert.deepEqual(geometry.points[0], points[0])
+    assert.deepEqual(geometry.points.at(-1), points.at(-1))
+    for (let i = 0; i < 8; i++) assert.ok(geometry.pieces.some((piece) => Math.abs(piece.a.x - points[i * 2].x) < 1e-6 &&
+      Math.abs(piece.b.x - points[i * 2].x) < 1e-6 && Math.abs(piece.b.y - piece.a.y) > 100), 'the long runs retain their 100 mm pitch')
+  }
+  const tooTight = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 8 }, { x: 0, y: 8 }]
+  assert.deepEqual(openHeatingTurns(tooTight, 8, 1.6), tooTight, 'do not widen neighbouring bulbs into touching 20 mm pipes')
+})
+
 test('detects actual crossings, pipe footprint collisions and bends below the design minimum', () => {
   const a = pipe('VV01', [{ x: 0, y: 30 }, { x: 80, y: 30 }])
   const b = pipe('VV02', [{ x: 40, y: 0 }, { x: 40, y: 60 }])
@@ -160,4 +181,19 @@ test('focused geometry checks compare new pipes with existing ones without repea
   const interrupted = new Error('stop geometry work')
   assert.throws(() => checkHeatingPlan(shapes, [], undefined, [], { checkpoint: () => { throw interrupted } }),
     (error) => error === interrupted)
+})
+
+test('candidate validation stops at the first conflict while the final audit still reports every conflict', () => {
+  const shapes = [
+    pipe('VV01', [{ x: 0, y: 40 }, { x: 120, y: 40 }]),
+    pipe('VV02', [{ x: 40, y: 0 }, { x: 40, y: 120 }]),
+    pipe('VV03', [{ x: 80, y: 0 }, { x: 80, y: 120 }])
+  ]
+  const full = checkHeatingPlan(shapes, [])
+  assert.equal(full.issues.filter((issue) => issue.code === 'collision').length, 2)
+  const early = checkHeatingPlan(shapes, [], undefined, [], { stopOnConflict: true })
+  assert.equal(early.issues.length, 1)
+  assert.deepEqual(early.issues[0], full.issues[0])
+  assert.equal(early.errors, 1)
+  assert.equal(early.reviews, 0)
 })

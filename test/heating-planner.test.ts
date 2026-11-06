@@ -73,6 +73,6 @@ test('worker startup, communication and time limits reject without a synchronous
 })
 
 test('merge progress names the active room and shows work within that room', () => {
-  const message = heatingProgressText({ phase: 'circuits', rooms: 7, completedRooms: 2, roomName: 'Living', remainingFields: 6, routeAttempts: 18 })
-  for (const text of ['2/7', 'Living', '6 deelvlakken', '18 pogingen']) assert.ok(message.includes(text))
+  const message = heatingProgressText({ phase: 'circuits', rooms: 7, completedRooms: 2, roomName: 'Living', remainingFields: 6, routeAttempts: 18, attempt: 3 })
+  for (const text of ['2/7', 'Living', '6 deelvlakken', '18 routepogingen', 'indeling 3']) assert.ok(message.includes(text))
 })

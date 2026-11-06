@@ -135,6 +135,8 @@ class MinHeap {
 }
 
 export type HeatingRoutingOptions = {
+  /** Checked inside the search, so a single difficult route cannot exhaust a room's budget. */
+  checkpoint?: () => void
   roomId?: number
   occupied?: ReadonlySet<number>
   allowWalls?: boolean
@@ -162,6 +164,7 @@ const wallStepCost = (grid: HeatingGrid, from: number, to: number, options: Heat
 /** Favor openings and fewer penetrations, allowing worthwhile short wall routes. */
 export const routeHeating = (grid: HeatingGrid, start: number, end: number,
   options: HeatingRoutingOptions = {}): number[] | null => {
+  options.checkpoint?.()
   if (options.radiusCells) return routeWithBends(grid, start, end, options)
   const { width, height } = grid
   if (start < 0 || end < 0 || grid.obstacle[start] || grid.obstacle[end]) return null
@@ -169,7 +172,9 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
   const closed = new Uint8Array(width * height), heap = new MinHeap()
   const heuristic = (i: number) => Math.abs(i % width - end % width) + Math.abs(Math.floor(i / width) - Math.floor(end / width))
   cost[start] = 0; heap.push(start, heuristic(start))
+  let iterations = 0
   while (heap.values.length) {
+    if (++iterations % 256 === 0) options.checkpoint?.()
     const i = heap.pop()
     if (closed[i]) continue
     if (i === end) {
@@ -239,7 +244,9 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
     const state = root * 4 + d; cost[state] = 0; previous[state] = -1; visited[state] = generation; heap.push(state, heuristic(root))
   }
   let explored = 0
+  let iterations = 0
   while (heap.values.length) {
+    if (++iterations % 256 === 0) options.checkpoint?.()
     const state = heap.pop(), i = Math.floor(state / 4), heading = state % 4
     if (closed[state] === generation) continue
     if (i === target && (options.endDirection === undefined || directions[heading] !== -options.endDirection)) {

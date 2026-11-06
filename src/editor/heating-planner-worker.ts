@@ -6,12 +6,12 @@ const scope = globalThis as unknown as {
   postMessage: (message: HeatingPlannerResponse) => void
 }
 scope.onmessage = ({ data }) => {
-  let count = 0, lastTime = 0, lastPhase: HeatingPlanningProgress['phase'] | undefined, lastRoom: string | undefined, lastCompleted = -1
+  let count = 0, lastTime = 0, lastPhase: HeatingPlanningProgress['phase'] | undefined, lastRoom: string | undefined, lastCompleted = -1, lastAttempt: number | undefined
   const progress = (value: HeatingPlanningProgress) => {
     const now = Date.now()
-    if (value.phase !== lastPhase || value.roomName !== lastRoom || value.completedRooms !== lastCompleted || now - lastTime >= 100) {
+    if (value.phase !== lastPhase || value.roomName !== lastRoom || value.completedRooms !== lastCompleted || value.attempt !== lastAttempt || now - lastTime >= 100) {
       scope.postMessage({ type: 'progress', progress: value })
-      lastTime = now; lastPhase = value.phase; lastRoom = value.roomName; lastCompleted = value.completedRooms
+      lastTime = now; lastPhase = value.phase; lastRoom = value.roomName; lastCompleted = value.completedRooms; lastAttempt = value.attempt
     }
   }
   try {

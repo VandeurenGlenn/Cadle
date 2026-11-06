@@ -36,10 +36,12 @@ const separation = (a: Point, b: Point, c: Point, d: Point) => {
 
 export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly HeatingScheduleRow[], design?: HeatingDesignInputs,
   obstacles: Box[] = [], options: { focusPipeIds?: ReadonlySet<string>; checkpoint?: () => void;
-    geometryFor?: typeof heatingPipeGeometry } = {}): HeatingAudit => {
+    geometryFor?: typeof heatingPipeGeometry; stopOnConflict?: boolean } = {}): HeatingAudit => {
   const pipes = shapes.filter((s): s is RectShape => s.kind === 'rect' && s.heating?.kind === 'pipe' && Boolean(s.heating.circuitId))
   const issues: HeatingCheck[] = [], seen = new Set<string>()
   const add = (key: string, issue: HeatingCheck) => { if (!seen.has(key)) { seen.add(key); issues.push(issue) } }
+  const audit = (): HeatingAudit => ({ issues, errors: issues.filter((i) => i.severity === 'error').length,
+    reviews: issues.filter((i) => i.severity === 'review').length })
   const manifold = shapes.find((s) => s.kind === 'rect' && s.heating?.kind === 'manifold') as RectShape | undefined
   const scale = manifold?.heating?.drawingScale ?? pipes[0]?.heating?.drawingScale ?? 100
   const inManifoldZone = (p: Point) => manifold && p.x >= Math.min(manifold.start.x, manifold.end.x) - 1600 / scale &&
@@ -50,7 +52,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     if (!rows.some((row) => row.id === id)) add(`${id}:absent`, { code: 'continuity', severity: 'error', circuits: [id], message: `${id}: volledige kring ontbreekt bij de verdeler.` })
   }
   const focused = pipes.map((pipe) => !options.focusPipeIds || options.focusPipeIds.has(pipe.id))
-  const geometries = pipes.map(options.geometryFor ?? heatingPipeGeometry)
+  const geometries = pipes.map((pipe) => { options.checkpoint?.(); return (options.geometryFor ?? heatingPipeGeometry)(pipe) })
   for (const [index, pipe] of pipes.entries()) {
     options.checkpoint?.()
     if (!focused[index]) continue
@@ -60,15 +62,19 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
       const severity = inManifoldZone(bend.point) ? 'review' : 'error'
       add(`${id}:bend:${severity}`, { code: 'bend', severity, circuits: [id], point: bend.point,
         message: `${id}: bocht R${bend.radiusMm.toFixed(0)} mm < ingestelde R${limits.minBendRadiusMm} mm${severity === 'review' ? ' (aansluitzone verdeler)' : ''}.` })
+      if (options.stopOnConflict) return audit()
     }
     for (const piece of geometry.pieces) for (const box of obstacles) {
       const radius = data.diameterMm * 4 / data.drawingScale
       // Sampling step is bounded by half a pipe diameter, including the rendered arcs.
       const n = Math.max(1, Math.ceil(Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y) / Math.max(.2, radius)))
       for (let i = 0; i <= n; i++) {
+        if (i % 256 === 0) options.checkpoint?.()
         const p = { x: piece.a.x + (piece.b.x - piece.a.x) * i / n, y: piece.a.y + (piece.b.y - piece.a.y) * i / n }
         if (p.x > box.x - radius && p.x < box.x + box.width + radius && p.y > box.y - radius && p.y < box.y + box.height + radius) {
-          add(`${id}:obstacle`, { code: 'obstacle', severity: 'error', circuits: [id], point: p, message: `${id}: buis raakt een symbool of de vrije ruimte eromheen.` }); break
+          add(`${id}:obstacle`, { code: 'obstacle', severity: 'error', circuits: [id], point: p, message: `${id}: buis raakt een symbool of de vrije ruimte eromheen.` })
+          if (options.stopOnConflict) return audit()
+          break
         }
       }
     }
@@ -114,6 +120,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
         const ids = [...new Set([first.circuitId!, second.circuitId!])].sort(), severity = inManifoldZone(distance.point) ? 'review' : 'error'
         add(`collision:${ids.join(':')}:${severity}`, { code: 'collision', severity, circuits: ids, point: distance.point,
           message: `${ids.join(' / ')}: kruising of onvoldoende ruimte tussen buizen${severity === 'review' ? ' bij de verdeler' : ''}.` })
+        if (options.stopOnConflict) return audit()
       }
       entries.push(entry); buckets.set(key, entries)
     }

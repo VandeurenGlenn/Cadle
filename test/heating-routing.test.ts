@@ -51,4 +51,20 @@ for (const radiusCells of [undefined, 2]) {
     assert.ok(path.some((cell) => g.point(cell).y === 30))
     assert.equal(routeHeating(g, start, end, { radiusCells }), null, 'coils cannot use wall access')
   })
+
+  test(`${algorithm}: interrupts an in-flight search and can safely reuse its workspace`, () => {
+    const g = grid(160, 120), start = g.index({ x: 20, y: 60 }), end = g.index({ x: 140, y: 60 })
+    for (let y = 0; y < g.height; y++) g.obstacle[g.index({ x: 80, y })] = 1
+    const expired = new Error('room deadline'), options = { radiusCells }
+    let checkpoints = 0
+    assert.throws(() => routeHeating(g, start, end, { ...options,
+      checkpoint: () => { if (++checkpoints === 2) throw expired } }), (error) => error === expired)
+    assert.equal(checkpoints, 2, 'the second checkpoint must occur inside the active route search')
+    assert.equal(routeHeating(g, start, end, options), null)
+    g.obstacle.fill(0)
+    const path = routeHeating(g, start, end, options)!
+    assert.equal(path[0], start)
+    assert.equal(path.at(-1), end)
+    for (let i = 1; i < path.length; i++) assert.equal(Math.abs(path[i] - path[i - 1]), 1)
+  })
 }

@@ -29,7 +29,7 @@ export type HeatingPlannerResponse =
 
 export const heatingProgressText = (progress: HeatingPlanningProgress | null): string => {
   if (!progress || progress.phase === 'rooms') return 'Ruimtes herkennen…'
-  if (progress.phase === 'circuits') return `Legvlakken samenvoegen${progress.rooms ? ` · ${progress.completedRooms ?? 0}/${progress.rooms} ruimtes` : ''}${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.remainingFields !== undefined ? ` · ${progress.remainingFields} deelvlakken` : ''}${progress.routeAttempts ? ` · ${progress.routeAttempts} pogingen` : ''}…`
+  if (progress.phase === 'circuits') return `Legvlakken samenvoegen${progress.attempt && progress.attempt > 1 ? ` · indeling ${progress.attempt}` : ''}${progress.rooms ? ` · ${progress.completedRooms ?? 0}/${progress.rooms} ruimtes` : ''}${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.remainingFields !== undefined ? ` · ${progress.remainingFields} deelvlakken` : ''}${progress.routeAttempts ? ` · ${progress.routeAttempts} routepogingen` : ''}…`
   if (progress.phase === 'connections') return `Aansluitingen zoeken · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} kringen${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.attempt && progress.attempt > 1 ? ` · poging ${progress.attempt}` : ''}…`
   return 'Kringen, lengtes en kringentabel controleren…'
 }

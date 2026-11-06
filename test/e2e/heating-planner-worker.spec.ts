@@ -26,6 +26,7 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   const heating = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes)
   const manifold = heating.find((shape: any) => shape.heating?.kind === 'manifold').heating
+  expect(manifold.pattern).toBe('spiral')
   expect(manifold.audit.errors).toBe(0)
   expect(manifold.rows.length).toBeGreaterThan(0)
   for (const row of manifold.rows) {
@@ -35,6 +36,7 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
     expect(row.cutM).toBeLessThanOrEqual(100.05)
   }
   await expect(app.locator('.heating-pipe')).toHaveCount(manifold.rows.length * 3)
+  await page.screenshot({ path: '/private/tmp/cadle-slakkenhuis-16-100.png' })
 })
 
 test('keeps the page responsive during heavy calculation and preserves the drawing on cancel, failure and navigation', async ({ page }) => {

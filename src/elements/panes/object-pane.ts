@@ -730,6 +730,7 @@ export class ObjectPane extends LiteElement {
       ` : data.kind === 'manifold' ? data.automatic ? html`
         ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
+        ${data.pattern === 'spiral' ? html`<div class="dimension-caption">Slakkenhuis · minimaal R${limits.minBendRadiusMm} mm voor lus, aanvoer en retour</div>` : ''}
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
       ` : numeric('circuits', 'Aantal groepen', 1, MAX_HEATING_CIRCUITS) : html`
         <label><span class="native-label">Buisfunctie</span><select class="native-select" data-heating-field="pipeRole" .value=${data.pipeRole}

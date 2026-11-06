@@ -1091,11 +1091,11 @@ export class AppShell extends LiteElement {
     if (!this.projectKey) return
     const settings = await this.requestInput({
       title: 'Legplan vloerverwarming',
-      description: 'Vul de buisdiameter en maximale legafstand in. Rond obstakels kan plaatselijk dichter worden gelegd; de werkelijke afstanden staan in de tabel. Klik daarna waar de verdeler moet komen.',
+      description: 'Automatisch slakkenhuispatroon met aanvoer en retour naast elkaar. Vul de buisdiameter en legafstand in en klik daarna waar de verdeler moet komen. Bij 16 mm buis geldt voorlopig minimaal R80 voor alle buisbochten.',
       submitLabel: 'Verdeler plaatsen',
       fields: [
         { name: 'diameterMm', label: 'Buisdiameter (mm)', type: 'number', value: '16', min: 6, max: 50, required: true },
-        { name: 'spacingMm', label: 'Legafstand h.o.h. (mm)', type: 'number', value: '150', min: 50, max: 500, required: true }
+        { name: 'spacingMm', label: 'Legafstand h.o.h. (mm)', type: 'number', value: '100', min: 50, max: 500, required: true }
       ]
     })
     if (!settings) return

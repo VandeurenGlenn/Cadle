@@ -20,6 +20,7 @@ export type HeatingData = {
   direction: 'horizontal' | 'vertical'
   pipeRole: 'supply' | 'return' | 'loop'
   automatic?: boolean
+  pattern?: 'spiral'
   manualRoute?: boolean
   circuitId?: string
   roomName?: string
@@ -89,6 +90,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.pipeRole === 'return') data.pipeRole = 'return'
   if (raw.pipeRole === 'loop') data.pipeRole = 'loop'
   if (raw.automatic === true) data.automatic = true
+  if (raw.pattern === 'spiral') data.pattern = 'spiral'
   if (raw.manualRoute === true) data.manualRoute = true
   const design = sanitizeHeatingDesign(raw.design), audit = sanitizeHeatingAudit(raw.audit), checks = sanitizeHeatingAudit({ issues: raw.checks })?.issues
   if (design) data.design = design
@@ -308,7 +310,7 @@ const heatingTableMarkup = (shape: RectShape): string => {
     `Kniplengte = lus + aanvoer + retour + ${number(limits.allowanceM)} m opstanden/snijreserve per kring${data.design?.allowanceM === undefined ? ' (reserve nog invullen)' : ''}.`,
     `* Richtdebiet: ontbrekende ruimtelast = 50 W/m²; ΔT ${number(limits.deltaTK)} K${data.design?.deltaTK === undefined ? ' (aanname)' : ''}. Zonder *: ingevoerde ruimtelast en ΔT.`,
     `Buis: ${(data.design?.product ?? 'product nog bevestigen').slice(0, 55)} · min. R ${number(limits.minBendRadiusMm)} mm${data.design?.minBendRadiusMm === undefined ? ' (aanname 5×Ø)' : ''} · max. ${number(limits.maxCircuitLengthM)} m/kring${data.design?.maxCircuitLengthM === undefined ? ' (aanname)' : ''}.`,
-    `Gekozen maximale legafstand ${number(data.spacingMm)} mm; rechte legafstanden staan per kring, bochten wijken plaatselijk af.`,
+    `${data.pattern === 'spiral' ? 'Slakkenhuis · ' : ''}Gekozen maximale legafstand ${number(data.spacingMm)} mm; rechte legafstanden staan per kring, bochten wijken plaatselijk af.`,
     `Drukverlies: water ${number(data.design?.fluidTemperatureC ?? ((data.design?.supplyTemperatureC ?? 35) - (data.design?.deltaTK ?? 5) / 2))} °C · Darcy–Weisbach/Colebrook · ruwheid ${number(data.design?.roughnessMm ?? .007, 3)} mm${data.design?.roughnessMm === undefined ? ' (aanname)' : ''} · lokale ζ ${data.design?.localLossK ?? '?'} · verdeler-Kv ${data.design?.manifoldKv ?? '?'}.`,
     `${rows.some((r) => r.hydraulics) ? `Zwaarste berekende kring ${number(worst, 2)} kPa` : 'Drukverlies nog niet berekend'}${rows.some((r) => !r.hydraulics?.complete) ? ' (nog gedeeltelijk)' : ''}; beschikbare druk aan verdeler ${data.design?.availablePressureKpa === undefined ? '?' : number(data.design.availablePressureKpa)} kPa. Extra smoordruk geldt bij deze bedrijfsdruk; zonder invoer t.o.v. de zwaarste kring. Geen ventielstand.`,
     `Vloer R (m²K/W): afwerking ${floor?.coveringR === undefined ? '?' : number(floor.coveringR, 3)} · dekvloer boven buis ${floor?.screedR === undefined ? '?' : number(floor.screedR, 3)} · isolatie ${floor?.insulationR === undefined ? '?' : number(floor.insulationR, 2)}.`,

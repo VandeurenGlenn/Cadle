@@ -6,6 +6,7 @@ import { heatingBounds, heatingFlowLmin, heatingLayout, heatingSchedule, present
 import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
 import type { RectShape, Shape } from '../src/editor/model/types.ts'
 import { rescaleGroundPlan } from '../src/editor/layout/drawing-scale.ts'
+import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
 
 const scene = (): Shape[] => {
   const corners = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 720 }, { x: 400, y: 720 }]
@@ -88,6 +89,32 @@ test('generates a complete 16 mm / 100 mm plan rather than repeatedly rejecting 
     assert.equal(row.spacingMm, 100)
     assert.ok(row.supplyM > 0 && row.loopM > 0 && row.returnM > 0)
     assert.ok(row.cutM! <= 100.05)
+  }
+  for (const pipe of result.shapes.filter((shape) => shape.heating?.kind === 'pipe')) {
+    assert.equal(pipe.heating!.pattern, 'spiral')
+    assert.ok(heatingPipeGeometry(pipe).bends.every((bend) => bend.radiusMm >= 79.9), `${pipe.heating!.pipeRole} also requires R80`)
+  }
+})
+
+test('completes seven rooms at 16/100 with a bounded number of distinct layouts and no tight connection bends', () => {
+  const shapes: Shape[] = []
+  for (let room = 0; room < 7; room++) {
+    const x = 400 + room % 4 * 280, y = 400 + Math.floor(room / 4) * 280
+    const corners = [{ x, y }, { x: x + 240, y }, { x: x + 240, y: y + 240 }, { x, y: y + 240 }]
+    shapes.push(...corners.map((start, i): Shape => ({ id: `seven-${room}-${i}`, kind: 'wall', start, end: corners[(i + 1) % 4] })))
+    shapes.push({ id: `door-${room}`, kind: 'door', start: { x: x + 80, y }, end: { x: x + 160, y } })
+  }
+  let id = 0
+  const attempts = new Set<number>()
+  const result = generateAutomaticHeatingPlan(shapes, { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 100 },
+    100, () => `seven-${id++}`, area, 0, 0, { routes: 600, deadline: Date.now() + 30000,
+      onProgress: (p) => { if (p.phase === 'connections') attempts.add(p.attempt!) } })
+  assert.equal(new Set(result.rows.map((row) => row.room)).size, 7)
+  assert.ok(attempts.size <= 8)
+  assert.ok(Math.max(...attempts) <= 8)
+  assert.equal(result.shapes.find((shape) => shape.heating?.kind === 'manifold')!.heating!.audit!.errors, 0)
+  for (const shape of result.shapes.filter((shape) => shape.heating?.kind === 'pipe')) {
+    assert.ok(heatingPipeGeometry(shape).bends.every((bend) => bend.radiusMm >= 79.9))
   }
 })
 

@@ -54,6 +54,25 @@ export const heatingDefaults = (kind: HeatingData['kind'], drawingScale = DEFAUL
   direction: 'horizontal', pipeRole: 'supply'
 })
 
+/** A compact plan symbol with room for distinct supply/return ports. */
+export const heatingManifoldSize = (circuits: number, scale: number, portStep = drawingUnitsForMetres(.025, scale)) => ({
+  width: Math.max(drawingUnitsForMetres(.6, scale), (circuits * 3 + 3) * portStep),
+  height: drawingUnitsForMetres(.35, scale)
+})
+
+/** Update the old placement default only while it has no pipe connections.
+ * Connected and deliberately resized manifolds keep their stored geometry. */
+export const compactUnusedHeatingManifolds = (shapes: Shape[]): Shape[] => {
+  if (shapes.some((shape) => shape.heating?.kind === 'pipe')) return shapes
+  return shapes.map((shape) => {
+    if (shape.kind !== 'rect' || shape.heating?.kind !== 'manifold' || shape.heating.automatic ||
+      Math.abs(Math.abs(shape.end.x - shape.start.x) - 120) > 1e-6 || Math.abs(Math.abs(shape.end.y - shape.start.y) - 64) > 1e-6) return shape
+    const size = heatingManifoldSize(shape.heating.circuits, shape.heating.drawingScale)
+    return { ...shape, end: { x: shape.start.x + Math.sign(shape.end.x - shape.start.x) * size.width,
+      y: shape.start.y + Math.sign(shape.end.y - shape.start.y) * size.height } }
+  })
+}
+
 export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (!value || typeof value !== 'object') return
   const raw = value as Record<string, unknown>
@@ -315,13 +334,15 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
   const transform = `translate(${cx} ${cy}) rotate(${shape.rotation ?? 0}) scale(${shape.flipX ? -1 : 1} ${shape.flipY ? -1 : 1}) translate(${-cx} ${-cy})`
   const red = monochrome ? '#000000' : '#b42318', blue = monochrome ? '#000000' : '#175cd3'
   const label = (x: number, y: number, value: string) => {
-    const lines = wrapPaperText(value, 20, Math.max(data.kind === 'manifold' ? 600 : 160, b.width))
-    return `<text x="${x}" y="${y - (lines.length - 1) * 24}" fill="#111111" stroke="white" stroke-width="4" paint-order="stroke" font-family="Segoe UI, Arial, sans-serif" font-size="20">${lines.map((line, index) => `<tspan x="${x}" dy="${index ? 24 : 0}">${escape(line)}</tspan>`).join('')}</text>`
+    const fontSize = data.kind === 'manifold' ? 16 : 20, lineHeight = fontSize * 1.2
+    const lines = wrapPaperText(value, fontSize, Math.max(data.kind === 'manifold' ? 600 : 160, b.width))
+    const halo = data.kind === 'manifold' ? 'stroke="none"' : 'stroke="white" stroke-width="4" paint-order="stroke"'
+    return `<text x="${x}" y="${y - (lines.length - 1) * lineHeight}" fill="#111111" ${halo} font-family="Segoe UI, Arial, sans-serif" font-size="${fontSize}">${lines.map((line, index) => `<tspan x="${x}" dy="${index ? lineHeight : 0}">${escape(line)}</tspan>`).join('')}</text>`
   }
   let markup = ''
   if (data.kind === 'manifold') {
     const top = b.y + b.height * .35, bottom = b.y + b.height * .7
-    markup = `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="4" fill="white" stroke="#555" stroke-width="1"/>`
+    markup = `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="none" stroke="#555" stroke-width="1" pointer-events="all"/>`
     markup += `<path d="M ${b.x + 6} ${top} H ${b.x + b.width - 6}" stroke="${red}"/><path d="M ${b.x + 6} ${bottom} H ${b.x + b.width - 6}" stroke="${blue}"/>`
     for (let i = 0; i < data.circuits; i++) {
       const x = b.x + b.width * (i + 1) / (data.circuits + 1)

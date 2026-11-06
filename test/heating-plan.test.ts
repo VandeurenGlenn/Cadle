@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createHeatingPipe, heatingDefaults, heatingLayout, heatingMarkup, sanitizeHeating } from '../src/editor/heating-plan.ts'
+import { createHeatingPipe, heatingDefaults, heatingLayout, heatingManifoldSize, heatingMarkup, sanitizeHeating } from '../src/editor/heating-plan.ts'
 import { cloneShapes, sanitizeShapes } from '../src/editor/model/model.ts'
 import { rescaleGroundPlan } from '../src/editor/layout/drawing-scale.ts'
 import { translateShape } from '../src/editor/interaction/shape-transforms.ts'
@@ -51,4 +51,26 @@ test('regenerates zone settings and shares safe markup with export', () => {
   assert.ok(!shapeMarkup(changed, false, '', 2, true).includes('#b42318'))
   assert.equal(sanitizeHeating({ kind: 'pipe', points: [{ x: Number.NaN, y: 0 }] }), undefined)
   assert.equal(sanitizeHeating({ ...heatingDefaults('zone'), circuits: 999 })!.circuits, 24)
+})
+
+test('uses a compact transparent manifold and preserves connected or custom geometry', () => {
+  const old: RectShape = { id: 'manifold', kind: 'rect', start: { x: 100, y: 100 }, end: { x: 220, y: 164 },
+    heating: { ...heatingDefaults('manifold', 100), circuits: 10 } }
+  const compact = sanitizeShapes([old], 'groundplan')[0] as RectShape
+  const size = heatingManifoldSize(10, 100)
+  assert.equal(compact.end.x - compact.start.x, size.width)
+  assert.equal(compact.end.y - compact.start.y, size.height)
+  assert.ok(size.width < 120 * .6 && size.height < 64 * .5)
+  const markup = heatingMarkup(compact)
+  assert.match(markup, /<rect[^>]*fill="none"/)
+  assert.ok(!markup.includes('white'))
+  assert.equal(shapeMarkup(compact, false), markup)
+  assert.deepEqual(heatingManifoldSize(10, 50), { width: size.width * 2, height: size.height * 2 })
+  const expanded = updateSelectionProperties([compact], { heating: { circuits: 12 } },
+    { selectedIds: new Set(['manifold']), selectedId: 'manifold', groupedSelection: false })![0] as RectShape
+  assert.equal(expanded.end.x - expanded.start.x, heatingManifoldSize(12, 100).width)
+  const pipe = createHeatingPipe('connected-pipe', [{ x: 110, y: 164 }, { x: 110, y: 240 }], heatingDefaults('pipe', 100))
+  assert.deepEqual(sanitizeShapes([old, pipe], 'groundplan'), [old, pipe])
+  const custom = { ...old, end: { x: 200, y: 150 } }
+  assert.deepEqual(sanitizeShapes([custom], 'groundplan')[0], custom)
 })

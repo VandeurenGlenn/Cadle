@@ -1,7 +1,7 @@
 import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
-import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingMarkup, heatingScheduleCSV, presentHeatingTables } from './heating-plan.js'
+import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, presentHeatingTables } from './heating-plan.js'
 import type { AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import { runHeatingPlanner } from './heating-planner.js'
 import { heatingProgressText, type HeatingPlanningProgress } from './heating-planner-protocol.js'
@@ -5404,9 +5404,10 @@ export class CadleApp extends LiteElement {
         await this.#generateHeatingAt(point, this.#automaticHeatingSettings)
         return
       }
+      const heating = heatingDefaults('manifold', this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+      const size = heatingManifoldSize(heating.circuits, heating.drawingScale)
       const shape: RectShape = { id: nextShapeId(), kind: 'rect', start: point,
-        end: { x: point.x + 120, y: point.y + 64 }, strokeWidth: 2,
-        heating: heatingDefaults('manifold', this.#drawingScale ?? DEFAULT_DRAWING_SCALE) }
+        end: { x: point.x + size.width, y: point.y + size.height }, strokeWidth: 2, heating }
       this.#document.shapes.push(shape)
       this.#document.selectedId = shape.id
       this.#document.selectedIds = new Set([shape.id])

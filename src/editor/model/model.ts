@@ -3,7 +3,7 @@ import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata }
 import { appliancePaperScale, revisedGroundPlanDefaultScale, renderedSymbolScale, resizedSymbolStrokeWidth } from './symbol-scale.js'
 import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
-import { sanitizeHeating } from '../heating-plan.js'
+import { compactUnusedHeatingManifolds, sanitizeHeating } from '../heating-plan.js'
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
@@ -363,7 +363,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       shapes.push(image)
     }
   }
-  return migrateProtectionDescriptions(shapes)
+  return migrateProtectionDescriptions(context === 'groundplan' ? compactUnusedHeatingManifolds(shapes) : shapes)
 }
 
 export const cloneShape = (shape: Shape): Shape => {

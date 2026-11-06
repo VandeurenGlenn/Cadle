@@ -1,6 +1,6 @@
 import type { Point, RectShape, Shape } from './model/types.js'
 import { drawingLengthMetres, drawingUnitsForMetres, type DrawingScale } from './layout/drawing-scale.js'
-import { createHeatingPipe, createHeatingScheduleTables, heatingDefaults, heatingSchedule, heatingTableSize, HEATING_TABLE_ROW_HEIGHT, type HeatingScheduleRow } from './heating-plan.js'
+import { createHeatingPipe, createHeatingScheduleTables, heatingDefaults, heatingManifoldSize, heatingSchedule, heatingTableSize, HEATING_TABLE_ROW_HEIGHT, type HeatingScheduleRow } from './heating-plan.js'
 import { buildHeatingGrid, routeHeating, simplifyHeatingPath, type HeatingGrid } from './heating-routing.js'
 import { shapeBounds } from './model/model.js'
 import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
@@ -300,13 +300,13 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   })
   const grid = { ...template, obstacle: template.obstacle.slice() }
   if (grid.obstacle[grid.index(position)]) throw new Error('De verdeler staat op een symbool. Kies een vrije positie.')
-  const reservedWidth = Math.max(120, 75 * grid.step)
+  const { width: reservedWidth, height: manifoldHeight } = heatingManifoldSize(MAX_HEATING_CIRCUITS, scale, grid.step)
   const heatOnly: number[] = []
   for (let i = 0; i < grid.obstacle.length; i++) {
     const p = grid.point(i)
-    if (p.x >= position.x - grid.step && p.x <= position.x + reservedWidth && p.y >= position.y - grid.step && p.y < position.y + 64 - grid.step) grid.obstacle[i] = 1
+    if (p.x >= position.x - grid.step && p.x <= position.x + reservedWidth && p.y >= position.y - grid.step && p.y < position.y + manifoldHeight - grid.step) grid.obstacle[i] = 1
     if (!grid.obstacle[i] && p.x >= position.x - grid.step && p.x <= position.x + reservedWidth &&
-      p.y >= position.y + 64 - grid.step && p.y <= position.y + 64 + 4 * grid.step) { heatOnly.push(i) }
+      p.y >= position.y + manifoldHeight - grid.step && p.y <= position.y + manifoldHeight + 4 * grid.step) { heatOnly.push(i) }
   }
   const { jobs, occupied, combiningFinished } = planHeatingCircuits(grid, settings, scale, position,
     { lengthPass, mergeVariant, budget, reservedForCoils: heatOnly })
@@ -323,7 +323,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   jobs.sort((a, b) => angle(b) - angle(a))
 
-  const width = Math.max(120, (jobs.length * 3 + 3) * grid.step), height = 64
+  const { width, height } = heatingManifoldSize(jobs.length, scale, grid.step)
   for (const shape of scene) {
     if (!isHeatingSymbolObstacle(shape)) continue
     const b = shapeBounds(shape)

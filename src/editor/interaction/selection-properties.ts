@@ -5,7 +5,7 @@ import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import { sanitizeConnection, type ElectricalConnection } from '../model/electrical-connection.js'
-import { sanitizeHeating, type HeatingData } from '../heating-plan.js'
+import { heatingManifoldSize, sanitizeHeating, type HeatingData } from '../heating-plan.js'
 import {
   inferCircuitType,
   inferElectricalRole,
@@ -438,11 +438,23 @@ export const updateSelectionProperties = (
       : []
   const bindingId = normalizedBindingId(payload)
   const bindingIds = sequentialBindingIds(shapes, targetIds, bindingId, context.groupedSelection)
+  const hasHeatingPipes = shapes.some((shape) => shape.heating?.kind === 'pipe')
   let changed = false
   const next = shapes.map((shape) => {
     if (!targetIds.has(shape.id)) return shape
     changed = true
-    return applyProperties(shape, payload, center, bindingIds?.get(shape.id) ?? bindingId, context)
+    const updated = applyProperties(shape, payload, center, bindingIds?.get(shape.id) ?? bindingId, context)
+    if (!hasHeatingPipes && !context.groupedSelection && payload.heating?.circuits !== undefined &&
+      shape.kind === 'rect' && shape.heating?.kind === 'manifold' && !shape.heating.automatic && updated.kind === 'rect' && updated.heating) {
+      const previous = heatingManifoldSize(shape.heating.circuits, shape.heating.drawingScale)
+      if (Math.abs(Math.abs(shape.end.x - shape.start.x) - previous.width) < 1e-6 &&
+        Math.abs(Math.abs(shape.end.y - shape.start.y) - previous.height) < 1e-6) {
+        const size = heatingManifoldSize(updated.heating.circuits, updated.heating.drawingScale)
+        updated.end = { x: updated.start.x + Math.sign(shape.end.x - shape.start.x) * size.width,
+          y: updated.start.y + Math.sign(shape.end.y - shape.start.y) * size.height }
+      }
+    }
+    return updated
   })
   if (!changed) return null
   if (!center) return next

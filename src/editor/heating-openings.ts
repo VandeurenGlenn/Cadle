@@ -1,10 +1,16 @@
 import type { Point, Shape, SymbolShape } from './model/types.js'
 import { renderedSymbolScale } from './model/symbol-scale.js'
 
+const heatingSymbolPath = (shape: SymbolShape) =>
+  shape.path.replaceAll('%20', ' ').replaceAll('\\', '/').split(/[?#]/)[0]
+
 /** Match the architectural door asset explicitly: a door bell or electric lock
  * is still an appliance, never an opening through a wall. */
 export const isHeatingDoorSymbol = (shape: Shape): shape is SymbolShape => shape.kind === 'symbol' &&
-  /(?:^|\/)floor plan\/door\.svg$/i.test(shape.path.replaceAll('%20', ' ').replaceAll('\\', '/').split(/[?#]/)[0])
+  /(?:^|\/)floor plan\/door\.svg$/i.test(heatingSymbolPath(shape))
+
+export const isHeatingStairSymbol = (shape: Shape): shape is SymbolShape => shape.kind === 'symbol' &&
+  /(?:^|\/)floor plan\/stairs-[^/]+\.svg$/i.test(heatingSymbolPath(shape))
 
 export const isHeatingSymbolObstacle = (shape: Shape): boolean =>
   shape.kind === 'symbol' && !shape.hidden && !shape.heating && !isHeatingDoorSymbol(shape)

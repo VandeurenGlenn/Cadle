@@ -10,7 +10,9 @@ import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
 
 const scene = (): Shape[] => {
   const corners = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 720 }, { x: 400, y: 720 }]
-  return corners.map((start, i) => ({ id: `wall-${i}`, kind: 'wall', start, end: corners[(i + 1) % 4], groupId: 'room-test', roomName: 'Living' }))
+  return [...corners.map((start, i): Shape => ({ id: `wall-${i}`, kind: 'wall', start,
+    end: corners[(i + 1) % 4], groupId: 'room-test', roomName: 'Living' })),
+  { id: 'door-room-test', kind: 'door', start: { x: 560, y: 400 }, end: { x: 640, y: 400 } }]
 }
 const area = { x: 80, y: 80, width: 2216, height: 1384 }
 const build = (shapes = scene()) => {
@@ -25,6 +27,7 @@ test('combines more than 24 provisional leg fields into twelve complete circuits
     const corners = [{ x, y }, { x: x + 240, y }, { x: x + 240, y: y + 240 }, { x, y: y + 240 }]
     shapes.push(...corners.map((start, i): Shape => ({ id: `wall-${room}-${i}`, kind: 'wall', start,
       end: corners[(i + 1) % 4], groupId: `room-${room}`, roomName: `Room ${room + 1}` })))
+    shapes.push({ id: `door-${room}`, kind: 'door', start: { x: x + 80, y }, end: { x: x + 160, y } })
     shapes.push({ id: `fridge-${room}`, kind: 'symbol', name: 'Refrigerator',
       path: 'symbols/Consumption appliances/Refrigerator.svg', position: { x: x + 120, y: y + 120 }, scale: 2 })
   }
@@ -77,6 +80,25 @@ test('automatically detects rooms and connects full circuits to the manifold', (
     for (const key of ['x', 'y', 'width', 'height'] as const) assert.ok(Math.abs(original[key] - actual[key]) < 1e-8)
   }
   assert.ok(Math.abs(heatingFlowLmin(10) - 1.43485) < .001)
+})
+
+test('uses only rooms with a door or a staircase', () => {
+  const shapes: Shape[] = []
+  for (let room = 0; room < 3; room++) {
+    const x = 400 + room * 320, corners = [{ x, y: 400 }, { x: x + 240, y: 400 },
+      { x: x + 240, y: 640 }, { x, y: 640 }]
+    shapes.push(...corners.map((start, i): Shape => ({ id: `access-wall-${room}-${i}`, kind: 'wall',
+      start, end: corners[(i + 1) % corners.length] })))
+  }
+  shapes.push({ id: 'access-door', kind: 'door', start: { x: 480, y: 400 }, end: { x: 560, y: 400 } })
+  shapes.push({ id: 'access-stairs', kind: 'symbol', name: 'Stairs', path: 'symbols/Floor plan/stairs-u-shaped.svg',
+    position: { x: 920, y: 520 }, scale: 1 })
+  const grid = buildHeatingGrid(shapes, 100, 150, { x: 180, y: 280 })
+  assert.equal(grid.rooms.length, 2)
+  const eligible = (point: { x: number; y: number }) => grid.rooms.some(({ id }) => grid.room[grid.index(point)] === id)
+  assert.ok(eligible({ x: 520, y: 520 }), 'a room with a door remains eligible')
+  assert.ok(eligible({ x: 920, y: 520 }), 'a room with stairs remains eligible')
+  assert.ok(!eligible({ x: 1240, y: 520 }), 'a room with neither a door nor stairs is excluded')
 })
 
 test('generates a complete 16 mm / 100 mm plan rather than repeatedly rejecting its own bends', () => {
@@ -176,6 +198,7 @@ test('puts the table on its own sheet when needed and recalculates totals from t
 test('keeps coils inside an L-shaped room rather than its rectangular bounding box', () => {
   const corners = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 560 }, { x: 640, y: 560 }, { x: 640, y: 720 }, { x: 400, y: 720 }]
   const walls: Shape[] = corners.map((start, i) => ({ id: `l-${i}`, kind: 'wall', start, end: corners[(i + 1) % corners.length] }))
+  walls.push({ id: 'l-door', kind: 'door', start: { x: 560, y: 400 }, end: { x: 640, y: 400 } })
   const result = build(walls)
   for (const shape of result.shapes.filter((s) => s.heating?.pipeRole === 'loop')) {
     const b = heatingBounds(shape)

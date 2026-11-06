@@ -1,8 +1,8 @@
-import type { Point, Shape } from './model/types.js'
+import type { Point, Shape, SymbolShape } from './model/types.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
-import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingSymbolObstacle } from './heating-openings.js'
+import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingStairSymbol, isHeatingSymbolObstacle } from './heating-openings.js'
 import { isRoomLabel, roomLabelName } from './room-labels.js'
 
 export type HeatingRoom = { id: number; name: string; roomKey?: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
@@ -78,7 +78,7 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
       for (let y = minY; y <= maxY; y++) target.fill(1, y * width + minX, y * width + maxX + 1)
     }
   }
-  const queue = new Int32Array(size), rooms: HeatingRoom[] = [], namedRegions = namedRoomRegions(shapes)
+  const queue = new Int32Array(size), candidates: { room: HeatingRoom; hasDoor: boolean }[] = [], namedRegions = namedRoomRegions(shapes)
   let id = 0
   for (let root = 0; root < size; root++) {
     if (wall[root] || room[root]) continue
@@ -98,13 +98,22 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     if (outside) { for (const i of cells) room[i] = -1; continue }
     const area = cells.length * (step * scale / 8000) ** 2
     if (area < .4) continue
+    const hasDoor = cells.some((cell) => {
+      const x = cell % width, y = Math.floor(cell / width)
+      return Boolean(door[cell] || (x && door[cell - 1]) || (x + 1 < width && door[cell + 1]) ||
+        (y && door[cell - width]) || (y + 1 < height && door[cell + width]))
+    })
     const centre = point(cells[Math.floor(cells.length / 2)])
     const named = namedRegions.filter((region) => centre.x > region.x && centre.x < region.x + region.width &&
       centre.y > region.y && centre.y < region.y + region.height).sort((a, b) => a.width * a.height - b.width * b.height)[0]
     const label = shapes.filter(isRoomLabel).find((shape) => !shape.hidden && room[index(shape.position)] === id)
-    rooms.push({ id, name: label ? roomLabelName(label.roomLabel) : named?.name ?? `Ruimte ${rooms.length + 1}`,
-      ...(label ? { roomKey: label.id } : {}), cells, minX, maxX, minY, maxY })
+    candidates.push({ hasDoor, room: { id, name: label ? roomLabelName(label.roomLabel) : named?.name ?? `Ruimte ${candidates.length + 1}`,
+      ...(label ? { roomKey: label.id } : {}), cells, minX, maxX, minY, maxY } })
   }
+  const stairs = new Set(shapes.filter((shape): shape is SymbolShape => !shape.hidden && isHeatingStairSymbol(shape))
+    .map((shape) => room[index(shape.position)]).filter((roomId) => roomId > 0))
+  const rooms = candidates.filter(({ hasDoor, room }) => hasDoor || stairs.has(room.id)).map(({ room }) => room)
+  if (!rooms.length && candidates.length) throw new Error('Geen gesloten ruimtes met een deur of trap gevonden. Teken een deur of voeg een trap toe aan de ruimtes die je wilt gebruiken.')
   if (!rooms.length) throw new Error('Geen gesloten ruimtes herkend. Sluit de muren van het grondplan voordat je een legplan maakt.')
   return { origin, step, width, height, wall, door, obstacle, loopObstacle, room, rooms, point, index }
 }

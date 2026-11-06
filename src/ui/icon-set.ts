@@ -34,6 +34,7 @@ export const iconSetTemplate = html`
       <span name="line_curve">@symbol-line_curve</span>
       <span name="horizontal_rule">@symbol-horizontal_rule</span>
       <span name="insert_text">@symbol-insert_text</span>
+      <span name="label">@symbol-label</span>
       <span name="tree_closed">@symbol-keyboard_arrow_right</span>
       <span name="tree_open">@symbol-keyboard_arrow_down</span>
       <span name="polyline">@symbol-polyline</span>

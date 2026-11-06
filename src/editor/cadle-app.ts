@@ -6,6 +6,8 @@ import type { AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import { runHeatingPlanner } from './heating-planner.js'
 import { heatingProgressText, type HeatingPlanningProgress } from './heating-planner-protocol.js'
 import { buildHeatingGrid } from './heating-routing.js'
+import { snapWallPoint } from './interaction/wall-snap.js'
+import { wallJunctionMarkup } from './layout/wall-junctions.js'
 import { assignRoomLabel, isRoomLabel, nextRoomLabelId, roomLabelInRegion } from './room-labels.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
@@ -147,8 +149,7 @@ import {
   applyDragMove,
   snapSymbolToWallOffset,
   snapWallSymbolNextToSymbol,
-  updateDraftShapeEnd,
-  updateWallChainPreview
+  updateDraftShapeEnd
 } from './interaction/pointer-move.js'
 import {
   allowsExistingShapeSelection,
@@ -2570,6 +2571,12 @@ export class CadleApp extends LiteElement {
     if (this.#tools.current !== 'select') {
       this.#activateTool('select')
     }
+  }
+
+  #snapWallPoint(raw: Point, orthogonal = false) {
+    return snapWallPoint(raw, this.#document.shapes, this.#snapPoint(raw), {
+      zoom: this.#viewport.state.zoom, enabled: this.#snap, start: this.#wallChain?.startPoint, orthogonal
+    })
   }
 
   #isEndpointSnapShape(shape: Shape): shape is LineShape {
@@ -5023,6 +5030,7 @@ export class CadleApp extends LiteElement {
       ${this.#safeAreaTemplate()}
       <g mask=${wallMask}>
         ${groupedTemplate(wallShapes)}
+        ${unsafeSVG(wallJunctionMarkup(wallShapes))}
       </g>
       ${groupedTemplate(restShapes)}
       ${groupedTemplate(openingShapes)}
@@ -5500,8 +5508,7 @@ export class CadleApp extends LiteElement {
 
     if (this.#tools.current === 'wall') {
       // Wall chain must win before shape selection so existing walls can be used as click targets.
-      const gridSnapped = this.#snapPoint(rawPoint)
-      const { point, snapped } = this.#snapToEndpoints(gridSnapped)
+      const { point, snapped } = this.#snapWallPoint(rawPoint, event.shiftKey)
       const wallResult = resolveWallPointerDown({
         button: event.button,
         point,
@@ -5994,7 +6001,8 @@ export class CadleApp extends LiteElement {
         (point) => this.#snapPoint(point),
         this.#document.shapes,
         this.#viewport.state.zoom,
-        Boolean(this.#pageKey && this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire')
+        Boolean(this.#pageKey && this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire'),
+        this.#snap
       )
       this.#setShapes(movedShapes)
       this.#render()
@@ -6055,13 +6063,9 @@ export class CadleApp extends LiteElement {
 
     // Wall chain: update live preview with snap
     if (this.#tools.current === 'wall' && this.#wallChain) {
-      const wallPreview = updateWallChainPreview(
-        rawPoint,
-        (point) => this.#snapPoint(point),
-        (point) => this.#snapToEndpoints(point)
-      )
-      this.#chainPreviewEnd = wallPreview.chainPreviewEnd
-      this.#snapTarget = wallPreview.snapTarget
+      const wallPreview = this.#snapWallPoint(rawPoint, event.shiftKey)
+      this.#chainPreviewEnd = wallPreview.point
+      this.#snapTarget = wallPreview.snapped ? wallPreview.point : null
       this.#snapIndicatorKind = 'wall'
       this.#renderPreviewOnly()
       return

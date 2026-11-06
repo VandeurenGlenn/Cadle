@@ -438,7 +438,7 @@ output,
   fill: none;
   stroke: #3b2c20;
   stroke-width: 6;
-  stroke-linecap: round;
+  stroke-linecap: butt;
 }
 
 .shape-line {

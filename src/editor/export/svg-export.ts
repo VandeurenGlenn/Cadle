@@ -1,3 +1,4 @@
+import { wallJunctionMarkup } from '../layout/wall-junctions.js'
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
 import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
 import { heatingMarkup } from '../heating-plan.js'
@@ -45,7 +46,7 @@ const openingMatchesWall = (opening: LineShape, walls: LineShape[], tolerance = 
 const EXPORT_STYLE_BLOCK = `
   .shape { vector-effect: none; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
-  .shape-wall { stroke: #3b2c20; stroke-width: 6; }
+  .shape-wall { stroke: #3b2c20; stroke-width: 6; stroke-linecap: butt; }
   .shape-line { stroke-width: 2; }
 
   .binding-label-text {
@@ -81,7 +82,7 @@ const EXPORT_STYLE_BLOCK = `
 const EXPORT_STYLE_BLOCK_MONO = `
   .shape { vector-effect: none; }
   .shape-line, .shape-wall { fill: none; stroke-linecap: round; }
-  .shape-wall { stroke: #101010; stroke-width: 6; }
+  .shape-wall { stroke: #101010; stroke-width: 6; stroke-linecap: butt; }
   .shape-line { stroke: #000000; stroke-width: 2; }
 
   .binding-label-text {
@@ -487,7 +488,7 @@ export const buildSvgDocument = (options: {
   }
 
   const wallOpeningCuts = buildWallOpeningCuts(options.shapes, '#ffffff')
-  const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall'))
+  const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall')) + wallJunctionMarkup(options.shapes, options.monochrome)
   const nonSymbolMarkup = groupedMarkup(
     options.shapes.filter((shape) => shape.kind !== 'wall' && shape.kind !== 'symbol')
   )

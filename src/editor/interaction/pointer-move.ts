@@ -1,3 +1,4 @@
+import { snapWallPoint } from './wall-snap.js'
 import { connectedWallIds, dragEndpointSnapDelta, translateShape, updateConnectedWalls } from './shape-transforms.js'
 import { oneWireSymbolNodeInfo } from '../layout/onewire-symbol-nodes.js'
 import { symbolContentBounds } from '../layout/symbol-layout.js'
@@ -254,7 +255,8 @@ export const applyDragMove = (
   snapPoint: (point: Point) => Point,
   allShapes: Shape[],
   zoom = 1,
-  followElectrical = false
+  followElectrical = false,
+  snapEnabled = true
 ): Shape[] => {
   if (followElectrical && !drag.connectionInitial) drag.connectionInitial = [...allShapes]
   const point = snapPoint(rawPoint)
@@ -264,10 +266,22 @@ export const applyDragMove = (
   const movedShapes = drag.initial.map((initialShape) => translateShape(initialShape, dx, dy))
   const targetIds = new Set(drag.ids)
   const snapExclusions = new Set([...targetIds, ...connectedWallIds(allShapes, targetIds)])
-  const snapDelta = dragEndpointSnapDelta(movedShapes, snapExclusions, allShapes)
-  let finalShapes = snapDelta
-    ? movedShapes.map((shape) => translateShape(shape, snapDelta.x, snapDelta.y))
-    : movedShapes
+  const wallsOnly = movedShapes.every((shape) => shape.kind === 'wall')
+  let finalShapes = movedShapes
+  if (snapEnabled && wallsOnly) {
+    const rawMoved = drag.initial.map((shape) => translateShape(shape, rawPoint.x - drag.pointerStart.x, rawPoint.y - drag.pointerStart.y))
+    const targets = allShapes.filter((shape) => !snapExclusions.has(shape.id))
+    let best: { x: number; y: number; distance: number } | null = null
+    for (const wall of rawMoved) if (wall.kind === 'wall') for (const endpoint of [wall.start, wall.end]) {
+      const snap = snapWallPoint(endpoint, targets, endpoint, { zoom })
+      const distance = Math.hypot(snap.point.x - endpoint.x, snap.point.y - endpoint.y)
+      if (snap.snapped && (!best || distance < best.distance)) best = { x: snap.point.x - endpoint.x, y: snap.point.y - endpoint.y, distance }
+    }
+    if (best) finalShapes = rawMoved.map((shape) => translateShape(shape, best.x, best.y))
+  } else if (!wallsOnly) {
+    const snapDelta = dragEndpointSnapDelta(movedShapes, snapExclusions, allShapes)
+    if (snapDelta) finalShapes = movedShapes.map((shape) => translateShape(shape, snapDelta.x, snapDelta.y))
+  }
 
   const wallSymbol = finalShapes.find(isWallSymbol)
   if (wallSymbol?.kind === 'symbol') {

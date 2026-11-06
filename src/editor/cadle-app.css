@@ -711,3 +711,5 @@ output,
 }
 .heating-planner-error { pointer-events: auto; flex-wrap: wrap; }
 .heating-planner-error span { flex: 1 1 240px; }
+.heating-circuit-muted { opacity: .25; }
+.heating-circuit-highlight .heating-circuit { stroke-width: 3; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 2px var(--md-sys-color-primary)); }

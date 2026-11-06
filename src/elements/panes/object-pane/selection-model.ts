@@ -69,6 +69,7 @@ export type SelectionShape = {
 }
 
 export type SelectionPayload = {
+  highlightedHeatingCircuit?: string | null
   selectionCount?: number
   canConvertToRoom?: boolean
   shape?: SelectionShape

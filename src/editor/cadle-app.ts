@@ -272,6 +272,7 @@ export class CadleApp extends LiteElement {
   #heatingPipeReplacement: RectShape | null = null
   #heatingPipeHover: Point | null = null
   #automaticHeatingSettings: AutomaticHeatingSettings | null = null
+  #highlightedHeatingCircuit: string | null = null
   #automaticHeatingBusy = false
   #automaticHeatingAbort: AbortController | null = null
   #automaticHeatingProgress: HeatingPlanningProgress | null = null
@@ -1220,6 +1221,7 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
+    this.#highlightedHeatingCircuit = null
     this.#cancelHeatingCalculation()
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = null
@@ -4069,7 +4071,13 @@ export class CadleApp extends LiteElement {
   }
 
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
-    return shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth)
+    const content = shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth)
+    if (this.#highlightedHeatingCircuit && !shape.hidden && shape.heating?.kind === 'pipe') {
+      const active = shape.heating.circuitId === this.#highlightedHeatingCircuit
+      return svg`<g class=${active ? 'heating-circuit-highlight' : 'heating-circuit-muted'}
+        data-highlighted-circuit=${active ? this.#highlightedHeatingCircuit : nothing}>${content}</g>`
+    }
+    return content
   }
 
   #bindingLabelsTemplate() {
@@ -4231,7 +4239,8 @@ export class CadleApp extends LiteElement {
         drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : undefined,
         canConvertToRoom
       }),
-      pageKey: this.#pageKey
+      pageKey: this.#pageKey,
+      highlightedHeatingCircuit: this.#highlightedHeatingCircuit
     })
   }
 
@@ -5040,7 +5049,10 @@ export class CadleApp extends LiteElement {
   }
 
   #render() {
-    this.#publishNativeSelection(this.#shapeById(this.#document.selectedId))
+    const selected = this.#shapeById(this.#document.selectedId)
+    if (selected?.heating?.kind !== 'manifold' || !this.#document.shapes.some((shape) =>
+      !shape.hidden && shape.heating?.kind === 'pipe' && shape.heating.circuitId === this.#highlightedHeatingCircuit)) this.#highlightedHeatingCircuit = null
+    this.#publishNativeSelection(selected)
     this.#publishNativeControlsState()
     this.#primeSymbolSvgCache()
     this.requestRender()
@@ -5118,6 +5130,7 @@ export class CadleApp extends LiteElement {
     onewirePreset?: OneWirePreset
     onewireCompose?: 'breaker' | 'switch' | 'kamrail' | 'load'
     action?: string
+    circuitId?: string
     drawingScale?: DrawingScale
   }) => {
     if (isDrawingScale(payload.drawingScale) && this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan') {
@@ -5173,6 +5186,14 @@ export class CadleApp extends LiteElement {
     }
 
     switch (payload.action) {
+      case 'highlight-heating-circuit': {
+        if (this.readOnly || this.#shapeById(this.#document.selectedId)?.heating?.kind !== 'manifold') return
+        const id = payload.circuitId
+        if (id && !this.#document.shapes.some((shape) => !shape.hidden && shape.heating?.kind === 'pipe' && shape.heating.circuitId === id)) return
+        this.#highlightedHeatingCircuit = id && id !== this.#highlightedHeatingCircuit ? id : null
+        this.#render()
+        return
+      }
       case 'redraw-heating-route': {
         const shape = this.#shapeById(this.#document.selectedId)
         if (shape?.kind === 'rect' && shape.heating?.kind === 'pipe' && !shape.locked) {
@@ -5294,6 +5315,7 @@ export class CadleApp extends LiteElement {
 
   async #generateHeatingAt(point: Point, settings: AutomaticHeatingSettings) {
     if (this.#automaticHeatingBusy || !this.#project || !this.#pageKey) return
+    this.#highlightedHeatingCircuit = null
     const pageKey = this.#pageKey, project = this.#project
     const signature = JSON.stringify(this.#nativeDocumentState())
     const controller = new AbortController()

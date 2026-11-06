@@ -28,6 +28,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale?: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
+  @property({ attribute: false }) private accessor _highlightedHeatingCircuit: string | null = null
   @property({ attribute: false }) private accessor _nativeHeating: HeatingData | null = null
   @property({ attribute: false }) private accessor _nativeHeatingLayout: HeatingLayout | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
@@ -152,6 +153,7 @@ export class ObjectPane extends LiteElement {
   #onNativeSelectionChanged = (payload: SelectionPayload) => {
     this.#cancelBindingSave()
     const selection = normalizeSelection(payload)
+    this._highlightedHeatingCircuit = typeof payload?.highlightedHeatingCircuit === 'string' ? payload.highlightedHeatingCircuit : null
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
@@ -658,9 +660,13 @@ export class ObjectPane extends LiteElement {
         <div class="dimension-caption">${number(totals.areaM2)} m² verwarmd · ${number(totals.flowLmin, 2)} l/min totaal</div>
       </div>
       <p class="dimension-caption">Kniplengte = lus + aanvoer + retour + reserve. Lengtes volgen de getekende trajecten.</p>
+      <p class="dimension-caption">Klik een kring om lus, aanvoer en retour te markeren. Nogmaals klikken wist de markering.</p>
       <div class="heating-circuit-list" role="list" aria-label="Kringen vloerverwarming">
-        ${data.rows.map((row) => html`<article class="dimension-summary heating-circuit-card" role="listitem" data-heating-circuit=${row.id}>
-          <div class="heating-circuit-heading"><strong>${row.id}</strong><span>${row.room}</span></div>
+        ${data.rows.map((row) => html`<article class="dimension-summary heating-circuit-card" role="listitem" data-heating-circuit=${row.id}
+          data-active=${this._highlightedHeatingCircuit === row.id}
+          @click=${() => pubsub.publish('editor.controls.command', { action: 'highlight-heating-circuit', circuitId: row.id })}>
+          <button type="button" class="heating-circuit-heading" aria-label=${`Markeer kring ${row.id} op het plan`}
+            aria-pressed=${this._highlightedHeatingCircuit === row.id}><strong>${row.id}</strong><span>${row.room}</span><span aria-hidden="true">↗</span></button>
           <dl class="heating-circuit-measures">
             ${measure('Lus', 'loopM', row.loopM)}${measure('Aanvoer', 'supplyM', row.supplyM)}${measure('Retour', 'returnM', row.returnM)}
             ${measure('Getekend', 'totalM', row.totalM)}${measure('Reserve', 'allowanceM', row.allowanceM ?? 0)}${measure('Kniplengte', 'cutM', row.cutM ?? row.totalM)}

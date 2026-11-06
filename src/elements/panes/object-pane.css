@@ -540,7 +540,11 @@ textarea.native-input { min-height: 60px; resize: vertical; }
 .dimension-values dd.dimension-paper, .dimension-hint { font: 400 10px/1.4 var(--cadle-font-sans); color: var(--md-sys-color-on-surface-variant); }
 .dimension-hint { margin: 6px 0 0; }
 .heating-circuit-list { display: grid; gap: 6px; }
-.heating-circuit-heading { display: flex; align-items: baseline; gap: 8px; font: 500 11px/1.4 var(--cadle-font-sans); }
+.heating-circuit-heading { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; font: 500 11px/1.4 var(--cadle-font-sans); cursor: pointer; }
+.heating-circuit-heading span:last-child { margin-left: auto; }
+.heating-circuit-card { cursor: pointer; }
+.heating-circuit-card[data-active='true'] { border-color: var(--md-sys-color-primary); background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent); }
+.heating-circuit-heading:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 3px; border-radius: 2px; }
 .heating-circuit-heading strong { flex: 0 0 auto; }
 .heating-circuit-heading span { min-width: 0; overflow-wrap: anywhere; }
 .heating-circuit-measures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 7px 0; font-variant-numeric: tabular-nums; }

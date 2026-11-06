@@ -5,6 +5,8 @@ import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize
 import type { AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import { runHeatingPlanner } from './heating-planner.js'
 import { heatingProgressText, type HeatingPlanningProgress } from './heating-planner-protocol.js'
+import { buildHeatingGrid } from './heating-routing.js'
+import { assignRoomLabel, isRoomLabel, nextRoomLabelId, roomLabelInRegion } from './room-labels.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
@@ -272,6 +274,9 @@ export class CadleApp extends LiteElement {
   #heatingPipeReplacement: RectShape | null = null
   #heatingPipeHover: Point | null = null
   #automaticHeatingSettings: AutomaticHeatingSettings | null = null
+  #roomLabelError: string | null = null
+  #roomLabelBusy = false
+  #roomLabelJob = 0
   #highlightedHeatingCircuit: string | null = null
   #automaticHeatingBusy = false
   #automaticHeatingAbort: AbortController | null = null
@@ -371,6 +376,7 @@ export class CadleApp extends LiteElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     this.#connected = false
+    this.#roomLabelJob++
     this.#cancelHeatingCalculation()
     this.#resizeObserver?.disconnect()
     this.#resizeObserver = null
@@ -1221,6 +1227,9 @@ export class CadleApp extends LiteElement {
   }
 
   #resetPageState() {
+    this.#roomLabelJob++
+    this.#roomLabelBusy = false
+    this.#roomLabelError = null
     this.#highlightedHeatingCircuit = null
     this.#cancelHeatingCalculation()
     this.#automaticHeatingError = null
@@ -1667,6 +1676,7 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
+    this.#roomLabelError = null
     if (tool !== 'heating-manifold') {
       this.#cancelHeatingCalculation()
       this.#automaticHeatingSettings = null
@@ -4597,6 +4607,9 @@ export class CadleApp extends LiteElement {
       <div class="canvas-host">
         <div class="stage-shell">
           <div class="panel">
+            ${this.#tools.current === 'room-label' || this.#roomLabelError ? html`<div class="room-label-status" role=${this.#roomLabelError ? 'alert' : 'status'}>
+              ${this.#roomLabelError ?? 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.'}
+            </div>` : ''}
             ${this.#automaticHeatingSettings || this.#automaticHeatingBusy || this.#heatingPipeReplacement ? html`<div class="heating-planner-status" role="status">
               ${this.#automaticHeatingBusy ? heatingProgressText(this.#automaticHeatingProgress) : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
               ${this.#automaticHeatingBusy ? html`<button type="button" @click=${() => { this.#cancelHeatingCalculation(); this.#activateTool('select') }}>Berekening annuleren</button>` : ''}
@@ -5186,6 +5199,11 @@ export class CadleApp extends LiteElement {
     }
 
     switch (payload.action) {
+      case 'edit-room-label': {
+        const selected = this.#shapeById(this.#document.selectedId)
+        if (selected && isRoomLabel(selected)) void this.#labelRoomAt(selected.position)
+        return
+      }
       case 'highlight-heating-circuit': {
         if (this.readOnly || this.#shapeById(this.#document.selectedId)?.heating?.kind !== 'manifold') return
         const id = payload.circuitId
@@ -5294,6 +5312,44 @@ export class CadleApp extends LiteElement {
     this.#heatingPipeHover = null
     this.#pushHistory()
     this.#activateTool('select')
+  }
+
+  async #labelRoomAt(point: Point) {
+    if (this.readOnly || this.#roomLabelBusy || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
+    const pageKey = this.#pageKey, project = this.#project, signature = JSON.stringify(this.#document.shapes), job = ++this.#roomLabelJob
+    this.#roomLabelBusy = true
+    this.#roomLabelError = null
+    try {
+      const grid = buildHeatingGrid(this.#document.shapes, this.#drawingScale ?? DEFAULT_DRAWING_SCALE, 200, point)
+      const region = grid.rooms.find((room) => room.id === grid.room[grid.index(point)])
+      if (!region) throw new Error('Klik binnen een gesloten ruimte. Controleer de muren en deuropeningen.')
+      const existing = roomLabelInRegion(this.#document.shapes, grid, region.id)
+      const values = await globalThis.cadleShell.requestInput({
+        title: existing ? 'Ruimte wijzigen' : 'Ruimte benoemen', submitLabel: 'Ruimte bewaren',
+        description: 'De ID en naam verschijnen op het plan en in het kringenoverzicht.',
+        fields: [
+          { name: 'roomId', label: 'Ruimte-ID', value: existing?.roomLabel.id ?? nextRoomLabelId(this.#document.shapes), required: true, maxLength: 32 },
+          { name: 'roomName', label: 'Ruimtenaam', value: existing?.roomLabel.name ?? (/^Ruimte \d+$/.test(region.name) ? '' : region.name), required: true, maxLength: 100 }
+        ],
+        validate: (values) => {
+          if (!values.roomId?.trim() || !values.roomName?.trim()) return 'Vul een ruimte-ID en naam in.'
+          if (values.roomId.length > 32 || values.roomName.length > 100) return 'Gebruik maximaal 32 tekens voor de ID en 100 voor de naam.'
+          return this.#document.shapes.some((shape) => isRoomLabel(shape) && shape.id !== existing?.id &&
+            shape.roomLabel.id.toUpperCase() === values.roomId.trim().toUpperCase()) ? 'Deze ruimte-ID is al in gebruik.' : null
+        }
+      })
+      if (!values || job !== this.#roomLabelJob || pageKey !== this.#pageKey || project !== this.#project) return
+      if (signature !== JSON.stringify(this.#document.shapes)) throw new Error('De tekening is gewijzigd. Klik opnieuw in de ruimte.')
+      const result = assignRoomLabel(this.#document.shapes, grid, point, { id: values.roomId, name: values.roomName }, nextShapeId)
+      this.#document.shapes = result.shapes
+      this.#document.selectedId = result.annotation.id
+      this.#document.selectedIds = new Set([result.annotation.id])
+      this.#pushHistory()
+    } catch (error) {
+      if (job === this.#roomLabelJob) this.#roomLabelError = error instanceof Error ? error.message : 'De ruimte kon niet worden benoemd.'
+    } finally {
+      if (job === this.#roomLabelJob) { this.#roomLabelBusy = false; this.#render() }
+    }
   }
 
   startAutomaticHeatingPlan(settings: AutomaticHeatingSettings) {
@@ -5413,6 +5469,10 @@ export class CadleApp extends LiteElement {
     const rawPoint = this.#pointFromEvent(event)
     if (!rawPoint) return
 
+    if (this.#tools.current === 'room-label' && event.button === 0) {
+      await this.#labelRoomAt(rawPoint)
+      return
+    }
     if (this.#tools.current === 'heating-pipe' && event.button === 0) {
       const point = this.#snapHeatingPoint(rawPoint)
       if (!samePoint(point, this.#heatingPipePoints.at(-1) ?? null)) this.#heatingPipePoints.push(point)

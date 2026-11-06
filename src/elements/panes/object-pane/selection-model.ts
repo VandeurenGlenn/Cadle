@@ -1,3 +1,4 @@
+import { sanitizeRoomLabel, type RoomLabelData } from '../../../editor/room-labels.js'
 import type { ElectricalConnection } from '../../../editor/model/electrical-connection.js'
 import { sanitizeHeating, type HeatingData, type HeatingLayout } from '../../../editor/heating-plan.js'
 export type BindingLabelSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
@@ -11,6 +12,7 @@ export type SymbolTextField = {
 export type SelectionShapeElectrical = NonNullable<SelectionShape['electrical']>
 
 export type SelectionShape = {
+  roomLabel?: RoomLabelData
   heating?: HeatingData
   heatingLayout?: HeatingLayout
   dimensions?: { drawingScale?: number | null; length?: number; width?: number; height?: number; strokeWidth?: number }
@@ -114,6 +116,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
     ...(payload?.canConvertToRoom === true ? { canConvertToRoom: true } : {}),
     shape: {
       id: typeof shape.id === 'string' ? shape.id : '',
+      roomLabel: sanitizeRoomLabel(shape.roomLabel),
       heating: sanitizeHeating(shape.heating),
       heatingLayout: shape.heatingLayout,
       kind,

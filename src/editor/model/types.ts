@@ -2,6 +2,7 @@ import type { ElectricalConnection } from './electrical-connection.js'
 
 export type Tool =
   | 'select'
+  | 'room-label'
   | 'wall'
   | 'room'
   | 'line'
@@ -76,6 +77,7 @@ export type RectShape = GeneratedShapeMetadata & {
 }
 
 export type TextShape = GeneratedShapeMetadata & {
+  roomLabel?: import('../room-labels.js').RoomLabelData
   id: string
   kind: 'text'
   position: Point

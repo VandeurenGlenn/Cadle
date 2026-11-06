@@ -5,6 +5,7 @@ import { migrateProtectionDescriptions } from '../layout/protection-descriptions
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
 import { compactUnusedHeatingManifolds, sanitizeHeating } from '../heating-plan.js'
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
+import { sanitizeRoomLabel } from '../room-labels.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -40,6 +41,7 @@ export const isPoint = (value: unknown): value is Point => {
 
 const copyGeneratedMetadata = (
   source: {
+    roomLabel?: unknown
     heating?: unknown
     generationKey?: unknown
     sourceLink?: unknown
@@ -49,6 +51,10 @@ const copyGeneratedMetadata = (
   },
   target: Shape
 ): void => {
+  if (target.kind === 'text') {
+    const label = sanitizeRoomLabel(source.roomLabel)
+    if (label) { target.roomLabel = label; target.text = `${label.id}\n${label.name}` }
+  }
   const heating = target.kind === 'rect' ? sanitizeHeating(source.heating) : undefined
   if (heating) target.heating = heating
   if (source.hidden === true) target.hidden = true
@@ -142,6 +148,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       flipY?: unknown
       wallId?: unknown
       roomName?: unknown
+      roomLabel?: unknown
       bindingId?: unknown
       groupId?: unknown
       bindingLabelOffset?: unknown
@@ -426,6 +433,7 @@ export const cloneShape = (shape: Shape): Shape => {
         text: shape.text,
         scale: shape.scale ?? 1
       }
+      if (typeof shape.fontWeight === 'number') text.fontWeight = shape.fontWeight
       if (shape.rotation) text.rotation = shape.rotation
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke
@@ -547,6 +555,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
         text: shape.text,
         scale: (shape.scale ?? 1) * (scaleX + scaleY) * 0.5
       }
+      if (typeof shape.fontWeight === 'number') text.fontWeight = shape.fontWeight
       if (shape.rotation) text.rotation = shape.rotation
       if (shape.fill) text.fill = shape.fill
       if (shape.stroke) text.stroke = shape.stroke

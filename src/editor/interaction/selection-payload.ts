@@ -15,6 +15,7 @@ export type NativeSelectionSymbolTextField = {
 }
 
 export type NativeSelectionShapePayload = {
+  roomLabel?: import('../room-labels.js').RoomLabelData
   heating?: HeatingData
   heatingLayout?: HeatingLayout
   dimensions?: { drawingScale?: number | null; length?: number; width?: number; height?: number; strokeWidth?: number }
@@ -119,7 +120,10 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.connection = { ...selectedShape.connection }
     shapePayload.name = CONNECTION_NAMES[selectedShape.connection.kind]
   }
-  if (selectedShape.kind === 'text') shapePayload.text = selectedShape.text
+  if (selectedShape.kind === 'text') {
+    shapePayload.text = selectedShape.text
+    if (selectedShape.roomLabel) shapePayload.roomLabel = { ...selectedShape.roomLabel }
+  }
   if (selectedShape.kind === 'symbol') {
     shapePayload.path = selectedShape.path
     const sourceElectrical =

@@ -1,3 +1,4 @@
+import type { RoomLabelData } from '../../editor/room-labels.js'
 import { LiteElement, html, customElement, property, query } from '@vandeurenglenn/lite'
 import pubsub from '../../pubsub.js'
 import styles from './object-pane.css' with { type: 'css' }
@@ -29,6 +30,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale?: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
   @property({ attribute: false }) private accessor _highlightedHeatingCircuit: string | null = null
+  @property({ attribute: false }) private accessor _nativeRoomLabel: RoomLabelData | null = null
   @property({ attribute: false }) private accessor _nativeHeating: HeatingData | null = null
   @property({ attribute: false }) private accessor _nativeHeatingLayout: HeatingLayout | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
@@ -157,6 +159,7 @@ export class ObjectPane extends LiteElement {
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
     if (!selection.shape) {
+      this._nativeRoomLabel = null
       this._nativeHeating = null
       this._nativeHeatingLayout = null
       this._nativeDimensions = null
@@ -193,6 +196,7 @@ export class ObjectPane extends LiteElement {
     }
 
     const shape = selection.shape
+    this._nativeRoomLabel = shape.roomLabel ?? null
     this._nativeHeating = shape.heating ?? null
     this._nativeHeatingLayout = shape.heatingLayout ?? null
     this._nativeDimensions = shape.dimensions
@@ -861,7 +865,11 @@ export class ObjectPane extends LiteElement {
                   @input=${(event: Event) => this.#onSymbolTextInput(field.key, (event.target as HTMLInputElement).value)} />
               </label>
             `) : ''}
-        ${!this._nativeHeating ? html`<label class="native-label">Binding ID</label>
+        ${this._nativeRoomLabel ? this.#propertySection('room-label', 'Ruimte', html`
+          <div class="dimension-summary"><strong>${this._nativeRoomLabel.id}</strong><div>${this._nativeRoomLabel.name}</div></div>
+          <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'edit-room-label' })}>Ruimte-ID en naam wijzigen</button>
+        `, true) : ''}
+        ${!this._nativeHeating && !this._nativeRoomLabel ? html`<label class="native-label">Binding ID</label>
         <input
           class="native-input native-binding-input"
           .value=${this._nativeBindingId}
@@ -1410,7 +1418,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
           : ''}
 
 `, false)}
-        ${this._nativeSelectedKind === 'text' ? this.#propertySection('text', 'Text', html`
+        ${this._nativeSelectedKind === 'text' && !this._nativeRoomLabel ? this.#propertySection('text', 'Text', html`
         ${this._nativeSelectedKind === 'text'
           ? html`
               <label class="native-label">Text</label>

@@ -35,7 +35,8 @@ const separation = (a: Point, b: Point, c: Point, d: Point) => {
 }
 
 export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly HeatingScheduleRow[], design?: HeatingDesignInputs,
-  obstacles: Box[] = []): HeatingAudit => {
+  obstacles: Box[] = [], options: { focusPipeIds?: ReadonlySet<string>; checkpoint?: () => void;
+    geometryFor?: typeof heatingPipeGeometry } = {}): HeatingAudit => {
   const pipes = shapes.filter((s): s is RectShape => s.kind === 'rect' && s.heating?.kind === 'pipe' && Boolean(s.heating.circuitId))
   const issues: HeatingCheck[] = [], seen = new Set<string>()
   const add = (key: string, issue: HeatingCheck) => { if (!seen.has(key)) { seen.add(key); issues.push(issue) } }
@@ -48,8 +49,11 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     const id = `VV${String(i + 1).padStart(2, '0')}`
     if (!rows.some((row) => row.id === id)) add(`${id}:absent`, { code: 'continuity', severity: 'error', circuits: [id], message: `${id}: volledige kring ontbreekt bij de verdeler.` })
   }
-  const geometries = pipes.map(heatingPipeGeometry)
+  const focused = pipes.map((pipe) => !options.focusPipeIds || options.focusPipeIds.has(pipe.id))
+  const geometries = pipes.map(options.geometryFor ?? heatingPipeGeometry)
   for (const [index, pipe] of pipes.entries()) {
+    options.checkpoint?.()
+    if (!focused[index]) continue
     const data = pipe.heating!, id = data.circuitId!, geometry = geometries[index], limits = heatingDesignLimits(data.diameterMm, design ?? data.design)
     if (data.manualRoute) add(`${id}:manual`, { code: 'manual', severity: 'review', circuits: [id], message: `${id}: handmatig aangepast traject; legafstand, volledige vloerdekking en doorvoeren controleren.` })
     for (const bend of geometry.bends) if (bend.radiusMm + .1 < limits.minBendRadiusMm) {
@@ -70,22 +74,31 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     }
   }
   // Spatial buckets avoid comparing every piece of every pipe against the whole drawing.
-  type Entry = { pipe: number; piece: number }
-  const buckets = new Map<string, Entry[]>(), tested = new Set<string>(), bucket = 4000 / scale
+  type Entry = { pipe: number; piece: number; minX: number; minY: number }
+  const buckets = new Map<string, Entry[]>(), bucket = 4000 / scale
+  let comparisons = 0
   for (const [i, geometry] of geometries.entries()) for (const [j, piece] of geometry.pieces.entries()) {
+    options.checkpoint?.()
     const diameter = pipes[i].heating!.diameterMm * 8 / scale
     const minX = Math.floor((Math.min(piece.a.x, piece.b.x) - diameter) / bucket), maxX = Math.floor((Math.max(piece.a.x, piece.b.x) + diameter) / bucket)
     const minY = Math.floor((Math.min(piece.a.y, piece.b.y) - diameter) / bucket), maxY = Math.floor((Math.max(piece.a.y, piece.b.y) + diameter) / bucket)
+    const entry: Entry = { pipe: i, piece: j, minX, minY }
     for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
       const key = `${x},${y}`, entries = buckets.get(key) ?? []
       for (const other of entries) {
+        if (++comparisons % 512 === 0) options.checkpoint?.()
+        if (!focused[i] && !focused[other.pipe]) continue
         if (other.pipe === i && Math.abs(geometries[i].pieces[other.piece].primitive - piece.primitive) <= 1) continue
-        const pair = `${other.pipe}:${other.piece}:${i}:${j}`
-        if (tested.has(pair)) continue
-        tested.add(pair)
+        // Compare once in the first shared bucket, without retaining millions
+        // of pair strings. Every intersecting bucket range has this same origin.
+        if (x !== Math.max(minX, other.minX) || y !== Math.max(minY, other.minY)) continue
         const a = geometries[other.pipe].pieces[other.piece], b = piece
-        const distance = separation(a.a, a.b, b.a, b.b), first = pipes[other.pipe].heating!, second = pipes[i].heating!
+        const first = pipes[other.pipe].heating!, second = pipes[i].heating!
         const minimum = (first.diameterMm + second.diameterMm) * 4 / scale
+        const dx = Math.max(0, Math.min(a.a.x, a.b.x) - Math.max(b.a.x, b.b.x), Math.min(b.a.x, b.b.x) - Math.max(a.a.x, a.b.x))
+        const dy = Math.max(0, Math.min(a.a.y, a.b.y) - Math.max(b.a.y, b.b.y), Math.min(b.a.y, b.b.y) - Math.max(a.a.y, a.b.y))
+        if (Math.hypot(dx, dy) + 8 / scale >= minimum) continue
+        const distance = separation(a.a, a.b, b.a, b.b)
         if (other.pipe === i) {
           const pa = project(distance.point, a.a, a.b), pb = project(distance.point, b.a, b.b)
           const alongA = a.offset + Math.hypot(pa.x - a.a.x, pa.y - a.a.y), alongB = b.offset + Math.hypot(pb.x - b.a.x, pb.y - b.a.y)
@@ -102,7 +115,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
         add(`collision:${ids.join(':')}:${severity}`, { code: 'collision', severity, circuits: ids, point: distance.point,
           message: `${ids.join(' / ')}: kruising of onvoldoende ruimte tussen buizen${severity === 'review' ? ' bij de verdeler' : ''}.` })
       }
-      entries.push({ pipe: i, piece: j }); buckets.set(key, entries)
+      entries.push(entry); buckets.set(key, entries)
     }
   }
   for (const row of rows) {

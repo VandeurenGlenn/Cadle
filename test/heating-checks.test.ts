@@ -145,3 +145,19 @@ test('a smooth short fillet is continuous, while a distant self-crossing remains
   const crossed = pipe('VV02', [{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 100, y: 0 }])
   assert.ok(checkHeatingPlan([crossed], []).issues.some((i) => i.code === 'collision'))
 })
+
+test('focused geometry checks compare new pipes with existing ones without repeating unrelated checks', () => {
+  const first = pipe('VV01', [{ x: 0, y: 40 }, { x: 120, y: 40 }])
+  const second = pipe('VV02', [{ x: 40, y: 0 }, { x: 40, y: 120 }])
+  const distant = pipe('VV03', [{ x: 600, y: 600 }, { x: 700, y: 600 }])
+  const shapes = [first, second, distant]
+  const full = checkHeatingPlan(shapes, [])
+  assert.equal(full.issues.filter((issue) => issue.code === 'collision').length, 1, 'multi-bucket crossing must be reported once')
+  const focused = checkHeatingPlan(shapes, [], undefined, [], { focusPipeIds: new Set([first.id]) })
+  assert.deepEqual(focused.issues, full.issues)
+  const unchanged = checkHeatingPlan(shapes, [], undefined, [], { focusPipeIds: new Set([distant.id]) })
+  assert.ok(!unchanged.issues.some((issue) => issue.code === 'collision'))
+  const interrupted = new Error('stop geometry work')
+  assert.throws(() => checkHeatingPlan(shapes, [], undefined, [], { checkpoint: () => { throw interrupted } }),
+    (error) => error === interrupted)
+})

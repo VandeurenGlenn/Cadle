@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { runHeatingPlanner, type HeatingPlannerWorker } from '../src/editor/heating-planner.ts'
-import type { HeatingPlannerInput, HeatingPlannerResponse } from '../src/editor/heating-planner-protocol.ts'
+import { heatingProgressText, type HeatingPlannerInput, type HeatingPlannerResponse } from '../src/editor/heating-planner-protocol.ts'
 
 const input: HeatingPlannerInput = { scene: [], position: { x: 1, y: 2 }, settings: { diameterMm: 16, spacingMm: 150 }, scale: 100,
   pageArea: { x: 0, y: 0, width: 100, height: 100 } }
@@ -70,4 +70,9 @@ test('worker startup, communication and time limits reject without a synchronous
     assert.equal(worker.terminated, 1)
     assert.equal(worker.onmessage, null)
   }
+})
+
+test('merge progress names the active room and shows work within that room', () => {
+  const message = heatingProgressText({ phase: 'circuits', rooms: 7, completedRooms: 2, roomName: 'Living', remainingFields: 6, routeAttempts: 18 })
+  for (const text of ['2/7', 'Living', '6 deelvlakken', '18 pogingen']) assert.ok(message.includes(text))
 })

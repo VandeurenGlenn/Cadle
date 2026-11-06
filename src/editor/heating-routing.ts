@@ -3,8 +3,9 @@ import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
 import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingSymbolObstacle } from './heating-openings.js'
+import { isRoomLabel, roomLabelName } from './room-labels.js'
 
-export type HeatingRoom = { id: number; name: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
+export type HeatingRoom = { id: number; name: string; roomKey?: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
   origin: Point; step: number; width: number; height: number
   wall: Uint8Array; door: Uint8Array; obstacle: Uint8Array; loopObstacle: Uint8Array; room: Int32Array; rooms: HeatingRoom[]
@@ -100,7 +101,9 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     const centre = point(cells[Math.floor(cells.length / 2)])
     const named = namedRegions.filter((region) => centre.x > region.x && centre.x < region.x + region.width &&
       centre.y > region.y && centre.y < region.y + region.height).sort((a, b) => a.width * a.height - b.width * b.height)[0]
-    rooms.push({ id, name: named?.name ?? `Ruimte ${rooms.length + 1}`, cells, minX, maxX, minY, maxY })
+    const label = shapes.filter(isRoomLabel).find((shape) => !shape.hidden && room[index(shape.position)] === id)
+    rooms.push({ id, name: label ? roomLabelName(label.roomLabel) : named?.name ?? `Ruimte ${rooms.length + 1}`,
+      ...(label ? { roomKey: label.id } : {}), cells, minX, maxX, minY, maxY })
   }
   if (!rooms.length) throw new Error('Geen gesloten ruimtes herkend. Sluit de muren van het grondplan voordat je een legplan maakt.')
   return { origin, step, width, height, wall, door, obstacle, loopObstacle, room, rooms, point, index }

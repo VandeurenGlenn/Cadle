@@ -671,7 +671,7 @@ output,
     display: none;
   }
 }
-.heating-planner-status {
+.heating-planner-status, .room-label-status {
   display: flex;
   align-items: center;
   gap: 8px;

@@ -43,6 +43,15 @@ test('combines more than 24 provisional leg fields into twelve complete circuits
   assert.equal(result.jobs.length, 12)
   assert.equal(result.combiningFinished, true)
   assert.equal(new Set(result.jobs.map((job) => job.roomName)).size, 12)
+  const boundedProgress: { completedRooms?: number; roomName?: string }[] = []
+  const bounded = planHeatingCircuits(grid, settings, 100, position, { budget: {
+    routes: 1, roomTimeMs: 0, onProgress: (value) => boundedProgress.push(value)
+  } })
+  assert.equal(bounded.combiningFinished, false)
+  assert.equal(bounded.jobs.length, 48, 'an expired room keeps its unmerged leg fields')
+  assert.equal(boundedProgress.at(-1)?.completedRooms, 12, 'one difficult room cannot prevent later rooms being processed')
+  assert.equal(boundedProgress.find((p) => p.roomName)?.completedRooms, 0, 'announce the active room before its merge starts')
+  assert.ok(Math.abs(bounded.jobs.reduce((sum, job) => sum + job.areaM2, 0) - result.jobs.reduce((sum, job) => sum + job.areaM2, 0)) < 1e-6)
   // An unfinished search must not be presented as a calculated demand for >24 circuits.
   assert.throws(() => generateAutomaticHeatingPlan(shapes, position, settings, 100, () => 'unused', area, 0, 0, { routes: 0 }),
     /deelvlakken nog niet volledig tot kringen samenvoegen/)

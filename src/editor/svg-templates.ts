@@ -20,6 +20,7 @@ import {
   oneWireEnergyFlowSegments
 } from './onewire-energy-flow.js'
 import { namedRoomRegions } from './room-regions.js'
+import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
@@ -357,7 +358,8 @@ export const bindingLabelsTemplate = (shapes: Shape[]) => {
 }
 
 export const roomLabelsMarkup = (shapes: Shape[]) =>
-  namedRoomRegions(shapes).map(
+  namedRoomRegions(shapes).filter((room) => !shapes.some((shape) => isRoomLabel(shape) && !shape.hidden &&
+    shape.position.x > room.x && shape.position.x < room.x + room.width && shape.position.y > room.y && shape.position.y < room.y + room.height)).map(
     (room) => `<text
       class="room-label"
       x="${room.x + room.width / 2}"

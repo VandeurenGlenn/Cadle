@@ -23,6 +23,7 @@ export type HeatingData = {
   manualRoute?: boolean
   circuitId?: string
   roomName?: string
+  roomKey?: string
   servedAreaM2?: number
   sourcePageKey?: string
   rows?: HeatingScheduleRow[]
@@ -94,13 +95,13 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (audit) data.audit = audit
   if (checks) data.checks = checks
   for (const key of ['rowOffset', 'rowLimit'] as const) if (typeof raw[key] === 'number' && Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 100) data[key] = raw[key] as number
-  for (const key of ['circuitId', 'roomName', 'sourcePageKey'] as const) if (typeof raw[key] === 'string') data[key] = (raw[key] as string).slice(0, 100)
+  for (const key of ['circuitId', 'roomName', 'roomKey', 'sourcePageKey'] as const) if (typeof raw[key] === 'string') data[key] = (raw[key] as string).slice(0, key === 'roomName' ? 140 : 100)
   if (typeof raw.servedAreaM2 === 'number' && Number.isFinite(raw.servedAreaM2) && raw.servedAreaM2 >= 0) data.servedAreaM2 = raw.servedAreaM2
   if (Array.isArray(raw.rows)) data.rows = raw.rows.slice(0, 100).flatMap((row): HeatingScheduleRow[] => {
     if (!row || typeof row !== 'object' || typeof row.id !== 'string' || typeof row.room !== 'string') return []
     const keys = ['diameterMm', 'spacingMm', 'areaM2', 'loopM', 'supplyM', 'returnM', 'totalM', 'flowLmin'] as const
     if (!keys.every((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0)) return []
-    return [{ id: row.id.slice(0, 100), room: row.room.slice(0, 100), ...Object.fromEntries(keys.map((key) => [key, row[key]])),
+    return [{ id: row.id.slice(0, 100), room: row.room.slice(0, 140), ...Object.fromEntries(keys.map((key) => [key, row[key]])),
       ...Object.fromEntries(['spacingMinMm', 'spacingMaxMm'].filter((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 1 && row[key] <= 500).map((key) => [key, row[key]])),
       ...(sanitizeHeatingHydraulics(row.hydraulics) ? { hydraulics: sanitizeHeatingHydraulics(row.hydraulics) } : {}),
       ...(sanitizeHeatingFloor(row.floor) ? { floor: sanitizeHeatingFloor(row.floor) } : {}),

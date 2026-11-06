@@ -1,5 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import styles from './input-form-dialog.css' with { type: 'css' }
+import { nothing } from 'lit'
 
 export type InputFormField = {
   name: string
@@ -12,6 +13,7 @@ export type InputFormField = {
   required?: boolean
   min?: number
   max?: number
+  maxLength?: number
   options?: ReadonlyArray<{ label: string; value: string }>
 }
 
@@ -20,6 +22,7 @@ export type InputFormRequest = {
   description?: string
   submitLabel?: string
   fields: ReadonlyArray<InputFormField>
+  validate?: (values: Record<string, string>) => string | null
 }
 
 @customElement('input-form-dialog')
@@ -63,7 +66,8 @@ export class InputFormDialog extends LiteElement {
         values[field.name] = control.value.trim()
       }
     }
-    this.#close(values)
+    this.error = this.request?.validate?.(values) ?? ''
+    if (!this.error) this.#close(values)
   }
 
   render() {
@@ -101,7 +105,8 @@ export class InputFormDialog extends LiteElement {
                       placeholder=${field.placeholder ?? ''}
                       ?required=${field.required}
                       min=${field.min ?? ''}
-                      max=${field.max ?? ''} />`}
+                      max=${field.max ?? ''}
+                      maxlength=${field.maxLength ?? nothing} />`}
                 ${field.description ? html`<small>${field.description}</small>` : ''}
               </label>
             `

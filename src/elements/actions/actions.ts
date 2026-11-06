@@ -19,6 +19,7 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'select', icon: 'arrow_selector_tool', title: 'Select' },
   { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
   { action: 'draw-room', icon: 'pentagon', title: 'Draw room' },
+  { action: 'draw-room-label', icon: 'label', title: 'Ruimte-ID en naam', hint: 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.', nativeOnly: true },
   { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
@@ -111,6 +112,7 @@ export class CadleActions extends LiteElement {
 
   #visibleTools(): DrawTool[] {
     return DRAW_TOOLS.filter((t) => {
+      if (t.action === 'draw-room-label' && this.pageType !== 'groundplan') return false
       if (t.action.startsWith('draw-heating-') && this.pageType !== 'groundplan') return false
       if (this.isNativeRoute && t.classicOnly) return false
       if (!this.isNativeRoute && t.nativeOnly) return false
@@ -151,7 +153,7 @@ export class CadleActions extends LiteElement {
     const tools = this.#visibleTools()
     const oneWire = this.pageType === 'onewire'
     const heatingTools = tools.filter((tool) => tool.action === 'draw-heating-auto')
-    const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-door', 'draw-window', 'draw-gate'].includes(tool.action))
+    const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-room-label', 'draw-door', 'draw-window', 'draw-gate'].includes(tool.action))
     const extraTools = tools.filter((tool) => tool.action !== 'select' && !['draw-text', 'draw-symbol'].includes(tool.action) &&
       !heatingTools.includes(tool) && (oneWire || !planTools.includes(tool)))
     const extraActive = extraTools.find((tool) => this.#isToolActive(tool))

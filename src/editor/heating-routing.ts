@@ -2,6 +2,7 @@ import type { Point, Shape } from './model/types.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
+import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingSymbolObstacle } from './heating-openings.js'
 
 export type HeatingRoom = { id: number; name: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
@@ -49,6 +50,13 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     }
   }
   for (const shape of shapes) {
+    if (!shape.hidden && isHeatingDoorSymbol(shape)) {
+      const { start, end } = heatingDoorSymbolThreshold(shape)
+      // Close the room boundary for flood filling, while marking this exact
+      // threshold as a preferred passage for supply and return pipes.
+      raster(start, end, step * .8, wall)
+      raster(start, end, Math.max(drawingUnitsForMetres(.2, scale), step * 2), door)
+    }
     if (shape.hidden || !('start' in shape)) continue
     if (shape.kind === 'wall') raster(shape.start, shape.end, Math.max(step * .75, (shape.strokeWidth ?? 6) / 2), wall)
     if (shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate') {
@@ -58,7 +66,7 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     }
   }
   for (const shape of shapes) {
-    if (shape.hidden || shape.heating || shape.kind !== 'symbol') continue
+    if (!isHeatingSymbolObstacle(shape)) continue
     const b = shapeBounds(shape)
     for (const [target, clearance] of [[obstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step],
       [loopObstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.minBendRadiusMm ?? 80) * .002 + (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step]] as const) {

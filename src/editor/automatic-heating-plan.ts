@@ -7,6 +7,7 @@ import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type 
 import { heatingPipeGeometry } from './heating-geometry.js'
 import type { HeatingPlanningProgress } from './heating-planner-protocol.js'
 import { checkHeatingPlan } from './heating-checks.js'
+import { isHeatingSymbolObstacle } from './heating-openings.js'
 
 /** Open paired meander bends slightly near their ends when half the pitch is below the product radius.
  * The straight runs retain the requested pitch; shallow transitions avoid forcing a tighter U-bend.
@@ -324,7 +325,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
 
   const width = Math.max(120, (jobs.length * 3 + 3) * grid.step), height = 64
   for (const shape of scene) {
-    if (shape.hidden || shape.kind !== 'symbol') continue
+    if (!isHeatingSymbolObstacle(shape)) continue
     const b = shapeBounds(shape)
     if (position.x < b.x + b.width && position.x + width > b.x && position.y < b.y + b.height && position.y + height > b.y) {
       throw new Error('De verdeler overlapt een symbool. Kies een vrije positie voor de verdeler.')
@@ -369,7 +370,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
     return createHeatingPipe(ids[index][0], openHeatingTurns(routePoints(job.cells), radius),
       { ...common[index], name: common[index].circuitId, pipeRole: 'loop', servedAreaM2: job.areaM2 })
   })
-  const obstacles = scene.filter((s) => s.kind === 'symbol' && !s.hidden).map(shapeBounds)
+  const obstacles = scene.filter(isHeatingSymbolObstacle).map(shapeBounds)
   const wallAccess = {
     wallEntryPenalty: drawingUnitsForMetres(.7, scale) / grid.step,
     manifoldAccess: { point: { x: position.x + width / 2, y: bottom }, radius: drawingUnitsForMetres(1, scale),
@@ -484,7 +485,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   budget.onProgress?.({ phase: 'checks', circuits: rows.length })
   const audit = checkHeatingPlan([...scene, ...shapes], rows, settings.design,
-    scene.filter((shape) => shape.kind === 'symbol' && !shape.hidden).map(shapeBounds))
+    scene.filter(isHeatingSymbolObstacle).map(shapeBounds))
   rows = rows.map((row) => ({ ...row, checkMessages: audit.issues.filter((issue) => issue.circuits.includes(row.id)).map((issue) => issue.message) }))
   manifold.heating!.audit = audit; manifold.heating!.rows = rows
   for (const shape of shapes) if (shape.heating?.pipeRole === 'loop') shape.heating.checks = audit.issues.filter((issue) => issue.circuits.includes(shape.heating!.circuitId!))

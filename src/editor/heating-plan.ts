@@ -5,6 +5,7 @@ import { heatingHydraulics, heatingFloor, heatingWater, sanitizeHeatingHydraulic
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
 import { checkHeatingPlan, sanitizeHeatingAudit, type HeatingAudit, type HeatingCheck } from './heating-checks.js'
+import { isHeatingSymbolObstacle } from './heating-openings.js'
 
 export type HeatingData = {
   kind: 'zone' | 'pipe' | 'manifold' | 'table'
@@ -225,7 +226,7 @@ export const presentHeatingTables = (shapes: Shape[], sourceFor?: (key: string) 
     if (cache.has(key)) return cache.get(key)
     const source = key ? sourceFor?.(key) : shapes
     if (!source) return
-    const obstacles = boundsFor ? source.filter((s) => s.kind === 'symbol' && !s.hidden).map(boundsFor) : []
+    const obstacles = boundsFor ? source.filter(isHeatingSymbolObstacle).map(boundsFor) : []
     const owner = source.find((shape) => shape.heating?.kind === 'manifold') ?? source[0]
     const fingerprint = JSON.stringify([source, obstacles]), cached = owner ? heatingPresentationCache.get(owner) : undefined
     if (cached?.fingerprint === fingerprint) { cache.set(key, cached); return cached }

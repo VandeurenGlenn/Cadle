@@ -15,7 +15,7 @@ import { GOOGLE_FONTS_URL, SYSTEM_FONTS } from './object-pane/text-options.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/circuit-defaults.js'
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
-import { heatingDesignLimits, heatingOutputBasis, type HeatingDesignInputs } from '../../editor/heating-design.js'
+import { heatingDesignLimits, heatingOutputBasis, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from '../../editor/heating-design.js'
 import type { HeatingData, HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
@@ -680,7 +680,7 @@ export class ObjectPane extends LiteElement {
       ${data.kind !== 'manifold' || data.automatic ? numeric('diameterMm', 'Buisdiameter (mm)', 6, 50) : ''}
       ${data.kind === 'zone' ? html`
         <div class="native-row">${numeric('spacingMm', 'Buisafstand h.o.h. (mm)', 50, 500)}${numeric('edgeMm', 'Randafstand (mm)', 0, 1000)}</div>
-        ${numeric('circuits', 'Aantal lussen', 1, 24)}
+        ${numeric('circuits', 'Aantal lussen', 1, MAX_HEATING_CIRCUITS)}
         <label><span class="native-label">Legrichting</span><select class="native-select" data-heating-field="direction" .value=${data.direction}
           @change=${(event: Event) => update({ direction: (event.target as HTMLSelectElement).value as HeatingData['direction'] })}>
           <option value="horizontal">Horizontale meander</option><option value="vertical">Verticale meander</option>
@@ -691,7 +691,7 @@ export class ObjectPane extends LiteElement {
         ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
-      ` : numeric('circuits', 'Aantal groepen', 1, 24) : html`
+      ` : numeric('circuits', 'Aantal groepen', 1, MAX_HEATING_CIRCUITS) : html`
         <label><span class="native-label">Buisfunctie</span><select class="native-select" data-heating-field="pipeRole" .value=${data.pipeRole}
           @change=${(event: Event) => update({ pipeRole: (event.target as HTMLSelectElement).value as HeatingData['pipeRole'] })}>
           <option value="supply">Aanvoer (rood)</option><option value="return">Retour (blauw)</option><option value="loop">Verwarmingslus</option>

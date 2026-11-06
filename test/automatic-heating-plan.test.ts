@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { generateAutomaticHeatingPlan } from '../src/editor/automatic-heating-plan.ts'
+import { generateAutomaticHeatingPlan, planHeatingCircuits } from '../src/editor/automatic-heating-plan.ts'
 import { buildHeatingGrid, routeHeating } from '../src/editor/heating-routing.ts'
 import { heatingBounds, heatingFlowLmin, heatingLayout, heatingSchedule, presentHeatingTables } from '../src/editor/heating-plan.ts'
 import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
@@ -16,6 +16,28 @@ const build = (shapes = scene()) => {
   let id = 0
   return generateAutomaticHeatingPlan(shapes, { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 150 }, 100, () => `auto-${id++}`, area)
 }
+
+test('combines more than 24 provisional leg fields into twelve complete circuits', () => {
+  const shapes: Shape[] = []
+  for (let room = 0; room < 12; room++) {
+    const x = 400 + room % 4 * 280, y = 400 + Math.floor(room / 4) * 280
+    const corners = [{ x, y }, { x: x + 240, y }, { x: x + 240, y: y + 240 }, { x, y: y + 240 }]
+    shapes.push(...corners.map((start, i): Shape => ({ id: `wall-${room}-${i}`, kind: 'wall', start,
+      end: corners[(i + 1) % 4], groupId: `room-${room}`, roomName: `Room ${room + 1}` })))
+    shapes.push({ id: `fridge-${room}`, kind: 'symbol', name: 'Refrigerator',
+      path: 'symbols/Consumption appliances/Refrigerator.svg', position: { x: x + 120, y: y + 120 }, scale: 2 })
+  }
+  const position = { x: 180, y: 280 }, settings = { diameterMm: 16, spacingMm: 300 }
+  const grid = buildHeatingGrid(shapes, 100, settings.spacingMm, position, { pipeDiameterMm: 16, minBendRadiusMm: 80 })
+  const result = planHeatingCircuits(grid, settings, 100, position)
+  assert.equal(result.initialFieldCount, 48)
+  assert.equal(result.jobs.length, 12)
+  assert.equal(result.combiningFinished, true)
+  assert.equal(new Set(result.jobs.map((job) => job.roomName)).size, 12)
+  // An unfinished search must not be presented as a calculated demand for >24 circuits.
+  assert.throws(() => generateAutomaticHeatingPlan(shapes, position, settings, 100, () => 'unused', area, 0, 0, { routes: 0 }),
+    /deelvlakken nog niet volledig tot kringen samenvoegen/)
+})
 
 test('automatically detects rooms and connects full circuits to the manifold', () => {
   const result = build()

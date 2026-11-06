@@ -1,6 +1,6 @@
 import type { DraftShape, ImageShape, LineShape, Point, RectShape, Shape, SymbolShape, TextShape } from './types.js'
 import { defaultRcdTypeForDevice, rcdTypeFromLabel, sanitizeElectricalMetadata } from './electrical.js'
-import { appliancePaperScale, renderedSymbolScale, resizedSymbolStrokeWidth } from './symbol-scale.js'
+import { appliancePaperScale, revisedGroundPlanDefaultScale, renderedSymbolScale, resizedSymbolStrokeWidth } from './symbol-scale.js'
 import { migrateProtectionDescriptions } from '../layout/protection-descriptions.js'
 import { connectionBounds, sanitizeConnection } from './electrical-connection.js'
 import { sanitizeHeating } from '../heating-plan.js'
@@ -85,8 +85,12 @@ const currentSymbolPath = (path: string, name: string): string => {
     : path
 }
 
-const migratedSymbolScale = (path: string, scale: number, groupId: unknown): number => {
-  if (typeof groupId === 'string' && groupId.startsWith('onewire-')) return scale
+const migratedSymbolScale = (path: string, scale: number, groupId: unknown, context?: 'groundplan' | 'onewire'): number => {
+  if (context === 'onewire' || (typeof groupId === 'string' && groupId.startsWith('onewire-'))) return scale
+  if (context === 'groundplan') {
+    const revised = revisedGroundPlanDefaultScale(path, scale)
+    if (revised !== null) return revised
+  }
   const applianceScale = appliancePaperScale(path)
   if (applianceScale !== null && (scale === 1 || scale === 1.15)) return applianceScale
   if (/\/consumption appliances\/wall light\.svg$/i.test(path)) {
@@ -106,7 +110,7 @@ const migratedSymbolScale = (path: string, scale: number, groupId: unknown): num
   return scale === 1.7 ? 1.3 : scale
 }
 
-export const sanitizeShapes = (values: unknown[]): Shape[] => {
+export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onewire'): Shape[] => {
   const shapes: Shape[] = []
   for (const value of values) {
     if (!value || typeof value !== 'object') continue
@@ -266,7 +270,7 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
         path,
         scale:
           typeof raw.scale === 'number' && Number.isFinite(raw.scale) && raw.scale > 0
-            ? migratedSymbolScale(path, raw.scale, raw.groupId)
+            ? migratedSymbolScale(path, raw.scale, raw.groupId, context)
             : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
@@ -281,7 +285,8 @@ export const sanitizeShapes = (values: unknown[]): Shape[] => {
             : /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path) && raw.strokeWidth === 1.35
               ? 1.15
               : Math.max(appliancePaperScale(path) !== null ? 0.01 : 0.5, raw.strokeWidth)
-        if (appliancePaperScale(path) !== null && typeof raw.scale === 'number' && symbol.scale !== raw.scale) {
+        if (typeof raw.scale === 'number' && symbol.scale !== raw.scale &&
+          (appliancePaperScale(path) !== null || (context === 'groundplan' && revisedGroundPlanDefaultScale(path, raw.scale) !== null))) {
           symbol.strokeWidth = resizedSymbolStrokeWidth({ path, scale: raw.scale, strokeWidth: symbol.strokeWidth }, symbol.scale)
         }
       }

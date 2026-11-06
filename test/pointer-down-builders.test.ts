@@ -37,7 +37,7 @@ test('places floor-plan switches at a readable default scale', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.3 * 1.5 * 1.15)
+  assert.equal(shape.scale, 1.3 * 1.15)
 })
 
 test('uses a compact scale for push buttons', () => {
@@ -50,7 +50,7 @@ test('uses a compact scale for push buttons', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 0.8 * 1.5 * 1.15, name)
+    assert.equal(shape.scale, 0.8 * 1.15, name)
   }
 })
 
@@ -64,7 +64,7 @@ test('compensates the wide view box of a double push button', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.25 * 1.5 * 1.15)
+  assert.equal(shape.scale, 1.25 * 1.15)
 })
 
 test('compensates tall change-over switches for their larger view box', () => {
@@ -81,7 +81,7 @@ test('compensates tall change-over switches for their larger view box', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1.7 * 1.5 * 1.15, name)
+    assert.equal(shape.scale, 1.7 * 1.15, name)
   }
 })
 
@@ -95,7 +95,7 @@ test('uses a smaller scale for a dual switch in one casing', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.15 * 1.5 * 1.15)
+  assert.equal(shape.scale, 1.15 * 1.15)
 })
 
 test('uses readable floor-plan sizes for wide switch controls', () => {
@@ -108,7 +108,7 @@ test('uses readable floor-plan sizes for wide switch controls', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1.5 * 1.15, name)
+    assert.equal(shape.scale, 1.15, name)
   }
 })
 
@@ -218,7 +218,7 @@ test('enlarges newly placed lights and sockets while keeping custom catalog size
 })
 
 test('gives refrigerators and meters readable paper sizes and upgrades only their old defaults', () => {
-  for (const [name, scale] of [['Refrigerator', 3], ['kWh meter', 8 / 3]] as const) {
+  for (const [name, scale] of [['Refrigerator', 2], ['kWh meter', 2]] as const) {
     const symbol = { name, path: `symbols/Consumption appliances/${name}.svg` }
     assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, scale)
     const original = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.15, strokeWidth: 0.5 }
@@ -232,4 +232,24 @@ test('gives refrigerators and meters readable paper sizes and upgrades only thei
     assert.equal(generated.kind === 'symbol' && generated.scale, 1.15)
     assert.equal(createSymbolShape('custom', { x: 0, y: 0 }, { ...symbol, metadata: { symbolDefaults: { scale: 2.4 } } }).scale, 2.4)
   }
+})
+
+
+test('reduces saved floor-plan defaults once and retains one-wire sizes and visible pen width', () => {
+  for (const [name, oldScale] of [['Refrigerator', 3], ['kWh meter', 8 / 3], ['Switch general symbol', 1.3 * 1.5 * 1.15], ['Push button', .8 * 1.5 * 1.15], ['Double push button', 1.25 * 1.5 * 1.15], ['Single pole change over switch', 1.7 * 1.5 * 1.15], ['Dual switch, single casing', 1.15 * 1.5 * 1.15], ['Impulse relay', 1.5 * 1.15]] as const) {
+    const path = `symbols/${name === 'Refrigerator' || name === 'kWh meter' ? 'Consumption appliances' : 'Switches'}/${name}.svg`
+    const original = { id: name, kind: 'symbol', name, path, scale: oldScale, position: { x: 50, y: 50 }, strokeWidth: .5 }
+    const resized = sanitizeShapes([original], 'groundplan')[0]
+    assert.equal(resized.kind, 'symbol')
+    if (resized.kind !== 'symbol') continue
+    assert.equal(resized.scale, resolveCatalogSymbolScale({ name, path }, 'groundplan'))
+    assert.ok(resized.scale < oldScale)
+    assert.ok(Math.abs(resized.strokeWidth! * resized.scale - .5 * oldScale) < 1e-9)
+    assert.deepEqual(sanitizeShapes([resized], 'groundplan'), [resized])
+    assert.deepEqual(sanitizeShapes([original], 'onewire'), [original])
+    const custom = { ...original, scale: 2.4 }
+    assert.deepEqual(sanitizeShapes([custom], 'groundplan'), [custom])
+  }
+  const meter = { name: 'kWh meter', path: 'symbols/Consumption appliances/kWh meter.svg' }
+  assert.equal(resolveCatalogSymbolScale(meter, 'onewire'), 8 / 3)
 })

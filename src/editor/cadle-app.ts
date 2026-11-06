@@ -1118,7 +1118,7 @@ export class CadleApp extends LiteElement {
     let migrationComplete = true
     let dimensionsChanged = false
     this.#resetPageState()
-    if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes)
+    if (Array.isArray(parsed.shapes)) this.#document.shapes = sanitizeShapes(parsed.shapes, this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? 'groundplan' : 'onewire')
     this.#rebindAllOpeningsToWalls()
     if (parsed.paperPreset && parsed.paperPreset in PAPER_PRESETS) {
       this.#paperPreset = parsed.paperPreset
@@ -3267,7 +3267,7 @@ export class CadleApp extends LiteElement {
       if (page?.pageType === 'onewire' || page.heatingPlanOf || page.heatingScheduleOf) continue
       const state = this.#nativeStateForPage(pageKey)
       if (!state || !Array.isArray(state.shapes)) continue
-      pool.push(...pageOffset(sanitizeShapes(state.shapes), pageIndex))
+      pool.push(...pageOffset(sanitizeShapes(state.shapes, 'groundplan'), pageIndex))
     }
 
     return pool

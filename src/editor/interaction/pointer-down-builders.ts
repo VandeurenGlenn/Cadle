@@ -4,7 +4,7 @@ import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
 import { paperTextScale } from '../layout/page-layout.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import { oneWireSymbolScaleFor } from '../layout/onewire-symbol-nodes.js'
-import { appliancePaperScale } from '../model/symbol-scale.js'
+import { appliancePaperScale, floorPlanSwitchPaperScale } from '../model/symbol-scale.js'
 export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
@@ -17,11 +17,6 @@ type SymbolStyleDefaults = {
   flipY?: unknown
 }
 
-const FLOOR_PLAN_SWITCH_SCALE = 1.3
-const FLOOR_PLAN_PUSH_BUTTON_SCALE = 0.8
-const FLOOR_PLAN_DOUBLE_PUSH_BUTTON_SCALE = 1.25
-const FLOOR_PLAN_CHANGE_OVER_SWITCH_SCALE = 1.7
-const FLOOR_PLAN_DUAL_SWITCH_SCALE = 1.15
 const WALL_LIGHT_SCALE = 1.5
 const FLUORESCENT_LAMP_SCALE = 2
 const DISTRIBUTION_BOARD_SCALE = 2
@@ -37,17 +32,6 @@ const isLightingPath = (path: string): boolean =>
 const isBatteryBankPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/battery bank\.svg$/i.test(path)
 const isInverterPath = (path: string): boolean => /\/photovoltaic devices[^/]*\/inverter\.svg$/i.test(path)
 const isDistributionBoardPath = (path: string): boolean => /\/electrical devices\/distribution board\.svg$/i.test(path)
-
-const floorPlanSwitchScale = (path: string): number | null => {
-  if (!/\/switches\//i.test(path)) return null
-  if (/double push button\.svg$/i.test(path)) return FLOOR_PLAN_DOUBLE_PUSH_BUTTON_SCALE
-  if (/push button\.svg$/i.test(path)) return FLOOR_PLAN_PUSH_BUTTON_SCALE
-  if (/dual switch, single casing\.svg$/i.test(path)) return FLOOR_PLAN_DUAL_SWITCH_SCALE
-  if (/(?:change over|intermediate switch).*\.svg$/i.test(path)) return FLOOR_PLAN_CHANGE_OVER_SWITCH_SCALE
-  return /(?:timer|time switch|thermostat|impulse relay|electric lock|guard tour control device)\.svg$/i.test(path)
-    ? 1
-    : FLOOR_PLAN_SWITCH_SCALE
-}
 
 const resolveSymbolStyleDefaults = (symbol: NativeCatalogPick): SymbolStyleDefaults => {
   const metadata = symbol.metadata
@@ -65,8 +49,8 @@ export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick, context: Sy
   if (context === 'onewire') return oneWireSymbolScaleFor(symbol.path) ?? inferSymbolScale(symbol.path)
   const applianceScale = appliancePaperScale(symbol.path)
   if (applianceScale !== null) return applianceScale
-  const switchScale = floorPlanSwitchScale(symbol.path)
-  if (switchScale !== null) return switchScale * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
+  const switchScale = floorPlanSwitchPaperScale(symbol.path)
+  if (switchScale !== null) return switchScale
   if (/\/socket outlets\//i.test(symbol.path)) return inferSymbolScale(symbol.path) * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
   if (isLightingPath(symbol.path)) {
     const base = /\/wall light\.svg$/i.test(symbol.path) ? WALL_LIGHT_SCALE

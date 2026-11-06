@@ -3,7 +3,7 @@ import { drawingLengthMetres, drawingUnitsForMetres, type DrawingScale } from '.
 import { createHeatingPipe, createHeatingScheduleTables, heatingDefaults, heatingSchedule, heatingTableSize, HEATING_TABLE_ROW_HEIGHT, type HeatingScheduleRow } from './heating-plan.js'
 import { buildHeatingGrid, routeHeating, simplifyHeatingPath, type HeatingGrid } from './heating-routing.js'
 import { shapeBounds } from './model/model.js'
-import { heatingDesignLimits, sanitizeHeatingDesign, type HeatingDesignInputs } from './heating-design.js'
+import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { checkHeatingPlan } from './heating-checks.js'
 
@@ -161,7 +161,6 @@ const loopJobs = (grid: HeatingGrid, settings: AutomaticHeatingSettings, scale: 
     jobs.push(...roomJobs)
   }
   if (!jobs.length) throw new Error('Er blijft geen voldoende groot, vrij vloeroppervlak over bij deze legafstand.')
-  if (jobs.length > 24) throw new Error('Dit plan vraagt meer dan 24 kringen. Verdeel het grondplan over meerdere legplannen.')
   return { jobs, occupied }
 }
 
@@ -171,7 +170,8 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
   const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
   const shape = (cells: number[], id: number) => createHeatingPipe(`merge-${id}`, openHeatingTurns(simplifyHeatingPath(cells.map(grid.point)), radius),
     { ...heatingDefaults('pipe', scale), ...settings, automatic: true, circuitId: `VV${id}`, pipeRole: 'loop' })
-  for (let pass = 0; pass < 24; pass++) {
+  const maxMerges = jobs.length - 1
+  for (let pass = 0; pass < maxMerges; pass++) {
     const choices: { a: number; b: number; reverseA: boolean; reverseB: boolean; distance: number }[] = []
     for (let a = 0; a < jobs.length; a++) for (let b = a + 1; b < jobs.length; b++) {
       if (jobs[a].roomName !== jobs[b].roomName || grid.room[jobs[a].cells[0]] !== grid.room[jobs[b].cells[0]]) continue
@@ -196,7 +196,7 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
         const cells = job.cells, root = endpoint ? cells.at(-1)! : cells[0], direction = endpoint ? root - cells.at(-2)! : root - cells[1]
         for (let n = 1; n <= reach; n++) mergeBlocked.add(root + direction * n)
       }
-      if (--budget.routes < 0) return
+      if (--budget.routes < 0) return false
       const connection = routeHeating(grid, a.at(-1)!, b[0], { roomId: grid.room[a[0]], occupied: mergeBlocked, radiusCells: Math.ceil(2 * radius / grid.step),
         startDirection: a.at(-1)! - a.at(-2)!, endDirection: b[1] - b[0] })
       if (!connection) continue
@@ -227,6 +227,19 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
     }
     if (!merged) break
   }
+  return true
+}
+
+/** Plan complete circuits before checking manifold capacity. Temporary leg fields
+ * are allowed to exceed that capacity: several can belong to one circuit. */
+export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatingSettings, scale: DrawingScale, position: Point,
+  { lengthPass = 0, mergeVariant = 0, budget = { routes: 600 } as HeatingWorkBudget, reservedForCoils = [] as readonly number[] } = {}) => {
+  const fieldGrid = reservedForCoils.length ? { ...grid, obstacle: grid.obstacle.slice() } : grid
+  for (const cell of reservedForCoils) fieldGrid.obstacle[cell] = 1
+  const { jobs, occupied } = loopJobs(fieldGrid, settings, scale, position, Math.pow(.75, lengthPass), Math.floor(mergeVariant / 2) % 2 === 1, mergeVariant % 2 === 1)
+  const initialFieldCount = jobs.length
+  const combiningFinished = mergeHeatingJobs(grid, jobs, occupied, settings, scale, position, Math.pow(.85, lengthPass), mergeVariant < 4 ? 1 : 0, budget)
+  return { jobs, occupied, initialFieldCount, combiningFinished }
 }
 
 export type AutomaticHeatingResult = { shapes: RectShape[]; rows: HeatingScheduleRow[]; tableOnSeparatePage: boolean; wallCrossings: number }
@@ -251,11 +264,15 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
     const p = grid.point(i)
     if (p.x >= position.x - grid.step && p.x <= position.x + reservedWidth && p.y >= position.y - grid.step && p.y < position.y + 64 - grid.step) grid.obstacle[i] = 1
     if (!grid.obstacle[i] && p.x >= position.x - grid.step && p.x <= position.x + reservedWidth &&
-      p.y >= position.y + 64 - grid.step && p.y <= position.y + 64 + 4 * grid.step) { heatOnly.push(i); grid.obstacle[i] = 1 }
+      p.y >= position.y + 64 - grid.step && p.y <= position.y + 64 + 4 * grid.step) { heatOnly.push(i) }
   }
-  const { jobs, occupied } = loopJobs(grid, settings, scale, position, Math.pow(.75, lengthPass), Math.floor(mergeVariant / 2) % 2 === 1, mergeVariant % 2 === 1)
-  for (const i of heatOnly) grid.obstacle[i] = 0
-  mergeHeatingJobs(grid, jobs, occupied, settings, scale, position, Math.pow(.85, lengthPass), mergeVariant < 4 ? 1 : 0, budget)
+  const { jobs, occupied, combiningFinished } = planHeatingCircuits(grid, settings, scale, position,
+    { lengthPass, mergeVariant, budget, reservedForCoils: heatOnly })
+  if (jobs.length > MAX_HEATING_CIRCUITS) {
+    if (!combiningFinished) throw new Error('De planner kon de deelvlakken nog niet volledig tot kringen samenvoegen. Probeer een andere verdelerpositie.')
+    if (mergeVariant < 7 && budget.routes > 0) return generateAutomaticHeatingPlan(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant + 1, budget)
+    throw new Error(`Deze automatische indeling komt na samenvoegen op ${jobs.length} kringen. De planner ondersteunt maximaal ${MAX_HEATING_CIRCUITS} kringen per verdeler.`)
+  }
   // Keep ports in angular floor order; arbitrary room/band order forces crossing pairs at the manifold.
   const angle = (job: CircuitJob) => {
     const points = job.cells.map(grid.point), x = (Math.min(...points.map((p) => p.x)) + Math.max(...points.map((p) => p.x))) / 2,

@@ -3,7 +3,7 @@ import { drawingLengthMetres, drawingUnitsForMetres, isDrawingScale, DEFAULT_DRA
 import { wrapPaperText } from './layout/paper-text-layout.js'
 import { heatingHydraulics, heatingFloor, heatingWater, sanitizeHeatingHydraulics, sanitizeHeatingFloor, type HeatingHydraulics, type HeatingFloor } from './heating-performance.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
-import { heatingDesignLimits, sanitizeHeatingDesign, type HeatingDesignInputs } from './heating-design.js'
+import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
 import { checkHeatingPlan, sanitizeHeatingAudit, type HeatingAudit, type HeatingCheck } from './heating-checks.js'
 
 export type HeatingData = {
@@ -59,7 +59,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.kind !== 'zone' && raw.kind !== 'pipe' && raw.kind !== 'manifold' && raw.kind !== 'table') return
   const data = heatingDefaults(raw.kind, isDrawingScale(raw.drawingScale) ? raw.drawingScale : DEFAULT_DRAWING_SCALE)
   if (typeof raw.name === 'string') data.name = raw.name.trim().slice(0, 100)
-  for (const [key, min, max] of [['spacingMm', 50, 500], ['edgeMm', 0, 1000], ['diameterMm', 6, 50], ['circuits', 1, 24]] as const) {
+  for (const [key, min, max] of [['spacingMm', 50, 500], ['edgeMm', 0, 1000], ['diameterMm', 6, 50], ['circuits', 1, MAX_HEATING_CIRCUITS]] as const) {
     if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) data[key] = Math.max(min, Math.min(max, raw[key] as number))
   }
   for (const key of ['spacingMinMm', 'spacingMaxMm'] as const) if (typeof raw[key] === 'number' && Number.isFinite(raw[key]) && raw[key] >= 1 && raw[key] <= 500) data[key] = raw[key]

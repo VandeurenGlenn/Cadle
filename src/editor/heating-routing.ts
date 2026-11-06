@@ -123,9 +123,34 @@ class MinHeap {
   }
 }
 
-/** Wall penalties favor openings, while a substantially shorter penetration stays possible. */
+export type HeatingRoutingOptions = {
+  roomId?: number
+  occupied?: ReadonlySet<number>
+  allowWalls?: boolean
+  congestion?: ReadonlyMap<number, number>
+  startDirection?: number
+  endDirection?: number
+  radiusCells?: number
+  wallEntryPenalty?: number
+  manifoldAccess?: { point: Point; radius: number; entryPenalty: number }
+}
+
+// Charge every separate wall entry, not just the number of wall cells. Several
+// thin-wall penetrations must not become cheaper than one slightly thicker wall.
+// A short access through a wall next to the manifold is a preferred alternative
+// to a long detour, but still costs more than an equally short open doorway.
+const wallStepCost = (grid: HeatingGrid, from: number, to: number, options: HeatingRoutingOptions): number => {
+  if (!grid.wall[to] || grid.door[to]) return 0
+  if (grid.wall[from] && !grid.door[from]) return 4
+  const access = options.manifoldAccess
+  const nearManifold = access && Math.hypot(grid.origin.x + to % grid.width * grid.step - access.point.x,
+    grid.origin.y + Math.floor(to / grid.width) * grid.step - access.point.y) <= access.radius
+  return 4 + (nearManifold ? access.entryPenalty : options.wallEntryPenalty ?? 24)
+}
+
+/** Favor openings and fewer penetrations, allowing worthwhile short wall routes. */
 export const routeHeating = (grid: HeatingGrid, start: number, end: number,
-  options: { roomId?: number; occupied?: ReadonlySet<number>; allowWalls?: boolean; congestion?: ReadonlyMap<number, number>; startDirection?: number; endDirection?: number; radiusCells?: number } = {}): number[] | null => {
+  options: HeatingRoutingOptions = {}): number[] | null => {
   if (options.radiusCells) return routeWithBends(grid, start, end, options)
   const { width, height } = grid
   if (start < 0 || end < 0 || grid.obstacle[start] || grid.obstacle[end]) return null
@@ -150,7 +175,7 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
         (options.roomId !== undefined && grid.room[n] !== options.roomId) ||
         (!options.allowWalls && grid.wall[n]) || (n !== end && n !== start && options.occupied?.has(n))) continue
       const last = previous[i], turn = last >= 0 && n - i !== i - last ? .15 : 0
-      const next = cost[i] + 1 + turn + (options.allowWalls && grid.wall[n] && !grid.door[n] ? 12 : 0) + (options.congestion?.get(n) ?? 0) * 30
+      const next = cost[i] + 1 + turn + wallStepCost(grid, i, n, options) + (options.congestion?.get(n) ?? 0) * 30
       if (next >= cost[n]) continue
       cost[n] = next; previous[n] = i; heap.push(n, next + heuristic(n))
     }
@@ -171,10 +196,7 @@ type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uin
 const routingWorkspaces = new WeakMap<Uint8Array, RoutingWorkspace>()
 
 /** Direction-aware rays leave at least two bend radii between successive corners. */
-const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: {
-  occupied?: ReadonlySet<number>; congestion?: ReadonlyMap<number, number>; allowWalls?: boolean;
-  startDirection?: number; endDirection?: number; radiusCells?: number; roomId?: number
-}): number[] | null => {
+const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: HeatingRoutingOptions): number[] | null => {
   const { width, height } = grid, size = width * height, reach = Math.max(2, options.radiusCells ?? 2)
   const directions = [1, width, -1, -width]
   const validStep = (a: number, b: number) => b >= 0 && b < size && Math.abs(a % width - b % width) + Math.abs(Math.floor(a / width) - Math.floor(b / width)) === 1
@@ -227,8 +249,8 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
       for (let step = 0; step < (d === heading ? 1 : reach); step++) {
         const next = n + directions[d]
         if (!validStep(n, next) || !free(next) || blocked.has(next)) { valid = false; break }
+        added += 1 + wallStepCost(grid, n, next, options) + (options.congestion?.get(next) ?? 0) * 30
         n = next
-        added += 1 + (grid.wall[n] && !grid.door[n] ? 12 : 0) + (options.congestion?.get(n) ?? 0) * 30
         if (n === target && (options.endDirection === undefined || directions[d] === options.endDirection || ((d === heading || step + 1 === reach) && directions[d] !== -options.endDirection))) break
       }
       if (!valid) continue

@@ -370,6 +370,11 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       { ...common[index], name: common[index].circuitId, pipeRole: 'loop', servedAreaM2: job.areaM2 })
   })
   const obstacles = scene.filter((s) => s.kind === 'symbol' && !s.hidden).map(shapeBounds)
+  const wallAccess = {
+    wallEntryPenalty: drawingUnitsForMetres(.7, scale) / grid.step,
+    manifoldAccess: { point: { x: position.x + width / 2, y: bottom }, radius: drawingUnitsForMetres(1, scale),
+      entryPenalty: drawingUnitsForMetres(.35, scale) / grid.step }
+  }
   type Connection = { index: number; parts: RectShape[]; paths: number[][] }
   const pair = (index: number, reverse: boolean, returnFirst: boolean, blocked: Set<number>, completed: Connection[]): Connection | null => {
     const cells = reverse ? [...jobs[index].cells].reverse() : jobs[index].cells, first = cells[0], last = cells.at(-1)!
@@ -379,13 +384,13 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
     const aBlocked = new Set(localBlocked)
     const coilStartEscape = escapes[index][reverse ? 3 : 2], coilEndEscape = escapes[index][reverse ? 2 : 3]
     for (const cell of returnFirst ? [...escapes[index][0], ...coilStartEscape] : [...escapes[index][1], ...coilEndEscape]) aBlocked.add(cell)
-    const aOptions = { allowWalls: true, radiusCells, occupied: aBlocked,
+    const aOptions = { ...wallAccess, allowWalls: true, radiusCells, occupied: aBlocked,
       startDirection: returnFirst ? lastDirection : grid.width, endDirection: returnFirst ? -grid.width : firstDirection }
     checkHeatingDeadline(budget)
     if (--budget.routes < 0) return null
     const a = returnFirst ? routeHeating(grid, last, bStem.at(-1)!, aOptions) : routeHeating(grid, aStem.at(-1)!, first, aOptions)
     if (!a) return null
-    const bOptions = { allowWalls: true, radiusCells, occupied: new Set([...localBlocked, ...a]),
+    const bOptions = { ...wallAccess, allowWalls: true, radiusCells, occupied: new Set([...localBlocked, ...a]),
       startDirection: returnFirst ? grid.width : lastDirection, endDirection: returnFirst ? firstDirection : -grid.width }
     checkHeatingDeadline(budget)
     if (--budget.routes < 0) return null

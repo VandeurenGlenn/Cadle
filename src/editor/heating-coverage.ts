@@ -10,12 +10,15 @@ export type HeatingCoverage = {
   signature?: string; stale?: boolean
 }
 export const heatingCoverageSignature = (shapes: readonly Shape[]) => JSON.stringify(shapes.filter((s) =>
-  ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
-  [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.heating?.points,
+  ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating && (s.locked || s.heatingObstacle !== undefined)) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
+  [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.locked, s.heatingObstacle, s.groupId, s.heating?.points,
     s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm,
     s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys] : null]))
 export const heatingRoomKey = (room: HeatingRoom) => room.roomKey ?? `region-${room.id}`
+const wallDistanceCache = new WeakMap<Uint8Array, Uint16Array>()
 export const heatingWallDistances = (grid: HeatingGrid) => {
+  const cached = wallDistanceCache.get(grid.wall)
+  if (cached) return cached
   const distance = new Uint16Array(grid.wall.length).fill(65535), queue = new Int32Array(grid.wall.length)
   let read = 0, write = 0
   for (let i = 0; i < distance.length; i++) if (grid.wall[i]) { distance[i] = 0; queue[write++] = i }
@@ -25,13 +28,14 @@ export const heatingWallDistances = (grid: HeatingGrid) => {
       if (n >= 0 && distance[n] > distance[i] + 1) { distance[n] = distance[i] + 1; queue[write++] = n }
     }
   }
+  wallDistanceCache.set(grid.wall, distance)
   return distance
 }
 
 /** Sample the actual rendered arcs and lines against free floor cells. This is a
  * geometric coverage check, independent of rectangular area allocations. */
 export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectShape[], scale: number, spacingMm: number,
-  edgeMm = 100, checkpoint: () => void = () => {}) => {
+  edgeMm = 100, checkpoint: () => void = () => {}, measureSpacing = true) => {
   const radius = drawingUnitsForMetres(spacingMm / 2000, scale) + grid.step * .75
   const bucket = Math.max(radius * 2, grid.step), distance = heatingWallDistances(grid)
   type Piece = { a: Point; b: Point; circuit: string; loop: boolean; pipe: string; primitive: number }
@@ -81,7 +85,7 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
   }
   const spacingByCircuit = new Map<string, { min: number; max: number }>()
   const pitch = drawingUnitsForMetres(spacingMm / 1000, scale)
-  for (const piece of all) {
+  for (const piece of measureSpacing ? all : []) {
     if (!piece.loop) continue
     const ux = piece.b.x - piece.a.x, uy = piece.b.y - piece.a.y, length = Math.hypot(ux, uy)
     if (length < pitch * 2) continue

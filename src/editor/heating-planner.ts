@@ -1,4 +1,5 @@
 import type { AutomaticHeatingResult } from './automatic-heating-plan.js'
+import { HeatingPlanningFailure } from './heating-diagnostics.js'
 import type { HeatingPlannerInput, HeatingPlannerResponse, HeatingPlanningProgress } from './heating-planner-protocol.js'
 
 export type HeatingPlannerWorker = {
@@ -36,7 +37,7 @@ export const runHeatingPlanner = (input: HeatingPlannerInput, options: {
     worker.onmessage = ({ data }) => {
       if (settled) return
       if (data.type === 'result') finish(undefined, data.result)
-      else if (data.type === 'error') finish(new Error(data.message))
+      else if (data.type === 'error') finish(data.diagnostics ? new HeatingPlanningFailure(data.message, data.diagnostics) : new Error(data.message))
       else if (data.type === 'progress') {
         try { options.onProgress?.(data.progress) } catch (error) { finish(error instanceof Error ? error : new Error(String(error))) }
       }

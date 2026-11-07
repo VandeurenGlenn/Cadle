@@ -1,4 +1,5 @@
 import { generateAutomaticHeatingPlan } from './automatic-heating-plan.js'
+import { HeatingPlanningFailure } from './heating-diagnostics.js'
 import type { HeatingPlannerRequest, HeatingPlannerResponse, HeatingPlanningProgress } from './heating-planner-protocol.js'
 
 const scope = globalThis as unknown as {
@@ -20,6 +21,6 @@ scope.onmessage = ({ data }) => {
       { preserved: data.preserved, existingManifold: data.existingManifold, onlyRoom: data.onlyRoom, routes: 600, deadline: Date.now() + 45000, onProgress: progress })
     scope.postMessage({ type: 'result', result })
   } catch (error) {
-    scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Het legplan kon niet worden berekend.' })
+    scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Het legplan kon niet worden berekend.', ...(error instanceof HeatingPlanningFailure ? { diagnostics: error.diagnostics } : {}) })
   }
 }

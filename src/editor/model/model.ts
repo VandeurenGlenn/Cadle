@@ -43,6 +43,7 @@ const copyGeneratedMetadata = (
   source: {
     roomLabel?: unknown
     heating?: unknown
+    heatingObstacle?: unknown
     generationKey?: unknown
     sourceLink?: unknown
     oneWireRailId?: unknown
@@ -59,6 +60,7 @@ const copyGeneratedMetadata = (
   if (heating) target.heating = heating
   if (source.hidden === true) target.hidden = true
   if (source.locked === true) target.locked = true
+  if (typeof source.heatingObstacle === 'boolean') target.heatingObstacle = source.heatingObstacle
   if (typeof source.generationKey === 'string' && source.generationKey.trim()) {
     target.generationKey = source.generationKey.trim()
   }
@@ -158,6 +160,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       oneWireRailId?: unknown
       hidden?: unknown
       locked?: unknown
+      heatingObstacle?: unknown
     }
     if (typeof raw.id !== 'string' || !raw.id) continue
     if (typeof raw.kind !== 'string') continue

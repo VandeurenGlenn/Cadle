@@ -29,6 +29,7 @@ export type OneWireSourceLink = {
 }
 
 type GeneratedShapeMetadata = {
+  heatingObstacle?: boolean
   heating?: import('../heating-plan.js').HeatingData
   generationKey?: string
   sourceLink?: OneWireSourceLink

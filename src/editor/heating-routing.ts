@@ -3,10 +3,10 @@ import type { Point, Shape, SymbolShape } from './model/types.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
-import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingStairSymbol, isHeatingSymbolObstacle } from './heating-openings.js'
+import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingStairSymbol, heatingObstacleBounds } from './heating-openings.js'
 import { isRoomLabel, roomLabelName } from './room-labels.js'
 
-export type HeatingRoom = { id: number; name: string; roomKey?: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
+export type HeatingRoom = { id: number; name: string; roomKey?: string; members?: { key: string; name: string }[]; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
   drawingScale?: number
   origin: Point; step: number; width: number; height: number
@@ -64,9 +64,7 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
         Math.max(drawingUnitsForMetres(.2, scale), step * 2), door)
     }
   }
-  for (const shape of shapes) {
-    if (!isHeatingSymbolObstacle(shape)) continue
-    const b = shapeBounds(shape)
+  for (const b of heatingObstacleBounds(shapes, shapeBounds)) {
     for (const [target, clearance] of [[obstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step],
       [loopObstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.minBendRadiusMm ?? 80) * .002 + (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step]] as const) {
       const minX = Math.max(0, Math.floor((b.x - clearance - origin.x) / step))

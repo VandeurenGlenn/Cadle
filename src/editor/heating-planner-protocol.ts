@@ -29,7 +29,7 @@ export type HeatingPlannerRequest = HeatingPlannerInput & { id: string }
 export type HeatingPlannerResponse =
   | { type: 'progress'; progress: HeatingPlanningProgress }
   | { type: 'result'; result: AutomaticHeatingResult }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; diagnostics?: import('./heating-diagnostics.js').HeatingPlanningDiagnostic }
 
 export const heatingProgressText = (progress: HeatingPlanningProgress | null): string => {
   if (!progress || progress.phase === 'rooms') return 'Ruimtes herkennen…'

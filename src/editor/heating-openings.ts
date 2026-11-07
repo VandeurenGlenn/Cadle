@@ -13,7 +13,27 @@ export const isHeatingStairSymbol = (shape: Shape): shape is SymbolShape => shap
   /(?:^|\/)floor plan\/stairs-[^/]+\.svg$/i.test(heatingSymbolPath(shape))
 
 export const isHeatingSymbolObstacle = (shape: Shape): boolean =>
-  !shape.hidden && (shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating && !isHeatingDoorSymbol(shape)))
+  !shape.hidden && shape.heatingObstacle !== false && (shape.heatingObstacle === true || shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating && !isHeatingDoorSymbol(shape)))
+
+type Footprint = { x: number; y: number; width: number; height: number }
+/** Locked source rectangles are fixed furnishings. Grouped stair treads share
+ * one footprint, so the spaces between drawn treads are not laying surface.
+ * An enclosing floor/frame rectangle is not furniture. Explicit overrides win. */
+export const heatingObstacleBounds = (shapes: readonly Shape[], boundsFor: (shape: Shape) => Footprint): Footprint[] => {
+  const groups = new Map<string, Footprint>(), result: Footprint[] = []
+  for (const shape of shapes) {
+    if (shape.hidden || shape.heatingObstacle === false) continue
+    const fixedRect = shape.kind === 'rect' && !shape.heating && shape.locked
+    if (!isHeatingSymbolObstacle(shape) && !fixedRect) continue
+    const b = boundsFor(shape)
+    if (fixedRect && shape.heatingObstacle !== true && shapes.some((wall) => wall.kind === 'wall' && !wall.hidden && [wall.start, wall.end].some((p) => p.x > b.x + 4 && p.x < b.x + b.width - 4 && p.y > b.y + 4 && p.y < b.y + b.height - 4))) continue
+    if (fixedRect && shape.groupId) {
+      const old = groups.get(shape.groupId)
+      groups.set(shape.groupId, old ? { x: Math.min(old.x, b.x), y: Math.min(old.y, b.y), width: Math.max(old.x + old.width, b.x + b.width) - Math.min(old.x, b.x), height: Math.max(old.y + old.height, b.y + b.height) - Math.min(old.y, b.y) } : b)
+    } else result.push(b)
+  }
+  return [...result, ...groups.values()]
+}
 
 /** The threshold is the bottom straight edge of Floor plan/door.svg. Use that
  * edge, not the whole swing square, and apply the same flip/rotation as the SVG. */

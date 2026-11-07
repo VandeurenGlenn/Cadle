@@ -4,7 +4,7 @@ import { heatingPipeGeometry } from './heating-geometry.js'
 import { checkHeatingPlan } from './heating-checks.js'
 import { drawingUnitsForMetres, drawingLengthMetres, type DrawingScale } from './layout/drawing-scale.js'
 import { heatingDesignLimits, type HeatingDesignInputs } from './heating-design.js'
-import { heatingRoomKey } from './heating-coverage.js'
+import { heatingRoomKey, heatingWallDistances, measureHeatingCoverage } from './heating-coverage.js'
 import type { HeatingGrid } from './heating-routing.js'
 
 /** Two tangent S-bends widen a tight return into a semicircle of the required
@@ -34,8 +34,8 @@ export const openHeatingTurns = (points: Point[], radius: number, pipeDiameter =
   return result
 }
 
-export type HeatingSpiralField = { cells: number[]; roomName: string; roomKey?: string; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
-type Settings = { reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; design?: HeatingDesignInputs }
+export type HeatingSpiralField = { cells: number[]; roomName: string; roomKey?: string; roomMembers?: { key: string; name: string }[]; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
+type Settings = { deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; design?: HeatingDesignInputs }
 type CellRect = { left: number; top: number; right: number; bottom: number }
 
 /** Both arms wind inward in the same direction, one pitch apart. Reverse the
@@ -103,20 +103,10 @@ const largestRectangle = (free: Uint8Array, grid: HeatingGrid, bounds: CellRect,
 export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, scale: DrawingScale, manifold: Point,
   budgetFactor = 1, variant = 0, checkpoint: () => void = () => {}) => {
   const jobs: HeatingSpiralField[] = [], occupied = new Set<number>(), size = grid.width * grid.height
-  const free = new Uint8Array(size), distance = new Uint16Array(size).fill(65535), queue = new Int32Array(size)
+  const free = new Uint8Array(size), distance = heatingWallDistances(grid)
   const limits = heatingDesignLimits(settings.diameterMm, settings.design)
   const clearance = Math.ceil(drawingUnitsForMetres((settings.edgeMm ?? 100) / 1000, scale) / grid.step)
   const pitch = Math.round(drawingUnitsForMetres(settings.spacingMm / 1000, scale) / grid.step)
-  let read = 0, write = 0
-  for (let i = 0; i < size; i++) if (grid.wall[i]) { distance[i] = 0; queue[write++] = i }
-  while (read < write) {
-    if (read % 4096 === 0) checkpoint()
-    const i = queue[read++], x = i % grid.width, y = Math.floor(i / grid.width)
-    if (distance[i] >= clearance) continue
-    for (const n of [x ? i - 1 : -1, x + 1 < grid.width ? i + 1 : -1, y ? i - grid.width : -1, y + 1 < grid.height ? i + grid.width : -1]) {
-      if (n >= 0 && distance[n] > distance[i] + 1) { distance[n] = distance[i] + 1; queue[write++] = n }
-    }
-  }
   const cellArea = drawingLengthMetres(grid.step, scale) ** 2
   for (const room of grid.rooms) {
     checkpoint()
@@ -140,7 +130,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
     const doorPoints = room.cells.filter((cell) => grid.door[cell]).map(grid.point)
     const centre = grid.point(room.cells[Math.floor(room.cells.length / 2)])
     const leads = Math.min(55, 2 * drawingLengthMetres(Math.abs(centre.x - manifold.x) + Math.abs(centre.y - manifold.y), scale))
-    const maxLoopM = Math.max(8, (Math.min(settings.diameterMm < 16 ? 70 : settings.reserveAccess ? limits.maxCircuitLengthM : 90, limits.maxCircuitLengthM - limits.allowanceM) - leads) * budgetFactor * (settings.loopBudgetByRoom?.[heatingRoomKey(room)] ?? 1))
+    const maxLoopM = Math.max(8, (Math.min(settings.diameterMm < 16 ? 70 : limits.maxCircuitLengthM, limits.maxCircuitLengthM - limits.allowanceM) - leads) * budgetFactor * (settings.loopBudgetByRoom?.[heatingRoomKey(room)] ?? 1))
     for (let field = 0; field < 64; field++) {
       const rect = largestRectangle(free, grid, { left: room.minX, right: room.maxX, top: room.minY, bottom: room.maxY }, checkpoint)
       if (!rect) break
@@ -174,7 +164,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
           const world = (p: Point) => ({ x: origin.x + (flipX ? fullWidth - p.x : p.x), y: origin.y + (flipY ? fullHeight - p.y : p.y) })
           minLeads = Math.min(minLeads, drawingLengthMetres(lead(world(full[0])) + lead(world(full.at(-1)!)), scale))
         }
-        const available = Math.max(8, Math.min(settings.diameterMm < 16 ? 70 : 90, limits.maxCircuitLengthM - limits.allowanceM - minLeads) * budgetFactor * (settings.loopBudgetByRoom?.[heatingRoomKey(room)] ?? 1))
+        const available = Math.max(8, Math.min(settings.diameterMm < 16 ? 70 : limits.maxCircuitLengthM, limits.maxCircuitLengthM - limits.allowanceM - minLeads) * budgetFactor * (settings.loopBudgetByRoom?.[heatingRoomKey(room)] ?? 1))
         count = Math.max(1, Math.ceil(loopM / available))
       }
       const horizontal = (rect.right - rect.left >= rect.bottom - rect.top) !== Boolean(variant & 4)
@@ -236,6 +226,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
         // Allocation gaps are occupied by the neighbouring circuit's edge runs.
         covered += served / count
         const job: HeatingSpiralField = { cells, roomName: room.name, roomKey: heatingRoomKey(room), areaM2: area / count,
+          ...(room.members ? { roomMembers: room.members } : {}),
           spacingMinMm: settings.spacingMm, spacingMaxMm: settings.spacingMm }
         roomJobs.push(job)
         for (const cell of cells) occupied.add(cell)
@@ -243,9 +234,16 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
     }
     for (const cell of room.cells) free[cell] = 0
     const uncoveredM2 = Math.max(0, usable - covered) * cellArea
-    if (uncoveredM2 > Math.max(.05, usable * cellArea * .05)) throw new Error(`${room.name}: ${uncoveredM2.toFixed(1)} m² past niet in een slakkenhuis met R${limits.minBendRadiusMm}. Deel deze ruimte op of pas de vrije vloeroppervlakte aan.`)
+    if (!settings.deferCoverage && uncoveredM2 > Math.max(.05, usable * cellArea * .05)) {
+      const pipes = roomJobs.map((job, i) => {
+        const points = job.cells.map(grid.point).filter((p, j, all) => !j || j === all.length - 1 || Math.abs((p.x - all[j - 1].x) * (all[j + 1].y - p.y) - (p.y - all[j - 1].y) * (all[j + 1].x - p.x)) > 1e-7)
+        return createHeatingPipe(`remainder-${i}`, openHeatingTurns(points, drawingUnitsForMetres(limits.minBendRadiusMm / 1000, scale), drawingUnitsForMetres(settings.diameterMm / 1000, scale)), { ...heatingDefaults('pipe', scale), ...settings, automatic: true, pipeRole: 'loop', circuitId: `field-${i}` })
+      })
+      const measured = measureHeatingCoverage({ ...grid, rooms: [room] }, pipes, scale, settings.spacingMm, settings.edgeMm, checkpoint).coverage.rooms[0]
+      if (measured.gapM2 > Math.max(.1, measured.eligibleM2 * .05)) throw new Error(`${room.name}: ${measured.gapM2.toFixed(1)} m² blijft buiten de getekende slakkenhuizen met R${limits.minBendRadiusMm}. Controleer de vrije vloer en de doorgang.`)
+    }
     jobs.push(...roomJobs)
   }
-  if (!jobs.length) throw new Error('Geen vrij vloeroppervlak gevonden voor een slakkenhuis met deze buigradius en legafstand.')
+  if (!jobs.length && !settings.deferCoverage) throw new Error('Geen vrij vloeroppervlak gevonden voor een slakkenhuis met deze buigradius en legafstand.')
   return { jobs, occupied }
 }

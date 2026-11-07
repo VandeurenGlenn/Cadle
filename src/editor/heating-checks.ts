@@ -2,6 +2,7 @@ import type { Point, RectShape, Shape } from './model/types.js'
 import type { HeatingScheduleRow } from './heating-plan.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingDesignLimits, type HeatingDesignInputs } from './heating-design.js'
+import { heatingCoverageSignature } from './heating-coverage.js'
 
 export type HeatingCheck = { code: string; severity: 'error' | 'review'; circuits: string[]; message: string; point?: Point }
 export type HeatingAudit = { errors: number; reviews: number; issues: HeatingCheck[] }
@@ -47,8 +48,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
   const inManifoldZone = (p: Point) => manifold && p.x >= Math.min(manifold.start.x, manifold.end.x) - 1600 / scale &&
     p.x <= Math.max(manifold.start.x, manifold.end.x) + 1600 / scale && p.y >= Math.min(manifold.start.y, manifold.end.y) - 1600 / scale &&
     p.y <= Math.max(manifold.start.y, manifold.end.y) + 1600 / scale
-  if (manifold?.heating?.automatic) for (let i = 0; i < manifold.heating.circuits; i++) {
-    const id = `VV${String(i + 1).padStart(2, '0')}`
+  if (manifold?.heating?.automatic) for (const id of manifold.heating.activeCircuitIds ?? Array.from({ length: manifold.heating.circuits }, (_, i) => `VV${String(i + 1).padStart(2, '0')}`)) {
     if (!rows.some((row) => row.id === id)) add(`${id}:absent`, { code: 'continuity', severity: 'error', circuits: [id], message: `${id}: volledige kring ontbreekt bij de verdeler.` })
   }
   const focused = pipes.map((pipe) => !options.focusPipeIds || options.focusPipeIds.has(pipe.id))
@@ -171,6 +171,12 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     }
   }
   const penetrations = shapes.filter((s) => s.generationKey?.startsWith('heating-penetration:'))
+  if (manifold?.heating?.capacity && rows.length > manifold.heating.capacity) add('capacity', { code: 'capacity', severity: 'error', circuits: [], message: `${rows.length} kringen overschrijden de ${manifold.heating.capacity} beschikbare verdelergroepen.` })
+  if (manifold?.heating?.coverage?.signature && manifold.heating.coverage.signature !== heatingCoverageSignature(shapes)) add('coverage-stale', {
+    code: 'coverage-stale', severity: 'review', circuits: [], message: 'De buizen of het grondplan zijn gewijzigd. Bereken de vloerdekking opnieuw.' })
+  for (const room of manifold?.heating?.coverage?.rooms ?? []) if (room.gapM2 > Math.max(.05, room.eligibleM2 * .02)) {
+    add(`coverage:${room.key}`, { code: 'coverage', severity: 'review', circuits: [], message: `${room.name}: ${room.gapM2.toFixed(2)} m² ligt verder dan een halve legafstand (plus rastertolerantie) van de getekende buis. Bekijk de dekkingskaart.` })
+  }
   if (penetrations.length) add('wall', { code: 'penetration', severity: 'review', circuits: [], message: `${penetrations.length} muurdoorvoeren: locatie, constructie en bescherming controleren.` })
   if (!design?.product || design.minBendRadiusMm === undefined) add('pipe-data', { code: 'product', severity: 'review', circuits: [], message: 'Buisproduct en minimale buigradius uit het productblad zijn nog niet bevestigd.' })
   if (design?.allowanceM === undefined) add('allowance', { code: 'allowance', severity: 'review', circuits: [], message: 'Opstanden bij de verdeler en snijreserve zijn nog niet ingevuld.' })

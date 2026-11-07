@@ -1,5 +1,6 @@
 import type { Point, Shape, TextShape } from './model/types.js'
 import type { HeatingGrid } from './heating-routing.js'
+import { heatingCoverageSignature } from './heating-coverage.js'
 
 export type RoomLabelData = { id: string; name: string }
 export const sanitizeRoomLabel = (value: unknown): RoomLabelData | undefined => {
@@ -49,12 +50,21 @@ export const assignRoomLabel = (shapes: readonly Shape[], grid: HeatingGrid, poi
     const data = shape.heating
     if (data?.kind === 'pipe' && circuitIds.has(data.circuitId!)) return { ...shape, heating: { ...data, roomName: name, roomKey: annotation.id } }
     const loads = data?.design?.roomHeatLoadsW
-    if (data?.kind === 'manifold' && loads && region.name !== name && Object.hasOwn(loads, region.name)) {
-      const renamed = { ...loads, [name]: loads[region.name] }; delete renamed[region.name]
-      return { ...shape, heating: { ...data, design: { ...data.design, roomHeatLoadsW: renamed } } }
+    if (data?.kind === 'manifold') {
+      const oldKey = existing?.id ?? `region-${region.id}`
+      const renamed = loads && region.name !== name && Object.hasOwn(loads, region.name) ? { ...loads, [name]: loads[region.name] } : undefined
+      if (renamed) delete renamed[region.name]
+      return { ...shape, heating: { ...data,
+        ...(renamed ? { design: { ...data.design, roomHeatLoadsW: renamed } } : {}),
+        ...(data.planningRooms ? { planningRooms: data.planningRooms.map((r) => r.key === oldKey ? { key: annotation.id, name } : r) } : {}),
+        ...(data.excludedRoomKeys ? { excludedRoomKeys: data.excludedRoomKeys.map((key) => key === oldKey ? annotation.id : key) } : {}),
+        ...(data.rows ? { rows: data.rows.map((r) => r.roomKey === oldKey || r.room === region.name ? { ...r, roomKey: annotation.id, room: name } : r) } : {}),
+        ...(data.coverage ? { coverage: { ...data.coverage, rooms: data.coverage.rooms.map((r) => r.key === oldKey ? { ...r, key: annotation.id, name } : r) } } : {}) } }
     }
     return shape
   })
   if (!existing) updated.push(annotation)
+  const oldSignature = heatingCoverageSignature(shapes), newSignature = heatingCoverageSignature(updated)
+  for (const shape of updated) if (shape.heating?.kind === 'manifold' && shape.heating.coverage?.signature === oldSignature) shape.heating.coverage.signature = newSignature
   return { shapes: updated, annotation }
 }

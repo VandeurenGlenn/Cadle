@@ -223,6 +223,13 @@ test('the reported two-room plan has no geometry conflicts at 200 mm and a 90 m 
   const audit = result.shapes.find((s) => s.heating?.kind === 'manifold')!.heating!.audit!
   assert.equal(audit.errors, 0)
   assert.ok(result.rows.every((row) => row.cutM! <= 90.05))
+  assert.ok(result.wallCrossings > 0, 'a manifold outside these rooms needs a wall passage')
+  const owner = result.shapes.find((s) => s.heating?.kind === 'manifold')!
+  const fixed = generateAutomaticHeatingPlan(shapes, owner.start, owner.heating!, 100, () => `fixed-${id++}`, area, 0, 0, {
+    routes: 1, preserved: result.shapes.filter((s) => s.heating?.kind === 'pipe'), existingManifold: owner
+  })
+  assert.ok(fixed.wallCrossings > 0, 'retaining every circuit must retain its wall passage annotations')
+  assert.equal(fixed.shapes.find((s) => s.heating?.kind === 'manifold')!.heating!.audit!.errors, 0)
 })
 
 test('stops an expired calculation before searching', () => {

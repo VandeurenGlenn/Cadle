@@ -69,7 +69,8 @@ test('reports moved manifold, missing circuit parts and cut lengths beyond the c
   const shapes: Shape[] = [{ id: 'wall-0', kind: 'wall', start: { x: 400, y: 400 }, end: { x: 800, y: 400 } },
     { id: 'wall-1', kind: 'wall', start: { x: 800, y: 400 }, end: { x: 800, y: 720 } },
     { id: 'wall-2', kind: 'wall', start: { x: 800, y: 720 }, end: { x: 400, y: 720 } },
-    { id: 'wall-3', kind: 'wall', start: { x: 400, y: 720 }, end: { x: 400, y: 400 } }]
+    { id: 'wall-3', kind: 'wall', start: { x: 400, y: 720 }, end: { x: 400, y: 400 } },
+    { id: 'entrance', kind: 'door', start: { x: 560, y: 400 }, end: { x: 640, y: 400 } }]
   let id = 0
   const result = generateAutomaticHeatingPlan(shapes, { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 150, design: { maxCircuitLengthM: 70, allowanceM: 3 } }, 100,
     () => String(id++), { x: 80, y: 80, width: 2216, height: 1384 })

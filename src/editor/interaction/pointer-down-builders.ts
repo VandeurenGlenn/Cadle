@@ -103,13 +103,13 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'heating-zone'
+  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'heating-zone' || tool === 'heating-exclusion'
     ? {
         id,
         kind: 'rect',
         start: point,
         end: point,
-        variant: tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : rectVariant,
+        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : rectVariant,
         ...(tool === 'room' ? {} : { strokeWidth: DEFAULT_DRAW_STROKE_WIDTH })
       }
     : {

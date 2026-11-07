@@ -1,5 +1,6 @@
 /** Current editor/manifold capacity, not a hydraulic rule or a calculated circuit count. */
 export const MAX_HEATING_CIRCUITS = 24
+export const DEFAULT_HEATING_CAPACITY = 12
 
 export type HeatingDesignInputs = {
   product?: string

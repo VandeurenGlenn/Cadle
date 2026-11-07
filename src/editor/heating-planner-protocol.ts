@@ -1,6 +1,6 @@
 import type { AutomaticHeatingResult, AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import type { DrawingScale } from './layout/drawing-scale.js'
-import type { Point, Shape } from './model/types.js'
+import type { Point, Shape, RectShape } from './model/types.js'
 
 export type HeatingPlanningProgress = {
   phase: 'rooms' | 'circuits' | 'connections' | 'checks'
@@ -16,6 +16,9 @@ export type HeatingPlanningProgress = {
   layoutLimit?: number
 }
 export type HeatingPlannerInput = {
+  preserved?: RectShape[]
+  existingManifold?: RectShape
+  onlyRoom?: string
   scene: Shape[]
   position: Point
   settings: AutomaticHeatingSettings

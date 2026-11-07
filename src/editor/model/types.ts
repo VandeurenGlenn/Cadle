@@ -16,6 +16,7 @@ export type Tool =
   | 'symbol'
   | 'onewire'
   | 'heating-zone'
+  | 'heating-exclusion'
   | 'heating-pipe'
   | 'heating-manifold'
 

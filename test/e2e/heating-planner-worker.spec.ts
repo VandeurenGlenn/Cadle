@@ -9,6 +9,7 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   const corners = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 720 }, { x: 400, y: 720 }]
   const shapes = corners.map((start, i) => ({ id: `wall-${i}`, kind: 'wall', start, end: corners[(i + 1) % 4] }))
+  shapes.push({ id: 'door-test', kind: 'door', start: { x: 560, y: 400 }, end: { x: 640, y: 400 } })
   await app.locator('input[type="file"][accept="application/json"]').setInputFiles({ name: 'pitch100.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, drawingScale: 100, paperPreset: 'a4-landscape',
       worldWidth: 2376, worldHeight: 1680, printMargin: 10, shapes })) })
@@ -36,7 +37,77 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
     expect(row.cutM).toBeLessThanOrEqual(100.05)
   }
   await expect(app.locator('.heating-pipe')).toHaveCount(manifold.rows.length * 3)
+  expect(manifold.capacity).toBe(12)
+  const inspector = page.locator('#object-inspector')
+  await expect(inspector.locator('[data-heating-field="capacity"]')).toHaveValue('12')
+  await expect(inspector.locator('[data-heating-field="edgeMm"]')).toHaveValue('100')
+  for (let i = 0; i < manifold.rows.length; i++) await inspector.getByRole('button', { name: 'Kring vastzetten', exact: true }).first().click()
+  await expect(inspector.getByRole('button', { name: 'Kring losmaken', exact: true })).toHaveCount(manifold.rows.length)
+  const beforePipes = heating.filter((shape: any) => shape.heating?.kind === 'pipe').map((shape: any) => JSON.stringify([shape.id, shape.start, shape.end, shape.heating.points]))
+  const oldOwner = heating.find((shape: any) => shape.heating?.kind === 'manifold').id
+  await inspector.getByRole('button', { name: 'Legplan opnieuw berekenen', exact: true }).click()
+  await expect(app.locator('.heating-planner-status')).toHaveCount(0, { timeout: 15000 })
+  const savedShapes = async () => {
+    await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+    return await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes)
+  }
+  await expect.poll(async () => (await savedShapes()).find((s: any) => s.heating?.kind === 'manifold').id).not.toBe(oldOwner)
+  const after = await savedShapes()
+  expect(after.filter((s: any) => s.heating?.kind === 'pipe').map((s: any) => JSON.stringify([s.id, s.start, s.end, s.heating.points]))).toEqual(beforePipes)
+  await inspector.locator('[data-property-section="heating-rooms"] summary').click()
+  await expect(inspector.getByRole('button', { name: 'Deze ruimte herberekenen', exact: true })).toHaveCount(1)
+  await inspector.getByRole('button', { name: 'Dekkingskaart tonen/verbergen', exact: true }).click()
+  await expect(app.locator('.heating-coverage-overlay')).toHaveCount(1)
+  await page.getByRole('button', { name: 'More drawing tools', exact: true }).click()
+  await page.getByRole('button', { name: 'Verboden verwarmingszone tekenen', exact: true }).click()
+  const screenPoint = async (x: number, y: number) => app.locator('.world').evaluate((world: SVGGElement, p) => {
+    const s = new DOMPoint(p.x, p.y).matrixTransform(world.getScreenCTM()!); return { x: s.x, y: s.y }
+  }, { x, y })
+  const from = await screenPoint(900, 500), to = await screenPoint(1000, 600)
+  await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y); await page.mouse.up()
+  await expect.poll(async () => (await savedShapes()).filter((s: any) => s.heating?.kind === 'exclusion').length).toBe(1)
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  const middle = await screenPoint(950, 550)
+  await page.mouse.click(middle.x, middle.y)
+  await expect(app.locator('.heating-exclusion[data-selected="true"]')).toHaveCount(1)
+  await expect(inspector).toContainText('Verboden verwarmingszone')
   await page.screenshot({ path: '/private/tmp/cadle-slakkenhuis-16-100.png' })
+})
+
+test('the real worker completes all seven rooms at 16/100 in one request', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell'), app = page.locator('cadle-app:not([read-only])')
+  await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
+  const shapes: any[] = []
+  for (let room = 0; room < 7; room++) {
+    const x = 400 + room % 4 * 280, y = 400 + Math.floor(room / 4) * 280
+    const corners = [{ x, y }, { x: x + 240, y }, { x: x + 240, y: y + 240 }, { x, y: y + 240 }]
+    shapes.push(...corners.map((start, i) => ({ id: `seven-${room}-${i}`, kind: 'wall', start, end: corners[(i + 1) % 4] })),
+      { id: `door-${room}`, kind: 'door', start: { x: x + 80, y }, end: { x: x + 160, y } })
+  }
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({ name: 'seven-rooms.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, drawingScale: 100, paperPreset: 'a4-landscape',
+      worldWidth: 2376, worldHeight: 1680, printMargin: 10, shapes })) })
+  await expect(app.locator('[data-shape-id="seven-6-3"]')).toBeAttached()
+  let starts = 0
+  page.on('worker', () => { starts++ })
+  await app.evaluate((element: any) => element.startAutomaticHeatingPlan({ diameterMm: 16, spacingMm: 100 }))
+  const p = await app.locator('.world').evaluate((world: SVGGElement) => {
+    const point = new DOMPoint(180, 280).matrixTransform(world.getScreenCTM()!); return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(p.x, p.y)
+  await expect(app.locator('.heating-manifold')).toHaveCount(1, { timeout: 30000 })
+  await expect(app.locator('.heating-planner-status')).toHaveCount(0)
+  await expect.poll(() => page.workers().length).toBe(0)
+  expect(starts).toBe(1)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  const data = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes.find((s: any) => s.heating?.kind === 'manifold').heating)
+  expect(new Set(data.rows.map((r: any) => r.room)).size).toBe(7)
+  expect(data.audit.errors).toBe(0)
+  expect(data.rows.length).toBeLessThanOrEqual(12)
+  expect(data.rows.every((r: any) => r.cutM <= 100.05 && r.supplyM > 0 && r.returnM > 0)).toBe(true)
+  await expect(app.locator('.heating-pipe')).toHaveCount(data.rows.length * 3)
 })
 
 test('keeps the page responsive during heavy calculation and preserves the drawing on cancel, failure and navigation', async ({ page }) => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { routeHeating, type HeatingGrid } from '../src/editor/heating-routing.ts'
+import { routeHeating, heatingSharedDoors, heatingRouteCorridor, type HeatingGrid } from '../src/editor/heating-routing.ts'
 
 const grid = (width: number, height: number): HeatingGrid => ({
   origin: { x: 0, y: 0 }, step: 1, width, height,
@@ -12,6 +12,36 @@ const grid = (width: number, height: number): HeatingGrid => ({
 })
 const entries = (g: HeatingGrid, path: number[]) => path.filter((cell, i) =>
   g.wall[cell] && !g.door[cell] && (!i || !g.wall[path[i - 1]] || g.door[path[i - 1]])).length
+
+test('paired leads stay on the same side of an intervening room', () => {
+  const g = grid(81, 81)
+  for (let y = 20; y <= 50; y++) for (let x = 20; x <= 50; x++) g.obstacle[g.index({ x, y })] = 1
+  const supply = [
+    ...Array.from({ length: 51 }, (_, i) => g.index({ x: 10, y: 10 + i })),
+    ...Array.from({ length: 30 }, (_, i) => g.index({ x: 11 + i, y: 60 })),
+    ...Array.from({ length: 5 }, (_, i) => g.index({ x: 40, y: 61 + i }))
+  ]
+  const corridor = heatingRouteCorridor(g, supply, 4)
+  const returning = routeHeating(g, g.index({ x: 42, y: 65 }), g.index({ x: 12, y: 10 }), {
+    radiusCells: 2, occupied: new Set(supply), requiredCorridor: corridor
+  })!
+  assert.ok(returning)
+  assert.ok(returning.every((cell) => corridor.has(cell)))
+  assert.ok(returning.filter((cell) => g.point(cell).y >= 20 && g.point(cell).y <= 50).every((cell) => g.point(cell).x < 20))
+})
+
+test('return routing prefers the supply doorway while retaining a wall-free alternative', () => {
+  const g = grid(81, 51)
+  for (let y = 0; y < g.height; y++) g.wall[g.index({ x: 40, y })] = 1
+  for (const middle of [10, 30]) for (let y = middle - 1; y <= middle + 1; y++) g.door[g.index({ x: 40, y })] = 1
+  const supply = routeHeating(g, g.index({ x: 20, y: 10 }), g.index({ x: 60, y: 10 }))!
+  assert.ok(supply)
+  const shared = heatingSharedDoors(g, supply)
+  assert.ok(shared.has(g.index({ x: 40, y: 9 })), 'recognise the whole opening, not only the supply cells')
+  const returning = routeHeating(g, g.index({ x: 60, y: 25 }), g.index({ x: 20, y: 25 }), { preferredDoors: shared })!
+  assert.ok(returning.some((cell) => shared.has(cell)))
+  assert.equal(entries(g, returning), 0)
+})
 
 for (const radiusCells of [undefined, 2]) {
   const algorithm = radiusCells ? 'bend-aware routing' : 'cell routing'

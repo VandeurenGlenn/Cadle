@@ -13,6 +13,7 @@ declare global {
 type DrawTool = { action: string; icon: string; title: string; hint?: string; nativeOnly?: boolean; classicOnly?: boolean }
 const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-heating-auto', icon: 'grid_on', title: 'Legplan automatisch maken', hint: 'Vul de buisdiameter en legafstand in en klik de positie van de verdeler aan. Het legplan en de kringentabel worden automatisch gemaakt.', nativeOnly: true },
+  { action: 'draw-heating-exclusion', icon: 'crop_square', title: 'Verboden verwarmingszone tekenen', hint: 'Sleep een rechthoek waar geen verwarmingsbuis of aansluiting mag lopen.', nativeOnly: true },
   { action: 'draw-heating-zone', icon: 'grid_on', title: 'Verwarmingszone tekenen', hint: 'Sleep een rechthoek voor automatische verwarmingslussen. Pas buisafstand en aantal lussen aan in Object properties.', nativeOnly: true },
   { action: 'draw-heating-pipe', icon: 'polyline', title: 'Verwarmingsbuis tekenen', hint: 'Klik de punten van het buistraject. Enter of dubbelklik om af te werken; Escape om te annuleren.', nativeOnly: true },
   { action: 'draw-heating-manifold', icon: 'view_week', title: 'Verdeler plaatsen', nativeOnly: true },

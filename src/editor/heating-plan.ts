@@ -6,9 +6,10 @@ import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from './heating-design.js'
 import { checkHeatingPlan, sanitizeHeatingAudit, type HeatingAudit, type HeatingCheck } from './heating-checks.js'
 import { isHeatingSymbolObstacle } from './heating-openings.js'
+import { heatingCoverageSignature, type HeatingCoverage } from './heating-coverage.js'
 
 export type HeatingData = {
-  kind: 'zone' | 'pipe' | 'manifold' | 'table'
+  kind: 'zone' | 'pipe' | 'manifold' | 'table' | 'exclusion'
   name: string
   drawingScale: number
   spacingMm: number
@@ -21,6 +22,12 @@ export type HeatingData = {
   pipeRole: 'supply' | 'return' | 'loop'
   automatic?: boolean
   pattern?: 'spiral'
+  capacity?: number
+  circuitLocked?: boolean
+  activeCircuitIds?: string[]
+  excludedRoomKeys?: string[]
+  planningRooms?: { key: string; name: string }[]
+  coverage?: HeatingCoverage
   manualRoute?: boolean
   circuitId?: string
   roomName?: string
@@ -37,7 +44,7 @@ export type HeatingData = {
   points?: Point[]
 }
 
-export type HeatingScheduleRow = { id: string; room: string; diameterMm: number; spacingMm: number; areaM2: number;
+export type HeatingScheduleRow = { id: string; room: string; roomKey?: string; locked?: boolean; diameterMm: number; spacingMm: number; areaM2: number;
   loopM: number; supplyM: number; returnM: number; totalM: number; flowLmin: number;
   spacingMinMm?: number; spacingMaxMm?: number;
   hydraulics?: HeatingHydraulics; floor?: HeatingFloor;
@@ -51,7 +58,7 @@ export const heatingFlowLmin = (areaM2: number): number => areaM2 * HEATING_FLOW
   (HEATING_FLOW_BASIS.deltaTK * HEATING_FLOW_BASIS.specificHeat * HEATING_FLOW_BASIS.densityKgL)
 
 export const heatingDefaults = (kind: HeatingData['kind'], drawingScale = DEFAULT_DRAWING_SCALE): HeatingData => ({
-  kind, drawingScale, name: kind === 'zone' ? 'Zone' : kind === 'manifold' ? 'Verdeler' : 'Buis',
+  kind, drawingScale, name: kind === 'zone' ? 'Zone' : kind === 'manifold' ? 'Verdeler' : kind === 'exclusion' ? 'Verboden verwarmingszone' : 'Buis',
   spacingMm: 150, edgeMm: 100, diameterMm: 16, circuits: kind === 'manifold' ? 6 : 1,
   direction: 'horizontal', pipeRole: 'supply'
 })
@@ -78,8 +85,8 @@ export const compactUnusedHeatingManifolds = (shapes: Shape[]): Shape[] => {
 export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (!value || typeof value !== 'object') return
   const raw = value as Record<string, unknown>
-  if (raw.kind !== 'zone' && raw.kind !== 'pipe' && raw.kind !== 'manifold' && raw.kind !== 'table') return
-  const data = heatingDefaults(raw.kind, isDrawingScale(raw.drawingScale) ? raw.drawingScale : DEFAULT_DRAWING_SCALE)
+  if (!['zone', 'pipe', 'manifold', 'table', 'exclusion'].includes(String(raw.kind))) return
+  const data = heatingDefaults(raw.kind as HeatingData['kind'], isDrawingScale(raw.drawingScale) ? raw.drawingScale : DEFAULT_DRAWING_SCALE)
   if (typeof raw.name === 'string') data.name = raw.name.trim().slice(0, 100)
   for (const [key, min, max] of [['spacingMm', 50, 500], ['edgeMm', 0, 1000], ['diameterMm', 6, 50], ['circuits', 1, MAX_HEATING_CIRCUITS]] as const) {
     if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) data[key] = Math.max(min, Math.min(max, raw[key] as number))
@@ -91,6 +98,19 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.pipeRole === 'loop') data.pipeRole = 'loop'
   if (raw.automatic === true) data.automatic = true
   if (raw.pattern === 'spiral') data.pattern = 'spiral'
+  if (typeof raw.capacity === 'number' && Number.isFinite(raw.capacity)) data.capacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.capacity)))
+  if (typeof raw.circuitLocked === 'boolean') data.circuitLocked = raw.circuitLocked
+  for (const key of ['activeCircuitIds', 'excludedRoomKeys'] as const) if (Array.isArray(raw[key])) data[key] = raw[key].filter((v): v is string => typeof v === 'string').slice(0, 100).map((v) => v.slice(0, 160))
+  if (Array.isArray(raw.planningRooms)) data.planningRooms = raw.planningRooms.flatMap((r: any) => r && typeof r.key === 'string' && typeof r.name === 'string' ? [{ key: r.key.slice(0, 160), name: r.name.slice(0, 140) }] : []).slice(0, 100)
+  // Coverage is derived again after editing; only bounded, numeric snapshots persist.
+  if (raw.coverage && typeof raw.coverage === 'object') {
+    const c = raw.coverage as HeatingCoverage
+    if (Array.isArray(c.rooms) && Array.isArray(c.gaps)) data.coverage = {
+      rooms: c.rooms.filter((r) => r && typeof r.key === 'string' && typeof r.name === 'string' && ['eligibleM2', 'coveredM2', 'gapM2', 'sampledMaxDistanceMm'].every((key) => Number.isFinite(r[key]) && r[key] >= 0)).slice(0, 100),
+      gaps: c.gaps.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 2000), step: Number.isFinite(c.step) && c.step > 0 ? c.step : 2,
+      ...(typeof c.signature === 'string' ? { signature: c.signature.slice(0, 1_000_000) } : {}), ...(c.stale ? { stale: true } : {})
+    }
+  }
   if (raw.manualRoute === true) data.manualRoute = true
   const design = sanitizeHeatingDesign(raw.design), audit = sanitizeHeatingAudit(raw.audit), checks = sanitizeHeatingAudit({ issues: raw.checks })?.issues
   if (design) data.design = design
@@ -104,6 +124,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
     const keys = ['diameterMm', 'spacingMm', 'areaM2', 'loopM', 'supplyM', 'returnM', 'totalM', 'flowLmin'] as const
     if (!keys.every((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0)) return []
     return [{ id: row.id.slice(0, 100), room: row.room.slice(0, 140), ...Object.fromEntries(keys.map((key) => [key, row[key]])),
+      ...(typeof row.roomKey === 'string' ? { roomKey: row.roomKey.slice(0, 160) } : {}), ...(row.locked === true ? { locked: true } : {}),
       ...Object.fromEntries(['spacingMinMm', 'spacingMaxMm'].filter((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 1 && row[key] <= 500).map((key) => [key, row[key]])),
       ...(sanitizeHeatingHydraulics(row.hydraulics) ? { hydraulics: sanitizeHeatingHydraulics(row.hydraulics) } : {}),
       ...(sanitizeHeatingFloor(row.floor) ? { floor: sanitizeHeatingFloor(row.floor) } : {}),
@@ -185,7 +206,7 @@ export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRo
     if (!data?.circuitId || data.kind !== 'pipe') continue
     let row = rows.get(data.circuitId)
     if (!row) {
-      row = { ...(data.spacingMinMm ? { spacingMinMm: data.spacingMinMm, spacingMaxMm: data.spacingMaxMm } : {}), id: data.circuitId, room: data.roomName ?? data.name, diameterMm: data.diameterMm, spacingMm: data.spacingMm,
+      row = { ...(data.roomKey ? { roomKey: data.roomKey } : {}), ...(data.spacingMinMm ? { spacingMinMm: data.spacingMinMm, spacingMaxMm: data.spacingMaxMm } : {}), id: data.circuitId, room: data.roomName ?? data.name, diameterMm: data.diameterMm, spacingMm: data.spacingMm,
         areaM2: 0, loopM: 0, supplyM: 0, returnM: 0, totalM: 0, flowLmin: 0 }
       rows.set(data.circuitId, row)
     }
@@ -194,6 +215,7 @@ export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRo
     if (data.pipeRole === 'supply') row.supplyM += length
     if (data.pipeRole === 'return') row.returnM += length
     row.totalM += length
+    if (data.circuitLocked) row.locked = true
   }
   const design = shapes.find((s) => s.heating?.kind === 'manifold')?.heating?.design ?? shapes.find((s) => s.heating?.design)?.heating?.design
   const areaByRoom = new Map<string, number>()
@@ -274,7 +296,8 @@ export const presentHeatingTables = (shapes: Shape[], sourceFor?: (key: string) 
       const height = heatingTableSize(rows.length).height * (Math.abs(shape.end.x - shape.start.x) / 1320)
       return { ...shape, end: { ...shape.end, y: shape.start.y + height }, heating: { ...data, rows, audit: result.audit, design: (data.sourcePageKey ? sourceFor?.(data.sourcePageKey) : shapes)?.find((s) => s.heating?.kind === 'manifold')?.heating?.design ?? data.design } }
     }
-    return { ...shape, heating: { ...data, ...(data.kind === 'manifold' ? { audit: result.audit, rows: result.rows }
+    return { ...shape, heating: { ...data, ...(data.kind === 'manifold' ? { audit: result.audit, rows: result.rows,
+      coverage: data.coverage ? { ...data.coverage, stale: data.coverage.signature !== heatingCoverageSignature(shapes) } : undefined }
       : data.kind === 'pipe' ? { checks: result.audit.issues.filter((issue) => issue.circuits.includes(data.circuitId ?? '')) } : {}) } }
   })
 }
@@ -340,6 +363,10 @@ export const heatingAnchors = (shape: RectShape): Point[] => {
 
 export const heatingMarkup = (shape: RectShape, selected = false, monochrome = false): string => {
   if (shape.heating?.kind === 'table') return heatingTableMarkup(shape)
+  if (shape.heating?.kind === 'exclusion') {
+    const b = heatingBounds(shape)
+    return `<g class="shape heating-shape heating-exclusion" data-shape-id="${escape(shape.id)}" data-selected="${selected}" stroke-width="${shape.strokeWidth ?? 2}"><title>${escape(shape.heating.name)}</title><rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${monochrome ? '#ddd' : '#f0443820'}" stroke="${monochrome ? '#000' : '#b42318'}" stroke-dasharray="8 4"/><path d="M ${b.x} ${b.y} L ${b.x + b.width} ${b.y + b.height} M ${b.x + b.width} ${b.y} L ${b.x} ${b.y + b.height}" stroke="${monochrome ? '#000' : '#b42318'}" stroke-width="1"/></g>`
+  }
   const data = shape.heating!, b = heatingBounds(shape), layout = heatingLayout(shape)
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2
   const transform = `translate(${cx} ${cy}) rotate(${shape.rotation ?? 0}) scale(${shape.flipX ? -1 : 1} ${shape.flipY ? -1 : 1}) translate(${-cx} ${-cy})`
@@ -355,13 +382,13 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
     const top = b.y + b.height * .35, bottom = b.y + b.height * .7
     markup = `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" rx="3" fill="none" stroke="#555" stroke-width="1" pointer-events="all"/>`
     markup += `<path d="M ${b.x + 6} ${top} H ${b.x + b.width - 6}" stroke="${red}"/><path d="M ${b.x + 6} ${bottom} H ${b.x + b.width - 6}" stroke="${blue}"/>`
-    for (let i = 0; i < data.circuits; i++) {
-      const x = b.x + b.width * (i + 1) / (data.circuits + 1)
+    for (let i = 0; i < (data.capacity ?? data.circuits); i++) {
+      const x = b.x + b.width * (i + 1) / ((data.capacity ?? data.circuits) + 1)
       const supply = data.points?.[2 * i], returning = data.points?.[2 * i + 1]
       const sx = supply ? b.x + supply.x * b.width : x - 2, rx = returning ? b.x + returning.x * b.width : x + 2
       markup += `<path d="M ${sx} ${top} V ${b.y + b.height}" stroke="${red}"/><path d="M ${rx} ${bottom} V ${b.y + b.height}" stroke="${blue}"/>`
     }
-    markup += label(b.x, b.y - 10, `${data.name} · ${data.circuits} groepen${data.automatic ? ` · CONCEPT (${data.audit?.errors ?? 0} fouten)` : ''}`)
+    markup += label(b.x, b.y - 10, `${data.name} · ${data.circuits}${data.capacity ? `/${data.capacity}` : ''} groepen${data.automatic ? ` · CONCEPT (${data.audit?.errors ?? 0} fouten)` : ''}`)
   } else {
     if (data.kind === 'zone') markup += `<rect class="heating-zone-boundary" x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="none" stroke="#777" stroke-width="1" stroke-dasharray="6 5"/>`
     for (const [index, circuit] of layout.circuits.entries()) {

@@ -16,7 +16,7 @@ const rectangle = (x: number, prefix = 'room') => walls([{ x, y: 400 }, { x: x +
 const anchor = { x: 180, y: 280 }
 let id = 0
 const next = () => `room-label-${++id}`
-const gridFor = (shapes: Shape[]) => buildHeatingGrid(shapes, 100, 200, anchor)
+const gridFor = (shapes: Shape[]) => buildHeatingGrid(shapes, 100, 200, anchor, undefined, { includeClosedRooms: true })
 
 test('click labels identify actual rooms and distinguish equal names by their ID', () => {
   let shapes = [...rectangle(400, 'left'), ...rectangle(720, 'right')]
@@ -76,7 +76,8 @@ test('label edits update all three circuit parts and retain room heat loads with
 })
 
 test('generated circuits and CSV use the clicked room ID and name', () => {
-  const base = rectangle(400), shapes = assignRoomLabel(base, gridFor(base), { x: 500, y: 500 }, { id: 'R01', name: 'Living' }, next).shapes
+  const base = [...rectangle(400), { id: 'entrance', kind: 'door', start: { x: 520, y: 400 }, end: { x: 600, y: 400 } } as Shape]
+  const shapes = assignRoomLabel(base, gridFor(base), { x: 500, y: 500 }, { id: 'R01', name: 'Living' }, next).shapes
   const label = shapes.find(isRoomLabel)!
   const result = generateAutomaticHeatingPlan(shapes, anchor, { diameterMm: 16, spacingMm: 200 }, 100, next,
     { x: 80, y: 80, width: 2216, height: 1384 })

@@ -49,17 +49,13 @@ test('does not confuse electrical door appliances or arbitrary names with archit
     const symbol = door({ path })
     assert.equal(isHeatingDoorSymbol(symbol), false)
     assert.equal(isHeatingSymbolObstacle(symbol), true)
-    const g = buildHeatingGrid([...roomScene(false), symbol], 100, 150, { x: 180, y: 280 })
-    assert.equal(g.obstacle[g.index(symbol.position)], 1)
-    assert.equal(g.door.some(Boolean), false)
+    assert.throws(() => buildHeatingGrid([...roomScene(false), symbol], 100, 150, { x: 180, y: 280 }), /deur of trap/)
   }
   assert.ok(isHeatingDoorSymbol(door({ path: '/cadle/symbols/Floor%20plan/door.svg?v=1' })))
 })
 
 test('hidden door symbols do not create passages or divide rooms', () => {
-  const g = buildHeatingGrid([...roomScene(false), door({ hidden: true })], 100, 150, { x: 180, y: 280 })
-  assert.equal(g.rooms.length, 1)
-  assert.equal(g.door.some(Boolean), false)
+  assert.throws(() => buildHeatingGrid([...roomScene(false), door({ hidden: true })], 100, 150, { x: 180, y: 280 }), /deur of trap/)
 })
 
 test('live schedule checks allow pipes through catalog doors but still flag appliances', () => {

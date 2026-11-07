@@ -1,3 +1,4 @@
+import { segmentDistance } from './heating-distance.js'
 import type { Point, Shape, SymbolShape } from './model/types.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
@@ -7,21 +8,18 @@ import { isRoomLabel, roomLabelName } from './room-labels.js'
 
 export type HeatingRoom = { id: number; name: string; roomKey?: string; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
+  drawingScale?: number
   origin: Point; step: number; width: number; height: number
   wall: Uint8Array; door: Uint8Array; obstacle: Uint8Array; loopObstacle: Uint8Array; room: Int32Array; rooms: HeatingRoom[]
   point: (index: number) => Point
   index: (point: Point) => number
 }
 
-export const segmentDistance = (p: Point, a: Point, b: Point): number => {
-  const dx = b.x - a.x, dy = b.y - a.y, d = dx * dx + dy * dy
-  const t = d ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / d)) : 0
-  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
-}
+export { segmentDistance } from './heating-distance.js'
 
 /** Closed wall/door boundaries identify rooms; device footprints are always hard obstacles. */
 export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacingMm: number, manifold: Point,
-  pipe?: { pipeDiameterMm: number; minBendRadiusMm: number }): HeatingGrid => {
+  pipe?: { pipeDiameterMm: number; minBendRadiusMm: number }, options: { includeClosedRooms?: boolean } = {}): HeatingGrid => {
   const walls = shapes.filter((s) => s.kind === 'wall' && !s.hidden)
   if (!walls.length) throw new Error('Geen muren gevonden. Teken eerst de gesloten ruimtes op het grondplan.')
   const points = walls.flatMap((s) => 'start' in s ? [s.start, s.end] : [])
@@ -112,10 +110,10 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
   }
   const stairs = new Set(shapes.filter((shape): shape is SymbolShape => !shape.hidden && isHeatingStairSymbol(shape))
     .map((shape) => room[index(shape.position)]).filter((roomId) => roomId > 0))
-  const rooms = candidates.filter(({ hasDoor, room }) => hasDoor || stairs.has(room.id)).map(({ room }) => room)
+  const rooms = candidates.filter(({ hasDoor, room }) => options.includeClosedRooms || hasDoor || stairs.has(room.id)).map(({ room }) => room)
   if (!rooms.length && candidates.length) throw new Error('Geen gesloten ruimtes met een deur of trap gevonden. Teken een deur of voeg een trap toe aan de ruimtes die je wilt gebruiken.')
   if (!rooms.length) throw new Error('Geen gesloten ruimtes herkend. Sluit de muren van het grondplan voordat je een legplan maakt.')
-  return { origin, step, width, height, wall, door, obstacle, loopObstacle, room, rooms, point, index }
+  return { drawingScale: scale, origin, step, width, height, wall, door, obstacle, loopObstacle, room, rooms, point, index }
 }
 
 class MinHeap {
@@ -155,6 +153,48 @@ export type HeatingRoutingOptions = {
   radiusCells?: number
   wallEntryPenalty?: number
   manifoldAccess?: { point: Point; radius: number; entryPenalty: number }
+  preferredCorridor?: ReadonlySet<number>
+  requiredCorridor?: ReadonlySet<number>
+  preferredDoors?: ReadonlySet<number>
+  obstacleHeuristic?: boolean
+}
+
+const doorComponents = new WeakMap<Uint8Array, { components: Int32Array; members: Map<number, number[]> }>()
+export const heatingSharedDoors = (grid: HeatingGrid, path: readonly number[]) => {
+  const cached = doorComponents.get(grid.door)
+  let components = cached?.components, members = cached?.members
+  if (!components) {
+    components = new Int32Array(grid.door.length)
+    members = new Map()
+    let id = 0
+    for (let root = 0; root < components.length; root++) if (grid.door[root] && !components[root]) {
+      const queue = [root]; components[root] = ++id
+      for (let read = 0; read < queue.length; read++) {
+        const cell = queue[read], x = cell % grid.width, y = Math.floor(cell / grid.width)
+        for (const next of [x ? cell - 1 : -1, x + 1 < grid.width ? cell + 1 : -1, y ? cell - grid.width : -1, y + 1 < grid.height ? cell + grid.width : -1]) {
+          if (next >= 0 && grid.door[next] && !components[next]) { components[next] = id; queue.push(next) }
+        }
+      }
+      members.set(id, queue)
+    }
+    doorComponents.set(grid.door, { components, members })
+  }
+  const selected = new Set(path.map((cell) => components![cell]).filter(Boolean)), result = new Set<number>()
+  if (!selected.size) return result
+  for (const id of selected) for (const cell of members!.get(id) ?? []) result.add(cell)
+  return result
+}
+
+export const heatingRouteCorridor = (grid: HeatingGrid, path: readonly number[], radiusCells: number) => {
+  const corridor = new Set<number>()
+  const corners = path.filter((_, i) => !i || i === path.length - 1 || path[i] - path[i - 1] !== path[i + 1] - path[i])
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i], b = corners[Math.max(0, i - 1)]
+    const left = Math.max(0, Math.min(a % grid.width, b % grid.width) - radiusCells), right = Math.min(grid.width - 1, Math.max(a % grid.width, b % grid.width) + radiusCells)
+    const top = Math.max(0, Math.min(Math.floor(a / grid.width), Math.floor(b / grid.width)) - radiusCells), bottom = Math.min(grid.height - 1, Math.max(Math.floor(a / grid.width), Math.floor(b / grid.width)) + radiusCells)
+    for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) corridor.add(y * grid.width + x)
+  }
+  return corridor
 }
 
 // Charge every separate wall entry, not just the number of wall cells. Several
@@ -162,6 +202,7 @@ export type HeatingRoutingOptions = {
 // A short access through a wall next to the manifold is a preferred alternative
 // to a long detour, but still costs more than an equally short open doorway.
 const wallStepCost = (grid: HeatingGrid, from: number, to: number, options: HeatingRoutingOptions): number => {
+  if (grid.door[to] && !grid.door[from] && options.preferredDoors?.size && !options.preferredDoors.has(to)) return drawingUnitsForMetres(.5, grid.drawingScale ?? 100) / grid.step
   if (!grid.wall[to] || grid.door[to]) return 0
   if (grid.wall[from] && !grid.door[from]) return 4
   const access = options.manifoldAccess
@@ -179,7 +220,7 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
   if (start < 0 || end < 0 || grid.obstacle[start] || grid.obstacle[end]) return null
   const previous = new Int32Array(width * height).fill(-1), cost = new Float64Array(width * height).fill(Infinity)
   const closed = new Uint8Array(width * height), heap = new MinHeap()
-  const heuristic = (i: number) => Math.abs(i % width - end % width) + Math.abs(Math.floor(i / width) - Math.floor(end / width))
+  const heuristic = (i: number) => (Math.abs(i % width - end % width) + Math.abs(Math.floor(i / width) - Math.floor(end / width))) * (options.preferredCorridor ? .9 : 1)
   cost[start] = 0; heap.push(start, heuristic(start))
   let iterations = 0
   while (heap.values.length) {
@@ -194,13 +235,13 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
     closed[i] = 1
     const x = i % width, y = Math.floor(i / width)
     for (const n of [x ? i - 1 : -1, x + 1 < width ? i + 1 : -1, y ? i - width : -1, y + 1 < height ? i + width : -1]) {
-      if (n < 0 || closed[n] || grid.obstacle[n] ||
+      if (n < 0 || closed[n] || grid.obstacle[n] || (options.requiredCorridor && !options.requiredCorridor.has(n)) ||
         (i === start && options.startDirection !== undefined && n - i !== options.startDirection) ||
         (n === end && options.endDirection !== undefined && n - i !== options.endDirection) ||
         (options.roomId !== undefined && grid.room[n] !== options.roomId) ||
-        (!options.allowWalls && grid.wall[n]) || (n !== end && n !== start && options.occupied?.has(n))) continue
+        (!options.allowWalls && grid.wall[n] && !grid.door[n]) || (n !== end && n !== start && options.occupied?.has(n))) continue
       const last = previous[i], turn = last >= 0 && n - i !== i - last ? .15 : 0
-      const next = cost[i] + 1 + turn + wallStepCost(grid, i, n, options) + (options.congestion?.get(n) ?? 0) * 30
+      const next = cost[i] + 1 + turn + wallStepCost(grid, i, n, options) + (options.congestion?.get(n) ?? 0) * 30 + (options.preferredCorridor?.has(n) ? -.1 : 0)
       if (next >= cost[n]) continue
       cost[n] = next; previous[n] = i; heap.push(n, next + heuristic(n))
     }
@@ -214,8 +255,7 @@ export const simplifyHeatingPath = (points: Point[]): Point[] => points.filter((
   return Math.abs((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x)) > 1e-7
 })
 
-
-type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uint32Array; closed: Uint32Array; generation: number }
+type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uint32Array; closed: Uint32Array; generation: number; lowerCost?: Float64Array; lowerClosed?: Uint8Array }
 // A wall mask belongs to one immutable grid. Generation stamps avoid allocating and
 // clearing millions of state slots on every route; a new grid gets a fresh workspace.
 const routingWorkspaces = new WeakMap<Uint8Array, RoutingWorkspace>()
@@ -225,7 +265,7 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
   const { width, height } = grid, size = width * height, reach = Math.max(2, options.radiusCells ?? 2)
   const directions = [1, width, -1, -width]
   const validStep = (a: number, b: number) => b >= 0 && b < size && Math.abs(a % width - b % width) + Math.abs(Math.floor(a / width) - Math.floor(b / width)) === 1
-  const free = (i: number) => i >= 0 && i < size && !grid.obstacle[i] && (options.roomId === undefined || grid.room[i] === options.roomId) && (options.allowWalls || !grid.wall[i]) && (i === start || i === end || !options.occupied?.has(i))
+  const free = (i: number) => i >= 0 && i < size && !grid.obstacle[i] && (!options.requiredCorridor || options.requiredCorridor.has(i)) && (options.roomId === undefined || grid.room[i] === options.roomId) && (options.allowWalls || !grid.wall[i] || grid.door[i]) && (i === start || i === end || !options.occupied?.has(i))
   if (!free(start) || !free(end)) return null
   const first: number[] = [start], last: number[] = [end]
   for (let n = 0; n < Math.ceil(reach / 2); n++) {
@@ -248,11 +288,35 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
   }
   if (workspace.generation >= 0xffffffff) { workspace.visited.fill(0); workspace.closed.fill(0); workspace.generation = 0 }
   const generation = ++workspace.generation, { cost, previous, visited, closed } = workspace, heap = new MinHeap()
-  const heuristic = (i: number) => Math.abs(i % width - target % width) + Math.abs(Math.floor(i / width) - Math.floor(target / width))
+  let heuristic = (i: number) => (Math.abs(i % width - target % width) + Math.abs(Math.floor(i / width) - Math.floor(target / width))) * (options.preferredCorridor ? .9 : 1)
+  if (options.obstacleHeuristic) {
+    const lower = workspace.lowerCost ??= new Float64Array(size), settled = workspace.lowerClosed ??= new Uint8Array(size), reverse = new MinHeap()
+    lower.fill(Infinity); settled.fill(0); lower[target] = 0; reverse.push(target, 0)
+    let steps = 0
+    heuristic = (cell) => {
+      while (!settled[cell] && reverse.values.length) {
+        if (++steps % 4096 === 0) options.checkpoint?.()
+        const from = reverse.pop()
+        if (settled[from]) continue
+        settled[from] = 1
+        const x = from % width, y = Math.floor(from / width)
+        for (const next of [x ? from - 1 : -1, x + 1 < width ? from + 1 : -1, y ? from - width : -1, y + 1 < height ? from + width : -1]) {
+          if (next < 0 || settled[next] || !free(next) || blocked.has(next)) continue
+          const candidate = lower[from] + 1 + wallStepCost(grid, next, from, options) + (options.congestion?.get(from) ?? 0) * 30 + (options.preferredCorridor?.has(from) ? -.1 : 0)
+          if (candidate >= lower[next]) continue
+          lower[next] = candidate; reverse.push(next, candidate)
+        }
+      }
+      return lower[cell]
+    }
+    if (!Number.isFinite(heuristic(root))) return null
+  }
   for (let d = 0; d < 4; d++) if (options.startDirection === undefined || directions[d] === options.startDirection) {
     const state = root * 4 + d; cost[state] = 0; previous[state] = -1; visited[state] = generation; heap.push(state, heuristic(root))
   }
   let explored = 0
+  const cellMm = grid.step * (grid.drawingScale ?? 100) / 8
+  const stateLimit = Math.min(size * 4, 400000, Math.ceil(80000 * (25 / cellMm) ** 2))
   let iterations = 0
   while (heap.values.length) {
     if (++iterations % 256 === 0) options.checkpoint?.()
@@ -260,23 +324,32 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
     if (closed[state] === generation) continue
     if (i === target && (options.endDirection === undefined || directions[heading] !== -options.endDirection)) {
       const nodes = [state]
-      while (previous[nodes.at(-1)!] >= 0) nodes.push(previous[nodes.at(-1)!])
+      while (previous[nodes.at(-1)!] >= 0) {
+        if (nodes.length % 256 === 0) options.checkpoint?.()
+        if (nodes.length > size * 4) return null
+        nodes.push(previous[nodes.at(-1)!])
+      }
       nodes.reverse()
       const path = [root]
       for (let n = 1; n < nodes.length; n++) {
         const destination = Math.floor(nodes[n] / 4), direction = directions[nodes[n] % 4]
-        while (path.at(-1) !== destination) path.push(path.at(-1)! + direction)
+        const start = path.at(-1)!, count = (destination - start) / direction
+        if (!Number.isInteger(count) || count < 0 || count > size || (Math.abs(direction) === 1 && Math.floor(start / width) !== Math.floor(destination / width))) return null
+        for (let step = 1; step <= count; step++) {
+          if (step % 256 === 0) options.checkpoint?.()
+          path.push(start + step * direction)
+        }
       }
       return [...first.slice(0, -1), ...path, ...last.slice(1)]
     }
-    if (++explored > 80000) return null
+    if (++explored > stateLimit) return options.obstacleHeuristic ? null : routeWithBends(grid, start, end, { ...options, obstacleHeuristic: true })
     closed[state] = generation
     for (const d of [heading, (heading + 1) % 4, (heading + 3) % 4]) {
       let n = i, added = d === heading ? 0 : reach * .3, valid = true
       for (let step = 0; step < (d === heading ? 1 : reach); step++) {
         const next = n + directions[d]
         if (!validStep(n, next) || !free(next) || blocked.has(next)) { valid = false; break }
-        added += 1 + wallStepCost(grid, n, next, options) + (options.congestion?.get(next) ?? 0) * 30
+        added += 1 + wallStepCost(grid, n, next, options) + (options.congestion?.get(next) ?? 0) * 30 + (options.preferredCorridor?.has(next) ? -.1 : 0)
         n = next
         if (n === target && (options.endDirection === undefined || directions[d] === options.endDirection || ((d === heading || step + 1 === reach) && directions[d] !== -options.endDirection))) break
       }

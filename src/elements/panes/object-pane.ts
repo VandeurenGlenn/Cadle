@@ -677,6 +677,8 @@ export class ObjectPane extends LiteElement {
             ${measure(row.flowEstimated !== false ? 'Richtdebiet*' : 'Debiet', 'flowLmin', row.flowLmin, 'l/min', 2)}${measure('Verwarmd', 'areaM2', row.areaM2, 'm²')}
           </dl>
           <div class="dimension-caption">Ø ${number(row.diameterMm)} mm · h.o.h. ${number(row.spacingMaxMm ?? row.spacingMm)} mm</div>
+          <button type="button" class="native-button" aria-pressed=${row.locked === true}
+            @click=${(event: Event) => { event.stopPropagation(); pubsub.publish('editor.controls.command', { action: 'set-heating-circuit-lock', circuitId: row.id, locked: !row.locked }) }}>${row.locked ? 'Kring losmaken' : 'Kring vastzetten'}</button>
           ${(row.checkMessages ?? []).length ? html`<p class="dimension-hint heating-circuit-check">${row.checkMessages![0]}${row.checkMessages!.length > 1 ? ` (+${row.checkMessages!.length - 1})` : ''}</p>` : ''}
         </article>`)}
       </div>
@@ -688,15 +690,16 @@ export class ObjectPane extends LiteElement {
   #heatingProperties() {
     const data = this._nativeHeating, layout = this._nativeHeatingLayout
     if (!data) return ''
+    if (data.kind === 'exclusion') return this.#propertySection('heating', 'Verboden verwarmingszone', html`<p class="dimension-caption">Binnen deze zone mogen geen verwarmingsbuizen of aansluittrajecten lopen. Bereken het legplan opnieuw na een wijziging.</p>`, true)
     if (data.kind === 'table') return this.#propertySection('heating', 'Kringentabel', html`
       <div class="dimension-caption">Meters omvatten de verwarmingslus en beide aansluittrajecten vanaf de verdeler. De tabel volgt de kringen van het legplan.</div>
       <div class="dimension-caption">Concept: controleer geometrie, productgegevens en hydrauliek vóór uitvoering. * bij een debiet betekent dat aannames gebruikt zijn.</div>
       <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-csv' })}>Kringentabel als CSV</button>
     `, true)
     const update = (heating: Partial<HeatingData>) => pubsub.publish('editor.object.update', { heating })
-    const numeric = (key: 'spacingMm' | 'edgeMm' | 'diameterMm' | 'circuits', label: string, min: number, max: number) => html`
+    const numeric = (key: 'spacingMm' | 'edgeMm' | 'diameterMm' | 'circuits' | 'capacity', label: string, min: number, max: number) => html`
       <label><span class="native-label">${label}</span><input class="native-input" type="number" min=${min} max=${max} step="1"
-        data-heating-field=${key} .value=${String(data[key])}
+        data-heating-field=${key} .value=${String(data[key] ?? (key === 'capacity' ? Math.max(data.circuits, 12) : 100))}
         @change=${(event: Event) => {
           const input = event.target as HTMLInputElement
           if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) update({ [key]: input.valueAsNumber })
@@ -729,6 +732,8 @@ export class ObjectPane extends LiteElement {
         ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Lus ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
       ` : data.kind === 'manifold' ? data.automatic ? html`
         ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
+        ${numeric('edgeMm', 'Randafstand tot muren (mm)', 0, 1000)}
+        ${numeric('capacity', 'Beschikbare verdelergroepen', 1, MAX_HEATING_CIRCUITS)}
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
         ${data.pattern === 'spiral' ? html`<div class="dimension-caption">Slakkenhuis · minimaal R${limits.minBendRadiusMm} mm voor lus, aanvoer en retour</div>` : ''}
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
@@ -744,6 +749,21 @@ export class ObjectPane extends LiteElement {
       ${layout?.warning ? html`<p class="dimension-hint" role="alert">${layout.warning}</p>` : ''}
     `, true)}
       ${this.#heatingCircuitOverview(data)}
+      ${data.kind === 'manifold' && data.automatic ? this.#propertySection('heating-rooms', 'Ruimtes en dekking', html`
+        <p class="dimension-caption">Kies welke ruimtes worden verwarmd. Bij herberekenen per ruimte blijven de overige kringen en vastgezette kringen behouden.</p>
+        ${data.coverage?.stale ? html`<p class="dimension-hint">De tekening is gewijzigd. Bereken opnieuw voor actuele dekkingscijfers.</p>` : ''}
+        ${(data.planningRooms ?? []).map((room) => html`<div class="dimension-summary" data-heating-room-control=${room.key}>
+          <label><input type="checkbox" .checked=${!data.excludedRoomKeys?.includes(room.key)} @change=${(event: Event) => {
+            const excluded = new Set(data.excludedRoomKeys ?? [])
+            if ((event.target as HTMLInputElement).checked) excluded.delete(room.key); else excluded.add(room.key)
+            update({ excludedRoomKeys: [...excluded] })
+          }} /> ${room.name}</label>
+          <button type="button" class="native-button" ?disabled=${data.excludedRoomKeys?.includes(room.key)} @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-room', roomKey: room.key })}>Deze ruimte herberekenen</button>
+          ${data.coverage?.rooms.filter((r) => r.key === room.key).map((r) => html`<div class="dimension-caption">${r.coveredM2.toFixed(2)} / ${r.eligibleM2.toFixed(2)} m² gedekt · ${r.gapM2.toFixed(2)} m² buiten dekking</div>`)}
+        </div>`)}
+        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'toggle-heating-coverage' })}>Dekkingskaart tonen/verbergen</button>
+        <p class="dimension-caption">Oranje: verder dan een halve legafstand plus rastertolerantie van de getekende buis. Dit is een geometrische controle.</p>
+      `, false) : ''}
       ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-design', 'Ontwerpgegevens', html`
         <p class="dimension-caption">Optioneel invullen uit productblad en warmteverliesberekening. Pas daarna het legplan opnieuw aan met ‘opnieuw berekenen’.</p>
         <label><span class="native-label">Buisproduct</span><input class="native-input" maxlength="160" data-heating-design="product" .value=${data.design?.product ?? ''}

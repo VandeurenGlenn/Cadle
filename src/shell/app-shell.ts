@@ -1109,7 +1109,7 @@ export class AppShell extends LiteElement {
     const state = sourceKey ? nativeStateForProjectPage(project, sourceKey as UUID) : null
     const schema = state ? { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
       ...state, selectedId: null,
-      shapes: structuredClone(state.shapes.filter((shape) => !shape.heating && !shape.generationKey?.startsWith('heating-penetration:') &&
+      shapes: structuredClone(state.shapes.filter((shape) => (!shape.heating || shape.heating.kind === 'exclusion') && !shape.generationKey?.startsWith('heating-penetration:') &&
         ['wall', 'door', 'window', 'gate', 'image', 'symbol', 'rect', 'text'].includes(shape.kind))).map((shape) => ({ ...shape, locked: true }))
     } }] } : { version: 'native-svg-1', objects: [] }
     const base = 'Legplan vloerverwarming'
@@ -1121,7 +1121,7 @@ export class AppShell extends LiteElement {
     this.project.pages[pageKey].heatingPlanOf = sourceKey
     await setProjectData(this.projectKey, this.project)
     await this.loadPage(pageKey)
-    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm })
+    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm, edgeMm: 100, capacity: 12 })
   }
 
   async openRenamePageDialog(pageKey: string) {

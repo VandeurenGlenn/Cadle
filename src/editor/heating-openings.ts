@@ -13,7 +13,7 @@ export const isHeatingStairSymbol = (shape: Shape): shape is SymbolShape => shap
   /(?:^|\/)floor plan\/stairs-[^/]+\.svg$/i.test(heatingSymbolPath(shape))
 
 export const isHeatingSymbolObstacle = (shape: Shape): boolean =>
-  shape.kind === 'symbol' && !shape.hidden && !shape.heating && !isHeatingDoorSymbol(shape)
+  !shape.hidden && (shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating && !isHeatingDoorSymbol(shape)))
 
 /** The threshold is the bottom straight edge of Floor plan/door.svg. Use that
  * edge, not the whole swing square, and apply the same flip/rotation as the SVG. */

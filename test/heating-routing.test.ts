@@ -67,6 +67,17 @@ for (const radiusCells of [undefined, 2]) {
     assert.equal(entries(g, nearbyDoor), 0, 'an equally short doorway is always preferred')
   })
 
+  test(`${algorithm}: chooses the shorter wall route over a long doorway detour`, () => {
+    const g = grid(61, 51)
+    for (let y = 0; y < g.height; y++) g.wall[g.index({ x: 30, y })] = 1
+    for (let y = 5; y <= 8; y++) g.door[g.index({ x: 30, y })] = 1
+    const start = g.index({ x: 20, y: 25 }), end = g.index({ x: 40, y: 25 })
+    const path = routeHeating(g, start, end, { allowWalls: true, radiusCells, wallEntryPenalty: 1 })!
+    assert.ok(path)
+    assert.equal(entries(g, path), 1)
+    assert.ok(path.length < 40, 'the direct wall route is shorter than the doorway detour')
+  })
+
   test(`${algorithm}: prefers one penetration to several thin-wall penetrations`, () => {
     const g = grid(61, 41)
     g.obstacle.fill(1)

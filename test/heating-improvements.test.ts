@@ -57,10 +57,11 @@ test('a drawn forbidden zone blocks both loop and connection routing', () => {
   assert.equal(grid.obstacle[cell], 1)
   assert.equal(grid.loopObstacle[cell], 1)
 })
-test('complete proposal scoring favours fewer penetrations before a small gain in connection length', () => {
+test('complete proposal scoring prefers shorter connections even when they cross a wall', () => {
   const make = (crossings: number, length: number): any => ({ shapes: [], wallCrossings: crossings, rows: [{ supplyM: length, returnM: length, totalM: length * 2 }] })
   const noWall = heatingPlanScore(make(0, 10)), shortcut = heatingPlanScore(make(1, 1))
-  assert.ok(noWall[2] < shortcut[2])
+  assert.ok(shortcut[2] < noWall[2])
+  assert.ok(heatingPlanScore(make(0, 1))[3] < heatingPlanScore(make(1, 1))[3], 'prefer a doorway when connection lengths tie')
 })
 test('scoped recalculation preserves the other room, its ports and every fixed path', () => {
   const source = walls()

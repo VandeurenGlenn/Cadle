@@ -59,7 +59,7 @@ export const heatingPlanScore = (result: AutomaticHeatingResult): number[] => {
   const spread = result.rows.reduce((sum, row) => sum + (row.totalM - mean) ** 2, 0)
   const gaps = owner?.coverage?.rooms.reduce((sum, room) => sum + room.gapM2, 0) ?? 0
   const area = owner?.coverage?.rooms.reduce((sum, room) => sum + room.eligibleM2, 0) ?? 1
-  return [owner?.audit?.errors ?? 0, gaps / Math.max(.01, area) > .05 ? 1 : 0, result.wallCrossings, connections, spread, gaps]
+  return [owner?.audit?.errors ?? 0, gaps / Math.max(.01, area) > .05 ? 1 : 0, connections, result.wallCrossings, spread, gaps]
 }
 const isBetterPlan = (a: AutomaticHeatingResult, b: AutomaticHeatingResult) => {
   const first = heatingPlanScore(a), second = heatingPlanScore(b)
@@ -682,9 +682,9 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   const obstacles = heatingObstacleBounds(scene, shapeBounds)
   const wallAccess = {
-    wallEntryPenalty: drawingUnitsForMetres(.7, scale) / grid.step,
+    wallEntryPenalty: drawingUnitsForMetres(.05, scale) / grid.step,
     manifoldAccess: { point: { x: position.x + width / 2, y: portY }, radius: drawingUnitsForMetres(1, scale),
-      entryPenalty: drawingUnitsForMetres(.35, scale) / grid.step }
+      entryPenalty: drawingUnitsForMetres(.05, scale) / grid.step }
   }
   const prefixes = new WeakMap<number[], number[] | null>()
   const prefixFor = (stem: number[]) => {
@@ -884,8 +884,15 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   budget.onProgress?.({ phase: 'connections', circuits: jobs.length, completedCircuits: 0, attempt: lengthPass * 8 + mergeVariant + 1 })
   let attempts = 0, furthestConnection = 0
   const failed = new Set<string>()
-  const jobIndex = new Map(jobs.map((job, index) => [job, index]))
-  const byDistance = roomsFarthestFirst(grid, jobs, position).flatMap((room) => room.map((job) => jobIndex.get(job)!))
+  const byDistance = jobs.map((job, index) => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const cell of job.cells) {
+      const point = grid.point(cell)
+      minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x)
+      minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y)
+    }
+    return { index, distance: Math.hypot(Math.max(0, minX - position.x, position.x - maxX), Math.max(0, minY - position.y, position.y - maxY)) }
+  }).sort((a, b) => b.distance - a.distance || a.index - b.index).map(({ index }) => index)
   const ascending = jobs.map((_, index) => index)
   let connections: Connection[] | null = null
   const remainingLayouts = Math.max(1, MAX_HEATING_LAYOUTS - (search?.layouts.size ?? 1) + 1)

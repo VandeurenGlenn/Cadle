@@ -62,7 +62,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
       const severity = inManifoldZone(bend.point) ? 'review' : 'error'
       add(`${id}:bend:${severity}`, { code: 'bend', severity, circuits: [id], point: bend.point,
         message: `${id}: bocht R${bend.radiusMm.toFixed(0)} mm < ingestelde R${limits.minBendRadiusMm} mm${severity === 'review' ? ' (aansluitzone verdeler)' : ''}.` })
-      if (options.stopOnConflict) return audit()
+      if (options.stopOnConflict && severity === 'error') return audit()
     }
     for (const piece of geometry.pieces) for (const box of obstacles) {
       const radius = data.diameterMm * 4 / data.drawingScale
@@ -120,7 +120,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
         const ids = [...new Set([first.circuitId!, second.circuitId!])].sort(), severity = inManifoldZone(distance.point) ? 'review' : 'error'
         add(`collision:${ids.join(':')}:${severity}`, { code: 'collision', severity, circuits: ids, point: distance.point,
           message: `${ids.join(' / ')}: kruising of onvoldoende ruimte tussen buizen${severity === 'review' ? ' bij de verdeler' : ''}.` })
-        if (options.stopOnConflict) return audit()
+        if (options.stopOnConflict && severity === 'error') return audit()
       }
       entries.push(entry); buckets.set(key, entries)
     }

@@ -219,7 +219,7 @@ const mergeHeatingJobs = (grid: HeatingGrid, jobs: CircuitJob[], occupied: Set<n
     const audit = checkHeatingPlan([candidate, ...others, ...exits], [], settings.design, [], {
       focusPipeIds: new Set([candidate.id, ...candidateExits.map((exit) => exit.id)]), checkpoint, geometryFor, stopOnConflict: true
     })
-    const conflict = audit.issues.find((issue) => issue.code === 'collision' || issue.code === 'bend')
+    const conflict = audit.issues.find((issue) => issue.severity === 'error' && (issue.code === 'collision' || issue.code === 'bend'))
     if (conflict) return false
     if (flexible && !canReachBoundary(candidate, [jobs[ai], jobs[bi]])) return false
     jobs[ai] = { ...jobs[ai], cells, areaM2: jobs[ai].areaM2 + jobs[bi].areaM2, spacingMinMm: Math.min(jobs[ai].spacingMinMm, jobs[bi].spacingMinMm), spacingMaxMm: Math.max(jobs[ai].spacingMaxMm, jobs[bi].spacingMaxMm) }
@@ -789,7 +789,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       if (parts.reduce((sum, part) => sum + drawingLengthMetres(geometryFor(part).length, scale), 0) + limits.allowanceM > limits.maxCircuitLengthM + .05) { budget.onRouteFailure?.('length', grid.point(first)); tooLongRooms.add(jobs[index].roomKey ?? jobs[index].roomName); return null }
       const geometry = checkHeatingPlan([...preserved, ...coils.filter((_, i) => i !== index && !completed.some((c) => c.index === i)), ...completed.flatMap((c) => c.parts), ...parts], [], settings.design, obstacles,
         { focusPipeIds: new Set(parts.map((part) => part.id)), checkpoint, geometryFor, stopOnConflict: true })
-      const conflict = geometry.issues.find((issue) => ['collision', 'bend', 'obstacle'].includes(issue.code))
+      const conflict = geometry.issues.find((issue) => issue.severity === 'error' && ['collision', 'bend', 'obstacle'].includes(issue.code))
       if (conflict) { budget.onRouteFailure?.(conflict.code, conflict.point ?? grid.point(first)); return null }
       const reserved = new Set([...supply, ...returning])
       for (const pipe of parts.slice(1)) for (const piece of geometryFor(pipe).pieces) {
@@ -854,7 +854,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       }
       const newParts = connections.flatMap((c) => c.parts.slice(1))
       const audit = checkHeatingPlan([...preserved, ...coils, ...newParts], [], settings.design, obstacles, { focusPipeIds: new Set(newParts.map((p) => p.id)), checkpoint, geometryFor })
-      const errors = audit.issues.filter((issue) => ['collision', 'bend', 'obstacle'].includes(issue.code))
+      const errors = audit.issues.filter((issue) => issue.severity === 'error' && ['collision', 'bend', 'obstacle'].includes(issue.code))
       if (!errors.length) {
         connections.forEach((connection) => { for (const offset of [0, 1]) {
           const source = sourceStubs[paths[connection.index * 2 + offset].source][0], p = grid.point(source)

@@ -65,6 +65,17 @@ test('detects actual crossings, pipe footprint collisions and bends below the de
   assert.ok(audit.errors > 0)
 })
 
+test('allows a close supply and return pair inside the manifold connection zone', () => {
+  const manifold: RectShape = { id: 'm', kind: 'rect', start: { x: 0, y: 0 }, end: { x: 120, y: 64 },
+    heating: { ...heatingDefaults('manifold', 100), points: [{ x: .25, y: .1 }, { x: .2583, y: .1 }] } }
+  const supply = pipe('supply', [{ x: 30, y: 6.4 }, { x: 30, y: 50 }], 'supply')
+  const returning = pipe('return', [{ x: 31, y: 50 }, { x: 31, y: 6.4 }], 'return')
+  supply.heating!.circuitId = returning.heating!.circuitId = 'VV01'
+  const audit = checkHeatingPlan([manifold, supply, returning], [], undefined, [], { stopOnConflict: true })
+  assert.equal(audit.errors, 0)
+  assert.ok(audit.issues.some((issue) => issue.code === 'collision' && issue.severity === 'review' && issue.circuits.includes('VV01')))
+})
+
 test('reports moved manifold, missing circuit parts and cut lengths beyond the configured maximum', () => {
   const shapes: Shape[] = [{ id: 'wall-0', kind: 'wall', start: { x: 400, y: 400 }, end: { x: 800, y: 400 } },
     { id: 'wall-1', kind: 'wall', start: { x: 800, y: 400 }, end: { x: 800, y: 720 } },

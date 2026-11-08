@@ -737,17 +737,33 @@ export class ObjectPane extends LiteElement {
           }
         }} /></label>`
     const audit = data.audit
+    const zoneDimension = (key: 'width' | 'height', label: string) => {
+      const units = this._nativeDimensions?.[key]
+      if (units === null || units === undefined) return ''
+      return html`<label><span class="native-label">${label} (m)</span>
+        <input class="native-input" type="number" min="0.01" step="any" required data-heating-dimension=${key}
+          .value=${String(Number((units / PAPER_WORLD_UNITS_PER_MM * data.drawingScale / 1000).toFixed(3)))}
+          @change=${(event: Event) => {
+            const input = event.target as HTMLInputElement
+            if (!input.reportValidity() || !Number.isFinite(input.valueAsNumber)) return
+            pubsub.publish('editor.object.update', { [key]: input.valueAsNumber * 1000 * PAPER_WORLD_UNITS_PER_MM / data.drawingScale })
+          }} /></label>`
+    }
     return html`${this.#propertySection('heating', 'Vloerverwarming', html`
       <label><span class="native-label">Benaming</span><input class="native-input" data-heating-field="name" maxlength="100" .value=${data.name}
         @change=${(event: Event) => update({ name: (event.target as HTMLInputElement).value })} /></label>
       ${data.kind !== 'manifold' || data.automatic ? numeric('diameterMm', 'Buisdiameter (mm)', 6, 50) : ''}
       ${data.kind === 'zone' ? html`
+        <div class="native-row">${zoneDimension('width', 'Breedte')}${zoneDimension('height', 'Hoogte')}</div>
         <div class="native-row">${numeric('spacingMm', 'Buisafstand h.o.h. (mm)', 50, 500)}${numeric('edgeMm', 'Randafstand (mm)', 0, 1000)}</div>
         ${numeric('circuits', 'Aantal lussen', 1, MAX_HEATING_CIRCUITS)}
         <label><span class="native-label">Legrichting</span><select class="native-select" data-heating-field="direction" .value=${data.direction}
           @change=${(event: Event) => update({ direction: (event.target as HTMLSelectElement).value as HeatingData['direction'] })}>
-          <option value="horizontal">Horizontale meander</option><option value="vertical">Verticale meander</option>
+          <option value="horizontal">Slakkenhuis naast elkaar</option><option value="vertical">Slakkenhuis boven elkaar</option>
         </select></label>
+        <div class="dimension-caption">Pas breedte en hoogte aan om de zone te vergroten of verkleinen. Het slakkenhuis wordt opnieuw ingedeeld; buisafstand en randafstand blijven behouden.</div>
+        <div class="dimension-caption">Symbolen en verboden zones blijven vrij. Rond obstakels wordt de vrije vloer opgedeeld in afzonderlijke slakkenhuizen, elk met eigen aansluitingen. Gebruik het automatische legplan om vrije vlakken waar mogelijk tot langere kringen te verbinden.</div>
+        ${layout?.warning ? html`<p class="dimension-hint">${layout.warning}</p>` : ''}
         <div class="dimension-caption">Zone ${layout?.areaM2.toFixed(2)} m² · buis ${layout?.lengthM.toFixed(1)} m (zonder aansluitleidingen)</div>
         ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Lus ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
       ` : data.kind === 'manifold' ? data.automatic ? html`

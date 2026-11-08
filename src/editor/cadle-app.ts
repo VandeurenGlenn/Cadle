@@ -2,6 +2,7 @@ import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
 import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, heatingRoomScope, presentHeatingTables, type HeatingData } from './heating-plan.js'
+import { heatingObstacleBounds } from './heating-openings.js'
 import { heatingMaterialsCSV } from './heating-materials.js'
 import { readHeatingPipeProfiles, applyHeatingPipeProfile } from './heating-products.js'
 import { HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
@@ -4098,7 +4099,8 @@ export class CadleApp extends LiteElement {
   }
 
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
-    const content = shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth)
+    const content = shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth,
+      shape.heating?.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [])
     if (this.#highlightedHeatingCircuit && !shape.hidden && shape.heating?.kind === 'pipe') {
       const active = shape.heating.circuitId === this.#highlightedHeatingCircuit
       return svg`<g class=${active ? 'heating-circuit-highlight' : 'heating-circuit-muted'}
@@ -4263,6 +4265,7 @@ export class CadleApp extends LiteElement {
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
         symbolStrokeWidthPreference: this.#symbolStrokeWidth,
+        heatingObstacles: selectedShape?.heating?.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [],
         drawingScale: this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan' ? this.#drawingScale : undefined,
         canConvertToRoom
       }),
@@ -5561,7 +5564,7 @@ export class CadleApp extends LiteElement {
     let nearest = this.#snapPoint(point), distance = 12 / this.#viewport.state.zoom
     for (const shape of this.#document.shapes) {
       if (shape.hidden || shape.kind !== 'rect' || !shape.heating) continue
-      for (const anchor of heatingAnchors(shape)) {
+      for (const anchor of heatingAnchors(shape, shape.heating.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [])) {
         const delta = Math.hypot(point.x - anchor.x, point.y - anchor.y)
         if (delta < distance) { nearest = anchor; distance = delta }
       }

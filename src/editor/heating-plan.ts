@@ -7,6 +7,7 @@ import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type 
 import { checkHeatingPlan, sanitizeHeatingAudit, type HeatingAudit, type HeatingCheck } from './heating-checks.js'
 import { heatingObstacleBounds } from './heating-openings.js'
 import { heatingCoverageSignature, type HeatingCoverage } from './heating-coverage.js'
+import { openHeatingTurns, rectangularHeatingSpiral } from './heating-spiral.js'
 
 export type HeatingData = {
   kind: 'zone' | 'pipe' | 'manifold' | 'table' | 'exclusion'
@@ -67,6 +68,7 @@ export const heatingFlowLmin = (areaM2: number): number => areaM2 * HEATING_FLOW
 export const heatingDefaults = (kind: HeatingData['kind'], drawingScale = DEFAULT_DRAWING_SCALE): HeatingData => ({
   kind, drawingScale, name: kind === 'zone' ? 'Zone' : kind === 'manifold' ? 'Verdeler' : kind === 'exclusion' ? 'Verboden verwarmingszone' : 'Buis',
   spacingMm: 150, edgeMm: 100, diameterMm: 16, circuits: kind === 'manifold' ? 6 : 1,
+  ...(kind === 'zone' ? { pattern: 'spiral' as const } : {}),
   direction: 'horizontal', pipeRole: 'supply'
 })
 
@@ -196,9 +198,24 @@ export const createHeatingPipe = (id: string, points: Point[], data: HeatingData
 
 type HeatingCircuit = { path: string; lengthM: number; start: Point; end: Point }
 export type HeatingLayout = { circuits: HeatingCircuit[]; areaM2: number; lengthM: number; warning?: string }
+export type HeatingObstacle = { x: number; y: number; width: number; height: number }
+const heatingZoneLayouts = new WeakMap<RectShape, { signature: string; layout: HeatingLayout }>()
 
-/** Generate rounded meanders in rectangular zones. The stated length excludes external leads. */
-export const heatingLayout = (shape: RectShape): HeatingLayout => {
+const subtractHeatingObstacle = (field: HeatingObstacle, obstacle: HeatingObstacle): HeatingObstacle[] => {
+  const left = Math.max(field.x, obstacle.x), top = Math.max(field.y, obstacle.y)
+  const right = Math.min(field.x + field.width, obstacle.x + obstacle.width)
+  const bottom = Math.min(field.y + field.height, obstacle.y + obstacle.height)
+  if (left >= right || top >= bottom) return [field]
+  return [
+    { x: field.x, y: field.y, width: field.width, height: top - field.y },
+    { x: field.x, y: bottom, width: field.width, height: field.y + field.height - bottom },
+    { x: field.x, y: top, width: left - field.x, height: bottom - top },
+    { x: right, y: top, width: field.x + field.width - right, height: bottom - top }
+  ].filter((part) => part.width > 0 && part.height > 0)
+}
+
+/** Rebuild rectangular double spirals from the zone dimensions, without external leads. */
+export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = []): HeatingLayout => {
   const data = shape.heating!
   const bounds = heatingBounds(shape)
   const metre = (length: number) => drawingLengthMetres(length, data.drawingScale)
@@ -208,32 +225,91 @@ export const heatingLayout = (shape: RectShape): HeatingLayout => {
   }
   const areaM2 = metre(bounds.width) * metre(bounds.height)
   if (data.kind !== 'zone') return { circuits: [], areaM2: 0, lengthM: 0 }
+  const signature = JSON.stringify([shape.start, shape.end, shape.rotation, shape.flipX, shape.flipY, data, obstacles])
+  const cached = heatingZoneLayouts.get(shape)
+  if (cached?.signature === signature) return cached.layout
   const vertical = data.direction === 'vertical'
   const width = vertical ? bounds.height : bounds.width, height = vertical ? bounds.width : bounds.height
   const spacing = drawingUnitsForMetres(data.spacingMm / 1000, data.drawingScale)
   const edge = drawingUnitsForMetres(data.edgeMm / 1000, data.drawingScale)
   const strip = width / data.circuits, innerWidth = strip - 2 * edge, innerHeight = height - 2 * edge
-  const rows = Math.min(1000, 2 * Math.floor((Math.floor(innerHeight / spacing) + 1) / 2))
-  if (rows < 2 || innerWidth <= spacing || innerHeight < spacing) {
+  if (innerWidth <= spacing || innerHeight < spacing) {
     return { circuits: [], areaM2, lengthM: 0, warning: 'Zone te klein voor deze buisafstand, randafstand en aantal lussen.' }
   }
-  const radius = spacing / 2
+  const scale = data.drawingScale
+  const radius = drawingUnitsForMetres(heatingDesignLimits(data.diameterMm, data.design).minBendRadiusMm / 1000, scale)
   const point = (x: number, y: number): Point => vertical ? { x: bounds.x + y, y: bounds.y + x } : { x: bounds.x + x, y: bounds.y + y }
-  const coordinates = (x: number, y: number) => { const p = point(x, y); return `${p.x} ${p.y}` }
-  const circuits = Array.from({ length: data.circuits }, (_, index): HeatingCircuit => {
-    const left = index * strip + edge, right = (index + 1) * strip - edge
-    let path = `M ${coordinates(left, edge)} L ${coordinates(right - radius, edge)}`
-    for (let row = 1; row < rows; row++) {
-      const y = edge + row * spacing, rightTurn = row % 2 === 1
-      const x = rightTurn ? right - radius : left + radius
-      const sweep = (rightTurn !== vertical) ? 1 : 0
-      path += ` A ${radius} ${radius} 0 0 ${sweep} ${coordinates(x, y)}`
-      path += ` L ${coordinates(row === rows - 1 ? left : rightTurn ? left + radius : right - radius, y)}`
-    }
-    const lengthM = metre(rows * (innerWidth - 2 * radius) + 2 * radius + (rows - 1) * Math.PI * radius)
-    return { path, lengthM, start: point(left, edge), end: point(left, edge + (rows - 1) * spacing) }
+  const cx = bounds.x + bounds.width / 2, cy = bounds.y + bounds.height / 2
+  const radians = (shape.rotation ?? 0) * Math.PI / 180
+  const world = (p: Point): Point => {
+    const x = (p.x - cx) * (shape.flipX ? -1 : 1), y = (p.y - cy) * (shape.flipY ? -1 : 1)
+    return { x: cx + x * Math.cos(radians) - y * Math.sin(radians), y: cy + x * Math.sin(radians) + y * Math.cos(radians) }
+  }
+  const local = (p: Point): Point => {
+    const x = p.x - cx, y = p.y - cy
+    const dx = (x * Math.cos(radians) + y * Math.sin(radians)) * (shape.flipX ? -1 : 1) + cx - bounds.x
+    const dy = (-x * Math.sin(radians) + y * Math.cos(radians)) * (shape.flipY ? -1 : 1) + cy - bounds.y
+    return vertical ? { x: dy, y: dx } : { x: dx, y: dy }
+  }
+  // Work in the zone's unrotated frame; conservative footprints also protect
+  // the corners of rotated furniture and rotated zones.
+  const localObstacles = obstacles.map((b) => {
+    const corners = [{ x: b.x, y: b.y }, { x: b.x + b.width, y: b.y },
+      { x: b.x, y: b.y + b.height }, { x: b.x + b.width, y: b.y + b.height }].map(local)
+    const x = Math.min(...corners.map((p) => p.x)), y = Math.min(...corners.map((p) => p.y))
+    const clearance = Math.max(edge, radius * 2 + drawingUnitsForMetres(data.diameterMm / 2000, scale))
+    return { x: x - clearance, y: y - clearance,
+      width: Math.max(...corners.map((p) => p.x)) - x + 2 * clearance,
+      height: Math.max(...corners.map((p) => p.y)) - y + 2 * clearance }
   })
-  return { circuits, areaM2, lengthM: circuits.reduce((sum, item) => sum + item.lengthM, 0) }
+  const fields: HeatingObstacle[] = []
+  let fragmented = false
+  for (let index = 0; index < data.circuits; index++) {
+    const original = { x: index * strip + edge, y: edge, width: innerWidth, height: innerHeight }
+    let free = [original]
+    for (const obstacle of localObstacles) {
+      free = free.flatMap((field) => subtractHeatingObstacle(field, obstacle))
+      if (free.length > 128) return { circuits: [], areaM2, lengthM: 0,
+        warning: 'Te veel afzonderlijke vrije vlakken. Verdeel de verwarmingszone of gebruik het automatische legplan.' }
+    }
+    const split = free.length !== 1 || free[0].x !== original.x || free[0].y !== original.y ||
+      free[0].width !== original.width || free[0].height !== original.height
+    fragmented ||= split
+    fields.push(...free.map((field) => split ? { x: field.x + spacing / 2, y: field.y + spacing / 2,
+      width: field.width - spacing, height: field.height - spacing } : field))
+  }
+  let blocked = 0
+  const circuits = fields.map((field, index): HeatingCircuit | null => {
+    const spiralWidth = Math.floor(field.width / spacing) * spacing
+    const spiralHeight = Math.floor(field.height / spacing) * spacing
+    const spiral = rectangularHeatingSpiral(spiralWidth, spiralHeight, data, scale)
+    if (!spiral) { blocked++; return null }
+    const points = openHeatingTurns(spiral, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale))
+    const left = field.x + (field.width - spiralWidth) / 2
+    const top = field.y + (field.height - spiralHeight) / 2
+    const pipe = createHeatingPipe(`zone-${shape.id}-${index}`, points.map((p) => point(left + p.x, top + p.y)),
+      { ...data, automatic: true, pattern: 'spiral', pipeRole: 'loop', circuitId: `zone-${shape.id}-${index}` })
+    const geometry = heatingPipeGeometry(pipe)
+    if (obstacles.length) {
+      const clearance = Math.max(0, edge - drawingUnitsForMetres(data.diameterMm / 2000, scale))
+      const keepOut = obstacles.map((b) => ({ x: b.x - clearance, y: b.y - clearance,
+        width: b.width + 2 * clearance, height: b.height + 2 * clearance }))
+      const audit = checkHeatingPlan([pipe], [], data.design, keepOut, {
+        geometryFor: () => ({ ...geometry, pieces: geometry.pieces.map((piece) => ({ ...piece, a: world(piece.a), b: world(piece.b) })),
+          bends: geometry.bends.map((bend) => ({ ...bend, point: world(bend.point) })) })
+      })
+      if (audit.issues.some((issue) => issue.code === 'obstacle')) { blocked++; return null }
+    }
+    return { path: geometry.path, lengthM: metre(geometry.length), start: geometry.localPoints[0], end: geometry.localPoints.at(-1)! }
+  }).filter((circuit): circuit is HeatingCircuit => circuit !== null)
+  const warnings = [
+    ...(fragmented ? [`Vrije vloer rond obstakels verdeeld in ${circuits.length} afzonderlijke slakkenhuizen; elk heeft eigen aansluitingen nodig.`] : []),
+    ...(blocked ? [`${blocked} restvlak(ken) te klein of onveilig voor deze legafstand en buigradius. Pas de zone aan of gebruik het automatische legplan.`] : [])
+  ]
+  const layout = { circuits, areaM2, lengthM: circuits.reduce((sum, item) => sum + item.lengthM, 0),
+    ...(warnings.length ? { warning: warnings.join(' ') } : {}) }
+  heatingZoneLayouts.set(shape, { signature, layout })
+  return layout
 }
 
 export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRow[] => {
@@ -386,12 +462,12 @@ const heatingTableMarkup = (shape: RectShape): string => {
 
 const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)
 
-export const heatingAnchors = (shape: RectShape): Point[] => {
+export const heatingAnchors = (shape: RectShape, obstacles: HeatingObstacle[] = []): Point[] => {
   const b = heatingBounds(shape), data = shape.heating!
   const points = data.kind === 'manifold' && data.points ? data.points.map((p) => ({ x: b.x + p.x * b.width, y: b.y + p.y * b.height })) : data.kind === 'manifold' ? Array.from({ length: data.circuits }, (_, i) => {
     const x = b.x + b.width * (i + 1) / (data.circuits + 1)
     return [{ x: x - 2, y: b.y + b.height }, { x: x + 2, y: b.y + b.height }]
-  }).flat() : heatingLayout(shape).circuits.flatMap((circuit) => [circuit.start, circuit.end])
+  }).flat() : heatingLayout(shape, obstacles).circuits.flatMap((circuit) => [circuit.start, circuit.end])
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2, radians = (shape.rotation ?? 0) * Math.PI / 180
   return points.map((p) => {
     const x = (p.x - cx) * (shape.flipX ? -1 : 1), y = (p.y - cy) * (shape.flipY ? -1 : 1)
@@ -399,13 +475,13 @@ export const heatingAnchors = (shape: RectShape): Point[] => {
   })
 }
 
-export const heatingMarkup = (shape: RectShape, selected = false, monochrome = false): string => {
+export const heatingMarkup = (shape: RectShape, selected = false, monochrome = false, obstacles: HeatingObstacle[] = []): string => {
   if (shape.heating?.kind === 'table') return heatingTableMarkup(shape)
   if (shape.heating?.kind === 'exclusion') {
     const b = heatingBounds(shape)
     return `<g class="shape heating-shape heating-exclusion" data-shape-id="${escape(shape.id)}" data-selected="${selected}" stroke-width="${shape.strokeWidth ?? 2}"><title>${escape(shape.heating.name)}</title><rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${monochrome ? '#ddd' : '#f0443820'}" stroke="${monochrome ? '#000' : '#b42318'}" stroke-dasharray="8 4"/><path d="M ${b.x} ${b.y} L ${b.x + b.width} ${b.y + b.height} M ${b.x + b.width} ${b.y} L ${b.x} ${b.y + b.height}" stroke="${monochrome ? '#000' : '#b42318'}" stroke-width="1"/></g>`
   }
-  const data = shape.heating!, b = heatingBounds(shape), layout = heatingLayout(shape)
+  const data = shape.heating!, b = heatingBounds(shape), layout = heatingLayout(shape, obstacles)
   const cx = b.x + b.width / 2, cy = b.y + b.height / 2
   const transform = `translate(${cx} ${cy}) rotate(${shape.rotation ?? 0}) scale(${shape.flipX ? -1 : 1} ${shape.flipY ? -1 : 1}) translate(${-cx} ${-cy})`
   const red = monochrome ? '#000000' : '#b42318', blue = monochrome ? '#000000' : '#175cd3'
@@ -437,7 +513,7 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
         markup += `<text x="${circuit.start.x + 8}" y="${circuit.start.y + 18}" fill="#111111" stroke="white" stroke-width="3" paint-order="stroke" font-family="Segoe UI, Arial, sans-serif" font-size="16">${index + 1}</text>`
       }
     }
-    const details = data.kind === 'zone' ? `${data.name} · ${data.circuits} lus(sen) · h.o.h. ${data.spacingMm} mm · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m` : `${data.name} · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m`
+    const details = data.kind === 'zone' ? `${data.name} · ${layout.circuits.length} lus(sen) · h.o.h. ${data.spacingMm} mm · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m` : `${data.name} · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m`
     if (!data.automatic || data.pipeRole === 'loop') markup += label(b.x, b.y - 10, data.automatic ? data.circuitId ?? data.name : layout.warning ?? details)
   }
   const markers = (data.pipeRole === 'loop' ? data.checks ?? [] : []).filter((issue) => issue.point && issue.circuits[0] === data.circuitId).map((issue) => {

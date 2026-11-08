@@ -39,6 +39,8 @@ export type SelectionPropertyUpdate = {
   letterSpacing?: number
   x?: number
   y?: number
+  width?: number
+  height?: number
   electrical?: Partial<{ [K in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[K] | null }>
 }
 
@@ -292,6 +294,17 @@ const applyProperties = (
         y: centerY + (scalable.end.y - centerY) * factor
       }
       scalable.scale = nextScale
+    }
+  }
+
+  if (updated.kind === 'rect' && updated.heating?.kind === 'zone' &&
+    (payload.width !== undefined || payload.height !== undefined)) {
+    const centerX = (updated.start.x + updated.end.x) / 2, centerY = (updated.start.y + updated.end.y) / 2
+    const width = payload.width ?? Math.abs(updated.end.x - updated.start.x)
+    const height = payload.height ?? Math.abs(updated.end.y - updated.start.y)
+    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+      updated.start = { x: centerX - width / 2, y: centerY - height / 2 }
+      updated.end = { x: centerX + width / 2, y: centerY + height / 2 }
     }
   }
 

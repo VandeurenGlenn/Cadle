@@ -40,7 +40,7 @@ type CellRect = { left: number; top: number; right: number; bottom: number }
 
 /** Both arms wind inward in the same direction, one pitch apart. Reverse the
  * second arm at the centre to obtain one continuous counterflow double spiral. */
-export const rectangularHeatingSpiral = (width: number, height: number, settings: Settings, scale: DrawingScale,
+export const rectangularHeatingSpiral = (width: number, height: number, settings: Settings, scale: number,
   checkpoint: () => void = () => {}, entryAxis?: 'x' | 'y'): Point[] | null => {
   const pitch = drawingUnitsForMetres(settings.spacingMm / 1000, scale)
   const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
@@ -62,7 +62,7 @@ export const rectangularHeatingSpiral = (width: number, height: number, settings
       const centreB = side % 2 ? { x: endB.x, y: endA.y } : { x: endA.x, y: endB.y }
       const raw = [...a, endA, centreB, ...[...b].reverse()].filter((p, i, all) => !i || Math.hypot(p.x - all[i - 1].x, p.y - all[i - 1].y) > 1e-7)
       const pipe = createHeatingPipe('spiral-check', openHeatingTurns(raw, radius, diameter), {
-        ...heatingDefaults('pipe', scale), ...settings, automatic: true, circuitId: 'spiral', pipeRole: 'loop'
+        ...heatingDefaults('pipe'), ...settings, drawingScale: scale, automatic: true, circuitId: 'spiral', pipeRole: 'loop'
       })
       const geometry = heatingPipeGeometry(pipe)
       if (geometry.bends.every((bend) => bend.radiusMm + .1 >= heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm) &&

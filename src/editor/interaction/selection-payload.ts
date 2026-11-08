@@ -4,7 +4,7 @@ import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import { connectionSegments, CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
-import { heatingLayout, type HeatingData, type HeatingLayout } from '../heating-plan.js'
+import { heatingLayout, type HeatingData, type HeatingLayout, type HeatingObstacle } from '../heating-plan.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH } from '../../preferences/symbol-stroke-width.js'
 import { electricalMetadataFromCatalog, type ElectricalDeviceMetadata } from '../../editor/model/electrical.js'
 
@@ -93,6 +93,7 @@ export const createNativeSelectionChangedPayload = (
     canConvertToRoom?: boolean
     drawingScale?: number | null
     symbolStrokeWidthPreference?: number
+    heatingObstacles?: HeatingObstacle[]
   }
 ): NativeSelectionChangedPayload => {
   const selectionCount = selectedIdsCount > 0 ? selectedIdsCount : selectedShape ? 1 : 0
@@ -114,7 +115,7 @@ export const createNativeSelectionChangedPayload = (
   }
   if (selectedShape.kind === 'rect' && selectedShape.heating) {
     shapePayload.heating = selectedShape.heating
-    shapePayload.heatingLayout = heatingLayout(selectedShape)
+    shapePayload.heatingLayout = heatingLayout(selectedShape, options?.heatingObstacles)
     shapePayload.name = selectedShape.heating.kind === 'zone' ? 'Verwarmingszone' : selectedShape.heating.kind === 'pipe' ? 'Verwarmingsbuis' : 'Verdeler'
   }
   if (selectedShape.kind === 'line' && selectedShape.connection) {
@@ -246,7 +247,10 @@ export const createNativeSelectionChangedPayload = (
         length + Math.hypot(segment.end.x - segment.start.x, segment.end.y - segment.start.y), 0),
         ...(strokeWidth !== null ? { strokeWidth } : {}) }
     } else {
-      let width = bounds.width, height = bounds.height
+      let width = selectedShape.kind === 'rect' && selectedShape.heating?.kind === 'zone'
+        ? Math.abs(selectedShape.end.x - selectedShape.start.x) : bounds.width
+      let height = selectedShape.kind === 'rect' && selectedShape.heating?.kind === 'zone'
+        ? Math.abs(selectedShape.end.y - selectedShape.start.y) : bounds.height
       let pen = strokeWidth
       if (selectedShape.kind === 'symbol') {
         const size = 24 * renderedSymbolScale(selectedShape.path, selectedShape.scale)

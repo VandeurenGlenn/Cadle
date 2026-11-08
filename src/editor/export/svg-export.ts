@@ -1,7 +1,8 @@
 import { wallJunctionMarkup } from '../layout/wall-junctions.js'
 import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
 import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
-import { heatingMarkup } from '../heating-plan.js'
+import { heatingMarkup, type HeatingObstacle } from '../heating-plan.js'
+import { heatingObstacleBounds } from '../heating-openings.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextPresentation } from '../symbol-metadata.js'
 import { electricalConnectionMarkup } from '../electrical-connection-markup.js'
@@ -164,10 +165,11 @@ export const shapeMarkup = (
   selected: boolean,
   extraClass = '',
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
-  monochrome = false
+  monochrome = false,
+  heatingObstacles: HeatingObstacle[] = []
 ): string => {
   if (shape.hidden) return ''
-  if (shape.kind === 'rect' && shape.heating) return heatingMarkup(shape, selected, monochrome)
+  if (shape.kind === 'rect' && shape.heating) return heatingMarkup(shape, selected, monochrome, heatingObstacles)
   const selectedAttr = selected ? 'true' : 'false'
   switch (shape.kind) {
     case 'wall':
@@ -456,6 +458,7 @@ export const buildSvgDocument = (options: {
   monochrome?: boolean
 }): string => {
   const groupedMarkup = (shapes: Shape[]) => {
+    const obstacles = heatingObstacleBounds(options.shapes, shapeBounds)
     const entries: Array<{ type: 'single'; shape: Shape } | { type: 'group'; groupId: string; shapes: Shape[] }> = []
     const groups = new Map<string, Shape[]>()
 
@@ -479,9 +482,9 @@ export const buildSvgDocument = (options: {
     return entries
       .map((entry) =>
         entry.type === 'single'
-          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome)
+          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles)
           : `<g class="shape-group" data-group-id="${entry.groupId}">${entry.shapes
-              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome))
+              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles))
               .join('')}</g>`
       )
       .join('')

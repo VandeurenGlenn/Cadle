@@ -199,7 +199,7 @@ export const heatingRouteCorridor = (grid: HeatingGrid, path: readonly number[],
 // thin-wall penetrations must not become cheaper than one slightly thicker wall.
 // A short access through a wall next to the manifold is a preferred alternative
 // to a long detour, but still costs more than an equally short open doorway.
-const wallStepCost = (grid: HeatingGrid, from: number, to: number, options: HeatingRoutingOptions): number => {
+export const wallStepCost = (grid: HeatingGrid, from: number, to: number, options: HeatingRoutingOptions): number => {
   if (grid.door[to] && !grid.door[from] && options.preferredDoors?.size && !options.preferredDoors.has(to)) return drawingUnitsForMetres(.5, grid.drawingScale ?? 100) / grid.step
   if (!grid.wall[to] || grid.door[to]) return 0
   if (grid.wall[from] && !grid.door[from]) return 4

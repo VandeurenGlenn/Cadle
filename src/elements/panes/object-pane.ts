@@ -666,7 +666,7 @@ export class ObjectPane extends LiteElement {
         <strong>${totals.circuits} kringen · ${number(totals.cutM)} m kniplengte</strong>
         <div class="dimension-caption">${number(totals.areaM2)} m² verwarmd · ${number(totals.flowLmin, 2)} l/min totaal</div>
       </div>
-      <p class="dimension-caption">Kniplengte = lus + aanvoer + retour + reserve. Lengtes volgen de getekende trajecten.</p>
+      <p class="dimension-caption">Kniplengte = lus + aanvoer + retour + reserve. Een andere legafstand tekent deze kring opnieuw; de overige kringen blijven behouden. Eigen legafstanden blijven ook bij volledige herberekening behouden.</p>
       <p class="dimension-caption">Klik een kring om lus, aanvoer en retour te markeren. Nogmaals klikken wist de markering.</p>
       <div class="heating-circuit-list" role="list" aria-label="Kringen vloerverwarming">
         ${data.rows.map((row) => html`<article class="dimension-summary heating-circuit-card" role="listitem" data-heating-circuit=${row.id}
@@ -679,7 +679,10 @@ export class ObjectPane extends LiteElement {
             ${measure('Getekend', 'totalM', row.totalM)}${measure('Reserve', 'allowanceM', row.allowanceM ?? 0)}${measure('Kniplengte', 'cutM', row.cutM ?? row.totalM)}
             ${measure(row.flowEstimated !== false ? 'Richtdebiet*' : 'Debiet', 'flowLmin', row.flowLmin, 'l/min', 2)}${measure('Verwarmd', 'areaM2', row.areaM2, 'm²')}
           </dl>
-          <div class="dimension-caption">Ø ${number(row.diameterMm)} mm · h.o.h. ${number(row.spacingMaxMm ?? row.spacingMm)} mm</div>
+          <div class="dimension-caption">Ø ${number(row.diameterMm)} mm · legafstand ${number(row.spacingMm / 10)} cm</div>
+          <label @click=${(event: Event) => event.stopPropagation()}><span class="native-label">Legafstand (cm)${data.circuitSpacingMm?.[row.id] !== undefined ? ' · eigen instelling' : ''}</span><input class="native-input" type="number" min="5" max="50" step="2.5" .value=${String(row.spacingMm / 10)} ?disabled=${row.locked === true} data-heating-circuit-spacing=${row.id}
+            @change=${(event: Event) => { const input = event.target as HTMLInputElement; if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) { const spacingMm = input.valueAsNumber * 10; input.value = String(row.spacingMm / 10); pubsub.publish('editor.controls.command', { action: 'set-heating-circuit-spacing', circuitId: row.id, spacingMm }) } }} /></label>
+          <button type="button" class="native-button" ?disabled=${row.locked === true} @click=${(event: Event) => { event.stopPropagation(); pubsub.publish('editor.controls.command', { action: 'regenerate-heating-circuit', circuitId: row.id }) }}>Deze kring herberekenen</button>
           <button type="button" class="native-button" aria-pressed=${row.locked === true}
             @click=${(event: Event) => { event.stopPropagation(); pubsub.publish('editor.controls.command', { action: 'set-heating-circuit-lock', circuitId: row.id, locked: !row.locked }) }}>${row.locked ? 'Kring losmaken' : 'Kring vastzetten'}</button>
           ${(row.checkMessages ?? []).length ? html`<p class="dimension-hint heating-circuit-check">${row.checkMessages![0]}${row.checkMessages!.length > 1 ? ` (+${row.checkMessages!.length - 1})` : ''}</p>` : ''}

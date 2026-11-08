@@ -19,6 +19,7 @@ export type HeatingPlannerInput = {
   preserved?: RectShape[]
   existingManifold?: RectShape
   onlyRoom?: string
+  reflowCircuit?: RectShape[]
   scene: Shape[]
   position: Point
   settings: AutomaticHeatingSettings

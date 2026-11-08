@@ -1,7 +1,7 @@
 import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
-import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, heatingRoomScope, presentHeatingTables } from './heating-plan.js'
+import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, heatingRoomScope, presentHeatingTables, type HeatingData } from './heating-plan.js'
 import { heatingMaterialsCSV } from './heating-materials.js'
 import { readHeatingPipeProfiles, applyHeatingPipeProfile } from './heating-products.js'
 import { HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
@@ -290,7 +290,7 @@ export class CadleApp extends LiteElement {
   #automaticHeatingError: string | null = null
   #automaticHeatingDiagnostic: HeatingPlanningDiagnostic | null = null
   #heatingDiagnosticRoom: string | null = null
-  #automaticHeatingRetry: { point: Point; settings: AutomaticHeatingSettings; onlyRoom?: string } | null = null
+  #automaticHeatingRetry: { point: Point; settings: AutomaticHeatingSettings; onlyRoom?: string; onlyCircuitId?: string } | null = null
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
   #worldHeight = DEFAULT_WORLD_HEIGHT
@@ -4634,7 +4634,7 @@ export class CadleApp extends LiteElement {
             </div>` : ''}
             ${this.#automaticHeatingError ? html`<div class="heating-planner-status heating-planner-error" role="alert">
               <span>${this.#automaticHeatingError}</span>
-              ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => { const retry = this.#automaticHeatingRetry!; void this.#generateHeatingAt(retry.point, retry.settings, retry.onlyRoom) }}>Opnieuw proberen</button>` : ''}
+              ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => { const retry = this.#automaticHeatingRetry!; void this.#generateHeatingAt(retry.point, retry.settings, retry.onlyRoom, retry.onlyCircuitId) }}>Opnieuw proberen</button>` : ''}
               ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => this.#configureHeatingPlacement(true)}>Instellingen aanpassen</button>` : ''}
               <button type="button" @click=${() => { this.#automaticHeatingError = null; this.#automaticHeatingDiagnostic = null; this.#heatingDiagnosticRoom = null; this.#automaticHeatingRetry = null; this.#render() }}>Sluiten</button>
               ${this.#heatingDiagnosticTemplate()}
@@ -5185,6 +5185,7 @@ export class CadleApp extends LiteElement {
     onewireCompose?: 'breaker' | 'switch' | 'kamrail' | 'load'
     action?: string
     circuitId?: string
+    spacingMm?: number
     roomKey?: string
     locked?: boolean
     drawingScale?: DrawingScale
@@ -5267,13 +5268,14 @@ export class CadleApp extends LiteElement {
         this.#render()
         return
       }
+      case 'set-heating-circuit-spacing':
+      case 'regenerate-heating-circuit': {
+        if (!this.readOnly && payload.circuitId) this.#reflowHeatingCircuit(payload.circuitId, payload.spacingMm)
+        return
+      }
       case 'regenerate-heating-room': {
         const owner = this.#document.shapes.find((shape) => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
-        if (owner?.kind === 'rect' && payload.roomKey) void this.#generateHeatingAt(owner.start, {
-          diameterMm: owner.heating!.diameterMm, spacingMm: owner.heating!.spacingMm, design: owner.heating!.design,
-          edgeMm: owner.heating!.edgeMm, shareSmallRooms: owner.heating!.shareSmallRooms, heatSourceRoom: owner.heating!.heatSourceRoom, manifoldSide: owner.heating!.manifoldSide,
-          capacity: owner.heating!.capacity ?? Math.max(owner.heating!.circuits, 12), excludedRoomKeys: owner.heating!.excludedRoomKeys
-        }, payload.roomKey)
+        if (owner?.kind === 'rect' && payload.roomKey) void this.#generateHeatingAt(owner.start, this.#heatingSettingsFrom(owner.heating!), payload.roomKey)
         return
       }
       case 'redraw-heating-route': {
@@ -5301,11 +5303,7 @@ export class CadleApp extends LiteElement {
       }
       case 'regenerate-heating-plan': {
         const manifold = this.#document.shapes.find((shape) => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
-        if (manifold?.kind === 'rect') void this.#generateHeatingAt(manifold.start, {
-          diameterMm: manifold.heating!.diameterMm, spacingMm: manifold.heating!.spacingMm, design: manifold.heating!.design, edgeMm: manifold.heating!.edgeMm,
-          shareSmallRooms: manifold.heating!.shareSmallRooms, heatSourceRoom: manifold.heating!.heatSourceRoom, manifoldSide: manifold.heating!.manifoldSide,
-          capacity: manifold.heating!.capacity ?? Math.max(manifold.heating!.circuits, 12), excludedRoomKeys: manifold.heating!.excludedRoomKeys
-        })
+        if (manifold?.kind === 'rect') void this.#generateHeatingAt(manifold.start, this.#heatingSettingsFrom(manifold.heating!))
         return
       }
       case 'calibrate-drawing-scale':
@@ -5422,6 +5420,24 @@ export class CadleApp extends LiteElement {
     }
   }
 
+  #heatingSettingsFrom(data: HeatingData): AutomaticHeatingSettings {
+    return { diameterMm: data.diameterMm, spacingMm: data.spacingMm, design: data.design, edgeMm: data.edgeMm,
+      circuitSpacingMm: data.circuitSpacingMm, shareSmallRooms: data.shareSmallRooms, heatSourceRoom: data.heatSourceRoom, manifoldSide: data.manifoldSide,
+      capacity: data.capacity ?? Math.max(data.circuits, 12), excludedRoomKeys: data.excludedRoomKeys }
+  }
+
+  #reflowHeatingCircuit(id: string, requested?: number) {
+    const owner = this.#document.shapes.find((s): s is RectShape => s.kind === 'rect' && s.heating?.kind === 'manifold' && s.heating.automatic === true)
+    const loop = this.#document.shapes.find((s) => s.heating?.kind === 'pipe' && s.heating.circuitId === id && s.heating.pipeRole === 'loop')
+    if (!owner || !loop || loop.heating!.circuitLocked || this.#automaticHeatingBusy) return
+    const spacingMm = requested ?? loop.heating!.spacingMm
+    if (!Number.isFinite(spacingMm) || spacingMm < 50 || spacingMm > 500) return
+    const circuitSpacingMm = { ...owner.heating!.circuitSpacingMm }
+    if (Math.round(spacingMm) === owner.heating!.spacingMm) delete circuitSpacingMm[id]
+    else circuitSpacingMm[id] = Math.round(spacingMm)
+    void this.#generateHeatingAt(owner.start, { ...this.#heatingSettingsFrom(owner.heating!), circuitSpacingMm }, undefined, id)
+  }
+
   startAutomaticHeatingPlan(settings: AutomaticHeatingSettings) {
     if (this.readOnly || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
     this.#cancelHeatingCalculation()
@@ -5456,7 +5472,7 @@ export class CadleApp extends LiteElement {
     const settings: AutomaticHeatingSettings = { ...previous, capacity, edgeMm, heatSourceRoom: values.heatSourceRoom === 'yes', shareSmallRooms: values.shareSmallRooms === 'yes',
       manifoldSide: values.manifoldSide as AutomaticHeatingSettings['manifoldSide'], diameterMm: profile?.diameterMm ?? previous.diameterMm,
       design: profile ? applyHeatingPipeProfile(profile, previous.design) : { ...previous.design, maxCircuitLengthM } }
-    if (pending && pending === this.#automaticHeatingRetry) void this.#generateHeatingAt(pending.point, settings, pending.onlyRoom)
+    if (pending && pending === this.#automaticHeatingRetry) void this.#generateHeatingAt(pending.point, settings, pending.onlyRoom, pending.onlyCircuitId)
     else if (this.#automaticHeatingSettings === previous) { this.#automaticHeatingSettings = settings; this.#render() }
   }
 
@@ -5468,7 +5484,7 @@ export class CadleApp extends LiteElement {
     this.#automaticHeatingSettings = null
   }
 
-  async #generateHeatingAt(point: Point, settings: AutomaticHeatingSettings, onlyRoom?: string) {
+  async #generateHeatingAt(point: Point, settings: AutomaticHeatingSettings, onlyRoom?: string, onlyCircuitId?: string) {
     if (this.#automaticHeatingBusy || !this.#project || !this.#pageKey) return
     this.#highlightedHeatingCircuit = null
     const pageKey = this.#pageKey, project = this.#project
@@ -5480,16 +5496,18 @@ export class CadleApp extends LiteElement {
     this.#automaticHeatingDiagnostic = null
     this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
-    this.#automaticHeatingRetry = { point, settings, onlyRoom }
+    this.#automaticHeatingRetry = { point, settings, onlyRoom, onlyCircuitId }
     this.#render()
     try {
       const scene = this.#document.shapes.filter((shape) => !shape.heating?.automatic && !shape.generationKey?.startsWith('heating-penetration:'))
       const existingManifold = this.#document.shapes.find((shape): shape is RectShape => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
       const oldPipes = this.#document.shapes.filter((shape): shape is RectShape => shape.kind === 'rect' && shape.heating?.kind === 'pipe' && shape.heating.automatic)
+      const reflowCircuit = onlyCircuitId ? oldPipes.filter((pipe) => pipe.heating!.circuitId === onlyCircuitId) : undefined
+      if (onlyCircuitId && (!reflowCircuit?.length || reflowCircuit.some((p) => p.heating!.circuitLocked))) throw new Error('Maak de kring eerst los om de legafstand te wijzigen.')
       const scope = onlyRoom ? heatingRoomScope(oldPipes.map((pipe) => pipe.heating!), onlyRoom) : undefined
-      const locked = new Set(oldPipes.filter((pipe) => pipe.heating!.circuitLocked || (scope && !scope.has(pipe.heating!.roomKey ?? ''))).map((pipe) => pipe.heating!.circuitId))
+      const locked = new Set(oldPipes.filter((pipe) => pipe.heating!.circuitLocked || (onlyCircuitId ? pipe.heating!.circuitId !== onlyCircuitId : settings.circuitSpacingMm?.[pipe.heating!.circuitId!] !== undefined || (scope && !scope.has(pipe.heating!.roomKey ?? '')))).map((pipe) => pipe.heating!.circuitId))
       const preserved = oldPipes.filter((pipe) => locked.has(pipe.heating!.circuitId))
-      const result = await runHeatingPlanner({ scene, position: point, settings, preserved, existingManifold, onlyRoom,
+      const result = await runHeatingPlanner({ scene, position: point, settings, preserved, existingManifold, onlyRoom, reflowCircuit,
         scale: this.#drawingScale ?? DEFAULT_DRAWING_SCALE, pageArea: this.#safeAreaRect() }, {
         signal: controller.signal,
         onProgress: (progress) => {

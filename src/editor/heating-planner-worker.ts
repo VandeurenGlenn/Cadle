@@ -18,7 +18,7 @@ scope.onmessage = ({ data }) => {
   try {
     const result = generateAutomaticHeatingPlan(data.scene, data.position, data.settings, data.scale,
       () => `heating-${data.id}-${++count}`, data.pageArea, 0, 0,
-      { preserved: data.preserved, existingManifold: data.existingManifold, onlyRoom: data.onlyRoom, routes: 600, deadline: Date.now() + 45000, onProgress: progress })
+      { reflowCircuit: data.reflowCircuit, preserved: data.preserved, existingManifold: data.existingManifold, onlyRoom: data.onlyRoom, routes: 600, deadline: Date.now() + 45000, onProgress: progress })
     scope.postMessage({ type: 'result', result })
   } catch (error) {
     scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Het legplan kon niet worden berekend.', ...(error instanceof HeatingPlanningFailure ? { diagnostics: error.diagnostics } : {}) })

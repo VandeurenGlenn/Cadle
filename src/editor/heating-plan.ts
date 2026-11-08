@@ -23,6 +23,7 @@ export type HeatingData = {
   automatic?: boolean
   pattern?: 'spiral'
   capacity?: number
+  circuitSpacingMm?: Record<string, number>
   shareSmallRooms?: boolean
   heatSourceRoom?: boolean
   manifoldSide?: 'auto' | 'top' | 'bottom'
@@ -105,6 +106,8 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.automatic === true) data.automatic = true
   if (raw.pattern === 'spiral') data.pattern = 'spiral'
   if (typeof raw.capacity === 'number' && Number.isFinite(raw.capacity)) data.capacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.capacity)))
+  const circuitSpacing = sanitizeHeatingCircuitSpacing(raw.circuitSpacingMm)
+  if (circuitSpacing) data.circuitSpacingMm = circuitSpacing
   if (typeof raw.circuitLocked === 'boolean') data.circuitLocked = raw.circuitLocked
   if (Number.isInteger(raw.wallPassages) && (raw.wallPassages as number) >= 0 && (raw.wallPassages as number) <= 1000) data.wallPassages = raw.wallPassages as number
   for (const key of ['shareSmallRooms', 'heatSourceRoom'] as const) if (typeof raw[key] === 'boolean') data[key] = raw[key]
@@ -154,6 +157,12 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   }
   if (raw.kind === 'pipe' && !data.points) return
   return data
+}
+
+export const sanitizeHeatingCircuitSpacing = (value: unknown): Record<string, number> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return
+  const entries = Object.entries(value).filter(([id, n]) => /^VV\d{2}$/.test(id) && Number(id.slice(2)) >= 1 && Number(id.slice(2)) <= MAX_HEATING_CIRCUITS && typeof n === 'number' && Number.isFinite(n) && n >= 50 && n <= 500)
+  return entries.length ? Object.fromEntries(entries.slice(0, MAX_HEATING_CIRCUITS).map(([id, n]) => [id, Math.round(n as number)])) : undefined
 }
 
 export const heatingBounds = (shape: RectShape) => ({

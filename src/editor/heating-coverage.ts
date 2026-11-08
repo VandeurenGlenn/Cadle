@@ -13,7 +13,7 @@ export const heatingCoverageSignature = (shapes: readonly Shape[]) => JSON.strin
   ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating && (s.locked || s.heatingObstacle !== undefined)) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
   [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.locked, s.heatingObstacle, s.groupId, s.heating?.points,
     s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm,
-    s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys, s.heating.heatSourceRoom, s.heating.shareSmallRooms, s.heating.manifoldSide] : null]))
+    s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys, s.heating.heatSourceRoom, s.heating.shareSmallRooms, s.heating.manifoldSide, s.heating.circuitSpacingMm] : null]))
 export const heatingRoomKey = (room: HeatingRoom) => room.roomKey ?? `region-${room.id}`
 const wallDistanceCache = new WeakMap<Uint8Array, Uint16Array>()
 export const heatingWallDistances = (grid: HeatingGrid) => {
@@ -35,16 +35,16 @@ export const heatingWallDistances = (grid: HeatingGrid) => {
 /** Sample the actual rendered arcs and lines against free floor cells. This is a
  * geometric coverage check, independent of rectangular area allocations. */
 export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectShape[], scale: number, spacingMm: number,
-  edgeMm = 100, checkpoint: () => void = () => {}, measureSpacing = true) => {
-  const radius = drawingUnitsForMetres(spacingMm / 2000, scale) + grid.step * .75
+  edgeMm = 100, checkpoint: () => void = () => {}, measureSpacing = true, trackCells = false) => {
+  const radius = drawingUnitsForMetres(Math.max(spacingMm, ...pipes.map((p) => p.heating?.spacingMm ?? spacingMm)) / 2000, scale) + grid.step * .75
   const bucket = Math.max(radius * 2, grid.step), distance = heatingWallDistances(grid)
-  type Piece = { a: Point; b: Point; circuit: string; loop: boolean; pipe: string; primitive: number }
+  type Piece = { a: Point; b: Point; circuit: string; loop: boolean; pipe: string; primitive: number; radius: number; pitch: number; rooms: string[] }
   const buckets = new Map<string, Piece[]>(), all: Piece[] = []
   for (const pipe of pipes) {
     checkpoint()
     if (pipe.hidden || pipe.heating?.kind !== 'pipe' || !pipe.heating.circuitId) continue
     for (const piece of heatingPipeGeometry(pipe).pieces) {
-      const value = { a: piece.a, b: piece.b, circuit: pipe.heating.circuitId, loop: pipe.heating.pipeRole === 'loop', pipe: pipe.id, primitive: piece.primitive }; all.push(value)
+      const value = { a: piece.a, b: piece.b, circuit: pipe.heating.circuitId, loop: pipe.heating.pipeRole === 'loop', pipe: pipe.id, primitive: piece.primitive, radius: drawingUnitsForMetres(pipe.heating.spacingMm / 2000, scale) + grid.step * .75, pitch: drawingUnitsForMetres(pipe.heating.spacingMm / 1000, scale), rooms: pipe.heating.roomMembers?.map((r) => r.key) ?? (pipe.heating.roomKey ? [pipe.heating.roomKey] : []) }; all.push(value)
       const minX = Math.floor((Math.min(piece.a.x, piece.b.x) - radius) / bucket), maxX = Math.floor((Math.max(piece.a.x, piece.b.x) + radius) / bucket)
       const minY = Math.floor((Math.min(piece.a.y, piece.b.y) - radius) / bucket), maxY = Math.floor((Math.max(piece.a.y, piece.b.y) + radius) / bucket)
       for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
@@ -53,7 +53,7 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
     }
   }
   const cellM2 = drawingLengthMetres(grid.step, scale) ** 2, clearance = drawingUnitsForMetres(edgeMm / 1000, scale) / grid.step
-  const areaByCircuit = new Map<string, number>(), areaByRoomCircuit = new Map<string, Map<string, number>>(), gaps: Point[] = [], rooms: HeatingCoverage['rooms'] = []
+  const cellsByCircuit = new Map<string, number[]>(), areaByCircuit = new Map<string, number>(), areaByRoomCircuit = new Map<string, Map<string, number>>(), gaps: Point[] = [], rooms: HeatingCoverage['rooms'] = []
   let visited = 0
   for (const room of grid.rooms) {
     let eligible = 0, covered = 0, maxDistance = 0, gapSamples = 0
@@ -62,12 +62,24 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
       if (grid.obstacle[cell] || distance[cell] < clearance) continue
       eligible++
       const p = grid.point(cell), pieces = buckets.get(`${Math.floor(p.x / bucket)},${Math.floor(p.y / bucket)}`) ?? []
-      let nearest = Infinity, circuit = ''
+      let nearest = Infinity, circuit = '', coveredBy = '', coveredDistance = Infinity
       for (const piece of pieces) {
         const d = segmentDistance(p, piece.a, piece.b)
         if (d < nearest) { nearest = d; circuit = piece.circuit }
+        if (d <= piece.radius && d < coveredDistance) { coveredDistance = d; coveredBy = piece.circuit }
       }
-      if (nearest <= radius) {
+      if (trackCells) {
+        const roomKey = heatingRoomKey(room)
+        const loops = pieces.filter((piece) => piece.loop && (!piece.rooms.length || piece.rooms.includes(roomKey)))
+        let owner = '', best = Infinity
+        for (const piece of loops.length ? loops : all.filter((piece) => piece.loop && (!piece.rooms.length || piece.rooms.includes(roomKey)))) {
+          const d = segmentDistance(p, piece.a, piece.b)
+          if (d < best) { best = d; owner = piece.circuit }
+        }
+        if (owner) { const cells = cellsByCircuit.get(owner) ?? []; cells.push(cell); cellsByCircuit.set(owner, cells) }
+      }
+      if (coveredBy) {
+        circuit = coveredBy
         covered++; areaByCircuit.set(circuit, (areaByCircuit.get(circuit) ?? 0) + cellM2)
         const byRoom = areaByRoomCircuit.get(circuit) ?? new Map<string, number>(), key = heatingRoomKey(room)
         byRoom.set(key, (byRoom.get(key) ?? 0) + cellM2); areaByRoomCircuit.set(circuit, byRoom)
@@ -86,9 +98,9 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
       coveredM2: covered * cellM2, gapM2: (eligible - covered) * cellM2, sampledMaxDistanceMm: drawingLengthMetres(maxDistance, scale) * 1000 })
   }
   const spacingByCircuit = new Map<string, { min: number; max: number }>()
-  const pitch = drawingUnitsForMetres(spacingMm / 1000, scale)
   for (const piece of measureSpacing ? all : []) {
     if (!piece.loop) continue
+    const pitch = piece.pitch
     const ux = piece.b.x - piece.a.x, uy = piece.b.y - piece.a.y, length = Math.hypot(ux, uy)
     if (length < pitch * 2) continue
     checkpoint()
@@ -110,5 +122,5 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
       value.min = Math.min(value.min, mm); value.max = Math.max(value.max, mm); spacingByCircuit.set(piece.circuit, value)
     }
   }
-  return { coverage: { rooms, gaps, step: grid.step } satisfies HeatingCoverage, areaByCircuit, areaByRoomCircuit, spacingByCircuit }
+  return { coverage: { rooms, gaps, step: grid.step } satisfies HeatingCoverage, areaByCircuit, areaByRoomCircuit, spacingByCircuit, cellsByCircuit }
 }

@@ -86,3 +86,21 @@ test('generated circuits and CSV use the clicked room ID and name', () => {
   assert.ok(result.shapes.filter((shape) => shape.heating?.kind === 'pipe').every((shape) => shape.heating!.roomKey === label.id))
   assert.match(heatingScheduleCSV(result.rows), /R01 – Living/)
 })
+
+test('renaming one member of a shared circuit preserves its other room and heat load', () => {
+  let shapes = [...rectangle(400, 'left'), ...rectangle(720, 'right')]
+  shapes = assignRoomLabel(shapes, gridFor(shapes), { x: 500, y: 500 }, { id: 'R01', name: 'Hall' }, next).shapes
+  shapes = assignRoomLabel(shapes, gridFor(shapes), { x: 850, y: 500 }, { id: 'R02', name: 'Bath' }, next).shapes
+  const labels = shapes.filter(isRoomLabel), members = labels.map((r, i) => ({ key: r.id, name: i ? 'R02 – Bath' : 'R01 – Hall', areaM2: i ? 4 : 2 }))
+  const pipe = createHeatingPipe('shared-pipe', [{ x: 500, y: 520 }, { x: 850, y: 520 }], { ...heatingDefaults('pipe'), pipeRole: 'loop', circuitId: 'VV01', roomKey: labels[0].id, roomName: members.map((r) => r.name).join(' / '), roomMembers: members })
+  const manifold: RectShape = { id: 'shared-owner', kind: 'rect', start: anchor, end: { x: 260, y: 310 }, heating: { ...heatingDefaults('manifold'), design: { roomHeatLoadsW: { 'R01 – Hall': 100, 'R02 – Bath': 300 } }, sourceRoomKey: labels[1].id,
+    rows: [{ id: 'VV01', room: pipe.heating!.roomName!, roomKey: labels[0].id, roomMembers: members, diameterMm: 16, spacingMm: 100, areaM2: 6, loopM: 40, supplyM: 2, returnM: 2, totalM: 44, flowLmin: 1 }] } }
+  shapes.push(pipe, manifold)
+  const updated = assignRoomLabel(shapes, gridFor(shapes), { x: 850, y: 500 }, { id: 'R03', name: 'Bathroom' }, next).shapes
+  const data = updated.find((s) => s.id === pipe.id)!.heating!, owner = updated.find((s) => s.id === manifold.id)!.heating!
+  assert.equal(data.roomName, 'R01 – Hall / R03 – Bathroom')
+  assert.equal(data.roomKey, labels[0].id)
+  assert.equal(owner.rows![0].room, data.roomName)
+  assert.equal(owner.design!.roomHeatLoadsW!['R03 – Bathroom'], 300)
+  assert.equal(owner.design!.roomHeatLoadsW!['R01 – Hall'], 100)
+})

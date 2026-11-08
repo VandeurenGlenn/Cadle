@@ -1,7 +1,10 @@
 import type { PaperPresetConfig } from './constants.js'
 import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
-import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, presentHeatingTables } from './heating-plan.js'
+import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, heatingRoomScope, presentHeatingTables } from './heating-plan.js'
+import { heatingMaterialsCSV } from './heating-materials.js'
+import { readHeatingPipeProfiles, applyHeatingPipeProfile } from './heating-products.js'
+import { HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
 import { heatingCoverageSignature } from './heating-coverage.js'
 import type { AutomaticHeatingSettings } from './automatic-heating-plan.js'
 import { runHeatingPlanner } from './heating-planner.js'
@@ -285,6 +288,8 @@ export class CadleApp extends LiteElement {
   #automaticHeatingAbort: AbortController | null = null
   #automaticHeatingProgress: HeatingPlanningProgress | null = null
   #automaticHeatingError: string | null = null
+  #automaticHeatingDiagnostic: HeatingPlanningDiagnostic | null = null
+  #heatingDiagnosticRoom: string | null = null
   #automaticHeatingRetry: { point: Point; settings: AutomaticHeatingSettings; onlyRoom?: string } | null = null
   #printMargin = DEFAULT_PRINT_MARGIN_MM
   #worldWidth = DEFAULT_WORLD_WIDTH
@@ -1236,6 +1241,8 @@ export class CadleApp extends LiteElement {
     this.#highlightedHeatingCircuit = null
     this.#showHeatingCoverage = false
     this.#cancelHeatingCalculation()
+    this.#automaticHeatingDiagnostic = null
+    this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = null
     this.#automaticHeatingSettings = null
@@ -4629,7 +4636,8 @@ export class CadleApp extends LiteElement {
               <span>${this.#automaticHeatingError}</span>
               ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => { const retry = this.#automaticHeatingRetry!; void this.#generateHeatingAt(retry.point, retry.settings, retry.onlyRoom) }}>Opnieuw proberen</button>` : ''}
               ${this.#automaticHeatingRetry ? html`<button type="button" @click=${() => this.#configureHeatingPlacement(true)}>Instellingen aanpassen</button>` : ''}
-              <button type="button" @click=${() => { this.#automaticHeatingError = null; this.#automaticHeatingRetry = null; this.#render() }}>Sluiten</button>
+              <button type="button" @click=${() => { this.#automaticHeatingError = null; this.#automaticHeatingDiagnostic = null; this.#heatingDiagnosticRoom = null; this.#automaticHeatingRetry = null; this.#render() }}>Sluiten</button>
+              ${this.#heatingDiagnosticTemplate()}
             </div>` : ''}
             ${heatingAudit && !this.#automaticHeatingSettings && !this.#automaticHeatingBusy && !this.#heatingPipeReplacement && !this.readOnly ? html`<button type="button" class="heating-quality-status"
               @click=${() => { this.#document.selectedId = heatingManifold!.id; this.#document.selectedIds = new Set([heatingManifold!.id]); this.#render() }}>
@@ -4964,6 +4972,21 @@ export class CadleApp extends LiteElement {
     </g>`
   }
 
+  #heatingDiagnosticTemplate() {
+    const report = this.#automaticHeatingDiagnostic
+    if (!report) return ''
+    return html`<details class="heating-diagnostic" open>
+      <summary>Ruimteberekening · ${report.areaM2.toFixed(1)} m² · 1:${report.scale}</summary>
+      <p>Ø${report.diameterMm} · h.o.h. ${report.spacingMm} mm · maximaal ${report.maxCircuitLengthM} m per kring, inclusief aansluitingen en reserve.</p>
+      <div class="heating-diagnostic-scroll"><table><thead><tr><th>Ruimte</th><th>Vrije vloer</th><th>Buisraming*</th><th>Deelkringen in zone**</th></tr></thead><tbody>
+        ${report.rooms.map((room) => html`<tr><td><button type="button" aria-pressed=${this.#heatingDiagnosticRoom === room.key} @click=${() => { this.#heatingDiagnosticRoom = this.#heatingDiagnosticRoom === room.key ? null : room.key; this.#render() }}>${room.name}</button></td><td>${room.areaM2.toFixed(1)} m²</td><td>${room.estimatedFloorPipeM.toFixed(0)} m</td><td title=${room.zoneName}>${room.candidateCircuits}</td></tr>`)}
+      </tbody></table></div>
+      <p>* Oppervlakte / legafstand, zonder aansluitingen. ** Een gedeelde zone kan bij meerdere ruimtes staan; deze aantallen niet optellen. Klik op een ruimte om haar plaats op het plan te markeren.</p>
+      ${report.issues.map((issue) => html`<p>${issue.message}</p>`)}
+      <button type="button" @click=${() => this.#download('vloerverwarming-diagnose.json', JSON.stringify({ report, settings: this.#automaticHeatingRetry?.settings, position: this.#automaticHeatingRetry?.point, drawing: this.#nativeDocumentState() }, null, 2), 'application/json;charset=utf-8')}>Diagnose downloaden</button>
+    </details>`
+  }
+
   #committedTemplate(selectedShape: Shape | null) {
     const displayShapes = this.#displayShapes()
     const wallShapes = displayShapes.filter((shape) => shape.kind === 'wall')
@@ -5040,6 +5063,8 @@ export class CadleApp extends LiteElement {
       ${groupedTemplate(restShapes)}
       ${groupedTemplate(openingShapes)}
       ${groupedTemplate(symbolShapes)}
+      ${this.#automaticHeatingDiagnostic?.issues.filter((issue) => issue.point).map((issue) => svg`<g class="heating-diagnostic-marker"><title>${issue.message}</title><circle cx=${issue.point!.x} cy=${issue.point!.y} r="10" fill="white" stroke="#b42318" stroke-width="2"/><text x=${issue.point!.x} y=${issue.point!.y + 5} text-anchor="middle" font-size="16" fill="#b42318">!</text></g>`)}
+      ${this.#automaticHeatingDiagnostic?.rooms.filter((room) => room.key === this.#heatingDiagnosticRoom).map((room) => svg`<g pointer-events="none" class="heating-diagnostic-overlay"><rect x=${room.bounds.x} y=${room.bounds.y} width=${room.bounds.width} height=${room.bounds.height} fill="#e6a23c" fill-opacity=".1" stroke="#d97706" stroke-width="3" stroke-dasharray="8 5"/><circle cx=${room.point.x} cy=${room.point.y} r="9" fill="#d97706"/><text x=${room.point.x + 14} y=${room.point.y} font-size="16" fill="#111" stroke="white" stroke-width="3" paint-order="stroke">${room.name}</text></g>`)}
       ${this.#showHeatingCoverage ? this.#document.shapes.filter((shape) => shape.heating?.kind === 'manifold' && shape.heating.coverage?.signature === heatingCoverageSignature(this.#document.shapes)).map((shape) => svg`<g class="heating-coverage-overlay" pointer-events="none">
         ${shape.heating!.coverage!.gaps.map((p) => svg`<rect x=${p.x - shape.heating!.coverage!.step / 2} y=${p.y - shape.heating!.coverage!.step / 2} width=${shape.heating!.coverage!.step} height=${shape.heating!.coverage!.step} fill="#f7900980"/>`)}
       </g>`) : nothing}
@@ -5246,7 +5271,8 @@ export class CadleApp extends LiteElement {
         const owner = this.#document.shapes.find((shape) => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
         if (owner?.kind === 'rect' && payload.roomKey) void this.#generateHeatingAt(owner.start, {
           diameterMm: owner.heating!.diameterMm, spacingMm: owner.heating!.spacingMm, design: owner.heating!.design,
-          edgeMm: owner.heating!.edgeMm, capacity: owner.heating!.capacity ?? Math.max(owner.heating!.circuits, 12), excludedRoomKeys: owner.heating!.excludedRoomKeys
+          edgeMm: owner.heating!.edgeMm, shareSmallRooms: owner.heating!.shareSmallRooms, heatSourceRoom: owner.heating!.heatSourceRoom, manifoldSide: owner.heating!.manifoldSide,
+          capacity: owner.heating!.capacity ?? Math.max(owner.heating!.circuits, 12), excludedRoomKeys: owner.heating!.excludedRoomKeys
         }, payload.roomKey)
         return
       }
@@ -5260,19 +5286,24 @@ export class CadleApp extends LiteElement {
         }
         return
       }
+      case 'export-heating-materials':
       case 'export-heating-csv': {
         let data = this.#displayShapes().find((shape) => shape.heating?.kind === 'manifold' || shape.heating?.kind === 'table')?.heating
         if (data?.sourcePageKey && data.sourcePageKey !== this.#pageKey) {
           const source = this.#nativeStateForPage(data.sourcePageKey as UUID)?.shapes
           if (source) data = presentHeatingTables(source, undefined, shapeBounds).find((shape) => shape.heating?.kind === 'manifold')?.heating ?? data
         }
-        if (data?.rows) this.#download('vloerverwarming-kringen.csv', heatingScheduleCSV(data.rows, data.audit), 'text/csv;charset=utf-8')
+        if (data?.rows) {
+          const materials = payload.action === 'export-heating-materials'
+          this.#download(materials ? 'vloerverwarming-materialen.csv' : 'vloerverwarming-kringen.csv', materials ? heatingMaterialsCSV(data.rows, data.coverage?.stale ? undefined : data.wallPassages) : heatingScheduleCSV(data.rows, data.audit), 'text/csv;charset=utf-8')
+        }
         return
       }
       case 'regenerate-heating-plan': {
         const manifold = this.#document.shapes.find((shape) => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
         if (manifold?.kind === 'rect') void this.#generateHeatingAt(manifold.start, {
           diameterMm: manifold.heating!.diameterMm, spacingMm: manifold.heating!.spacingMm, design: manifold.heating!.design, edgeMm: manifold.heating!.edgeMm,
+          shareSmallRooms: manifold.heating!.shareSmallRooms, heatSourceRoom: manifold.heating!.heatSourceRoom, manifoldSide: manifold.heating!.manifoldSide,
           capacity: manifold.heating!.capacity ?? Math.max(manifold.heating!.circuits, 12), excludedRoomKeys: manifold.heating!.excludedRoomKeys
         })
         return
@@ -5394,9 +5425,11 @@ export class CadleApp extends LiteElement {
   startAutomaticHeatingPlan(settings: AutomaticHeatingSettings) {
     if (this.readOnly || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
     this.#cancelHeatingCalculation()
+    this.#automaticHeatingDiagnostic = null
+    this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = null
-    this.#automaticHeatingSettings = settings
+    this.#automaticHeatingSettings = { shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto', ...settings }
     this.#activateTool('heating-manifold')
   }
 
@@ -5407,12 +5440,22 @@ export class CadleApp extends LiteElement {
     const page = this.#pageKey
     const values = await globalThis.cadleShell.requestInput({ title: 'Verdelerinstellingen', submitLabel: retry ? 'Opnieuw berekenen' : 'Toepassen', fields: [
       { name: 'capacity', label: 'Beschikbare verdelergroepen', type: 'number', min: 1, max: 24, value: String(previous.capacity ?? 12), required: true },
-      { name: 'edgeMm', label: 'Randafstand tot muren (mm)', type: 'number', min: 0, max: 1000, value: String(previous.edgeMm ?? 100), required: true }
+      { name: 'edgeMm', label: 'Randafstand tot muren (mm)', type: 'number', min: 0, max: 1000, value: String(previous.edgeMm ?? 100), required: true },
+      { name: 'heatSourceRoom', label: 'Ruimte van de verdeler', value: previous.heatSourceRoom === false ? 'no' : 'yes', options: [{ value: 'no', label: 'Alleen doorvoer, geen eigen verwarmingslus' }, { value: 'yes', label: 'Ook verwarmen' }] },
+      { name: 'shareSmallRooms', label: 'Kleine aangrenzende ruimtes', value: previous.shareSmallRooms ? 'yes' : 'no', options: [{ value: 'yes', label: 'Mogen een kring delen' }, { value: 'no', label: 'Afzonderlijke kringen' }] },
+      { name: 'manifoldSide', label: 'Aansluitzijde verdeler', value: previous.manifoldSide ?? 'auto', options: [{ value: 'auto', label: 'Automatisch richting doorgang' }, { value: 'top', label: 'Bovenkant op plan' }, { value: 'bottom', label: 'Onderkant op plan' }] },
+      { name: 'maxCircuitLengthM', label: 'Maximale kringlengte incl. aansluitingen (m)', type: 'number', min: 20, max: 300, value: String(previous.design?.maxCircuitLengthM ?? 100), required: true, description: 'Alleen aanpassen volgens het gekozen buisproduct en de hydraulische berekening.' },
+      ...(readHeatingPipeProfiles().length ? [{ name: 'profile', label: 'Buisprofiel', value: '', options: [{ value: '', label: 'Huidige productgegevens behouden' }, ...readHeatingPipeProfiles().map((p) => ({ value: p.id, label: p.name }))] }] : [])
     ] })
     if (!values || page !== this.#pageKey) return
     const capacity = Number(values.capacity), edgeMm = Number(values.edgeMm)
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 24 || !Number.isFinite(edgeMm) || edgeMm < 0 || edgeMm > 1000) return
-    const settings = { ...previous, capacity, edgeMm }
+    const maxCircuitLengthM = Number(values.maxCircuitLengthM)
+    if (!Number.isFinite(maxCircuitLengthM) || maxCircuitLengthM < 20 || maxCircuitLengthM > 300) return
+    const profile = readHeatingPipeProfiles().find((p) => p.id === values.profile)
+    const settings: AutomaticHeatingSettings = { ...previous, capacity, edgeMm, heatSourceRoom: values.heatSourceRoom === 'yes', shareSmallRooms: values.shareSmallRooms === 'yes',
+      manifoldSide: values.manifoldSide as AutomaticHeatingSettings['manifoldSide'], diameterMm: profile?.diameterMm ?? previous.diameterMm,
+      design: profile ? applyHeatingPipeProfile(profile, previous.design) : { ...previous.design, maxCircuitLengthM } }
     if (pending && pending === this.#automaticHeatingRetry) void this.#generateHeatingAt(pending.point, settings, pending.onlyRoom)
     else if (this.#automaticHeatingSettings === previous) { this.#automaticHeatingSettings = settings; this.#render() }
   }
@@ -5434,6 +5477,8 @@ export class CadleApp extends LiteElement {
     this.#automaticHeatingAbort = controller
     this.#automaticHeatingBusy = true
     this.#automaticHeatingProgress = null
+    this.#automaticHeatingDiagnostic = null
+    this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = { point, settings, onlyRoom }
     this.#render()
@@ -5441,7 +5486,8 @@ export class CadleApp extends LiteElement {
       const scene = this.#document.shapes.filter((shape) => !shape.heating?.automatic && !shape.generationKey?.startsWith('heating-penetration:'))
       const existingManifold = this.#document.shapes.find((shape): shape is RectShape => shape.kind === 'rect' && shape.heating?.kind === 'manifold' && shape.heating.automatic)
       const oldPipes = this.#document.shapes.filter((shape): shape is RectShape => shape.kind === 'rect' && shape.heating?.kind === 'pipe' && shape.heating.automatic)
-      const locked = new Set(oldPipes.filter((pipe) => pipe.heating!.circuitLocked || (onlyRoom && pipe.heating!.roomKey !== onlyRoom)).map((pipe) => pipe.heating!.circuitId))
+      const scope = onlyRoom ? heatingRoomScope(oldPipes.map((pipe) => pipe.heating!), onlyRoom) : undefined
+      const locked = new Set(oldPipes.filter((pipe) => pipe.heating!.circuitLocked || (scope && !scope.has(pipe.heating!.roomKey ?? ''))).map((pipe) => pipe.heating!.circuitId))
       const preserved = oldPipes.filter((pipe) => locked.has(pipe.heating!.circuitId))
       const result = await runHeatingPlanner({ scene, position: point, settings, preserved, existingManifold, onlyRoom,
         scale: this.#drawingScale ?? DEFAULT_DRAWING_SCALE, pageArea: this.#safeAreaRect() }, {
@@ -5479,6 +5525,7 @@ export class CadleApp extends LiteElement {
       await this.#persistProjectMetadata()
     } catch (error) {
       if (this.#automaticHeatingAbort !== controller || controller.signal.aborted) return
+      this.#automaticHeatingDiagnostic = error instanceof HeatingPlanningFailure ? error.diagnostics : null
       this.#automaticHeatingError = error instanceof Error ? error.message : 'Het legplan kon niet worden gemaakt.'
       this.#activateTool('select')
     } finally {

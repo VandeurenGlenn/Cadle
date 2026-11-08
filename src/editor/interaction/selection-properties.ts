@@ -32,6 +32,7 @@ export type SelectionPropertyUpdate = {
   flipY?: boolean
   fill?: string
   stroke?: string
+  heatingObstacle?: boolean | null
   strokeWidth?: number
   busbarLength?: number
   fontFamily?: string
@@ -328,6 +329,8 @@ const applyProperties = (
     if (payload.stroke) updated.stroke = payload.stroke
     else delete updated.stroke
   }
+  if (payload.heatingObstacle === null) delete updated.heatingObstacle
+  else if (typeof payload.heatingObstacle === 'boolean') updated.heatingObstacle = payload.heatingObstacle
   if (typeof payload.strokeWidth === 'number') updated.strokeWidth = Math.max(0.5, Math.min(40, payload.strokeWidth))
   if (
     typeof payload.busbarLength === 'number' &&

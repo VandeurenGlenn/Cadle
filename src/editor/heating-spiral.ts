@@ -35,7 +35,7 @@ export const openHeatingTurns = (points: Point[], radius: number, pipeDiameter =
 }
 
 export type HeatingSpiralField = { cells: number[]; roomName: string; roomKey?: string; roomMembers?: { key: string; name: string }[]; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
-type Settings = { deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; design?: HeatingDesignInputs }
+type Settings = { deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; manifoldSide?: 'auto' | 'top' | 'bottom'; design?: HeatingDesignInputs }
 type CellRect = { left: number; top: number; right: number; bottom: number }
 
 /** Both arms wind inward in the same direction, one pitch apart. Reverse the
@@ -158,7 +158,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
           { ...heatingDefaults('pipe', scale), ...settings, automatic: true, pipeRole: 'loop' })
         const loopM = drawingLengthMetres(heatingPipeGeometry(pipe).length, scale)
         const size = heatingManifoldSize(settings.capacity ?? 12, scale, grid.step), origin = grid.point(rect.top * grid.width + rect.left)
-        const lead = (p: Point) => Math.abs(p.y - manifold.y - size.height) + Math.max(0, manifold.x - p.x, p.x - manifold.x - size.width)
+        const lead = (p: Point) => Math.abs(p.y - manifold.y - (settings.manifoldSide === 'top' ? 0 : size.height)) + Math.max(0, manifold.x - p.x, p.x - manifold.x - size.width)
         let minLeads = Infinity
         for (const flipX of [false, true]) for (const flipY of [false, true]) {
           const world = (p: Point) => ({ x: origin.x + (flipX ? fullWidth - p.x : p.x), y: origin.y + (flipY ? fullHeight - p.y : p.y) })

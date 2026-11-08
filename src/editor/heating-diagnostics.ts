@@ -6,7 +6,7 @@ export type HeatingPlanningDiagnostic = {
   code: 'capacity' | 'connection' | 'coverage' | 'placement' | 'timeout'
   scale: number; diameterMm: number; spacingMm: number; capacity: number; maxCircuitLengthM: number
   candidateCircuits: number; areaM2: number; estimatedFloorPipeM: number; point: Point
-  rooms: { key: string; name: string; areaM2: number; estimatedFloorPipeM: number; candidateCircuits: number; loopM: number; point: Point; bounds: { x: number; y: number; width: number; height: number } }[]
+  rooms: { key: string; name: string; zoneName: string; areaM2: number; estimatedFloorPipeM: number; candidateCircuits: number; loopM: number; point: Point; bounds: { x: number; y: number; width: number; height: number } }[]
   issues: { message: string; point?: Point }[]
 }
 
@@ -25,8 +25,8 @@ export const describeHeatingPlan = (grid: HeatingGrid, settings: { diameterMm: n
       const p = grid.point(cell), old = grid.point(best)
       return Math.hypot(p.x - centre.x, p.y - centre.y) < Math.hypot(old.x - centre.x, old.y - centre.y) ? cell : best
     }, room.cells[0])
-    return { key, name: room.name, areaM2, estimatedFloorPipeM: areaM2 / (settings.spacingMm / 1000), candidateCircuits: own.length,
-      loopM: own.reduce((sum, field) => sum + field.loopM / Math.max(1, field.roomMembers?.length ?? 1), 0), point: grid.point(nearest), bounds: { x: p.x, y: p.y, width: q.x - p.x, height: q.y - p.y } }
+    return { key, name: room.name, zoneName: own[0]?.roomName ?? room.name, areaM2, estimatedFloorPipeM: areaM2 / (settings.spacingMm / 1000), candidateCircuits: own.length,
+      loopM: own.reduce((sum, field) => sum + field.loopM * areaM2 / Math.max(.0001, (field.roomMembers?.length ? field.roomMembers.map((r) => r.key) : [key]).reduce((total, memberKey) => total + (areas.get(memberKey) ?? 0), 0)), 0), point: grid.point(nearest), bounds: { x: p.x, y: p.y, width: q.x - p.x, height: q.y - p.y } }
   })
   const areaM2 = rooms.reduce((sum, room) => sum + room.areaM2, 0)
   return { code: 'capacity', scale, diameterMm: settings.diameterMm, spacingMm: settings.spacingMm, capacity: settings.capacity ?? 12,

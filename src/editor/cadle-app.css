@@ -711,5 +711,13 @@ output,
 }
 .heating-planner-error { pointer-events: auto; flex-wrap: wrap; }
 .heating-planner-error span { flex: 1 1 240px; }
+.heating-planner-error { max-height: min(70vh, 600px); overflow-y: auto; }
+.heating-diagnostic { flex-basis: 100%; min-width: 0; font-size: 12px; }
+.heating-diagnostic summary { cursor: pointer; font-weight: 600; }
+.heating-diagnostic p { margin: 6px 0; }
+.heating-diagnostic-scroll { overflow-x: auto; }
+.heating-diagnostic table { width: 100%; border-collapse: collapse; }
+.heating-diagnostic th, .heating-diagnostic td { padding: 5px; text-align: right; border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.heating-diagnostic th:first-child, .heating-diagnostic td:first-child { text-align: left; }
 .heating-circuit-muted { opacity: .25; }
 .heating-circuit-highlight .heating-circuit { stroke-width: 3; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 2px var(--md-sys-color-primary)); }

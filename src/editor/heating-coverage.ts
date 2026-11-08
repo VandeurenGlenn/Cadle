@@ -13,7 +13,7 @@ export const heatingCoverageSignature = (shapes: readonly Shape[]) => JSON.strin
   ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating && (s.locked || s.heatingObstacle !== undefined)) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
   [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.locked, s.heatingObstacle, s.groupId, s.heating?.points,
     s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm,
-    s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys] : null]))
+    s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys, s.heating.heatSourceRoom, s.heating.shareSmallRooms, s.heating.manifoldSide] : null]))
 export const heatingRoomKey = (room: HeatingRoom) => room.roomKey ?? `region-${room.id}`
 const wallDistanceCache = new WeakMap<Uint8Array, Uint16Array>()
 export const heatingWallDistances = (grid: HeatingGrid) => {
@@ -53,7 +53,7 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
     }
   }
   const cellM2 = drawingLengthMetres(grid.step, scale) ** 2, clearance = drawingUnitsForMetres(edgeMm / 1000, scale) / grid.step
-  const areaByCircuit = new Map<string, number>(), gaps: Point[] = [], rooms: HeatingCoverage['rooms'] = []
+  const areaByCircuit = new Map<string, number>(), areaByRoomCircuit = new Map<string, Map<string, number>>(), gaps: Point[] = [], rooms: HeatingCoverage['rooms'] = []
   let visited = 0
   for (const room of grid.rooms) {
     let eligible = 0, covered = 0, maxDistance = 0, gapSamples = 0
@@ -69,6 +69,8 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
       }
       if (nearest <= radius) {
         covered++; areaByCircuit.set(circuit, (areaByCircuit.get(circuit) ?? 0) + cellM2)
+        const byRoom = areaByRoomCircuit.get(circuit) ?? new Map<string, number>(), key = heatingRoomKey(room)
+        byRoom.set(key, (byRoom.get(key) ?? 0) + cellM2); areaByRoomCircuit.set(circuit, byRoom)
       } else {
         // Only gap cells need the wider nearest-neighbour query. Keep all cell
         // counts while bounding the stored overlay used by the editor/export.
@@ -108,5 +110,5 @@ export const measureHeatingCoverage = (grid: HeatingGrid, pipes: readonly RectSh
       value.min = Math.min(value.min, mm); value.max = Math.max(value.max, mm); spacingByCircuit.set(piece.circuit, value)
     }
   }
-  return { coverage: { rooms, gaps, step: grid.step } satisfies HeatingCoverage, areaByCircuit, spacingByCircuit }
+  return { coverage: { rooms, gaps, step: grid.step } satisfies HeatingCoverage, areaByCircuit, areaByRoomCircuit, spacingByCircuit }
 }

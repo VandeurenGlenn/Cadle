@@ -29,6 +29,7 @@ export const assignRoomLabel = (shapes: readonly Shape[], grid: HeatingGrid, poi
   const label = sanitizeRoomLabel(data)
   if (!label) throw new Error('Vul een ruimte-ID en naam in.')
   const existing = roomLabelInRegion(shapes, grid, region.id)
+  const oldKey = existing?.id ?? `region-${region.id}`
   if (shapes.some((shape) => isRoomLabel(shape) && shape.id !== existing?.id && shape.roomLabel.id.toUpperCase() === label.id.toUpperCase())) {
     throw new Error('Deze ruimte-ID is al in gebruik. Kies een unieke ID.')
   }
@@ -38,6 +39,7 @@ export const assignRoomLabel = (shapes: readonly Shape[], grid: HeatingGrid, poi
   const circuitIds = new Set(shapes.filter((shape) => {
     if (shape.kind !== 'rect' || shape.heating?.pipeRole !== 'loop' || !shape.heating.circuitId) return false
     if (existing && shape.heating.roomKey === existing.id) return true
+    if (shape.heating.roomMembers?.some((member) => member.key === oldKey)) return true
     const p = shape.heating.points?.[0]
     if (!p) return false
     const anchor = { x: Math.min(shape.start.x, shape.end.x) + Math.abs(shape.end.x - shape.start.x) * p.x,
@@ -45,20 +47,25 @@ export const assignRoomLabel = (shapes: readonly Shape[], grid: HeatingGrid, poi
     return grid.room[grid.index(anchor)] === region.id
   }).map((shape) => shape.heating!.circuitId!))
   const name = roomLabelName(label)
+  const renamedMembers = (members: NonNullable<Shape['heating']>['roomMembers']) => members?.map((member) => member.key === oldKey ? { ...member, key: annotation.id, name } : member)
   const updated = shapes.map((shape): Shape => {
     if (shape.id === existing?.id) return annotation
     const data = shape.heating
-    if (data?.kind === 'pipe' && circuitIds.has(data.circuitId!)) return { ...shape, heating: { ...data, roomName: name, roomKey: annotation.id } }
+    if (data?.kind === 'pipe' && circuitIds.has(data.circuitId!)) {
+      const members = renamedMembers(data.roomMembers)
+      return { ...shape, heating: { ...data, roomName: members?.length ? members.map((r) => r.name).join(' / ') : name,
+        roomKey: data.roomKey === oldKey || !members?.length ? annotation.id : data.roomKey, ...(members ? { roomMembers: members } : {}) } }
+    }
     const loads = data?.design?.roomHeatLoadsW
     if (data?.kind === 'manifold') {
-      const oldKey = existing?.id ?? `region-${region.id}`
       const renamed = loads && region.name !== name && Object.hasOwn(loads, region.name) ? { ...loads, [name]: loads[region.name] } : undefined
       if (renamed) delete renamed[region.name]
       return { ...shape, heating: { ...data,
         ...(renamed ? { design: { ...data.design, roomHeatLoadsW: renamed } } : {}),
         ...(data.planningRooms ? { planningRooms: data.planningRooms.map((r) => r.key === oldKey ? { key: annotation.id, name } : r) } : {}),
         ...(data.excludedRoomKeys ? { excludedRoomKeys: data.excludedRoomKeys.map((key) => key === oldKey ? annotation.id : key) } : {}),
-        ...(data.rows ? { rows: data.rows.map((r) => r.roomKey === oldKey || r.room === region.name ? { ...r, roomKey: annotation.id, room: name } : r) } : {}),
+        ...(data.sourceRoomKey === oldKey ? { sourceRoomKey: annotation.id } : {}),
+        ...(data.rows ? { rows: data.rows.map((r) => { const members = renamedMembers(r.roomMembers); return members?.some((member) => member.key === annotation.id) ? { ...r, roomKey: r.roomKey === oldKey ? annotation.id : r.roomKey, roomMembers: members, room: members.map((member) => member.name).join(' / ') } : r.roomKey === oldKey || r.room === region.name ? { ...r, roomKey: annotation.id, room: name } : r }) } : {}),
         ...(data.coverage ? { coverage: { ...data.coverage, rooms: data.coverage.rooms.map((r) => r.key === oldKey ? { ...r, key: annotation.id, name } : r) } } : {}) } }
     }
     return shape

@@ -35,6 +35,7 @@ export type SelectionShape = {
   fill?: string
   stroke?: string
   canSetStrokeWidth?: boolean
+  heatingObstacle?: boolean
   strokeWidth?: number
   busbarLength?: number
   fontFamily?: string
@@ -138,6 +139,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       fill: typeof shape.fill === 'string' ? shape.fill : '',
       stroke: typeof shape.stroke === 'string' ? shape.stroke : '',
       canSetStrokeWidth: shape.canSetStrokeWidth === true,
+      heatingObstacle: typeof shape.heatingObstacle === 'boolean' ? shape.heatingObstacle : null,
       strokeWidth: finiteNumber(shape.strokeWidth),
       dimensions: shape.dimensions ? {
         drawingScale: shape.dimensions.drawingScale === undefined ? undefined : finiteNumber(shape.dimensions.drawingScale),

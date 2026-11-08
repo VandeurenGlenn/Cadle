@@ -41,6 +41,7 @@ export type NativeSelectionShapePayload = {
   fill?: string
   stroke?: string
   canSetStrokeWidth?: boolean
+  heatingObstacle?: boolean
   strokeWidth?: number
   busbarLength?: number
   fontFamily?: string
@@ -109,7 +110,7 @@ export const createNativeSelectionChangedPayload = (
 
   const shapePayload: NativeSelectionShapePayload = {
     id: selectedShape.id,
-    kind
+    kind, heatingObstacle: selectedShape.heatingObstacle
   }
   if (selectedShape.kind === 'rect' && selectedShape.heating) {
     shapePayload.heating = selectedShape.heating

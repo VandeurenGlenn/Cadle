@@ -117,7 +117,7 @@ test('keeps the page responsive during heavy calculation and preserves the drawi
   await page.route('**/heating-planner-worker.js', async (route) => {
     starts++
     const body = mode === 'error'
-      ? `onmessage = () => postMessage({type:'error',message:'Test: geen geldige indeling gevonden.'})`
+      ? `onmessage = () => postMessage({type:'error',message:'Test: geen geldige indeling gevonden.',diagnostics:{code:'connection',scale:100,diameterMm:16,spacingMm:100,capacity:12,maxCircuitLengthM:100,candidateCircuits:14,areaM2:102,estimatedFloorPipeM:1020,point:{x:180,y:280},rooms:[{key:'r1',name:'Berging',zoneName:'Berging / Hal',areaM2:4,estimatedFloorPipeM:40,candidateCircuits:1,loopM:38,point:{x:500,y:500},bounds:{x:400,y:400,width:200,height:200}}],issues:[{message:'Laatste afgewezen aansluittraject: geen vrije tweede aansluiting.',point:{x:500,y:500}}]}})`
       : `onmessage = () => { postMessage({type:'progress',progress:{phase:'connections',completedCircuits:1,circuits:12}});
           const until = Date.now() + 15000; while (Date.now() < until) {}
           postMessage({type:'result',result:{shapes:[],rows:[],tableOnSeparatePage:false,wallCrossings:0}}) }`
@@ -157,6 +157,11 @@ test('keeps the page responsive during heavy calculation and preserves the drawi
   await start()
   await expect(app.getByRole('alert')).toContainText('Test: geen geldige indeling gevonden.')
   await expect.poll(() => page.workers().length).toBe(0)
+  await expect(app.locator('.heating-diagnostic')).toContainText('102.0 m²')
+  await expect(app.locator('.heating-diagnostic-marker')).toHaveCount(1)
+  await app.getByRole('button', { name: 'Berging', exact: true }).click()
+  await expect(app.locator('.heating-diagnostic-overlay')).toHaveCount(1)
+  await expect(app.getByRole('button', { name: 'Diagnose downloaden', exact: true })).toBeVisible()
   expect(await savedState()).toBe(original)
   mode = 'busy'
   await app.getByRole('button', { name: 'Opnieuw proberen', exact: true }).click()

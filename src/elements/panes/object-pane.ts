@@ -17,6 +17,8 @@ import { circuitDefaults, defaultHasProtectiveConductor } from '../../editor/cir
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../../editor/constants.js'
 import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scale.js'
 import { heatingDesignLimits, heatingOutputBasis, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from '../../editor/heating-design.js'
+import { heatingMaterials } from '../../editor/heating-materials.js'
+import { heatingPipeProfile, readHeatingPipeProfiles, saveHeatingPipeProfile, deleteHeatingPipeProfile, applyHeatingPipeProfile, type HeatingPipeProfile } from '../../editor/heating-products.js'
 import { heatingScheduleTotals, type HeatingData, type HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
@@ -197,6 +199,7 @@ export class ObjectPane extends LiteElement {
 
     const shape = selection.shape
     this._nativeRoomLabel = shape.roomLabel ?? null
+    this._nativeHeatingObstacle = shape.heatingObstacle
     this._nativeHeating = shape.heating ?? null
     this._nativeHeatingLayout = shape.heatingLayout ?? null
     this._nativeDimensions = shape.dimensions
@@ -687,6 +690,20 @@ export class ObjectPane extends LiteElement {
     `, true)
   }
 
+  @property({ attribute: false }) private accessor _pipeProfiles: HeatingPipeProfile[] = readHeatingPipeProfiles()
+  @property({ attribute: false }) private accessor _pipeProfileMessage = ''
+
+  async #saveHeatingProfile(data: HeatingData) {
+    const values = await globalThis.cadleShell.requestInput({ title: 'Buisprofiel bewaren', fields: [{ name: 'name', label: 'Naam fabrikant / reeks', value: data.design?.product ?? '', required: true, maxLength: 160 }] })
+    if (!values || !values.name.trim()) return
+    try {
+      saveHeatingPipeProfile(heatingPipeProfile(values.name, data.diameterMm, { ...data.design, product: values.name }))
+      this._pipeProfiles = readHeatingPipeProfiles(); this._pipeProfileMessage = 'Profiel lokaal bewaard.'
+    } catch { this._pipeProfileMessage = 'Het profiel kon niet lokaal worden bewaard.' }
+  }
+
+  @property({ attribute: false }) private accessor _nativeHeatingObstacle: boolean | null = null
+
   #heatingProperties() {
     const data = this._nativeHeating, layout = this._nativeHeatingLayout
     if (!data) return ''
@@ -734,6 +751,9 @@ export class ObjectPane extends LiteElement {
         ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
         ${numeric('edgeMm', 'Randafstand tot muren (mm)', 0, 1000)}
         ${numeric('capacity', 'Beschikbare verdelergroepen', 1, MAX_HEATING_CIRCUITS)}
+        <label><input type="checkbox" .checked=${data.shareSmallRooms === true} @change=${(e: Event) => update({ shareSmallRooms: (e.target as HTMLInputElement).checked })} /> Kleine aangrenzende ruimtes mogen een kring delen</label>
+        <label><input type="checkbox" .checked=${data.heatSourceRoom !== false} @change=${(e: Event) => update({ heatSourceRoom: (e.target as HTMLInputElement).checked })} /> Ruimte van de verdeler ook verwarmen</label>
+        <label><span class="native-label">Aansluitzijde verdeler</span><select class="native-select" .value=${data.manifoldSide ?? 'auto'} @change=${(e: Event) => update({ manifoldSide: (e.target as HTMLSelectElement).value as HeatingData['manifoldSide'] })}><option value="auto">Automatisch richting doorgang</option><option value="top">Bovenkant op plan</option><option value="bottom">Onderkant op plan</option></select></label>
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
         ${data.pattern === 'spiral' ? html`<div class="dimension-caption">Slakkenhuis · minimaal R${limits.minBendRadiusMm} mm voor lus, aanvoer en retour</div>` : ''}
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
@@ -750,15 +770,15 @@ export class ObjectPane extends LiteElement {
     `, true)}
       ${this.#heatingCircuitOverview(data)}
       ${data.kind === 'manifold' && data.automatic ? this.#propertySection('heating-rooms', 'Ruimtes en dekking', html`
-        <p class="dimension-caption">Kies welke ruimtes worden verwarmd. Bij herberekenen per ruimte blijven de overige kringen en vastgezette kringen behouden.</p>
+        <p class="dimension-caption">Kies welke ruimtes worden verwarmd. Gedeelde kringen worden samen herberekend. Overige en vastgezette kringen blijven behouden.</p>
         ${data.coverage?.stale ? html`<p class="dimension-hint">De tekening is gewijzigd. Bereken opnieuw voor actuele dekkingscijfers.</p>` : ''}
         ${(data.planningRooms ?? []).map((room) => html`<div class="dimension-summary" data-heating-room-control=${room.key}>
-          <label><input type="checkbox" .checked=${!data.excludedRoomKeys?.includes(room.key)} @change=${(event: Event) => {
+          <label><input type="checkbox" .checked=${!data.excludedRoomKeys?.includes(room.key) && !(data.heatSourceRoom === false && data.sourceRoomKey === room.key)} @change=${(event: Event) => {
             const excluded = new Set(data.excludedRoomKeys ?? [])
             if ((event.target as HTMLInputElement).checked) excluded.delete(room.key); else excluded.add(room.key)
-            update({ excludedRoomKeys: [...excluded] })
+            update({ excludedRoomKeys: [...excluded], ...(data.sourceRoomKey === room.key ? { heatSourceRoom: (event.target as HTMLInputElement).checked } : {}) })
           }} /> ${room.name}</label>
-          <button type="button" class="native-button" ?disabled=${data.excludedRoomKeys?.includes(room.key)} @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-room', roomKey: room.key })}>Deze ruimte herberekenen</button>
+          <button type="button" class="native-button" ?disabled=${data.excludedRoomKeys?.includes(room.key) || (data.heatSourceRoom === false && data.sourceRoomKey === room.key)} @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-room', roomKey: room.key })}>Deze ruimte herberekenen</button>
           ${data.coverage?.rooms.filter((r) => r.key === room.key).map((r) => html`<div class="dimension-caption">${r.coveredM2.toFixed(2)} / ${r.eligibleM2.toFixed(2)} m² gedekt · ${r.gapM2.toFixed(2)} m² buiten dekking</div>`)}
         </div>`)}
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'toggle-heating-coverage' })}>Dekkingskaart tonen/verbergen</button>
@@ -766,13 +786,20 @@ export class ObjectPane extends LiteElement {
       `, false) : ''}
       ${data.automatic && data.kind === 'manifold' ? this.#propertySection('heating-design', 'Ontwerpgegevens', html`
         <p class="dimension-caption">Optioneel invullen uit productblad en warmteverliesberekening. Pas daarna het legplan opnieuw aan met ‘opnieuw berekenen’.</p>
+        <label><span class="native-label">Bewaard buisprofiel</span><select class="native-select" .value=${''} @change=${(event: Event) => {
+          const profile = this._pipeProfiles.find((p) => p.id === (event.target as HTMLSelectElement).value)
+          if (profile) update({ diameterMm: profile.diameterMm, design: applyHeatingPipeProfile(profile, data.design) })
+        }}><option value="">Profiel kiezen…</option>${this._pipeProfiles.map((p) => html`<option value=${p.id}>${p.name} · Ø${p.diameterMm}</option>`)}</select></label>
+        <button type="button" class="native-button" @click=${() => this.#saveHeatingProfile(data)}>Huidige buisgegevens bewaren</button>
+        ${this._pipeProfiles.some((p) => p.design.product === data.design?.product) ? html`<button type="button" class="native-button" @click=${() => { try { const p = this._pipeProfiles.find((p) => p.design.product === data.design?.product)!; deleteHeatingPipeProfile(p.id); this._pipeProfiles = readHeatingPipeProfiles(); this._pipeProfileMessage = 'Profiel verwijderd.' } catch { this._pipeProfileMessage = 'Verwijderen mislukt.' } }}>Dit profiel verwijderen</button>` : ''}
+        ${this._pipeProfileMessage ? html`<p class="dimension-caption" role="status">${this._pipeProfileMessage}</p>` : ''}
         <label><span class="native-label">Buisproduct</span><input class="native-input" maxlength="160" data-heating-design="product" .value=${data.design?.product ?? ''}
           @change=${(event: Event) => update({ design: { ...data.design, product: (event.target as HTMLInputElement).value } })} /></label>
         ${designNumeric('minBendRadiusMm', 'Minimale buigradius (mm)', 10, 1000, `${limits.minBendRadiusMm} (aanname 5×Ø)`)}
         ${designNumeric('maxCircuitLengthM', 'Max. kringlengte incl. reserve (m)', 20, 300, '100 (aanname)')}
         ${designNumeric('allowanceM', 'Opstanden + snijreserve per kring (m)', 0, 30, 'Nog invullen')}
         ${designNumeric('deltaTK', 'Ontwerp-ΔT (K)', 1, 20, '5 (aanname)')}
-        ${[...new Set(data.rows?.map((row) => row.room) ?? [])].map((room) => html`
+        ${[...new Set(data.rows?.flatMap((row) => row.roomMembers?.length ? row.roomMembers.map((r) => r.name) : [row.room]) ?? [])].map((room) => html`
           <label><span class="native-label">Warmtelast ${room} (W)</span><input class="native-input" type="number" min="0" max="100000" step="any" data-heating-room=${room}
             placeholder="Nog invullen" .value=${data.design?.roomHeatLoadsW && Object.hasOwn(data.design.roomHeatLoadsW, room) ? String(data.design.roomHeatLoadsW[room]) : ''}
             @change=${(event: Event) => {
@@ -826,6 +853,11 @@ export class ObjectPane extends LiteElement {
           <div class="dimension-caption">Benedenverlies 1D-bovengrens ${row.floor?.downwardUpperWm2?.toFixed(1) ?? '—'} W/m²; ontwerpwaarde afzonderlijk invullen.</div>
         </div>`)}
       `) : ''}
+      ${data.kind === 'manifold' && data.rows?.length ? this.#propertySection('heating-materials', 'Materialen', html`
+        ${heatingMaterials(data.rows, data.wallPassages).pipes.map((p) => html`<div class="dimension-summary"><strong>Ø${p.diameterMm} mm · ${p.circuits} kringen</strong><div class="dimension-caption">Lussen ${p.loopM.toFixed(1)} m · aansluittrajecten ${p.leadsM.toFixed(1)} m · reserve ${p.reserveM.toFixed(1)} m</div><div class="dimension-caption">Benodigd ${p.orderM.toFixed(1)} m · ${p.connections} verdeleraansluitingen</div></div>`)}
+        <p class="dimension-caption">${data.coverage?.stale || data.wallPassages === undefined ? 'Muurpassages: opnieuw berekenen.' : `${data.wallPassages} afzonderlijke buispassages door muren, zonder deuren.`} Geen telling van gedeelde boorgaten. Rollen en hulpstukken volgens het gekozen product.</p>
+        <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'export-heating-materials' })}>Materialen als CSV</button>
+      `) : ''}
       ${data.automatic && (audit || data.checks?.length) ? this.#propertySection('heating-checks', 'Legplancontrole', html`
         <div class="dimension-caption" role="status">Concept${audit ? ` · ${audit.errors} fouten · ${audit.reviews} controles` : ''}</div>
         ${(audit?.issues ?? data.checks ?? []).length > 30 ? html`<p class="dimension-caption">Eerste 30 punten; de volledige lijst staat in de CSV.</p>` : ''}
@@ -878,6 +910,7 @@ export class ObjectPane extends LiteElement {
       <section>
         ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple ? this.#heatingProperties() : ''}
+        ${!multiple && !this._nativeHeating && ['rect', 'symbol'].includes(this._nativeSelectedKind) ? this.#propertySection('heating-obstacle', 'Vloerverwarming', html`<label><span class="native-label">Vrij te houden voorwerp</span><select class="native-select" .value=${this._nativeHeatingObstacle === null ? 'auto' : String(this._nativeHeatingObstacle)} @change=${(event: Event) => { const value = (event.target as HTMLSelectElement).value; pubsub.publish('editor.object.update', { heatingObstacle: value === 'auto' ? null : value === 'true' }) }}><option value="auto">Automatisch herkennen</option><option value="true">Geen buizen onder dit voorwerp</option><option value="false">Buizen toegestaan</option></select></label>`) : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
               <label>

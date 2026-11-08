@@ -23,6 +23,12 @@ export type HeatingData = {
   automatic?: boolean
   pattern?: 'spiral'
   capacity?: number
+  shareSmallRooms?: boolean
+  heatSourceRoom?: boolean
+  manifoldSide?: 'auto' | 'top' | 'bottom'
+  sourceRoomKey?: string
+  wallPassages?: number
+  roomMembers?: { key: string; name: string; areaM2?: number }[]
   circuitLocked?: boolean
   activeCircuitIds?: string[]
   excludedRoomKeys?: string[]
@@ -44,7 +50,7 @@ export type HeatingData = {
   points?: Point[]
 }
 
-export type HeatingScheduleRow = { id: string; room: string; roomKey?: string; locked?: boolean; diameterMm: number; spacingMm: number; areaM2: number;
+export type HeatingScheduleRow = { id: string; room: string; roomKey?: string; roomMembers?: HeatingData['roomMembers']; locked?: boolean; diameterMm: number; spacingMm: number; areaM2: number;
   loopM: number; supplyM: number; returnM: number; totalM: number; flowLmin: number;
   spacingMinMm?: number; spacingMaxMm?: number;
   hydraulics?: HeatingHydraulics; floor?: HeatingFloor;
@@ -100,6 +106,10 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.pattern === 'spiral') data.pattern = 'spiral'
   if (typeof raw.capacity === 'number' && Number.isFinite(raw.capacity)) data.capacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.capacity)))
   if (typeof raw.circuitLocked === 'boolean') data.circuitLocked = raw.circuitLocked
+  if (Number.isInteger(raw.wallPassages) && (raw.wallPassages as number) >= 0 && (raw.wallPassages as number) <= 1000) data.wallPassages = raw.wallPassages as number
+  for (const key of ['shareSmallRooms', 'heatSourceRoom'] as const) if (typeof raw[key] === 'boolean') data[key] = raw[key]
+  if (raw.manifoldSide === 'auto' || raw.manifoldSide === 'top' || raw.manifoldSide === 'bottom') data.manifoldSide = raw.manifoldSide
+  if (Array.isArray(raw.roomMembers)) data.roomMembers = sanitizeRoomMembers(raw.roomMembers)
   for (const key of ['activeCircuitIds', 'excludedRoomKeys'] as const) if (Array.isArray(raw[key])) data[key] = raw[key].filter((v): v is string => typeof v === 'string').slice(0, 100).map((v) => v.slice(0, 160))
   if (Array.isArray(raw.planningRooms)) data.planningRooms = raw.planningRooms.flatMap((r: any) => r && typeof r.key === 'string' && typeof r.name === 'string' ? [{ key: r.key.slice(0, 160), name: r.name.slice(0, 140) }] : []).slice(0, 100)
   // Coverage is derived again after editing; only bounded, numeric snapshots persist.
@@ -117,7 +127,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (audit) data.audit = audit
   if (checks) data.checks = checks
   for (const key of ['rowOffset', 'rowLimit'] as const) if (typeof raw[key] === 'number' && Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 100) data[key] = raw[key] as number
-  for (const key of ['circuitId', 'roomName', 'roomKey', 'sourcePageKey'] as const) if (typeof raw[key] === 'string') data[key] = (raw[key] as string).slice(0, key === 'roomName' ? 140 : 100)
+  for (const key of ['circuitId', 'roomName', 'roomKey', 'sourceRoomKey', 'sourcePageKey'] as const) if (typeof raw[key] === 'string') data[key] = (raw[key] as string).slice(0, key === 'roomName' ? 140 : 160)
   if (typeof raw.servedAreaM2 === 'number' && Number.isFinite(raw.servedAreaM2) && raw.servedAreaM2 >= 0) data.servedAreaM2 = raw.servedAreaM2
   if (Array.isArray(raw.rows)) data.rows = raw.rows.slice(0, 100).flatMap((row): HeatingScheduleRow[] => {
     if (!row || typeof row !== 'object' || typeof row.id !== 'string' || typeof row.room !== 'string') return []
@@ -125,6 +135,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
     if (!keys.every((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0)) return []
     return [{ id: row.id.slice(0, 100), room: row.room.slice(0, 140), ...Object.fromEntries(keys.map((key) => [key, row[key]])),
       ...(typeof row.roomKey === 'string' ? { roomKey: row.roomKey.slice(0, 160) } : {}), ...(row.locked === true ? { locked: true } : {}),
+      ...(Array.isArray(row.roomMembers) ? { roomMembers: sanitizeRoomMembers(row.roomMembers) } : {}),
       ...Object.fromEntries(['spacingMinMm', 'spacingMaxMm'].filter((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 1 && row[key] <= 500).map((key) => [key, row[key]])),
       ...(sanitizeHeatingHydraulics(row.hydraulics) ? { hydraulics: sanitizeHeatingHydraulics(row.hydraulics) } : {}),
       ...(sanitizeHeatingFloor(row.floor) ? { floor: sanitizeHeatingFloor(row.floor) } : {}),
@@ -149,6 +160,23 @@ export const heatingBounds = (shape: RectShape) => ({
   x: Math.min(shape.start.x, shape.end.x), y: Math.min(shape.start.y, shape.end.y),
   width: Math.abs(shape.end.x - shape.start.x), height: Math.abs(shape.end.y - shape.start.y)
 })
+
+const sanitizeRoomMembers = (value: any[]): NonNullable<HeatingData['roomMembers']> => value.flatMap((r) => r && typeof r.key === 'string' && typeof r.name === 'string'
+  ? [{ key: r.key.slice(0, 160), name: r.name.slice(0, 140), ...(Number.isFinite(r.areaM2) && r.areaM2 >= 0 ? { areaM2: r.areaM2 } : {}) }] : []).slice(0, 100)
+
+/** Recalculate a shared circuit as a whole, retaining every unrelated circuit. */
+export const heatingRoomScope = (items: readonly { roomKey?: string; roomMembers?: HeatingData['roomMembers'] }[], key: string) => {
+  const scope = new Set([key])
+  for (let changed = true; changed;) {
+    changed = false
+    for (const item of items) {
+      const keys = item.roomMembers?.map((r) => r.key) ?? (item.roomKey ? [item.roomKey] : [])
+      if (!keys.some((k) => scope.has(k))) continue
+      for (const k of keys) if (!scope.has(k)) { scope.add(k); changed = true }
+    }
+  }
+  return scope
+}
 
 export const createHeatingPipe = (id: string, points: Point[], data: HeatingData): RectShape => {
   const x = Math.min(...points.map((p) => p.x)), y = Math.min(...points.map((p) => p.y))
@@ -206,7 +234,7 @@ export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRo
     if (!data?.circuitId || data.kind !== 'pipe') continue
     let row = rows.get(data.circuitId)
     if (!row) {
-      row = { ...(data.roomKey ? { roomKey: data.roomKey } : {}), ...(data.spacingMinMm ? { spacingMinMm: data.spacingMinMm, spacingMaxMm: data.spacingMaxMm } : {}), id: data.circuitId, room: data.roomName ?? data.name, diameterMm: data.diameterMm, spacingMm: data.spacingMm,
+      row = { ...(data.roomKey ? { roomKey: data.roomKey } : {}), ...(data.roomMembers ? { roomMembers: data.roomMembers } : {}), ...(data.spacingMinMm ? { spacingMinMm: data.spacingMinMm, spacingMaxMm: data.spacingMaxMm } : {}), id: data.circuitId, room: data.roomName ?? data.name, diameterMm: data.diameterMm, spacingMm: data.spacingMm,
         areaM2: 0, loopM: 0, supplyM: 0, returnM: 0, totalM: 0, flowLmin: 0 }
       rows.set(data.circuitId, row)
     }
@@ -219,16 +247,17 @@ export const heatingSchedule = (shapes: readonly RectShape[]): HeatingScheduleRo
   }
   const design = shapes.find((s) => s.heating?.kind === 'manifold')?.heating?.design ?? shapes.find((s) => s.heating?.design)?.heating?.design
   const areaByRoom = new Map<string, number>()
-  for (const row of rows.values()) areaByRoom.set(row.room, (areaByRoom.get(row.room) ?? 0) + row.areaM2)
+  for (const row of rows.values()) for (const member of row.roomMembers?.length ? row.roomMembers : [{ name: row.room, areaM2: row.areaM2 }]) areaByRoom.set(member.name, (areaByRoom.get(member.name) ?? 0) + (member.areaM2 ?? 0))
   const calculated = [...rows.values()].map((row) => {
     const limits = heatingDesignLimits(row.diameterMm, design), loads = design?.roomHeatLoadsW
-    const roomPower = loads && Object.hasOwn(loads, row.room) ? loads[row.room] : undefined
-    const power = roomPower === undefined ? row.areaM2 * HEATING_FLOW_BASIS.heatWm2 : roomPower * row.areaM2 / Math.max(1e-9, areaByRoom.get(row.room) ?? 0)
+    const members = row.roomMembers?.length ? row.roomMembers : [{ name: row.room, areaM2: row.areaM2 }]
+    const completeLoads = members.every((m) => loads && Object.hasOwn(loads, m.name) && m.areaM2 !== undefined)
+    const power = members.reduce((sum, m) => sum + (loads && Object.hasOwn(loads, m.name) ? loads[m.name] * (m.areaM2 ?? 0) / Math.max(1e-9, areaByRoom.get(m.name) ?? 0) : (m.areaM2 ?? 0) * HEATING_FLOW_BASIS.heatWm2), 0)
     const cutM = row.totalM + limits.allowanceM, flowLmin = (power + (design?.downwardDesignWm2 ?? 0) * row.areaM2) * 60 / (limits.deltaTK * HEATING_FLOW_BASIS.specificHeat * HEATING_FLOW_BASIS.densityKgL)
     return { ...row, allowanceM: limits.allowanceM, cutM, flowLmin,
       hydraulics: heatingHydraulics(row.diameterMm, cutM, flowLmin, design),
-      floor: heatingFloor(row.areaM2, roomPower === undefined ? undefined : power, row.diameterMm, row.spacingMm, design),
-      flowEstimated: roomPower === undefined || design?.deltaTK === undefined }
+      floor: heatingFloor(row.areaM2, completeLoads ? power : undefined, row.diameterMm, row.spacingMm, design),
+      flowEstimated: !completeLoads || design?.deltaTK === undefined }
   }).sort((a, b) => a.id.localeCompare(b.id))
   const criticalKpa = Math.max(0, ...calculated.map((r) => r.hydraulics?.totalKpa ?? 0))
   const water = heatingWater(design?.fluidTemperatureC ?? ((design?.supplyTemperatureC ?? 35) - (design?.deltaTK ?? 5) / 2))
@@ -386,7 +415,7 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
       const x = b.x + b.width * (i + 1) / ((data.capacity ?? data.circuits) + 1)
       const supply = data.points?.[2 * i], returning = data.points?.[2 * i + 1]
       const sx = supply ? b.x + supply.x * b.width : x - 2, rx = returning ? b.x + returning.x * b.width : x + 2
-      markup += `<path d="M ${sx} ${top} V ${b.y + b.height}" stroke="${red}"/><path d="M ${rx} ${bottom} V ${b.y + b.height}" stroke="${blue}"/>`
+      markup += `<path d="M ${sx} ${top} V ${b.y + (supply?.y ?? (data.manifoldSide === 'top' ? 0 : 1)) * b.height}" stroke="${red}"/><path d="M ${rx} ${bottom} V ${b.y + (returning?.y ?? (data.manifoldSide === 'top' ? 0 : 1)) * b.height}" stroke="${blue}"/>`
     }
     markup += label(b.x, b.y - 10, `${data.name} · ${data.circuits}${data.capacity ? `/${data.capacity}` : ''} groepen${data.automatic ? ` · CONCEPT (${data.audit?.errors ?? 0} fouten)` : ''}`)
   } else {

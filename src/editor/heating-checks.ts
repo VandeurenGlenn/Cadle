@@ -45,7 +45,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     reviews: issues.filter((i) => i.severity === 'review').length })
   const manifold = shapes.find((s) => s.kind === 'rect' && s.heating?.kind === 'manifold') as RectShape | undefined
   const scale = manifold?.heating?.drawingScale ?? pipes[0]?.heating?.drawingScale ?? 100
-  const inManifoldZone = (p: Point) => manifold && p.x >= Math.min(manifold.start.x, manifold.end.x) - 1600 / scale &&
+  const inManifoldZone = (p: Point) => manifold && manifold.heating?.connectionMode !== 'zone' && p.x >= Math.min(manifold.start.x, manifold.end.x) - 1600 / scale &&
     p.x <= Math.max(manifold.start.x, manifold.end.x) + 1600 / scale && p.y >= Math.min(manifold.start.y, manifold.end.y) - 1600 / scale &&
     p.y <= Math.max(manifold.start.y, manifold.end.y) + 1600 / scale
   if (manifold?.heating?.automatic) for (const id of manifold.heating.activeCircuitIds ?? Array.from({ length: manifold.heating.circuits }, (_, i) => `VV${String(i + 1).padStart(2, '0')}`)) {
@@ -150,7 +150,10 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
       add(`${row.id}:missing`, { code: 'continuity', severity: 'error', circuits: [row.id], message: `${row.id}: lus, aanvoer of retour ontbreekt.` }); continue
     }
     const l = heatingPipeGeometry(loop).points, s = heatingPipeGeometry(supply).points, r = heatingPipeGeometry(returning).points
-    if (manifold) {
+    if (manifold?.heating?.connectionMode === 'zone') {
+      const radius = (manifold.heating.connectionZoneRadiusMm ?? 1500) * 8 / scale
+      if ([s[0], r.at(-1)!].some((p) => Math.hypot(p.x - manifold.start.x, p.y - manifold.start.y) > radius + .1)) add(`${row.id}:connection-zone`, { code: 'continuity', severity: 'error', circuits: [row.id], point: s[0], message: `${row.id}: leidinguiteinde ligt buiten de verdelerzone.` })
+    } else if (manifold) {
       const index = Number(row.id.replace(/^VV/, '')) - 1, ports = manifold.heating?.points
       const x = Math.min(manifold.start.x, manifold.end.x), y = Math.min(manifold.start.y, manifold.end.y)
       const width = Math.abs(manifold.end.x - manifold.start.x), height = Math.abs(manifold.end.y - manifold.start.y)
@@ -170,6 +173,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
       add(`${row.id}:endpoints`, { code: 'continuity', severity: 'error', circuits: [row.id], message: `${row.id}: aansluitingen sluiten niet aan op de lus.` })
     }
   }
+  if (manifold?.heating?.connectionMode === 'zone') add('open-distributor', { code: 'open-connections', severity: 'review', circuits: [], point: manifold.start, message: 'Aanvoer en retour eindigen open bij de verdelerpositie. Verdeleraansluitingen zijn nog niet uitgewerkt; de getoonde meters lopen tot deze open uiteinden.' })
   const penetrations = shapes.filter((s) => s.generationKey?.startsWith('heating-penetration:'))
   if (manifold?.heating?.capacity && rows.length > manifold.heating.capacity) add('capacity', { code: 'capacity', severity: 'error', circuits: [], message: `${rows.length} kringen overschrijden de ${manifold.heating.capacity} beschikbare verdelergroepen.` })
   if (manifold?.heating?.coverage?.signature && manifold.heating.coverage.signature !== heatingCoverageSignature(shapes)) add('coverage-stale', {

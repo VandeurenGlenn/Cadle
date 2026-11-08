@@ -112,7 +112,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
     checkpoint()
     let usable = 0, covered = 0
     let accessSide = -1, bestDoor = Infinity
-    if (settings.reserveAccess) for (const cell of room.cells) {
+    if (settings.reserveAccess && (room.members?.length ?? 0) < 2) for (const cell of room.cells) {
       if (!grid.door[cell]) continue
       const p = grid.point(cell), score = Math.abs(p.x - manifold.x) + Math.abs(p.y - manifold.y)
       if (score >= bestDoor) continue
@@ -167,7 +167,9 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
         const available = Math.max(8, Math.min(settings.diameterMm < 16 ? 70 : limits.maxCircuitLengthM, limits.maxCircuitLengthM - limits.allowanceM - minLeads) * budgetFactor * (settings.loopBudgetByRoom?.[heatingRoomKey(room)] ?? 1))
         count = Math.max(1, Math.ceil(loopM / available))
       }
-      const horizontal = (rect.right - rect.left >= rect.bottom - rect.top) !== Boolean(variant & 4)
+      // Split across the approach strip: every field then has its own opening
+      // onto that strip instead of hiding later fields behind closed spirals.
+      const horizontal = (accessSide >= 0 ? accessSide >= 2 : rect.right - rect.left >= rect.bottom - rect.top) !== Boolean(variant & 4)
       const first = horizontal ? rect.left : rect.top, last = horizontal ? rect.right : rect.bottom
       for (let part = 0; part < count; part++) {
         const start = first + Math.round((last - first) * part / count) + (part ? Math.ceil(pitch / 2) : 0)
@@ -186,6 +188,8 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
           const path = rectangularHeatingSpiral(width, height, settings, scale, checkpoint, axis)
           if (!path) continue
           for (const flipX of [false, true]) for (const flipY of [false, true]) {
+            if (accessSide === 0 && (axis !== 'x' || flipX) || accessSide === 1 && (axis !== 'x' || !flipX) ||
+              accessSide === 2 && (axis !== 'y' || flipY) || accessSide === 3 && (axis !== 'y' || !flipY)) continue
             const convert = (p: Point) => ({ x: origin.x + (flipX ? width - p.x : p.x), y: origin.y + (flipY ? height - p.y : p.y) })
             const a = convert(path[0]), b = convert(path[1]), last = convert(path.at(-1)!)
             const length = Math.hypot(a.x - b.x, a.y - b.y), dx = (a.x - b.x) / length, dy = (a.y - b.y) / length

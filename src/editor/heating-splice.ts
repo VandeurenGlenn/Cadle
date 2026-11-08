@@ -68,3 +68,30 @@ export function* heatingSpliceCandidates(a: number[], b: number[], grid: Heating
     if (++proposals >= 4) return
   }
 }
+
+/** Move both free ends to a long accessible side of the same spiral. Closing
+ * its former inlet and cutting an outer run opens a proper entry window instead
+ * of leaving the feed ends behind neighbouring laying fields. */
+export function* heatingReopenCandidates(cells: number[], grid: HeatingGrid, pitch: number, radius: number,
+  position: { x: number; y: number }): Generator<number[]> {
+  if (cells.length < 3) return
+  const first = cells[0], last = cells.at(-1)!, delta = first - last
+  const step = first % grid.width === last % grid.width ? Math.sign(delta) * grid.width : Math.floor(first / grid.width) === Math.floor(last / grid.width) ? Math.sign(delta) : 0
+  if (!step || Math.abs(delta / step) > pitch * 2 || cells[1] - first !== cells.at(-2)! - last) return
+  const closure: number[] = []
+  for (let c = last + step; c !== first; c += step) {
+    if (c < 0 || c >= grid.wall.length || grid.obstacle[c] || grid.wall[c]) return
+    closure.push(c)
+  }
+  const cycle = [...cells, ...closure], size = cycle.length
+  const cut = Math.max(pitch * 4, Math.ceil(radius * 4 + 2)), margin = Math.ceil(radius * 2.5)
+  const choices = runs(cells, grid.width).filter((run) => run.last - run.first >= cut + margin * 2).map((run) => {
+    const centre = Math.round((run.first + run.last) / 2), p = grid.point(cells[centre])
+    return { run, centre, score: Math.abs(p.x - position.x) + Math.abs(p.y - position.y) }
+  }).sort((a, b) => a.score - b.score)
+  for (const { centre } of choices.slice(0, 8)) {
+    const a = centre - Math.floor(cut / 2), b = a + cut, result = [cycle[b]]
+    for (let index = (b + 1) % size; index !== a; index = (index + 1) % size) result.push(cycle[index])
+    result.push(cycle[a]); yield result
+  }
+}

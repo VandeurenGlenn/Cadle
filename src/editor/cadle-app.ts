@@ -5425,7 +5425,7 @@ export class CadleApp extends LiteElement {
 
   #heatingSettingsFrom(data: HeatingData): AutomaticHeatingSettings {
     return { diameterMm: data.diameterMm, spacingMm: data.spacingMm, design: data.design, edgeMm: data.edgeMm,
-      circuitSpacingMm: data.circuitSpacingMm, shareSmallRooms: data.shareSmallRooms, heatSourceRoom: data.heatSourceRoom, manifoldSide: data.manifoldSide,
+      connectionMode: data.connectionMode ?? 'zone', circuitSpacingMm: data.circuitSpacingMm, shareSmallRooms: data.shareSmallRooms, heatSourceRoom: data.heatSourceRoom, manifoldSide: data.manifoldSide,
       capacity: data.capacity ?? Math.max(data.circuits, 12), excludedRoomKeys: data.excludedRoomKeys }
   }
 
@@ -5448,7 +5448,7 @@ export class CadleApp extends LiteElement {
     this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = null
-    this.#automaticHeatingSettings = { shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto', ...settings }
+    this.#automaticHeatingSettings = { connectionMode: 'zone', shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto', ...settings }
     this.#activateTool('heating-manifold')
   }
 

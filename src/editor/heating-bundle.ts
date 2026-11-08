@@ -4,7 +4,7 @@ type Path = { source: number; cells: number[] }
 class Heap {
   nodes: number[] = []; costs: number[] = []; turns: number[] = []
   before(a: number, b: number) { return this.costs[a] < this.costs[b] - 1e-8 || Math.abs(this.costs[a] - this.costs[b]) < 1e-8 && this.turns[a] < this.turns[b] }
-  swap(a: number, b: number) { for (const values of [this.nodes, this.costs, this.turns]) [values[a], values[b]] = [values[b], values[a]] }
+  swap(a: number, b: number) { let value = this.nodes[a]; this.nodes[a] = this.nodes[b]; this.nodes[b] = value; value = this.costs[a]; this.costs[a] = this.costs[b]; this.costs[b] = value; value = this.turns[a]; this.turns[a] = this.turns[b]; this.turns[b] = value }
   push(node: number, cost: number, turns: number) {
     let i = this.nodes.length; this.nodes.push(node); this.costs.push(cost); this.turns.push(turns)
     while (i) { const parent = (i - 1) >> 1; if (!this.before(i, parent)) break; this.swap(i, parent); i = parent }
@@ -23,17 +23,32 @@ class Heap {
  * bundle exists. This avoids exponential backtracking of fixed port pairs.
  * Rounded geometry remains a separate, mandatory validation step. */
 export const routeHeatingBundle = (grid: HeatingGrid, sources: readonly number[], goals: readonly number[], blocked: Uint8Array,
-  options: HeatingRoutingOptions, onProgress?: (done: number) => void): Path[] | null => {
-  if (!sources.length || sources.length !== goals.length || new Set(sources).size !== sources.length || new Set(goals).size !== goals.length) return null
+  options: HeatingRoutingOptions & { onBlocked?: (goals: number[]) => void }, onProgress?: (done: number) => void): Path[] | null => {
+  if (!sources.length || sources.length < goals.length || new Set(sources).size !== sources.length || new Set(goals).size !== goals.length) return null
   const size = grid.wall.length, states = size * 2
   if ([...sources, ...goals].some((c) => c < 0 || blocked[c] || grid.obstacle[c])) return null
   const used = new Uint8Array(size), next = new Int32Array(size).fill(-1), incoming = new Int32Array(size).fill(-1)
   const goalIndex = new Int16Array(size).fill(-1), goalUsed = new Uint8Array(goals.length), sourceUsed = new Uint8Array(sources.length)
+  const sourceCell = new Uint8Array(size)
+  sources.forEach((cell) => { sourceCell[cell] = 1 })
   goals.forEach((cell, i) => { goalIndex[cell] = i })
   const potential = new Float64Array(states), distance = new Float64Array(states), previous = new Int32Array(states), closed = new Uint8Array(states)
   const turns = new Uint16Array(states), roots = new Int16Array(states), heading = new Int32Array(states)
   const free = (cell: number) => !blocked[cell] && !grid.obstacle[cell]
   const cost = (a: number, b: number) => 1 + wallStepCost(grid, a, b, options)
+  // Reject enclosed coil entries before doing any multi-tube search.
+  const reachQueue = new Int32Array(size); let read = 0, write = 0
+  for (const cell of sources) if (!used[cell]) { used[cell] = 1; reachQueue[write++] = cell }
+  while (read < write) {
+    if (read % 2048 === 0) options.checkpoint?.()
+    const cell = reachQueue[read++], x = cell % grid.width, y = Math.floor(cell / grid.width)
+    for (const neighbour of [x ? cell - 1 : -1, x + 1 < grid.width ? cell + 1 : -1, y ? cell - grid.width : -1, y + 1 < grid.height ? cell + grid.width : -1]) {
+      if (neighbour >= 0 && !used[neighbour] && free(neighbour)) { used[neighbour] = 1; reachQueue[write++] = neighbour }
+    }
+  }
+  const enclosed = goals.flatMap((cell, i) => !used[cell] ? [i] : [])
+  used.fill(0)
+  if (enclosed.length) { options.onBlocked?.(enclosed); return null }
   for (let flow = 0; flow < goals.length; flow++) {
     options.checkpoint?.(); onProgress?.(flow)
     distance.fill(Infinity); previous.fill(-1); closed.fill(0); turns.fill(65535); roots.fill(-1); heading.fill(0)
@@ -60,11 +75,12 @@ export const routeHeatingBundle = (grid: HeatingGrid, sources: readonly number[]
       if (out) {
         const x = cell % grid.width, y = Math.floor(cell / grid.width)
         for (const neighbour of [x ? cell - 1 : -1, x + 1 < grid.width ? cell + 1 : -1, y ? cell - grid.width : -1, y + 1 < grid.height ? cell + grid.width : -1]) {
-          if (neighbour >= 0 && free(neighbour) && next[cell] !== neighbour) relax(state, neighbour * 2, cost(cell, neighbour), neighbour - cell)
+          // Open ends are roots, never intermediate pieces of another tube.
+          if (neighbour >= 0 && !sourceCell[neighbour] && free(neighbour) && next[cell] !== neighbour) relax(state, neighbour * 2, cost(cell, neighbour), neighbour - cell)
         }
       } else if (incoming[cell] >= 0) relax(state, incoming[cell] * 2 + 1, -cost(incoming[cell], cell), incoming[cell] - cell)
     }
-    if (found < 0) return null
+    if (found < 0) { options.onBlocked?.(goals.flatMap((_, i) => !goalUsed[i] ? [i] : [])); return null }
     const endDistance = distance[found]
     for (let i = 0; i < states; i++) potential[i] += Math.min(distance[i], endDistance)
     const path: number[] = [found]
@@ -88,6 +104,7 @@ export const routeHeatingBundle = (grid: HeatingGrid, sources: readonly number[]
   }
   const result: Path[] = Array(goals.length)
   for (let source = 0; source < sources.length; source++) {
+    if (!sourceUsed[source]) continue
     const cells = [sources[source]]
     while (goalIndex[cells.at(-1)!] < 0 || !goalUsed[goalIndex[cells.at(-1)!]]) {
       const cell = next[cells.at(-1)!]

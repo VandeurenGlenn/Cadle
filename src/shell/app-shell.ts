@@ -1121,7 +1121,7 @@ export class AppShell extends LiteElement {
     this.project.pages[pageKey].heatingPlanOf = sourceKey
     await setProjectData(this.projectKey, this.project)
     await this.loadPage(pageKey)
-    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm, edgeMm: 100, capacity: 12, shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto' })
+    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm, edgeMm: 100, capacity: 12, connectionMode: 'zone', shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto' })
   }
 
   async openRenamePageDialog(pageKey: string) {

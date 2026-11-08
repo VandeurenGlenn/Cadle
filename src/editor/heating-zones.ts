@@ -1,5 +1,5 @@
-import type { Shape } from './model/types.js'
-import { heatingRouteCorridor, routeHeating, type HeatingGrid, type HeatingRoom } from './heating-routing.js'
+import type { Point, Shape } from './model/types.js'
+import { routeHeating, type HeatingGrid, type HeatingRoom } from './heating-routing.js'
 import { isHeatingDoorSymbol, heatingDoorSymbolThreshold } from './heating-openings.js'
 import { heatingRoomKey, heatingWallDistances } from './heating-coverage.js'
 
@@ -64,34 +64,96 @@ export const shareSmallHeatingRooms = (grid: HeatingGrid, shapes: readonly Shape
 /** Reserve the common feed network before filling a shared zone with coils.
  * These strips remain open for joins and manifold leads, rather than receiving
  * an extra coil underneath the bundle that already heats the same floor. */
-export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Array, shapes: readonly Shape[], position: { x: number; y: number }, scale: number,
-  diameterMm: number, capacity: number, radiusMm: number, checkpoint: () => void): HeatingGrid => {
+export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Array, shapes: readonly Shape[], position: Point, scale: number,
+  diameterMm: number, capacity: number, radiusMm: number, checkpoint: () => void,
+  options: { accessTargets?: readonly Point[]; original?: HeatingGrid; targets?: ReadonlyMap<string, number>; origin?: Point; spacingMm?: number } = {}): HeatingGrid => {
   const sourceId = grid.room[grid.index(position)], zone = grid.rooms.find((room) => room.id === sourceId)
   if (!zone?.members || zone.members.length < 2) return grid
-  const routingGrid = { ...grid, obstacle: routingObstacle }, loopObstacle = grid.loopObstacle.slice()
-  const source = zone.cells.filter((cell) => !routingObstacle[cell]).sort((a, b) => {
-    const distance = (cell: number) => { const p = grid.point(cell); return Math.abs(p.x - position.x) + Math.abs(p.y - position.y - 2800 / scale) }
-    return distance(a) - distance(b)
-  })[0]
-  if (source === undefined) return grid
-  const reach = Math.ceil((radiusMm + capacity * diameterMm) * 8 / scale / grid.step)
-  const goals = new Set<number>()
+  const original = options.original ?? grid, originalSource = original.room[original.index(position)]
+  const doors: { a: number; b: number; centre: Point; normal: Point }[] = []
   for (const shape of shapes) {
     if (shape.hidden || (shape.kind !== 'door' && shape.kind !== 'gate' && !isHeatingDoorSymbol(shape))) continue
     const opening = isHeatingDoorSymbol(shape) ? heatingDoorSymbolThreshold(shape) : 'start' in shape ? shape : null
     if (!opening) continue
     const dx = opening.end.x - opening.start.x, dy = opening.end.y - opening.start.y, length = Math.hypot(dx, dy)
     if (!length) continue
-    for (const side of [-1, 0, 1]) {
-      const cell = grid.index({ x: (opening.start.x + opening.end.x) / 2 - dy / length * side * 1600 / scale, y: (opening.start.y + opening.end.y) / 2 + dx / length * side * 1600 / scale })
-      if (cell >= 0 && grid.room[cell] === sourceId && !routingObstacle[cell]) goals.add(cell)
-    }
+    const centre = { x: (opening.start.x + opening.end.x) / 2, y: (opening.start.y + opening.end.y) / 2 }, normal = { x: -dy / length, y: dx / length }
+    const probe = 1600 / scale
+    const a = original.room[original.index({ x: centre.x + normal.x * probe, y: centre.y + normal.y * probe })], b = original.room[original.index({ x: centre.x - normal.x * probe, y: centre.y - normal.y * probe })]
+    if (a > 0 && b > 0 && a !== b) doors.push({ a, b, centre, normal })
   }
-  for (const goal of goals) {
+  const levels = new Map([[originalSource, 0]]), queue = [originalSource]
+  for (let read = 0; read < queue.length; read++) for (const door of doors) {
+    const next = door.a === queue[read] ? door.b : door.b === queue[read] ? door.a : -1
+    if (next > 0 && !levels.has(next)) { levels.set(next, levels.get(queue[read])! + 1); queue.push(next) }
+  }
+  const distances = heatingWallDistances(original), areas = new Map(original.rooms.map((room) => [room.id, room.cells.filter((c) => !original.obstacle[c] && distances[c] * grid.step * scale / 8 >= 100).length * (grid.step * scale / 8000) ** 2]))
+  const load = (id: number) => {
+    const originalRoom = original.rooms.find((r) => r.id === id)
+    if (!originalRoom) return 1
+    const parent = grid.rooms.find((r) => r.id === grid.room[originalRoom.cells[0]])
+    const groupArea = original.rooms.filter((r) => grid.room[r.cells[0]] === parent?.id).reduce((sum, r) => sum + (areas.get(r.id) ?? 0), 0)
+    const groups = parent ? options.targets?.get(heatingRoomKey(parent)) ?? Math.ceil(groupArea / Math.max(1, (options.spacingMm ?? 100) / 1000 * 90)) : 1
+    return Math.max(1, Math.round(groups * (areas.get(id) ?? 0) / Math.max(.1, groupArea)))
+  }
+  const hard = new Uint8Array(grid.wall.length)
+  for (let cell = 0; cell < hard.length; cell++) hard[cell] = routingObstacle[cell] || grid.wall[cell] && !grid.door[cell] ? 1 : 0
+  const clear = heatingWallDistances({ ...grid, wall: hard })
+  const laneMm = grid.step * scale / 8, bundleClearance = Math.ceil((radiusMm + capacity * laneMm) / laneMm)
+  const centred = routingObstacle.slice()
+  for (let cell = 0; cell < centred.length; cell++) if (clear[cell] < bundleClearance) centred[cell] = 1
+  const routingGrid = { ...grid, obstacle: centred }, loopObstacle = grid.loopObstacle.slice(), origin = options.origin ?? position
+  const sourceCells = zone.cells.filter((cell) => !centred[cell])
+  if (!sourceCells.length) return grid
+  const source = sourceCells.reduce((best, cell) => {
+    const p = grid.point(cell), q = grid.point(best)
+    return Math.abs(p.x - origin.x) + Math.abs(p.y - origin.y) < Math.abs(q.x - origin.x) + Math.abs(q.y - origin.y) ? cell : best
+  }, sourceCells[0])
+  const traffic = new Uint16Array(grid.wall.length)
+  const reserveRoute = (goal: number, tubes: number, roomId?: number) => {
+    const path = routeHeating(routingGrid, source, goal, { roomId, radiusCells: Math.ceil(radiusMm * 16 / scale / grid.step), checkpoint })
+    if (path) for (const cell of path) traffic[cell] = Math.min(capacity * 2, traffic[cell] + tubes)
+  }
+  if (options.accessTargets?.length) {
+    // The first coil proposal exposes the actual remote entries. Reserve their
+    // approaches as well as the shared hall, including paths around long shafts.
+    // Door-only reservation left distant fields hidden behind other spirals.
+    for (const target of options.accessTargets) {
+      checkpoint()
+      const room = grid.rooms.find((room) => room.id === grid.room[grid.index(target)])
+      const available = room?.cells.filter((cell) => !centred[cell]) ?? []
+      if (!available.length) continue
+      const goal = available.reduce((best, cell) => {
+        const p = grid.point(cell), q = grid.point(best)
+        return Math.abs(p.x - target.x) + Math.abs(p.y - target.y) < Math.abs(q.x - target.x) + Math.abs(q.y - target.y) ? cell : best
+      }, available[0])
+      reserveRoute(goal, 2)
+    }
+  } else for (const door of doors) {
     checkpoint()
-    const path = routeHeating(routingGrid, source, goal, { roomId: sourceId, radiusCells: Math.ceil(radiusMm * 16 / scale / grid.step), checkpoint })
-    if (!path) continue
-    for (const cell of heatingRouteCorridor(grid, path, reach)) if (grid.room[cell] === sourceId) loopObstacle[cell] = 1
+    if (door.a === originalSource || door.b === originalSource) continue
+    const forward = (levels.get(door.a) ?? Infinity) < (levels.get(door.b) ?? Infinity), far = forward ? door.b : door.a, side = forward ? 1 : -1
+    const goal = grid.index({ x: door.centre.x + door.normal.x * side * 1600 / scale, y: door.centre.y + door.normal.y * side * 1600 / scale })
+    if (goal < 0 || grid.room[goal] !== sourceId || centred[goal]) continue
+    reserveRoute(goal, Math.min(capacity * 2, load(far) * 2), sourceId)
+  }
+  // Size each shared strip by the number of tubes that actually traverse it.
+  // A bathroom approach no longer reserves the full twelve-circuit bundle.
+  const bands = new Map<number, number[]>()
+  for (let cell = 0; cell < traffic.length; cell++) if (traffic[cell]) { const cells = bands.get(traffic[cell]) ?? []; cells.push(cell); bands.set(traffic[cell], cells) }
+  for (const [tubes, cells] of bands) {
+    const reach = Math.ceil((radiusMm + tubes * Math.max(laneMm, diameterMm * 1.2) / 2) * 8 / scale / grid.step)
+    // Cells need their own local disks; unrelated routes must not be connected
+    // by the bounding box of the whole list.
+    for (const cell of cells) {
+      checkpoint()
+      const x = cell % grid.width, y = Math.floor(cell / grid.width)
+      for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+        if (dx * dx + dy * dy > reach * reach) continue
+        const xx = x + dx, yy = y + dy, next = yy * grid.width + xx
+        if (xx >= 0 && yy >= 0 && xx < grid.width && yy < grid.height && grid.room[next] > 0) loopObstacle[next] = 1
+      }
+    }
   }
   return { ...grid, loopObstacle }
 }

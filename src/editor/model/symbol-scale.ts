@@ -1,12 +1,18 @@
-import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
-
 const PUSH_BUTTON_PATH = /switches\/(?:(?:illuminated |double )?push button|push switch with safety cover)\.svg$/i
+const FLOOR_PLAN_SPOT_PATH = /\/consumption appliances\/(?:recessed )?spot(?:light)?\.svg$/i
+const FLOOR_PLAN_SOCKET_PATH = /\/socket outlets\//i
 
-/** Paper sizes for compact appliances, independent of the architectural plan scale. */
+export const floorPlanSpotPaperScale = (path: string): number | null =>
+  FLOOR_PLAN_SPOT_PATH.test(path) ? 1.15 : null
+
+export const floorPlanSocketPaperScale = (path: string): number | null =>
+  FLOOR_PLAN_SOCKET_PATH.test(path) ? 1.15 : null
+
+/** Paper sizes for appliances that previously had oversized floor-plan defaults. */
 export const appliancePaperScale = (path: string): number | null => {
-  // The refrigerator source includes whitespace; a 6 mm box gives a 4.8 mm cabinet.
-  if (/\/consumption appliances\/refrigerator\.svg$/i.test(path)) return 6 * PAPER_WORLD_UNITS_PER_MM / 24
-  if (/\/consumption appliances\/kwh meter\.svg$/i.test(path)) return 6 * PAPER_WORLD_UNITS_PER_MM / 24
+  // Their view boxes match appliances such as the dishwasher, so use the same scale.
+  if (/\/consumption appliances\/refrigerator\.svg$/i.test(path)) return 1.15
+  if (/\/consumption appliances\/kwh meter\.svg$/i.test(path)) return 1.15
   return null
 }
 
@@ -26,9 +32,13 @@ export const floorPlanSwitchPaperScale = (path: string): number | null => {
 
 /** Correct previous floor-plan defaults once, keeping other saved sizes intact. */
 export const revisedGroundPlanDefaultScale = (path: string, scale: number): number | null => {
-  const previous = /\/consumption appliances\/refrigerator\.svg$/i.test(path) ? 3
-    : /\/consumption appliances\/kwh meter\.svg$/i.test(path) ? 8 / 3 : null
-  if (previous !== null) return Math.abs(scale - previous) < 1e-9 ? appliancePaperScale(path) : null
+  const previous = /\/consumption appliances\/refrigerator\.svg$/i.test(path) ? [3, 2]
+    : /\/consumption appliances\/kwh meter\.svg$/i.test(path) ? [8 / 3, 2] : null
+  if (previous !== null) return previous.some((value) => Math.abs(scale - value) < 1e-9) ? appliancePaperScale(path) : null
+  const spot = floorPlanSpotPaperScale(path)
+  if (spot !== null) return Math.abs(scale - 1.5 * 1.15) < 1e-9 ? spot : null
+  const socket = floorPlanSocketPaperScale(path)
+  if (socket !== null) return Math.abs(scale - 1.5 * 1.15) < 1e-9 ? socket : null
   const base = floorPlanSwitchBaseScale(path)
   return base !== null && Math.abs(scale - base * 1.5 * 1.15) < 1e-9 ? floorPlanSwitchPaperScale(path) : null
 }

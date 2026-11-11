@@ -11,15 +11,15 @@ import type { RectShape } from '../src/editor/model/types.ts'
 const zone = (): RectShape => ({ id: 'zone', kind: 'rect', start: { x: 200, y: 200 }, end: { x: 520, y: 440 },
   heating: { ...heatingDefaults('zone', 100), name: 'Living' } })
 
-test('fits rounded meanders at exact spacing and reports geometric lengths without leads', () => {
+test('fits a rounded double spiral and reports geometric lengths without leads', () => {
   const shape = zone(), layout = heatingLayout(shape)
   assert.equal(layout.areaM2, 12)
   assert.equal(layout.circuits.length, 1)
-  assert.equal((layout.circuits[0].path.match(/ A /g) ?? []).length, 17)
-  assert.ok(Math.abs(layout.lengthM - (18 * (3.8 - .15) + .15 + 17 * Math.PI * .075)) < 1e-9)
+  assert.equal((layout.circuits[0].path.match(/M /g) ?? []).length, 1)
+  assert.ok(Math.abs(layout.lengthM - 71.2934032815) < 1e-9)
   const divided = heatingLayout({ ...shape, heating: { ...shape.heating!, circuits: 2 } })
   assert.equal(divided.circuits.length, 2)
-  assert.equal(divided.circuits[0].lengthM, divided.circuits[1].lengthM)
+  assert.ok(Math.abs(divided.circuits[0].lengthM - divided.circuits[1].lengthM) < 1e-9)
   for (const circuit of divided.circuits) for (const p of [circuit.start, circuit.end]) {
     assert.ok(p.x >= 200 && p.x <= 520 && p.y >= 200 && p.y <= 440)
   }
@@ -35,7 +35,7 @@ test('keeps heating geometry and pipe lengths through cloning, moving, saving an
   assert.equal(heatingLayout(moved).lengthM, 3)
   const scaled = rescaleGroundPlan([zone(), pipe], 100, 50) as RectShape[]
   assert.equal(scaled[0].heating!.drawingScale, 50)
-  assert.equal(heatingLayout(scaled[0]).lengthM, heatingLayout(zone()).lengthM)
+  assert.ok(Math.abs(heatingLayout(scaled[0]).lengthM - heatingLayout(zone()).lengthM) < 1e-9)
   assert.equal(heatingLayout(scaled[1]).lengthM, 3)
   assert.deepEqual(rescaleGroundPlan(scaled, 50, 100), [zone(), pipe])
 })

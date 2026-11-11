@@ -4,7 +4,7 @@ import { electricalMetadataFromCatalog } from '../../editor/model/electrical.js'
 import { paperTextScale } from '../layout/page-layout.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import { oneWireSymbolScaleFor } from '../layout/onewire-symbol-nodes.js'
-import { appliancePaperScale, floorPlanSwitchPaperScale } from '../model/symbol-scale.js'
+import { appliancePaperScale, floorPlanSocketPaperScale, floorPlanSpotPaperScale, floorPlanSwitchPaperScale } from '../model/symbol-scale.js'
 export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
@@ -49,9 +49,12 @@ export const resolveCatalogSymbolScale = (symbol: NativeCatalogPick, context: Sy
   if (context === 'onewire') return oneWireSymbolScaleFor(symbol.path) ?? inferSymbolScale(symbol.path)
   const applianceScale = appliancePaperScale(symbol.path)
   if (applianceScale !== null) return applianceScale
+  const spotScale = floorPlanSpotPaperScale(symbol.path)
+  if (spotScale !== null) return spotScale
+  const socketScale = floorPlanSocketPaperScale(symbol.path)
+  if (socketScale !== null) return socketScale
   const switchScale = floorPlanSwitchPaperScale(symbol.path)
   if (switchScale !== null) return switchScale
-  if (/\/socket outlets\//i.test(symbol.path)) return inferSymbolScale(symbol.path) * FLOOR_PLAN_ELECTRICAL_FACTOR * FLOOR_PLAN_SYMBOL_FACTOR
   if (isLightingPath(symbol.path)) {
     const base = /\/wall light\.svg$/i.test(symbol.path) ? WALL_LIGHT_SCALE
       : /\/fluorescent lamp\.svg$/i.test(symbol.path) ? FLUORESCENT_LAMP_SCALE : inferSymbolScale(symbol.path)

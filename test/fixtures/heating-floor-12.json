@@ -1,0 +1,537 @@
+[
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1860,
+      "y": 248
+    },
+    "end": {
+      "x": 1860,
+      "y": 944
+    },
+    "locked": true,
+    "id": "floor-0"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 620,
+      "y": 944
+    },
+    "end": {
+      "x": 620,
+      "y": 248
+    },
+    "locked": true,
+    "id": "floor-1"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 620,
+      "y": 248
+    },
+    "end": {
+      "x": 1860,
+      "y": 248
+    },
+    "locked": true,
+    "id": "floor-2"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 620,
+      "y": 544
+    },
+    "end": {
+      "x": 1100,
+      "y": 544
+    },
+    "locked": true,
+    "id": "floor-3"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1100,
+      "y": 544
+    },
+    "end": {
+      "x": 1100,
+      "y": 624
+    },
+    "locked": true,
+    "id": "floor-4"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 940,
+      "y": 624
+    },
+    "end": {
+      "x": 940,
+      "y": 544
+    },
+    "locked": true,
+    "id": "floor-5"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 868,
+      "y": 624
+    },
+    "end": {
+      "x": 868,
+      "y": 544
+    },
+    "locked": true,
+    "id": "floor-6"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 620,
+      "y": 944
+    },
+    "end": {
+      "x": 1860,
+      "y": 944
+    },
+    "locked": true,
+    "id": "floor-7"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 868,
+      "y": 624
+    },
+    "end": {
+      "x": 868,
+      "y": 944
+    },
+    "locked": true,
+    "id": "floor-8"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 620,
+      "y": 624
+    },
+    "end": {
+      "x": 1100,
+      "y": 624
+    },
+    "locked": true,
+    "id": "floor-9"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1220,
+      "y": 584
+    },
+    "end": {
+      "x": 1620,
+      "y": 584
+    },
+    "locked": true,
+    "id": "floor-10"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1620,
+      "y": 584
+    },
+    "end": {
+      "x": 1620,
+      "y": 864
+    },
+    "locked": true,
+    "id": "floor-11"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1620,
+      "y": 864
+    },
+    "end": {
+      "x": 1564,
+      "y": 864
+    },
+    "locked": true,
+    "id": "floor-12"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1564,
+      "y": 864
+    },
+    "end": {
+      "x": 1564,
+      "y": 584
+    },
+    "locked": true,
+    "id": "floor-13"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1620,
+      "y": 640
+    },
+    "end": {
+      "x": 1860,
+      "y": 640
+    },
+    "locked": true,
+    "id": "floor-14"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 1220,
+      "y": 248
+    },
+    "end": {
+      "x": 1220,
+      "y": 944
+    },
+    "locked": true,
+    "id": "floor-15"
+  },
+  {
+    "kind": "door",
+    "start": {
+      "x": 1220,
+      "y": 560
+    },
+    "end": {
+      "x": 1220,
+      "y": 488
+    },
+    "locked": true,
+    "id": "floor-16"
+  },
+  {
+    "kind": "door",
+    "start": {
+      "x": 1220,
+      "y": 604
+    },
+    "end": {
+      "x": 1220,
+      "y": 676
+    },
+    "rotation": 90,
+    "flipY": true,
+    "locked": true,
+    "id": "floor-17"
+  },
+  {
+    "kind": "wall",
+    "start": {
+      "x": 871,
+      "y": 704
+    },
+    "end": {
+      "x": 1095,
+      "y": 704
+    },
+    "locked": true,
+    "id": "floor-18"
+  },
+  {
+    "kind": "door",
+    "start": {
+      "x": 868,
+      "y": 736
+    },
+    "end": {
+      "x": 868,
+      "y": 808
+    },
+    "rotation": 90,
+    "flipX": true,
+    "locked": true,
+    "id": "floor-19"
+  },
+  {
+    "kind": "door",
+    "start": {
+      "x": 1100,
+      "y": 554
+    },
+    "end": {
+      "x": 1100,
+      "y": 610
+    },
+    "rotation": 90,
+    "flipX": true,
+    "locked": true,
+    "id": "floor-20"
+  },
+  {
+    "kind": "door",
+    "start": {
+      "x": 780,
+      "y": 544
+    },
+    "end": {
+      "x": 844,
+      "y": 544
+    },
+    "rotation": 0,
+    "flipY": true,
+    "locked": true,
+    "id": "floor-21"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 630,
+      "y": 255
+    },
+    "end": {
+      "x": 678,
+      "y": 535
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-22"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 774,
+      "y": 487
+    },
+    "end": {
+      "x": 678,
+      "y": 535
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-23"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 745,
+      "y": 260
+    },
+    "end": {
+      "x": 841,
+      "y": 404
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-24"
+  },
+  {
+    "kind": "symbol",
+    "position": {
+      "x": 826.4000000000001,
+      "y": 661.4
+    },
+    "path": "symbols/Floor plan/shower.svg",
+    "scale": 3.4499999999999997,
+    "locked": true,
+    "id": "floor-25"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1630,
+      "y": 585
+    },
+    "end": {
+      "x": 1702,
+      "y": 633
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-26"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1702,
+      "y": 585
+    },
+    "end": {
+      "x": 1782,
+      "y": 633
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-27"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1782,
+      "y": 585
+    },
+    "end": {
+      "x": 1854,
+      "y": 633
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-28"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1630,
+      "y": 645
+    },
+    "end": {
+      "x": 1702,
+      "y": 693
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-29"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1702,
+      "y": 645
+    },
+    "end": {
+      "x": 1782,
+      "y": 693
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-30"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1782,
+      "y": 645
+    },
+    "end": {
+      "x": 1854,
+      "y": 693
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-31"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1094,
+      "y": 622
+    },
+    "end": {
+      "x": 1070,
+      "y": 702
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-32",
+    "groupId": "fixture-group-0"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 1044,
+      "y": 625
+    },
+    "end": {
+      "x": 1020,
+      "y": 705
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-33",
+    "groupId": "fixture-group-0"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 994,
+      "y": 625
+    },
+    "end": {
+      "x": 970,
+      "y": 705
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-34",
+    "groupId": "fixture-group-0"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 944,
+      "y": 625
+    },
+    "end": {
+      "x": 920,
+      "y": 705
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-35",
+    "groupId": "fixture-group-0"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 894,
+      "y": 625
+    },
+    "end": {
+      "x": 870,
+      "y": 705
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-36",
+    "groupId": "fixture-group-0"
+  },
+  {
+    "kind": "rect",
+    "start": {
+      "x": 870,
+      "y": 545
+    },
+    "end": {
+      "x": 942,
+      "y": 625
+    },
+    "strokeWidth": 2,
+    "variant": "rect",
+    "locked": true,
+    "id": "floor-37"
+  }
+]

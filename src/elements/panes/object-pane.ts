@@ -19,7 +19,7 @@ import { DRAWING_SCALES, isDrawingScale } from '../../editor/layout/drawing-scal
 import { heatingDesignLimits, heatingOutputBasis, MAX_HEATING_CIRCUITS, type HeatingDesignInputs } from '../../editor/heating-design.js'
 import { heatingMaterials } from '../../editor/heating-materials.js'
 import { heatingPipeProfile, readHeatingPipeProfiles, saveHeatingPipeProfile, deleteHeatingPipeProfile, applyHeatingPipeProfile, type HeatingPipeProfile } from '../../editor/heating-products.js'
-import { heatingScheduleTotals, type HeatingData, type HeatingLayout } from '../../editor/heating-plan.js'
+import { heatingScheduleTotals, heatingPatternLabel, type HeatingData, type HeatingLayout } from '../../editor/heating-plan.js'
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
@@ -756,16 +756,16 @@ export class ObjectPane extends LiteElement {
       ${data.kind === 'zone' ? html`
         <div class="native-row">${zoneDimension('width', 'Breedte')}${zoneDimension('height', 'Hoogte')}</div>
         <div class="native-row">${numeric('spacingMm', 'Buisafstand h.o.h. (mm)', 50, 500)}${numeric('edgeMm', 'Randafstand (mm)', 0, 1000)}</div>
-        ${numeric('circuits', 'Aantal lussen', 1, MAX_HEATING_CIRCUITS)}
+        ${numeric('circuits', 'Aantal kringen', 1, MAX_HEATING_CIRCUITS)}
         <label><span class="native-label">Legrichting</span><select class="native-select" data-heating-field="direction" .value=${data.direction}
           @change=${(event: Event) => update({ direction: (event.target as HTMLSelectElement).value as HeatingData['direction'] })}>
-          <option value="horizontal">Slakkenhuis naast elkaar</option><option value="vertical">Slakkenhuis boven elkaar</option>
+          <option value="horizontal">Kringen naast elkaar</option><option value="vertical">Kringen boven elkaar</option>
         </select></label>
-        <div class="dimension-caption">Pas breedte en hoogte aan om de zone te vergroten of verkleinen. Het slakkenhuis wordt opnieuw ingedeeld; buisafstand en randafstand blijven behouden.</div>
-        <div class="dimension-caption">Symbolen en verboden zones blijven vrij. Rond obstakels wordt de vrije vloer opgedeeld in afzonderlijke slakkenhuizen, elk met eigen aansluitingen. Gebruik het automatische legplan om vrije vlakken waar mogelijk tot langere kringen te verbinden.</div>
-        ${layout?.warning ? html`<p class="dimension-hint">${layout.warning}</p>` : ''}
+        <div class="dimension-caption">Pas breedte en hoogte aan om de zone te vergroten of verkleinen. Het legpatroon wordt opnieuw ingedeeld; buisafstand en randafstand blijven behouden.</div>
+        <div class="dimension-caption">Slakkenhuis heeft voorrang. Past dat plaatselijk niet, dan probeert de planner een meander of een combinatie. Symbolen en verboden zones blijven vrij; het ingestelde aantal kringen blijft behouden.</div>
+        <div class="dimension-caption">Legpatroon: ${heatingPatternLabel(layout?.pattern)}</div>
         <div class="dimension-caption">Zone ${layout?.areaM2.toFixed(2)} m² · buis ${layout?.lengthM.toFixed(1)} m (zonder aansluitleidingen)</div>
-        ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Lus ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
+        ${(layout?.circuits ?? []).map((circuit, index) => html`<div class="dimension-caption">Kring ${index + 1}: ${circuit.lengthM.toFixed(1)} m</div>`)}
       ` : data.kind === 'manifold' ? data.automatic ? html`
         ${numeric('spacingMm', 'Legafstand h.o.h. (mm)', 50, 500)}
         ${numeric('edgeMm', 'Randafstand tot muren (mm)', 0, 1000)}
@@ -775,7 +775,7 @@ export class ObjectPane extends LiteElement {
         ${data.connectionMode !== 'zone' ? html`<label><span class="native-label">Aansluitzijde verdeler</span><select class="native-select" .value=${data.manifoldSide ?? 'auto'} @change=${(e: Event) => update({ manifoldSide: (e.target as HTMLSelectElement).value as HeatingData['manifoldSide'] })}><option value="auto">Automatisch richting doorgang</option><option value="top">Bovenkant op plan</option><option value="bottom">Onderkant op plan</option></select></label>` : ''}
         ${data.connectionMode === 'zone' ? html`<p class="dimension-caption">Verdelersymbool verborgen. Aanvoer en retour eindigen open bij de verdelerpositie; de aansluiting op de verdeler is nog niet uitgewerkt.</p>` : ''}
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>
-        ${data.pattern === 'spiral' ? html`<div class="dimension-caption">Slakkenhuis · minimaal R${limits.minBendRadiusMm} mm voor lus, aanvoer en retour</div>` : ''}
+        <div class="dimension-caption">${heatingPatternLabel(data.pattern)} · minimaal R${limits.minBendRadiusMm} mm voor lus, aanvoer en retour</div>
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'regenerate-heating-plan' })}>Legplan opnieuw berekenen</button>
       ` : numeric('circuits', 'Aantal groepen', 1, MAX_HEATING_CIRCUITS) : html`
         <label><span class="native-label">Buisfunctie</span><select class="native-select" data-heating-field="pipeRole" .value=${data.pipeRole}
@@ -783,6 +783,7 @@ export class ObjectPane extends LiteElement {
           <option value="supply">Aanvoer (rood)</option><option value="return">Retour (blauw)</option><option value="loop">Verwarmingslus</option>
         </select></label>
         <div class="dimension-caption">Trajectlengte ${layout?.lengthM.toFixed(2)} m${data.circuitId ? ` · kring ${data.circuitId}` : ''}</div>
+        ${data.pipeRole === 'loop' ? html`<div class="dimension-caption">Legpatroon: ${heatingPatternLabel(data.pattern)}</div>` : ''}
         <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'redraw-heating-route' })}>Traject opnieuw tekenen</button>
         <div class="dimension-caption">Enter bewaart; Escape annuleert. Automatisch herberekenen vervangt handmatige trajecten.</div>
       `}

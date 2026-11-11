@@ -9,7 +9,8 @@ test('previews and places catalog symbols at the page-specific size without resi
   const items = [
     { name: 'Switch general symbol', path: 'symbols/Switches/Switch general symbol.svg', ground: 1.3 * 1.5 * 1.15 },
     { name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg', ground: 1.5 * 1.15 },
-    { name: 'Wall outlet with grounding for floorplan', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', ground: 1.5 * 1.15 }
+    { name: 'Spot', path: 'symbols/Consumption appliances/Spot.svg', ground: 1.15 },
+    { name: 'Wall outlet with grounding for floorplan', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', ground: 1.15 }
   ]
   for (const [key, context] of [
     ['00000000-0000-4000-8000-000000000102', 'groundplan'],

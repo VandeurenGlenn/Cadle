@@ -18,8 +18,8 @@ const runs = (cells: number[], width: number) => {
  * runs. Its former inlet is closed with the same rounded-return construction.
  * Unlike endpoint-only joining, the combined coil keeps the accessible ports
  * of the first field. All proposed curves still require the full geometry audit. */
-export function* heatingSpliceCandidates(a: number[], b: number[], grid: HeatingGrid, pitch: number, radius: number,
-  checkpoint: () => void): Generator<number[]> {
+function* spliceHeatingOrientation(a: number[], b: number[], grid: HeatingGrid, pitch: number, radius: number,
+  checkpoint: () => void, maxGap = pitch * 2): Generator<number[]> {
   if (a.length < 3 || b.length < 3) return
   const first = b[0], last = b.at(-1)!, delta = first - last
   const closureStep = first % grid.width === last % grid.width ? Math.sign(delta) * grid.width : Math.floor(first / grid.width) === Math.floor(last / grid.width) ? Math.sign(delta) : 0
@@ -33,13 +33,18 @@ export function* heatingSpliceCandidates(a: number[], b: number[], grid: Heating
   const along = (cell: number, vertical: boolean) => vertical ? Math.floor(cell / grid.width) : cell % grid.width
   const across = (cell: number, vertical: boolean) => vertical ? cell % grid.width : Math.floor(cell / grid.width)
   let proposals = 0
-  for (const x of runs(a, grid.width)) for (const y of runs(b, grid.width)) {
-    checkpoint()
-    if (x.vertical !== y.vertical) continue
+  const pairs = runs(a, grid.width).flatMap((x) => runs(b, grid.width).flatMap((y) => {
+    if (x.vertical !== y.vertical) return []
     const gap = Math.abs(across(a[x.first], x.vertical) - across(b[y.first], y.vertical))
-    if (!gap || gap > pitch * 2) continue
+    return gap > 0 && gap <= maxGap ? [{ x, y, gap }] : []
+  })).sort((a, b) => a.gap - b.gap)
+  for (const { x, y, gap } of pairs) {
+    checkpoint()
     const delta = Math.max(0, radius - gap / 2), theta = delta ? Math.acos(1 - delta / (2 * radius)) : 0
-    const tangent = Math.ceil(radius + 2 * radius * Math.sin(theta) + .01)
+    // The old corner and the new bridge both need their own tangent. Counting
+    // only one radius produced R75 fillets when R80 was required, preventing
+    // otherwise useful small fields from joining a neighbouring circuit.
+    const tangent = Math.ceil(2 * radius + 2 * radius * Math.sin(theta) + .01)
     const lower = Math.max(Math.min(along(a[x.first], x.vertical), along(a[x.last], x.vertical)), Math.min(along(b[y.first], y.vertical), along(b[y.last], y.vertical))) + tangent
     const upper = Math.min(Math.max(along(a[x.first], x.vertical), along(a[x.last], x.vertical)), Math.max(along(b[y.first], y.vertical), along(b[y.last], y.vertical))) - tangent
     const cutLength = Math.min(pitch * 4, upper - lower)
@@ -64,8 +69,26 @@ export function* heatingSpliceCandidates(a: number[], b: number[], grid: Heating
       detour.push(cycle[index])
     }
     detour.push(b[b1])
-    yield [...a.slice(0, a0 + 1), ...out, ...detour, ...back, ...a.slice(a1 + 1)]
-    if (++proposals >= 4) return
+    const candidate = [...a.slice(0, a0 + 1), ...out, ...detour, ...back, ...a.slice(a1 + 1)]
+    yield candidate
+    if (++proposals >= 16) return
+  }
+}
+
+/** A field inserted inside another circuit no longer needs its own inlet.
+ * Reflect a known rectangular field so its closure faces away from the bridge.
+ * Irregular joined fields retain their exact geometry. */
+export function* heatingSpliceCandidates(a: number[], b: number[], grid: HeatingGrid, pitch: number, radius: number,
+  checkpoint: () => void, maxGap = pitch * 2, reflectRectangle = false): Generator<number[]> {
+  yield* spliceHeatingOrientation(a, b, grid, pitch, radius, checkpoint, maxGap)
+  if (!reflectRectangle) return
+  const xs = b.map((cell) => cell % grid.width), ys = b.map((cell) => Math.floor(cell / grid.width))
+  const left = Math.min(...xs), right = Math.max(...xs), top = Math.min(...ys), bottom = Math.max(...ys)
+  for (const flipX of [false, true]) for (const flipY of [false, true]) {
+    if (!flipX && !flipY) continue
+    checkpoint()
+    const reflected = b.map((cell) => (flipY ? top + bottom - Math.floor(cell / grid.width) : Math.floor(cell / grid.width)) * grid.width + (flipX ? left + right - cell % grid.width : cell % grid.width))
+    yield* spliceHeatingOrientation(a, reflected, grid, pitch, radius, checkpoint, maxGap)
   }
 }
 

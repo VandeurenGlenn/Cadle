@@ -209,27 +209,55 @@ test('catalog placement on one-wire uses the same sizes as generated components'
   }
 })
 
-test('enlarges newly placed lights and sockets while keeping custom catalog sizes', () => {
-  for (const path of ['symbols/Consumption appliances/Lighting.svg', 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg']) {
-    assert.equal(createSymbolShape('placed', { x: 0, y: 0 }, { name: 'Component', path }).scale, 1.5 * 1.15)
-  }
+test('enlarges newly placed lights while keeping custom catalog sizes', () => {
+  assert.equal(createSymbolShape('placed', { x: 0, y: 0 }, {
+    name: 'Component', path: 'symbols/Consumption appliances/Lighting.svg'
+  }).scale, 1.5 * 1.15)
   assert.equal(resolveCatalogSymbolScale({ name: 'Custom', path: 'symbols/Switches/Switch general symbol.svg',
     metadata: { symbolDefaults: { scale: 2.4 } } }, 'onewire'), 2.4)
 })
 
-test('gives refrigerators and meters readable paper sizes and upgrades only their old defaults', () => {
-  for (const [name, scale] of [['Refrigerator', 2], ['kWh meter', 2]] as const) {
+test('keeps floor-plan sockets compact and upgrades only their old default size', () => {
+  const symbol = { name: 'Socket', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg' }
+  assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, 1.15)
+
+  const old = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.5 * 1.15, strokeWidth: .5 }
+  const upgraded = sanitizeShapes([old], 'groundplan')[0]
+  assert.equal(upgraded.kind === 'symbol' && upgraded.scale, 1.15)
+  assert.ok(upgraded.kind === 'symbol' && Math.abs(upgraded.strokeWidth! * upgraded.scale - .5 * old.scale) < 1e-9)
+
+  const custom = { ...old, scale: 2.4 }
+  assert.deepEqual(sanitizeShapes([custom], 'groundplan'), [custom])
+  assert.deepEqual(sanitizeShapes([old], 'onewire'), [old])
+})
+
+test('keeps floor-plan spots compact and upgrades only their old default size', () => {
+  const symbol = { name: 'Spot', path: 'symbols/Consumption appliances/Spot.svg' }
+  assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, 1.15)
+
+  const old = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.5 * 1.15, strokeWidth: .5 }
+  const upgraded = sanitizeShapes([old], 'groundplan')[0]
+  assert.equal(upgraded.kind === 'symbol' && upgraded.scale, 1.15)
+  assert.ok(upgraded.kind === 'symbol' && Math.abs(upgraded.strokeWidth! * upgraded.scale - .5 * old.scale) < 1e-9)
+
+  const custom = { ...old, scale: 2.4 }
+  assert.deepEqual(sanitizeShapes([custom], 'groundplan'), [custom])
+  assert.deepEqual(sanitizeShapes([old], 'onewire'), [old])
+})
+
+test('matches refrigerators and meters to comparable appliance sizes and upgrades only their old defaults', () => {
+  for (const [name, scale] of [['Refrigerator', 1.15], ['kWh meter', 1.15]] as const) {
     const symbol = { name, path: `symbols/Consumption appliances/${name}.svg` }
     assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, scale)
-    const original = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.15, strokeWidth: 0.5 }
-    const upgraded = sanitizeShapes([original])[0]
+    const original = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 2, strokeWidth: 0.5 }
+    const upgraded = sanitizeShapes([original], 'groundplan')[0]
     assert.equal(upgraded.kind === 'symbol' && upgraded.scale, scale)
-    assert.equal(upgraded.strokeWidth! * scale, 0.5 * 1.15)
-    assert.deepEqual(sanitizeShapes([upgraded]), [upgraded])
-    const custom = sanitizeShapes([{ ...original, scale: 2.4 }])[0]
+    assert.equal(upgraded.strokeWidth! * scale, 0.5 * 2)
+    assert.deepEqual(sanitizeShapes([upgraded], 'groundplan'), [upgraded])
+    const custom = sanitizeShapes([{ ...original, scale: 2.4 }], 'groundplan')[0]
     assert.equal(custom.kind === 'symbol' && custom.scale, 2.4)
     const generated = sanitizeShapes([{ ...original, groupId: 'onewire-example' }])[0]
-    assert.equal(generated.kind === 'symbol' && generated.scale, 1.15)
+    assert.equal(generated.kind === 'symbol' && generated.scale, 2)
     assert.equal(createSymbolShape('custom', { x: 0, y: 0 }, { ...symbol, metadata: { symbolDefaults: { scale: 2.4 } } }).scale, 2.4)
   }
 })

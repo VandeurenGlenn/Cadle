@@ -25,8 +25,8 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
   await expect(app.locator('.heating-planner-status')).toHaveCount(0)
   await expect.poll(() => page.workers().length).toBe(0)
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
-  const heating = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes)
-  const manifold = heating.find((shape: any) => shape.heating?.kind === 'manifold').heating
+  let heating = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes)
+  let manifold = heating.find((shape: any) => shape.heating?.kind === 'manifold').heating
   expect(manifold.pattern).toBe('spiral')
   expect(manifold.audit.errors).toBe(0)
   expect(manifold.rows.length).toBeGreaterThan(0)
@@ -38,9 +38,27 @@ test('the real background worker completes a 16 mm / 100 mm plan with full circu
   }
   await expect(app.locator('.heating-pipe')).toHaveCount(manifold.rows.length * 3)
   expect(manifold.capacity).toBe(12)
+  expect(manifold.connectionMode).toBe('zone')
+  expect(manifold.audit.issues.some((issue: any) => issue.code === 'open-connections')).toBe(true)
+  await expect(app.locator('.heating-connection-position')).toHaveCount(1)
   const inspector = page.locator('#object-inspector')
   await expect(inspector.locator('[data-heating-field="capacity"]')).toHaveValue('12')
   await expect(inspector.locator('[data-heating-field="edgeMm"]')).toHaveValue('100')
+  const selected = manifold.rows[0].id, originalLength = manifold.rows[0].loopM
+  const unchanged = heating.filter((s: any) => s.heating?.kind === 'pipe' && s.heating.circuitId !== selected).map((s: any) => JSON.stringify([s.id, s.start, s.end, s.heating.points]))
+  const spacing = inspector.locator(`[data-heating-circuit-spacing="${selected}"]`)
+  await spacing.fill('15'); await spacing.press('Tab')
+  await expect.poll(async () => {
+    await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+    return await shell.evaluate((element: any, id) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes.find((s: any) => s.heating?.kind === 'manifold').heating.rows.find((r: any) => r.id === id)?.spacingMm, selected)
+  }, { timeout: 15000 }).toBe(150)
+  heating = await shell.evaluate((element: any) => element.project.pages[element.loadedPage].schema.objects[0].payload.shapes)
+  manifold = heating.find((shape: any) => shape.heating?.kind === 'manifold').heating
+  expect(manifold.rows.find((r: any) => r.id === selected).loopM).toBeLessThan(originalLength)
+  expect(manifold.spacingMm).toBe(100)
+  expect(manifold.circuitSpacingMm[selected]).toBe(150)
+  expect(manifold.audit.errors).toBe(0)
+  expect(heating.filter((s: any) => s.heating?.kind === 'pipe' && s.heating.circuitId !== selected).map((s: any) => JSON.stringify([s.id, s.start, s.end, s.heating.points]))).toEqual(unchanged)
   for (let i = 0; i < manifold.rows.length; i++) await inspector.getByRole('button', { name: 'Kring vastzetten', exact: true }).first().click()
   await expect(inspector.getByRole('button', { name: 'Kring losmaken', exact: true })).toHaveCount(manifold.rows.length)
   const beforePipes = heating.filter((shape: any) => shape.heating?.kind === 'pipe').map((shape: any) => JSON.stringify([shape.id, shape.start, shape.end, shape.heating.points]))

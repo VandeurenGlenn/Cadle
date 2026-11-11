@@ -7,8 +7,11 @@ import { heatingDesignLimits, sanitizeHeatingDesign, MAX_HEATING_CIRCUITS, type 
 import { checkHeatingPlan, sanitizeHeatingAudit, type HeatingAudit, type HeatingCheck } from './heating-checks.js'
 import { heatingObstacleBounds } from './heating-openings.js'
 import { heatingCoverageSignature, type HeatingCoverage } from './heating-coverage.js'
-import { openHeatingTurns, rectangularHeatingSpiral } from './heating-spiral.js'
+import { openHeatingTurns, rectangularHeatingSpiral, rectangularHeatingMeander } from './heating-spiral.js'
 import { joinHeatingZoneFields } from './heating-zone-join.js'
+
+import { combineHeatingPatterns, heatingPatternLabel, type HeatingPattern } from './heating-pattern.js'
+export { combineHeatingPatterns, heatingPatternLabel, type HeatingPattern } from './heating-pattern.js'
 
 export type HeatingData = {
   kind: 'zone' | 'pipe' | 'manifold' | 'table' | 'exclusion'
@@ -23,7 +26,7 @@ export type HeatingData = {
   direction: 'horizontal' | 'vertical'
   pipeRole: 'supply' | 'return' | 'loop'
   automatic?: boolean
-  pattern?: 'spiral'
+  pattern?: HeatingPattern
   connectionMode?: 'ports' | 'zone'
   connectionZoneRadiusMm?: number
   capacity?: number
@@ -109,7 +112,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.pipeRole === 'return') data.pipeRole = 'return'
   if (raw.pipeRole === 'loop') data.pipeRole = 'loop'
   if (raw.automatic === true) data.automatic = true
-  if (raw.pattern === 'spiral') data.pattern = 'spiral'
+  if (raw.pattern === 'spiral' || raw.pattern === 'meander' || raw.pattern === 'mixed') data.pattern = raw.pattern
   if (typeof raw.capacity === 'number' && Number.isFinite(raw.capacity)) data.capacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.capacity)))
   const circuitSpacing = sanitizeHeatingCircuitSpacing(raw.circuitSpacingMm)
   if (circuitSpacing) data.circuitSpacingMm = circuitSpacing
@@ -201,8 +204,8 @@ export const createHeatingPipe = (id: string, points: Point[], data: HeatingData
     heating: { ...data, kind: 'pipe', points: points.map((p) => ({ x: width ? (p.x - x) / width : 0, y: height ? (p.y - y) / height : 0 })) } }
 }
 
-type HeatingCircuit = { path: string; lengthM: number; start: Point; end: Point }
-export type HeatingLayout = { circuits: HeatingCircuit[]; areaM2: number; lengthM: number; warning?: string }
+type HeatingCircuit = { path: string; lengthM: number; start: Point; end: Point; pattern?: HeatingPattern }
+export type HeatingLayout = { circuits: HeatingCircuit[]; areaM2: number; lengthM: number; pattern?: HeatingPattern; warning?: string }
 export type HeatingObstacle = { x: number; y: number; width: number; height: number }
 const heatingZoneLayouts = new WeakMap<RectShape, { signature: string; layout: HeatingLayout }>()
 
@@ -238,7 +241,7 @@ export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = [
   const spacing = drawingUnitsForMetres(data.spacingMm / 1000, data.drawingScale)
   const edge = drawingUnitsForMetres(data.edgeMm / 1000, data.drawingScale)
   const strip = width / data.circuits, innerWidth = strip - 2 * edge, innerHeight = height - 2 * edge
-  if (innerWidth <= spacing || innerHeight < spacing) {
+  if (innerWidth < 0 || innerHeight < 0 || Math.max(innerWidth, innerHeight) < drawingUnitsForMetres(data.diameterMm / 1000, data.drawingScale)) {
     return { circuits: [], areaM2, lengthM: 0, warning: 'Zone te klein voor deze buisafstand, randafstand en aantal lussen.' }
   }
   const scale = data.drawingScale
@@ -286,12 +289,14 @@ export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = [
     const spiralWidth = Math.floor(field.width / spacing) * spacing
     const spiralHeight = Math.floor(field.height / spacing) * spacing
     const spiral = rectangularHeatingSpiral(spiralWidth, spiralHeight, data, scale)
-    if (!spiral) { blocked++; return null }
-    const points = openHeatingTurns(spiral, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale))
-    const left = field.x + (field.width - spiralWidth) / 2
-    const top = field.y + (field.height - spiralHeight) / 2
+    const raw = spiral ?? rectangularHeatingMeander(field.width, field.height, data, scale)
+    if (!raw) { blocked++; return null }
+    const pattern: HeatingPattern = spiral ? 'spiral' : 'meander'
+    const points = openHeatingTurns(raw, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale))
+    const left = field.x + (spiral ? (field.width - spiralWidth) / 2 : 0)
+    const top = field.y + (spiral ? (field.height - spiralHeight) / 2 : 0)
     const pipe = createHeatingPipe(`zone-${shape.id}-${index}`, points.map((p) => point(left + p.x, top + p.y)),
-      { ...data, automatic: true, pattern: 'spiral', pipeRole: 'loop', circuitId: `zone-${shape.id}-${index}` })
+      { ...data, automatic: true, pattern, pipeRole: 'loop', circuitId: `zone-${shape.id}-${index}` })
     const geometry = heatingPipeGeometry(pipe)
     if (obstacles.length) {
       const clearance = Math.max(0, edge - drawingUnitsForMetres(data.diameterMm / 2000, scale))
@@ -303,7 +308,23 @@ export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = [
       })
       if (audit.issues.some((issue) => issue.code === 'obstacle')) { blocked++; return null }
     }
-    return { circuit: field.circuit, pipe, points: spiral.map((p) => point(left + p.x, top + p.y)) }
+    const fragmented = fields.filter((f) => f.circuit === field.circuit).length > 1
+    const patternByVariant = new WeakMap<Point[], HeatingPattern>()
+    const variantsFor = (kind: HeatingPattern) => {
+      const variants: Point[][] = [], w = kind === 'spiral' ? spiralWidth : field.width, h = kind === 'spiral' ? spiralHeight : field.height
+      const x = field.x + (field.width - w) / 2, y = field.y + (field.height - h) / 2
+      for (const axis of ['x', 'y'] as const) {
+        const path = (kind === 'spiral' ? rectangularHeatingSpiral : rectangularHeatingMeander)(w, h, data, scale, undefined, axis)
+        if (!path) continue
+        for (const flipX of [false, true]) for (const flipY of [false, true]) {
+          const points = path.map((p) => point(x + (flipX ? w - p.x : p.x), y + (flipY ? h - p.y : p.y)))
+          patternByVariant.set(points, kind); variants.push(points)
+        }
+      }
+      return variants
+    }
+    const variants = fragmented ? variantsFor(pattern) : [raw.map((p) => point(left + p.x, top + p.y))]
+    return { circuit: field.circuit, pipe, pattern, variants, variantsFor, patternByVariant }
   }).filter((field) => field !== null)
   const circuits: HeatingCircuit[] = [], unconnected: number[] = [], lengthWarnings: string[] = []
   const keepOut = obstacles.map((b) => {
@@ -323,21 +344,24 @@ export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = [
       })
       // Use the raw orthogonal paths for splicing; round the final continuous
       // tube once, then validate its actual R80 curves and fixture clearance.
-      const raw = joinHeatingZoneFields(pieces.map((piece) => piece.points), joinBounds, localBoxes, spacing, radius,
-        (candidate, remaining) => {
-          const candidates = [candidate, ...remaining].map((points, i) => createHeatingPipe(`manual-join-${i}`, openHeatingTurns(points, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale)),
-            { ...data, automatic: true, circuitId: `manual-join-${i}`, pipeRole: 'loop' }))
-          return !checkHeatingPlan(candidates, [], data.design, keepOut, { stopOnConflict: true, geometryFor: (shape) => {
-            const geometry = heatingPipeGeometry(shape)
-            return { ...geometry, pieces: geometry.pieces.map((piece) => ({ ...piece, a: world(piece.a), b: world(piece.b) })), bends: geometry.bends.map((bend) => ({ ...bend, point: world(bend.point) })) }
-          } }).errors
-        })
-      if (!raw) { unconnected.push(index + 1); continue }
-      pipe = createHeatingPipe(`zone-${shape.id}-${index}`, openHeatingTurns(raw, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale)),
-        { ...data, automatic: true, pattern: 'spiral', pipeRole: 'loop', circuitId: `zone-${shape.id}-${index}` })
+      const valid = (candidate: Point[], remaining: readonly Point[][]) => {
+        const candidates = [candidate, ...remaining].map((points, i) => createHeatingPipe(`manual-join-${i}`, openHeatingTurns(points, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale)),
+          { ...data, automatic: true, circuitId: `manual-join-${i}`, pipeRole: 'loop' }))
+        return !checkHeatingPlan(candidates, [], data.design, keepOut, { stopOnConflict: true, geometryFor: (shape) => {
+          const geometry = heatingPipeGeometry(shape)
+          return { ...geometry, pieces: geometry.pieces.map((piece) => ({ ...piece, a: world(piece.a), b: world(piece.b) })), bends: geometry.bends.map((bend) => ({ ...bend, point: world(bend.point) })) }
+        } }).errors
+      }
+      const patternFor = (points: Point[]) => pieces.map((piece) => piece.patternByVariant.get(points)).find(Boolean) ?? 'spiral'
+      let joined = joinHeatingZoneFields(pieces.map((piece) => piece.variants), joinBounds, localBoxes, spacing, radius, valid, patternFor)
+      if (!joined && pieces.some((piece) => piece.pattern === 'spiral')) joined = joinHeatingZoneFields(pieces.map((piece) => piece.pattern === 'spiral'
+        ? [...piece.variantsFor('meander'), ...piece.variants] : piece.variants), joinBounds, localBoxes, spacing, radius, valid, patternFor)
+      if (!joined) { unconnected.push(index + 1); continue }
+      pipe = createHeatingPipe(`zone-${shape.id}-${index}`, openHeatingTurns(joined.points, radius, drawingUnitsForMetres(data.diameterMm / 1000, scale)),
+        { ...data, automatic: true, pattern: joined.pattern, pipeRole: 'loop', circuitId: `zone-${shape.id}-${index}` })
     }
     const geometry = heatingPipeGeometry(pipe), lengthM = metre(geometry.length)
-    circuits.push({ path: geometry.path, lengthM, start: geometry.localPoints[0], end: geometry.localPoints.at(-1)! })
+    circuits.push({ path: geometry.path, lengthM, start: geometry.localPoints[0], end: geometry.localPoints.at(-1)!, pattern: pipe.heating!.pattern })
     if (lengthM > heatingDesignLimits(data.diameterMm, data.design).maxCircuitLengthM + .05) lengthWarnings.push(`Kring ${index + 1}: ${lengthM.toFixed(1)} m zonder aansluitingen, boven de ingestelde grens van ${heatingDesignLimits(data.diameterMm, data.design).maxCircuitLengthM} m.`)
   }
   const warnings = [
@@ -345,7 +369,7 @@ export const heatingLayout = (shape: RectShape, obstacles: HeatingObstacle[] = [
     ...lengthWarnings,
     ...(blocked ? [`${blocked} restvlak(ken) te klein of onveilig voor deze legafstand en buigradius. Pas de zone aan of gebruik het automatische legplan.`] : [])
   ]
-  const layout = { circuits, areaM2, lengthM: circuits.reduce((sum, item) => sum + item.lengthM, 0),
+  const layout = { circuits, areaM2, pattern: combineHeatingPatterns(circuits.map((circuit) => circuit.pattern)), lengthM: circuits.reduce((sum, item) => sum + item.lengthM, 0),
     ...(warnings.length ? { warning: warnings.join(' ') } : {}) }
   heatingZoneLayouts.set(shape, { signature, layout })
   return layout
@@ -486,7 +510,7 @@ const heatingTableMarkup = (shape: RectShape): string => {
     `Kniplengte = lus + aanvoer + retour + ${number(limits.allowanceM)} m opstanden/snijreserve per kring${data.design?.allowanceM === undefined ? ' (reserve nog invullen)' : ''}.`,
     `* Richtdebiet: ontbrekende ruimtelast = 50 W/m²; ΔT ${number(limits.deltaTK)} K${data.design?.deltaTK === undefined ? ' (aanname)' : ''}. Zonder *: ingevoerde ruimtelast en ΔT.`,
     `Buis: ${(data.design?.product ?? 'product nog bevestigen').slice(0, 55)} · min. R ${number(limits.minBendRadiusMm)} mm${data.design?.minBendRadiusMm === undefined ? ' (aanname 5×Ø)' : ''} · max. ${number(limits.maxCircuitLengthM)} m/kring${data.design?.maxCircuitLengthM === undefined ? ' (aanname)' : ''}.`,
-    `${data.pattern === 'spiral' ? 'Slakkenhuis · ' : ''}Gekozen maximale legafstand ${number(data.spacingMm)} mm; rechte legafstanden staan per kring, bochten wijken plaatselijk af.`,
+    `${heatingPatternLabel(data.pattern)} · Gekozen maximale legafstand ${number(data.spacingMm)} mm; rechte legafstanden staan per kring, bochten wijken plaatselijk af.`,
     `Drukverlies: water ${number(data.design?.fluidTemperatureC ?? ((data.design?.supplyTemperatureC ?? 35) - (data.design?.deltaTK ?? 5) / 2))} °C · Darcy–Weisbach/Colebrook · ruwheid ${number(data.design?.roughnessMm ?? .007, 3)} mm${data.design?.roughnessMm === undefined ? ' (aanname)' : ''} · lokale ζ ${data.design?.localLossK ?? '?'} · verdeler-Kv ${data.design?.manifoldKv ?? '?'}.`,
     `${rows.some((r) => r.hydraulics) ? `Zwaarste berekende kring ${number(worst, 2)} kPa` : 'Drukverlies nog niet berekend'}${rows.some((r) => !r.hydraulics?.complete) ? ' (nog gedeeltelijk)' : ''}; beschikbare druk aan verdeler ${data.design?.availablePressureKpa === undefined ? '?' : number(data.design.availablePressureKpa)} kPa. Extra smoordruk geldt bij deze bedrijfsdruk; zonder invoer t.o.v. de zwaarste kring. Geen ventielstand.`,
     `Vloer R (m²K/W): afwerking ${floor?.coveringR === undefined ? '?' : number(floor.coveringR, 3)} · dekvloer boven buis ${floor?.screedR === undefined ? '?' : number(floor.screedR, 3)} · isolatie ${floor?.insulationR === undefined ? '?' : number(floor.insulationR, 2)}.`,
@@ -557,14 +581,14 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
         markup += `<text x="${circuit.start.x + 8}" y="${circuit.start.y + 18}" fill="#111111" stroke="white" stroke-width="3" paint-order="stroke" font-family="Segoe UI, Arial, sans-serif" font-size="16">${index + 1}</text>`
       }
     }
-    const details = data.kind === 'zone' ? `${data.name} · ${layout.circuits.length} lus(sen) · h.o.h. ${data.spacingMm} mm · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m` : `${data.name} · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m`
-    if (!data.automatic || data.pipeRole === 'loop') markup += label(b.x, b.y - 10, data.automatic ? data.circuitId ?? data.name : layout.warning ?? details)
+    const details = data.kind === 'zone' ? `${data.name} · ${layout.circuits.length} ${layout.circuits.length === 1 ? 'kring' : 'kringen'} · ${layout.lengthM.toFixed(1)} m${layout.pattern && layout.pattern !== 'spiral' ? ` · ${heatingPatternLabel(layout.pattern)}` : ''}${layout.warning ? ' · nazien' : ''}` : `${data.name} · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m`
+    if (!data.automatic || data.pipeRole === 'loop') markup += label(b.x, b.y - 10, data.automatic ? data.circuitId ?? data.name : details)
   }
   const markers = (data.pipeRole === 'loop' ? data.checks ?? [] : []).filter((issue) => issue.point && issue.circuits[0] === data.circuitId).map((issue) => {
     const p = issue.point!, color = monochrome ? '#000' : issue.severity === 'error' ? '#b42318' : '#9a6700'
     return `<g class="heating-check-marker" data-check="${escape(issue.code)}" data-severity="${issue.severity}"><title>${escape(issue.message)}</title><circle cx="${p.x}" cy="${p.y}" r="8" fill="white" stroke="${color}" stroke-width="2"/><path d="M ${p.x} ${p.y - 4} V ${p.y + 1} M ${p.x} ${p.y + 4} h .1" stroke="${color}" stroke-width="2"/></g>`
   }).join('')
-  return `<g class="shape heating-shape heating-${data.kind}" data-shape-id="${escape(shape.id)}" data-selected="${selected}" transform="${transform}" fill="none" stroke-width="${shape.strokeWidth ?? 2}" stroke-linecap="round" stroke-linejoin="round"><title>${escape(`${data.name} · ${data.roomName ?? ''} · ${layout.lengthM.toFixed(1)} m`)}</title>${markup}</g>${markers}`
+  return `<g class="shape heating-shape heating-${data.kind}" data-shape-id="${escape(shape.id)}" data-selected="${selected}" transform="${transform}" fill="none" stroke-width="${shape.strokeWidth ?? 2}" stroke-linecap="round" stroke-linejoin="round"><title>${escape(`${data.name} · ${data.roomName ?? ''} · ${layout.lengthM.toFixed(1)} m${layout.warning ? ` · ${layout.warning}` : ''}`)}</title>${markup}</g>${markers}`
 }
 
 

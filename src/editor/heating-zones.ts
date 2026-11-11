@@ -1,5 +1,5 @@
 import type { Point, Shape } from './model/types.js'
-import { routeHeating, type HeatingGrid, type HeatingRoom } from './heating-routing.js'
+import { heatingSourceRoom, routeHeating, type HeatingGrid, type HeatingRoom } from './heating-routing.js'
 import { isHeatingDoorSymbol, heatingDoorSymbolThreshold } from './heating-openings.js'
 import { heatingRoomKey, heatingWallDistances } from './heating-coverage.js'
 
@@ -67,9 +67,9 @@ export const shareSmallHeatingRooms = (grid: HeatingGrid, shapes: readonly Shape
 export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Array, shapes: readonly Shape[], position: Point, scale: number,
   diameterMm: number, capacity: number, radiusMm: number, checkpoint: () => void,
   options: { accessTargets?: readonly Point[]; original?: HeatingGrid; targets?: ReadonlyMap<string, number>; origin?: Point; spacingMm?: number } = {}): HeatingGrid => {
-  const sourceId = grid.room[grid.index(position)], zone = grid.rooms.find((room) => room.id === sourceId)
+  const sourceId = heatingSourceRoom(grid, position)?.id ?? grid.room[grid.index(position)], zone = grid.rooms.find((room) => room.id === sourceId)
   if (!zone?.members || zone.members.length < 2) return grid
-  const original = options.original ?? grid, originalSource = original.room[original.index(position)]
+  const original = options.original ?? grid, originalSource = heatingSourceRoom(original, position)?.id ?? original.room[original.index(position)]
   const doors: { a: number; b: number; centre: Point; normal: Point }[] = []
   for (const shape of shapes) {
     if (shape.hidden || (shape.kind !== 'door' && shape.kind !== 'gate' && !isHeatingDoorSymbol(shape))) continue
@@ -110,26 +110,13 @@ export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Ar
     return Math.abs(p.x - origin.x) + Math.abs(p.y - origin.y) < Math.abs(q.x - origin.x) + Math.abs(q.y - origin.y) ? cell : best
   }, sourceCells[0])
   const traffic = new Uint16Array(grid.wall.length)
+  const feedCorridor = grid.feedCorridor?.slice() ?? new Uint8Array(grid.wall.length)
+  const feedReservation = grid.feedReservation?.slice() ?? new Uint8Array(grid.wall.length)
   const reserveRoute = (goal: number, tubes: number, roomId?: number) => {
     const path = routeHeating(routingGrid, source, goal, { roomId, radiusCells: Math.ceil(radiusMm * 16 / scale / grid.step), checkpoint })
     if (path) for (const cell of path) traffic[cell] = Math.min(capacity * 2, traffic[cell] + tubes)
   }
-  if (options.accessTargets?.length) {
-    // The first coil proposal exposes the actual remote entries. Reserve their
-    // approaches as well as the shared hall, including paths around long shafts.
-    // Door-only reservation left distant fields hidden behind other spirals.
-    for (const target of options.accessTargets) {
-      checkpoint()
-      const room = grid.rooms.find((room) => room.id === grid.room[grid.index(target)])
-      const available = room?.cells.filter((cell) => !centred[cell]) ?? []
-      if (!available.length) continue
-      const goal = available.reduce((best, cell) => {
-        const p = grid.point(cell), q = grid.point(best)
-        return Math.abs(p.x - target.x) + Math.abs(p.y - target.y) < Math.abs(q.x - target.x) + Math.abs(q.y - target.y) ? cell : best
-      }, available[0])
-      reserveRoute(goal, 2)
-    }
-  } else for (const door of doors) {
+  for (const door of doors) {
     checkpoint()
     if (door.a === originalSource || door.b === originalSource) continue
     const forward = (levels.get(door.a) ?? Infinity) < (levels.get(door.b) ?? Infinity), far = forward ? door.b : door.a, side = forward ? 1 : -1
@@ -137,16 +124,29 @@ export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Ar
     if (goal < 0 || grid.room[goal] !== sourceId || centred[goal]) continue
     reserveRoute(goal, Math.min(capacity * 2, load(far) * 2), sourceId)
   }
+  // The source opening must pass the complete bundle. A route to a farther
+  // doorway can miss this short throat, leaving only one pipe-width between a
+  // coil and its jamb. Keep the whole physical approach clear before packing.
+  for (const door of doors) {
+    if (door.a !== originalSource && door.b !== originalSource) continue
+    const half = (radiusMm * 2 + capacity * Math.max(laneMm, diameterMm * 1.2)) * 8 / scale
+    const across = (radiusMm + capacity * Math.max(laneMm, diameterMm * 1.2)) * 8 / scale
+    const tangent = { x: -door.normal.y, y: door.normal.x }
+    for (const cell of zone.cells) {
+      const p = grid.point(cell), dx = p.x - door.centre.x, dy = p.y - door.centre.y
+      if (Math.abs(dx * door.normal.x + dy * door.normal.y) <= half && Math.abs(dx * tangent.x + dy * tangent.y) <= across) { loopObstacle[cell] = 1; feedCorridor[cell] = 1; feedReservation[cell] = 1 }
+    }
+  }
   // Size each shared strip by the number of tubes that actually traverse it.
   // A bathroom approach no longer reserves the full twelve-circuit bundle.
   const bands = new Map<number, number[]>()
   for (let cell = 0; cell < traffic.length; cell++) if (traffic[cell]) { const cells = bands.get(traffic[cell]) ?? []; cells.push(cell); bands.set(traffic[cell], cells) }
   for (const [tubes, cells] of bands) {
-    const reach = Math.ceil((radiusMm + tubes * Math.max(laneMm, diameterMm * 1.2) / 2) * 8 / scale / grid.step)
     // Cells need their own local disks; unrelated routes must not be connected
     // by the bounding box of the whole list.
     for (const cell of cells) {
       checkpoint()
+      const reach = Math.ceil((radiusMm + tubes * Math.max(laneMm, diameterMm * 1.2) / 2) / laneMm)
       const x = cell % grid.width, y = Math.floor(cell / grid.width)
       for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
         if (dx * dx + dy * dy > reach * reach) continue
@@ -155,5 +155,20 @@ export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Ar
       }
     }
   }
-  return { ...grid, loopObstacle }
+  // Keep the laying boundary orthogonal at the selected pitch. A 25 mm raster
+  // of round/tapered approaches left dozens of tiny triangular remainder fields.
+  const pitch = Math.max(1, Math.round((options.spacingMm ?? 100) / laneMm)), blocks = new Set<number>()
+  for (let cell = 0; cell < loopObstacle.length; cell++) if (loopObstacle[cell] && !grid.loopObstacle[cell]) {
+    const x = Math.floor(cell % grid.width / pitch) * pitch, y = Math.floor(Math.floor(cell / grid.width) / pitch) * pitch
+    blocks.add(y * grid.width + x)
+  }
+  for (const cell of blocks) {
+    checkpoint()
+    const x = cell % grid.width, y = Math.floor(cell / grid.width)
+    for (let dy = 0; dy < pitch && y + dy < grid.height; dy++) for (let dx = 0; dx < pitch && x + dx < grid.width; dx++) {
+      const next = (y + dy) * grid.width + x + dx
+      if (grid.room[next] > 0) { loopObstacle[next] = 1; feedReservation[next] = 1 }
+    }
+  }
+  return { ...grid, loopObstacle, feedCorridor, feedReservation }
 }

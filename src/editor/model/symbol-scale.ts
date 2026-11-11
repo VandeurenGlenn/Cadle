@@ -6,7 +6,7 @@ export const floorPlanSpotPaperScale = (path: string): number | null =>
   FLOOR_PLAN_SPOT_PATH.test(path) ? 1.15 : null
 
 export const floorPlanSocketPaperScale = (path: string): number | null =>
-  FLOOR_PLAN_SOCKET_PATH.test(path) ? 1.15 : null
+  FLOOR_PLAN_SOCKET_PATH.test(path) ? 1.05 : null
 
 /** Paper sizes for appliances that previously had oversized floor-plan defaults. */
 export const appliancePaperScale = (path: string): number | null => {
@@ -27,7 +27,7 @@ const floorPlanSwitchBaseScale = (path: string): number | null => {
 
 export const floorPlanSwitchPaperScale = (path: string): number | null => {
   const base = floorPlanSwitchBaseScale(path)
-  return base === null ? null : base * 1.15
+  return base === null ? null : base * 1.05
 }
 
 /** Correct previous floor-plan defaults once, keeping other saved sizes intact. */

@@ -23,6 +23,7 @@ import { namedRoomRegions } from './room-regions.js'
 import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
+import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -287,6 +288,7 @@ export const shapeTemplate = (
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
       const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
+      const connector = oneWireSocketConnector(shape)
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
       const symbolInner = symbolSvg
@@ -302,6 +304,7 @@ export const shapeTemplate = (
         `--symbol-stroke-width:${typeof shape.strokeWidth === 'number' ? shape.strokeWidth : normalizedStrokeWidth};`
       return svg`
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
+          ${connector ? svg`<line x1=${connector.start.x} y1=${connector.start.y} x2=${connector.end.x} y2=${connector.end.y} stroke="#000000" stroke-width="2"></line>` : nothing}
           ${
             symbolSvg
               ? svg`${offsets.map((offset, index) => svg`<svg x=${shape.position.x - size / 2 + offset} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${index === 0 ? unsafeSVG(metadataText.inner) : nothing}</svg>`)}${unsafeSVG(metadataText.annotations)}`

@@ -1,6 +1,7 @@
 import { shapeBounds } from '../../editor/model/model.js'
 import type { Shape } from '../../editor/model/types.js'
 import { renderedSymbolScale } from '../model/symbol-scale.js'
+import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { PAPER_LABEL_FONT_SIZE } from './page-layout.js'
 import { getCachedSymbolSvg } from '../symbol-svg-cache.js'
 import { symbolTextLayer } from '../symbol-metadata.js'
@@ -114,6 +115,14 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
   const x = shape.position.x - size / 2
   const y = shape.position.y - size / 2
   const fullBox = { x, y, width: size, height: size }
+  const expandSockets = (bounds: typeof fullBox) => {
+    if (!isSocketSymbol(shape)) return bounds
+    const offsets = socketCopyOffsets(socketCount(shape), size)
+    const span = (offsets.at(-1) ?? 0) - (offsets[0] ?? 0)
+    const radians = (shape.rotation ?? 0) * Math.PI / 180
+    const dx = span * Math.abs(Math.cos(radians)), dy = span * Math.abs(Math.sin(radians))
+    return { x: bounds.x - dx / 2, y: bounds.y - dy / 2, width: bounds.width + dx, height: bounds.height + dy }
+  }
   const expandBreakerLabel = (bounds: typeof fullBox) => {
     if (!/automaat|breaker/i.test(`${shape.name} ${shape.path}`)) return bounds
     const label = shape.symbolTextOverrides?.['desc:20A'] ?? ''
@@ -121,7 +130,7 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
     return extraRight > 0 ? { ...bounds, width: bounds.width + extraRight } : bounds
   }
   const metrics = symbolOpticalMetrics(shape.path)
-  if (!metrics) return expandBreakerLabel(fullBox)
+  if (!metrics) return expandBreakerLabel(expandSockets(fullBox))
   const fitScale = size / Math.max(metrics.viewBoxWidth, metrics.viewBoxHeight)
   const renderedWidth = metrics.viewBoxWidth * fitScale
   const renderedHeight = metrics.viewBoxHeight * fitScale
@@ -131,7 +140,7 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
     width: Math.max(1, renderedWidth * (1 - metrics.left - metrics.right)),
     height: Math.max(1, renderedHeight * (1 - metrics.top - metrics.bottom))
   }
-  if (!shape.rotation && !shape.flipX && !shape.flipY) return expandBreakerLabel(bounds)
+  if (!shape.rotation && !shape.flipX && !shape.flipY) return expandBreakerLabel(expandSockets(bounds))
 
   const radians = ((shape.rotation ?? 0) * Math.PI) / 180
   const cos = Math.cos(radians)
@@ -153,7 +162,7 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
   const maxX = Math.max(...corners.map((point) => point.x))
   const minY = Math.min(...corners.map((point) => point.y))
   const maxY = Math.max(...corners.map((point) => point.y))
-  return expandBreakerLabel({ x: minX, y: minY, width: maxX - minX, height: maxY - minY })
+  return expandBreakerLabel(expandSockets({ x: minX, y: minY, width: maxX - minX, height: maxY - minY }))
 }
 
 export const bindingLabelOffset = (shape: Shape, side: BindingLabelSide): { x: number; y: number } => {

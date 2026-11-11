@@ -17,7 +17,7 @@ export const socketCountFromKeyboardEvent = (
 
 export const socketCopyOffsets = (count: number, size: number): number[] => {
   const normalized = Math.max(1, Math.min(9, Math.round(count)))
-  const step = size * 0.46
+  const step = size * 0.9
   const start = -((normalized - 1) * step) / 2
   return Array.from({ length: normalized }, (_, index) => start + index * step)
 }

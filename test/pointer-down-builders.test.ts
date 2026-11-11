@@ -37,7 +37,9 @@ test('places floor-plan switches at a readable default scale', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.3 * 1.15)
+  assert.equal(shape.scale, 1.3 * 1.05)
+  const saved = { ...shape, scale: 1.3 * 1.15 }
+  assert.deepEqual(sanitizeShapes([saved], 'groundplan'), [saved])
 })
 
 test('uses a compact scale for push buttons', () => {
@@ -50,7 +52,7 @@ test('uses a compact scale for push buttons', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 0.8 * 1.15, name)
+    assert.equal(shape.scale, 0.8 * 1.05, name)
   }
 })
 
@@ -64,7 +66,7 @@ test('compensates the wide view box of a double push button', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.25 * 1.15)
+  assert.equal(shape.scale, 1.25 * 1.05)
 })
 
 test('compensates tall change-over switches for their larger view box', () => {
@@ -81,7 +83,7 @@ test('compensates tall change-over switches for their larger view box', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1.7 * 1.15, name)
+    assert.equal(shape.scale, 1.7 * 1.05, name)
   }
 })
 
@@ -95,7 +97,7 @@ test('uses a smaller scale for a dual switch in one casing', () => {
     }
   )
 
-  assert.equal(shape.scale, 1.15 * 1.15)
+  assert.equal(shape.scale, 1.15 * 1.05)
 })
 
 test('uses readable floor-plan sizes for wide switch controls', () => {
@@ -108,7 +110,7 @@ test('uses readable floor-plan sizes for wide switch controls', () => {
         path: `symbols/Switches/${name}.svg`
       }
     )
-    assert.equal(shape.scale, 1.15, name)
+    assert.equal(shape.scale, 1.05, name)
   }
 })
 
@@ -219,15 +221,19 @@ test('enlarges newly placed lights while keeping custom catalog sizes', () => {
 
 test('keeps floor-plan sockets compact and upgrades only their old default size', () => {
   const symbol = { name: 'Socket', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg' }
-  assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, 1.15)
+  assert.equal(createSymbolShape('new', { x: 0, y: 0 }, symbol).scale, 1.05)
 
   const old = { id: 'old', kind: 'symbol', ...symbol, position: { x: 20, y: 30 }, scale: 1.5 * 1.15, strokeWidth: .5 }
   const upgraded = sanitizeShapes([old], 'groundplan')[0]
-  assert.equal(upgraded.kind === 'symbol' && upgraded.scale, 1.15)
+  assert.equal(upgraded.kind === 'symbol' && upgraded.scale, 1.05)
   assert.ok(upgraded.kind === 'symbol' && Math.abs(upgraded.strokeWidth! * upgraded.scale - .5 * old.scale) < 1e-9)
 
   const custom = { ...old, scale: 2.4 }
   assert.deepEqual(sanitizeShapes([custom], 'groundplan'), [custom])
+  assert.deepEqual(sanitizeShapes([{ ...old, scale: 1.15 }], 'groundplan'), [{ ...old, scale: 1.15 }],
+    'existing objects at the previous default size remain unchanged')
+  assert.equal(createSymbolShape('custom', { x: 0, y: 0 },
+    { ...symbol, metadata: { symbolDefaults: { scale: 2.4 } } }).scale, 2.4)
   assert.deepEqual(sanitizeShapes([old], 'onewire'), [old])
 })
 

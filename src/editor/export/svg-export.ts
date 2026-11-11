@@ -16,6 +16,7 @@ import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
 import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
+import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -331,6 +332,9 @@ export const shapeMarkup = (
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
       const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
+      const connector = oneWireSocketConnector(shape)
+      const connectorMarkup = connector
+        ? `<line x1="${connector.start.x}" y1="${connector.start.y}" x2="${connector.end.x}" y2="${connector.end.y}" stroke="#000000" stroke-width="2"></line>` : ''
       const x = shape.position.x - size / 2
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
@@ -344,11 +348,18 @@ export const shapeMarkup = (
           `--symbol-stroke-width:${typeof shape.strokeWidth === 'number' ? shape.strokeWidth : normalizedStrokeWidth};`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            ${offsets.map((offset, index) => `<svg x="${shape.position.x - size / 2 + offset}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${index === 0 ? metadataText.inner : ''}</svg>`).join('')}${metadataText.annotations}
+            ${connectorMarkup}${offsets.map((offset, index) => `<svg x="${shape.position.x - size / 2 + offset}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${index === 0 ? metadataText.inner : ''}</svg>`).join('')}${metadataText.annotations}
           </g>
         `
       }
       const symbolHref = resolveExportAssetHref(shape.path)
+      if (offsets.length > 1) {
+        return `
+          <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
+            ${connectorMarkup}${offsets.map((offset) => `<image href="${escapeHtml(symbolHref)}" xlink:href="${escapeHtml(symbolHref)}" x="${x + offset}" y="${y}" width="${size}" height="${size}"></image>`).join('')}
+          </g>
+        `
+      }
       return `
           <image
             class="shape shape-symbol ${extraClass}"

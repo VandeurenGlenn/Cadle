@@ -44,6 +44,33 @@ for (const placement of placements) test(`catalog door ${placement.name} remains
   assert.ok(!path.some((cell) => g.wall[cell] && !g.door[cell]), 'the doorway needs no wall penetration')
 })
 
+for (const placement of placements) test(`pipes pass beneath the ${placement.name} door leaf and swing despite an obstacle flag`, () => {
+  const symbol = door({ ...placement, heatingObstacle: true })
+  const grid = buildHeatingGrid([...roomScene(placement.vertical), symbol], 100, 100, { x: 180, y: 280 })
+  const radians = placement.rotation * Math.PI / 180
+  const point = (x: number) => ({ x: symbol.position.x + x * Math.cos(radians), y: symbol.position.y + x * Math.sin(radians) })
+  const path = routeHeating(grid, grid.index(point(-50)), grid.index(point(50)), { radiusCells: 4 })
+  assert.ok(path, 'a below-floor pipe can cross both the drawn leaf and swing')
+  assert.equal(isHeatingSymbolObstacle(symbol), false)
+  assert.ok(path.every((cell) => !grid.obstacle[cell] && !grid.loopObstacle[cell]))
+  const pipe = createHeatingPipe('under-door', [point(-50), point(50)],
+    { ...heatingDefaults('pipe', 100), automatic: true, circuitId: 'VV01', pipeRole: 'loop' })
+  const manifold: RectShape = { id: 'manifold', kind: 'rect', start: { x: 100, y: 100 }, end: { x: 200, y: 160 },
+    heating: { ...heatingDefaults('manifold', 100), automatic: true, circuits: 1 } }
+  const audit = presentHeatingTables([symbol, manifold, pipe], undefined, shapeBounds)
+    .find((shape) => shape.id === manifold.id)!.heating!.audit!
+  assert.ok(!audit.issues.some((issue) => issue.code === 'obstacle'), 'the final audit also ignores the above-floor door')
+})
+
+test('a native door cannot become a floor obstacle through an old obstacle flag', () => {
+  const native: Shape = { id: 'native-door', kind: 'door', start: { x: 560, y: 560 }, end: { x: 640, y: 560 }, heatingObstacle: true }
+  const grid = buildHeatingGrid([...roomScene(false), native], 100, 100, { x: 180, y: 280 })
+  const threshold = grid.index({ x: 600, y: 560 })
+  assert.equal(grid.door[threshold], 1)
+  assert.equal(grid.obstacle[threshold], 0)
+  assert.equal(grid.loopObstacle[threshold], 0)
+})
+
 test('does not confuse electrical door appliances or arbitrary names with architectural door symbols', () => {
   for (const path of ['symbols/Consumption appliances/Door bell.svg', 'symbols/Consumption appliances/Electric door lock.svg', 'custom.svg']) {
     const symbol = door({ path })

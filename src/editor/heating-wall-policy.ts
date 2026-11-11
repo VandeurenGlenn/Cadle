@@ -1,5 +1,26 @@
 import type { Point } from './model/types.js'
 import { heatingSourceRoom, type HeatingGrid } from './heating-routing.js'
+import { heatingWallDistances } from './heating-coverage.js'
+
+/** A partition needs recognised floor on both sides, even when those sides
+ * connect elsewhere. Facades, shafts and furnishings never become shortcuts. */
+export const heatingInternalWallCells = (grid: HeatingGrid, scale: number, checkpoint: () => void = () => {}): ReadonlySet<number> => {
+  const cells = new Set<number>(), rooms = new Set(grid.rooms.map((room) => room.id))
+  const probe = Math.max(1600 / scale, grid.step * 2), doorDistances = heatingWallDistances({ ...grid, wall: grid.door })
+  for (let cell = 0; cell < grid.wall.length; cell++) {
+    if (cell % 4096 === 0) checkpoint()
+    if (!grid.wall[cell] || grid.obstacle[cell] || doorDistances[cell] * grid.step < probe) continue
+    const p = grid.point(cell)
+    for (const normal of [{ x: 1, y: 0 }, { x: 0, y: 1 }]) {
+      const a = grid.index({ x: p.x + normal.x * probe, y: p.y + normal.y * probe })
+      const b = grid.index({ x: p.x - normal.x * probe, y: p.y - normal.y * probe })
+      if (a < 0 || b < 0 || grid.obstacle[a] || grid.obstacle[b] || !rooms.has(grid.room[a]) || !rooms.has(grid.room[b])) continue
+      cells.add(cell)
+      break
+    }
+  }
+  return cells
+}
 
 /** A fallback is one local internal passage, only when it saves at least two
  * metres versus the real door network. The source room always uses its door. */

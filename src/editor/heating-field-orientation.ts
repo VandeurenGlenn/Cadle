@@ -1,6 +1,6 @@
 import type { HeatingGrid } from './heating-routing.js'
 import { heatingWallAllowed, segmentDistance, simplifyHeatingPath } from './heating-routing.js'
-import { openHeatingTurns, type HeatingSpiralField } from './heating-spiral.js'
+import { heatingRectangleVariants, openHeatingTurns, type HeatingSpiralField } from './heating-spiral.js'
 import { createHeatingPipe, heatingDefaults } from './heating-plan.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { drawingUnitsForMetres, type DrawingScale } from './layout/drawing-scale.js'
@@ -13,8 +13,8 @@ export const orientHeatingFields = (grid: HeatingGrid, fields: HeatingSpiralFiel
   const walls = { allowWalls: true, permittedWallCells }
   const radius = drawingUnitsForMetres(radiusMm / 1000, scale), diameter = drawingUnitsForMetres(diameterMm / 1000, scale)
   const occupied = new Uint16Array(grid.wall.length)
-  const masks = fields.map((field, i) => {
-    const pipe = createHeatingPipe(`orient-${i}`, openHeatingTurns(simplifyHeatingPath(field.cells.map(grid.point)), radius, diameter),
+  const maskFor = (field: HeatingSpiralField) => {
+    const pipe = createHeatingPipe('orient', openHeatingTurns(simplifyHeatingPath(field.cells.map(grid.point)), radius, diameter),
       { ...heatingDefaults('pipe', scale), diameterMm, spacingMm: field.spacingMinMm, automatic: true, pipeRole: 'loop' })
     const cells = new Set<number>()
     for (const piece of heatingPipeGeometry(pipe).pieces) {
@@ -34,6 +34,10 @@ export const orientHeatingFields = (grid: HeatingGrid, fields: HeatingSpiralFiel
         if (cell >= 0 && cell < occupied.length) cells.add(cell)
       }
     }
+    return cells
+  }
+  const masks = fields.map((field) => {
+    const cells = maskFor(field)
     for (const cell of cells) occupied[cell]++
     return cells
   })
@@ -41,9 +45,8 @@ export const orientHeatingFields = (grid: HeatingGrid, fields: HeatingSpiralFiel
   for (let index = 0; index < fields.length; index++) {
     checkpoint()
     const field = fields[index]
-    if (field.doorAligned) continue
     const xs = field.cells.map((cell) => cell % grid.width), ys = field.cells.map((cell) => Math.floor(cell / grid.width))
-    const left = Math.min(...xs), right = Math.max(...xs), top = Math.min(...ys), bottom = Math.max(...ys)
+    const { left, right, top, bottom } = field.fieldBox ?? { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) }
     for (const cell of masks[index]) occupied[cell]--
     distance.fill(-1)
     let read = 0, write = 0
@@ -58,12 +61,7 @@ export const orientHeatingFields = (grid: HeatingGrid, fields: HeatingSpiralFiel
         distance[next] = distance[cell] + 1; queue[write++] = next
       }
     }
-    let best = field.cells, score = Infinity, reflectedX = false, reflectedY = false
-    for (const flipX of [false, true]) for (const flipY of [false, true]) {
-      const cells = field.cells.map((cell) => {
-        const x = cell % grid.width, y = Math.floor(cell / grid.width)
-        return (flipY ? top + bottom - y : y) * grid.width + (flipX ? left + right - x : x)
-      })
+    const accessCost = (cells: number[]) => {
       let cost = 0
       for (const [p, q] of [[cells[0], cells[1]], [cells.at(-1)!, cells.at(-2)!]]) {
         const direction = p - q, reach = Math.ceil(radius / grid.step)
@@ -73,19 +71,31 @@ export const orientHeatingFields = (grid: HeatingGrid, fields: HeatingSpiralFiel
           if (next < 0 || next >= distance.length || grid.obstacle[next] || !heatingWallAllowed(grid, next, walls) || occupied[next] || Math.abs(next % grid.width - end % grid.width) + Math.abs(Math.floor(next / grid.width) - Math.floor(end / grid.width)) !== 1) { valid = false; break }
           end = next
         }
-        if (!valid || distance[end] < 0) { cost = Infinity; break }
+        if (!valid || distance[end] < 0) return Infinity
         cost += distance[end] + reach
       }
-      if (cost < score) { score = cost; best = cells; reflectedX = flipX; reflectedY = flipY }
+      return cost
+    }
+    let best = field.cells, score = accessCost(best)
+    if (!field.doorAligned || !Number.isFinite(score)) {
+      for (const flipX of [false, true]) for (const flipY of [false, true]) {
+        const cells = field.cells.map((cell) => {
+          const x = cell % grid.width, y = Math.floor(cell / grid.width)
+          return (flipY ? top + bottom - y : y) * grid.width + (flipX ? left + right - x : x)
+        })
+        const cost = accessCost(cells)
+        if (cost < score) { score = cost; best = cells }
+      }
+    }
+    // Mirroring cannot move a blocked west/east entry to the north/south edge.
+    if (!Number.isFinite(score) && !field.points) {
+      for (const cells of heatingRectangleVariants(field, grid, { diameterMm, spacingMm: field.spacingMinMm, design: { minBendRadiusMm: radiusMm } }, scale, checkpoint)) {
+        const cost = accessCost(cells)
+        if (cost < score) { score = cost; best = cells }
+      }
     }
     field.cells = best
-    // Subsequent fields must see this field at its selected orientation.
-    // Bounding boxes stay unchanged; the tube mask is reflected with the path.
-    const mask = new Set<number>()
-    for (const cell of masks[index]) {
-      const x = cell % grid.width, y = Math.floor(cell / grid.width)
-      mask.add((reflectedY ? top + bottom - y : y) * grid.width + (reflectedX ? left + right - x : x))
-    }
+    const mask = maskFor(field)
     masks[index] = mask
     for (const cell of mask) if (cell >= 0 && cell < occupied.length) occupied[cell]++
   }

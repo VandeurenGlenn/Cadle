@@ -2,6 +2,118 @@ import type { Point, Shape } from './model/types.js'
 import { heatingSourceRoom, routeHeating, type HeatingGrid, type HeatingRoom } from './heating-routing.js'
 import { isHeatingDoorSymbol, heatingDoorSymbolThreshold } from './heating-openings.js'
 import { heatingRoomKey, heatingWallDistances } from './heating-coverage.js'
+import { routeHeatingBundle } from './heating-bundle.js'
+import { heatingAccessDistances } from './heating-access-distances.js'
+
+export class HeatingFeedReservationFailure extends Error {
+  constructor(readonly point: Point) {
+    super('Geen volledige aanvoer- en retourbundel naar alle ruimtes gevonden. Er zijn nog geen kringen gelegd.')
+  }
+}
+
+/** Reserve a disjoint pair for every allocated group before creating leg fields.
+ * Only the room approaches are retained; the room interiors remain free to pack. */
+export const reserveHeatingFeedPairs = (grid: HeatingGrid, original: HeatingGrid, sources: readonly number[][],
+  interior: readonly number[], targets: ReadonlyMap<string, number>, omitted: ReadonlySet<number>,
+  scale: number, diameterMm: number, radiusMm: number, spacingMm: number, permittedWallCells: ReadonlySet<number>,
+  checkpoint: () => void, onProgress?: (done: number, total: number) => void): HeatingGrid => {
+  const distances = heatingWallDistances(original), radius = Math.ceil(radiusMm * 8 / scale / grid.step)
+  const goals: number[] = [], nativeIds: number[] = []
+  for (const room of grid.rooms) {
+    const count = targets.get(heatingRoomKey(room)) ?? 0
+    const members = original.rooms.flatMap((member) => {
+      const cells = member.cells.filter((cell) => grid.room[cell] === room.id && !grid.obstacle[cell] && !omitted.has(cell) && distances[cell] > radius)
+      return cells.length ? [{ id: member.id, cells, count: 0 }] : []
+    })
+    for (let i = 0; i < count; i++) {
+      checkpoint()
+      members.sort((a, b) => b.cells.length / (b.count + 1) - a.cells.length / (a.count + 1))
+      if (!members.length) throw new Error(`${room.name}: geen vrije ruimte voor aanvoer en retour.`)
+      members[0].count++
+    }
+    for (const member of members) {
+      if (!member.count) continue
+      const centre = member.cells.reduce((p, cell) => { const q = grid.point(cell); p.x += q.x / member.cells.length; p.y += q.y / member.cells.length; return p }, { x: 0, y: 0 })
+      const sorted = [...member.cells].sort((a, b) => {
+        const p = grid.point(a), q = grid.point(b)
+        return Math.abs(p.x - centre.x) + Math.abs(p.y - centre.y) - Math.abs(q.x - centre.x) - Math.abs(q.y - centre.y)
+      })
+      const separation = Math.max(1, Math.ceil(diameterMm * 1.2 * 8 / scale / grid.step))
+      let selected: number[] = []
+      for (const vertical of [false, true]) {
+        selected = []
+        const anchor = sorted[0]
+        for (const cell of sorted) {
+          if (vertical ? cell % grid.width !== anchor % grid.width : Math.floor(cell / grid.width) !== Math.floor(anchor / grid.width)) continue
+          if (selected.some((other) => Math.abs(other - cell) < separation * (vertical ? grid.width : 1))) continue
+          selected.push(cell)
+          if (selected.length === member.count * 2) break
+        }
+        if (selected.length === member.count * 2) break
+      }
+      if (selected.length < member.count * 2) throw new Error(`${room.name}: onvoldoende plaats voor de aanvoer en retour van elke kring.`)
+      goals.push(...selected); nativeIds.push(...selected.map(() => member.id))
+    }
+  }
+  if (!goals.length) return grid
+  const blocked = grid.obstacle.slice()
+  for (const cell of interior) blocked[cell] = 1
+  const stubs = sources.filter((stub) => stub.length > 0 && stub.every((cell) => cell >= 0 && cell < grid.wall.length && !grid.obstacle[cell]))
+  for (const stub of stubs) for (const cell of stub.slice(0, -1)) blocked[cell] = 1
+  const cellPenalty = grid.feedReservation ? Float32Array.from(grid.feedReservation, (value, cell) => !value && grid.room[cell] > 0 ? 10 : 0) : undefined
+  onProgress?.(0, goals.length)
+  let blockedGoal = 0
+  const paths = routeHeatingBundle(grid, stubs.map((stub) => stub.at(-1)!), goals, blocked,
+    { allowWalls: true, permittedWallCells, checkpoint, cellPenalty, onBlocked: (indices) => { blockedGoal = indices[0] ?? 0 } },
+    (done) => onProgress?.(done, goals.length))
+  if (!paths) throw new HeatingFeedReservationFailure(grid.point(goals[blockedGoal]))
+  const loopObstacle = grid.loopObstacle.slice(), feedReservation = grid.feedReservation?.slice() ?? new Uint8Array(grid.wall.length)
+  const feedCorridor = grid.feedCorridor?.slice() ?? new Uint8Array(grid.wall.length)
+  const pitch = Math.max(1, Math.round(spacingMm * 8 / scale / grid.step))
+  const reach = radius + Math.ceil(Math.max(diameterMm, spacingMm / 2) * 8 / scale / grid.step), blocks = new Set<number>()
+  const feedPaths = paths.map((route, index) => {
+    const path = [...stubs[route.source].slice(0, -1), ...route.cells]
+    const first = path.findIndex((cell) => original.room[cell] === nativeIds[index])
+    return first > 0 ? path.slice(0, first + 1) : path
+  })
+  const leadDistances = heatingAccessDistances(original, stubs.map((stub) => stub.at(-1)!), permittedWallCells,
+    original.room[stubs[0].at(-1)!] > 0, checkpoint)
+  const feedDistances = leadDistances.slice(), assigned = new Set(nativeIds)
+  for (const room of original.rooms) if (assigned.has(room.id)) for (const cell of room.cells) feedDistances[cell] = -1
+  const queue = new Int32Array(grid.wall.length), steps = new Int32Array(grid.wall.length), visited = new Uint8Array(grid.wall.length)
+  for (const [index, path] of feedPaths.entries()) {
+    const root = path.at(-1)!, room = nativeIds[index], stamp = index + 1
+    let read = 0, write = 1
+    queue[0] = root; steps[root] = path.length - stubs[paths[index].source].length; visited[root] = stamp
+    while (read < write) {
+      if (read % 4096 === 0) checkpoint()
+      const cell = queue[read++], x = cell % grid.width, y = Math.floor(cell / grid.width)
+      if (feedDistances[cell] < 0 || steps[cell] < feedDistances[cell]) feedDistances[cell] = steps[cell]
+      for (const next of [x ? cell - 1 : -1, x + 1 < grid.width ? cell + 1 : -1, y ? cell - grid.width : -1, y + 1 < grid.height ? cell + grid.width : -1]) {
+        if (next < 0 || visited[next] === stamp || original.room[next] !== room || grid.obstacle[next]) continue
+        visited[next] = stamp; steps[next] = steps[cell] + 1; queue[write++] = next
+      }
+    }
+  }
+  for (const path of feedPaths) for (const cell of path) {
+    checkpoint()
+    const x = cell % grid.width, y = Math.floor(cell / grid.width)
+    feedCorridor[cell] = 1
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const xx = x + dx, yy = y + dy
+      if (xx < 0 || yy < 0 || xx >= grid.width || yy >= grid.height || dx * dx + dy * dy > reach * reach) continue
+      blocks.add(Math.floor(yy / pitch) * pitch * grid.width + Math.floor(xx / pitch) * pitch)
+    }
+  }
+  for (const cell of blocks) {
+    const x = cell % grid.width, y = Math.floor(cell / grid.width)
+    for (let dy = 0; dy < pitch && y + dy < grid.height; dy++) for (let dx = 0; dx < pitch && x + dx < grid.width; dx++) {
+      const next = (y + dy) * grid.width + x + dx
+      if (grid.room[next] > 0) { loopObstacle[next] = 1; feedReservation[next] = 1 }
+    }
+  }
+  return { ...grid, loopObstacle, feedReservation, feedCorridor, feedPaths, feedDistances }
+}
 
 /** Only small rooms choose a neighbouring zone. A small hall between two large
  * rooms does not implicitly merge those large rooms into one control zone. */

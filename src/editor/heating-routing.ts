@@ -11,6 +11,8 @@ export type HeatingGrid = {
   drawingScale?: number
   feedCorridor?: Uint8Array
   feedReservation?: Uint8Array
+  feedPaths?: number[][]
+  feedDistances?: Int32Array
   origin: Point; step: number; width: number; height: number
   wall: Uint8Array; door: Uint8Array; obstacle: Uint8Array; loopObstacle: Uint8Array; room: Int32Array; rooms: HeatingRoom[]
   point: (index: number) => Point

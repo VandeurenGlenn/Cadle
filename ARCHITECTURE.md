@@ -17,6 +17,18 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - `src/editor/layout/onewire-circuit-presentation.ts` — pure resolution of circuit inspector values and generated
   one-wire labels/symbol presentation. It receives shapes and project-domain inputs and returns transformed shapes;
   it does not render, mutate editor state, or persist data.
+- The automatic heating planner reserves a complete, disjoint supply/return approach bundle before packing leg fields.
+  Measured feeder detours contribute to circuit length budgets. Additional fields trigger renewed pair reservations;
+  final rounded routes still require geometry and continuity checks before any result replaces the existing plan.
+  Door leaves and swing arcs are above-floor geometry, never pipe obstacles, including legacy obstacle flags on doors.
+  The actual threshold defines the room boundary and passage; walls, jambs and fixed furnishings still constrain routes.
+  Inaccessible rectangular field entries can change axes rather than only mirror, including previously door-aligned fields.
+  Interior-mounted sources may route directly through recognised internal partitions from the initial feeder reservation,
+  including the source-room wall. Facades, shafts, furnishings and door jambs remain unavailable for new passages.
+  Open tails then stay near the source rather than being forced toward its door. All used wall crossings, including
+  joined loops and retained circuits, are marked from the rendered curves and require construction/protection review.
+  `test/fixtures/heating-cadle-project.json` preserves the supplied complete version-2 Cadle export, separately from
+  the older `heating-floor-12.json` shape fixture. Its regressions use normal shape sanitization without altering the input.
 - `src/editor/export/` — SVG/PDF/download concerns and export commands. Shared editor policies remain directly in
   `src/editor/`.
 - `src/api/` — persistence gateways for projects and catalogs.

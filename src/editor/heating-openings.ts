@@ -13,7 +13,8 @@ export const isHeatingStairSymbol = (shape: Shape): shape is SymbolShape => shap
   /(?:^|\/)floor plan\/stairs-[^/]+\.svg$/i.test(heatingSymbolPath(shape))
 
 export const isHeatingSymbolObstacle = (shape: Shape): boolean =>
-  !shape.hidden && shape.heatingObstacle !== false && (shape.heatingObstacle === true || shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating && !isHeatingDoorSymbol(shape)))
+  !shape.hidden && shape.kind !== 'door' && shape.heatingObstacle !== false &&
+  (shape.heatingObstacle === true || shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating)) && !isHeatingDoorSymbol(shape)
 
 type Footprint = { x: number; y: number; width: number; height: number }
 /** Locked source rectangles are fixed furnishings. Grouped stair treads share

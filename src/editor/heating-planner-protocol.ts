@@ -3,7 +3,7 @@ import type { DrawingScale } from './layout/drawing-scale.js'
 import type { Point, Shape, RectShape } from './model/types.js'
 
 export type HeatingPlanningProgress = {
-  phase: 'rooms' | 'circuits' | 'connections' | 'checks'
+  phase: 'rooms' | 'feeds' | 'circuits' | 'connections' | 'checks'
   roomName?: string
   rooms?: number
   fields?: number
@@ -35,6 +35,7 @@ export type HeatingPlannerResponse =
 export const heatingProgressText = (progress: HeatingPlanningProgress | null): string => {
   if (!progress || progress.phase === 'rooms') return 'Ruimtes herkennen…'
   const attempt = progress.layoutLimit ? ` · indeling ${progress.attempt ?? 1}/${progress.layoutLimit}` : progress.attempt && progress.attempt > 1 ? ` · indeling ${progress.attempt}` : ''
+  if (progress.phase === 'feeds') return `Aanvoer en retour reserveren · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} paren${attempt}…`
   if (progress.phase === 'circuits') return `Slakkenhuizen indelen${attempt}${progress.rooms ? ` · ${progress.completedRooms ?? 0}/${progress.rooms} ruimtes` : ''}${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.remainingFields !== undefined ? ` · ${progress.remainingFields} deelvlakken` : ''}${progress.routeAttempts ? ` · ${progress.routeAttempts} routepogingen` : ''}…`
   if (progress.phase === 'connections') return `Aansluitingen zoeken · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} kringen${progress.roomName ? ` · ${progress.roomName}` : ''}${attempt}…`
   return 'Kringen, lengtes en kringentabel controleren…'

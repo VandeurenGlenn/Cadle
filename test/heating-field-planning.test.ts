@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildHeatingGrid, routeHeating, simplifyHeatingPath, segmentDistance, type HeatingGrid } from '../src/editor/heating-routing.ts'
-import { buildHeatingSpiralFields, openHeatingTurns, rectangularHeatingSpiral } from '../src/editor/heating-spiral.ts'
+import { buildHeatingSpiralFields, heatingRectangleVariants, openHeatingTurns, rectangularHeatingSpiral, type HeatingSpiralField } from '../src/editor/heating-spiral.ts'
+import { orientHeatingFields } from '../src/editor/heating-field-orientation.ts'
 import { pruneRedundantHeatingFields, deferHeatingFeedRemnants } from '../src/editor/heating-field-pruning.ts'
 import { createHeatingPipe, heatingDefaults } from '../src/editor/heating-plan.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
@@ -35,6 +36,31 @@ test('16/100 preserves both laying pitch and R80 on the routing grid', () => {
   assert.equal(100 / cellMm, Math.round(100 / cellMm))
   assert.equal(80 / cellMm, Math.round(80 / cellMm))
   assert.ok(cellMm >= 16, 'adjacent routed tubes retain physical clearance')
+})
+
+for (const doorAligned of [false, true]) test(`rebuilds an inaccessible field entry on the other axis (door aligned: ${doorAligned})`, () => {
+  const width = 140, height = 160, size = width * height, step = 1.6
+  const grid: HeatingGrid = { drawingScale: 100, width, height, step, origin: { x: 0, y: 0 }, rooms: [],
+    wall: new Uint8Array(size), door: new Uint8Array(size), obstacle: new Uint8Array(size), loopObstacle: new Uint8Array(size), room: new Int32Array(size).fill(1),
+    point: (cell) => ({ x: cell % width * step, y: Math.floor(cell / width) * step }),
+    index: (p) => Math.round(p.y / step) * width + Math.round(p.x / step) }
+  const field: HeatingSpiralField = { doorAligned, cells: [], rectangular: true, pattern: 'spiral',
+    fieldBox: { left: 40, right: 90, top: 50, bottom: 110 }, roomName: 'Recess', areaM2: 1.2, spacingMinMm: 100, spacingMaxMm: 100 }
+  field.cells = heatingRectangleVariants(field, grid, settings, 100, () => {})
+    .find((cells) => Math.abs(cells[1] - cells[0]) === 1)!
+  assert.ok(field.cells)
+  for (let y = 49; y <= 111; y++) for (const x of [39, 91]) grid.obstacle[y * width + x] = 1
+  const source = 20 * width + 60
+  orientHeatingFields(grid, [field], [source], 16, 80, 100, () => {})
+  for (const [end, near] of [[field.cells[0], field.cells[1]], [field.cells.at(-1)!, field.cells.at(-2)!]]) {
+    const direction = end - near
+    assert.equal(Math.abs(direction), width, 'both ends face the reachable north/south corridor, not the blocked sides')
+    for (let n = 1; n <= 4; n++) assert.equal(grid.obstacle[end + direction * n], 0, 'both ends retain R80 tangent clearance')
+    assert.ok(routeHeating(grid, source, end + direction * 4, { occupied: new Set(field.cells) }))
+  }
+  const pipe = createHeatingPipe('reoriented', openHeatingTurns(simplifyHeatingPath(field.cells.map(grid.point)), 6.4, 1.28),
+    { ...heatingDefaults('pipe', 100), ...settings, automatic: true, pipeRole: 'loop' })
+  assert.ok(heatingPipeGeometry(pipe).bends.every((bend) => bend.radiusMm >= 79.9))
 })
 
 test('removes a doorway-only field without removing a field that heats unique floor', () => {

@@ -7,6 +7,7 @@ import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
 import type { RectShape, Shape } from '../src/editor/model/types.ts'
 import { rescaleGroundPlan } from '../src/editor/layout/drawing-scale.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
+import { heatingRoomKey } from '../src/editor/heating-coverage.ts'
 
 const scene = (): Shape[] => {
   const corners = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 720 }, { x: 400, y: 720 }]
@@ -62,11 +63,20 @@ test('combines more than 24 provisional leg fields into twelve complete circuits
 })
 
 test('automatically detects rooms and connects full circuits to the manifold', () => {
-  const result = build()
+  let id = 0
+  const progress: { phase: string; circuits?: number; completedCircuits?: number }[] = []
+  const result = generateAutomaticHeatingPlan(scene(), { x: 180, y: 280 }, { diameterMm: 16, spacingMm: 150 }, 100,
+    () => `auto-${id++}`, area, 0, 0, { routes: 600, onProgress: (value) => progress.push(value) })
+  const firstField = progress.findIndex((value) => value.phase === 'circuits')
+  assert.ok(firstField > 0)
+  assert.ok(progress.slice(0, firstField).some((value) => value.phase === 'feeds' && value.circuits! > 0 && value.completedCircuits === value.circuits),
+    'every planned supply/return pair is reserved before the first leg field')
   assert.ok(result.rows.length > 0)
   assert.equal(result.shapes.filter((s) => s.heating?.kind === 'manifold').length, 1)
   assert.equal(result.shapes.filter((s) => s.heating?.kind === 'table').length, 1)
   for (const row of result.rows) {
+    assert.deepEqual(result.shapes.filter((shape) => shape.heating?.kind === 'pipe' && shape.heating.circuitId === row.id)
+      .map((shape) => shape.heating!.pipeRole).sort(), ['loop', 'return', 'supply'])
     assert.ok(row.loopM > 0 && row.supplyM > 0 && row.returnM > 0)
     assert.ok(Math.abs(row.totalM - row.loopM - row.supplyM - row.returnM) < 1e-8)
     assert.ok(row.flowLmin > 0)
@@ -99,6 +109,22 @@ test('uses only rooms with a door or a staircase', () => {
   assert.ok(eligible({ x: 520, y: 520 }), 'a room with a door remains eligible')
   assert.ok(eligible({ x: 920, y: 520 }), 'a room with stairs remains eligible')
   assert.ok(!eligible({ x: 1240, y: 520 }), 'a room with neither a door nor stairs is excluded')
+})
+
+test('reserves another pair before accepting an extra field beyond the initial room allocation', () => {
+  const position = { x: 180, y: 280 }, settings = { diameterMm: 16, spacingMm: 150 }
+  const grid = buildHeatingGrid(scene(), 100, settings.spacingMm, position, { pipeDiameterMm: 16, minBendRadiusMm: 80 })
+  const reservations: number[] = []
+  let id = 0
+  const result = generateAutomaticHeatingPlan(scene(), position, settings, 100, () => `extra-feed-${id++}`, area, 0, 0, {
+    routes: 600, roomTargets: new Map([[heatingRoomKey(grid.rooms[0]), 1]]),
+    onProgress: (progress) => {
+      if (progress.phase === 'feeds' && progress.circuits === progress.completedCircuits) reservations.push(progress.circuits!)
+    }
+  })
+  assert.equal(reservations[0], 1)
+  assert.ok(result.rows.length > 1)
+  assert.ok(reservations.at(-1)! >= result.rows.length, 'an additional field cannot skip its supply/return reservation')
 })
 
 test('generates a complete 16 mm / 100 mm plan rather than repeatedly rejecting its own bends', () => {

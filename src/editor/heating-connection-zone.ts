@@ -1,10 +1,10 @@
 import type { Point, Shape } from './model/types.js'
 import { heatingSharedDoors, heatingSourceRoom, type HeatingGrid } from './heating-routing.js'
 
-/** Open tails stay in the source room and face its exit, without assigning
- * hardware ports. The marked position remains the reference for the open zone. */
+/** Open tails stay in the source room without assigning hardware ports.
+ * Door-only routes may prefer its exit; wall-fed routes keep the source position. */
 export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape[], position: Point, capacity: number,
-  diameterMm: number, radiusMm: number, scale: number) => {
+  diameterMm: number, radiusMm: number, scale: number, options: { preferDoor?: boolean } = {}) => {
   const centre = grid.index(position)
   if (centre < 0 || grid.obstacle[centre]) throw new Error('Kies een vrije verdelerpositie.')
   const sourceRegion = heatingSourceRoom(grid, position)
@@ -18,7 +18,7 @@ export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape
     { left: cx - halfHeight, right: cx + halfHeight, top: cy, bottom: cy + width },
     { left: cx - halfHeight, right: cx + halfHeight, top: cy - width, bottom: cy }
   ]
-  if (sourceRegion) {
+  if (sourceRegion && options.preferDoor !== false) {
     const near = sourceRegion.cells.filter((cell) => grid.door[cell]).sort((a, b) => {
       const p = grid.point(a), q = grid.point(b)
       return Math.hypot(p.x - position.x, p.y - position.y) - Math.hypot(q.x - position.x, q.y - position.y)

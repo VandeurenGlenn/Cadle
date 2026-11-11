@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildHeatingGrid, routeHeating, simplifyHeatingPath, segmentDistance, type HeatingGrid } from '../src/editor/heating-routing.ts'
-import { buildHeatingSpiralFields, heatingRectangleVariants, openHeatingTurns, rectangularHeatingSpiral, type HeatingSpiralField } from '../src/editor/heating-spiral.ts'
+import { buildHeatingSpiralFields, heatingPairedEntries, heatingRectangleVariants, openHeatingTurns, rectangularHeatingSpiral, type HeatingSpiralField } from '../src/editor/heating-spiral.ts'
 import { orientHeatingFields } from '../src/editor/heating-field-orientation.ts'
 import { pruneRedundantHeatingFields, deferHeatingFeedRemnants } from '../src/editor/heating-field-pruning.ts'
 import { createHeatingPipe, heatingDefaults } from '../src/editor/heating-plan.ts'
@@ -158,12 +158,20 @@ test('a tight offset joins with real R80 curves rather than a staircase or a lon
     cells: Array.from({ length: last - first + 1 }, (_, y) => (y + first) * width + x), sourceMask: 1 << i,
     roomName: 'Zone', areaM2: .1, spacingMinMm: 100, spacingMaxMm: 100, points: undefined as { x: number; y: number }[] | undefined }))
   const source = { x: 32, y: 24 }, zone = heatingConnectionZone(grid, [], source, 12, 16, 80, 100)
+  const paired = jobs.map((job) => ({ ...job }))
+  mergeHeatingJobs(grid, paired, new Set(paired.flatMap((job) => job.cells)), { ...settings, connectionMode: 'zone' }, 100, source, 1, 0,
+    { pairedEntries: true, connectionZone: zone, targetCount: 1, routes: 100, deadline: Date.now() + 3000 })
+  if (paired.length === 1) {
+    assert.ok(heatingPairedEntries(paired[0].points ?? simplifyHeatingPath(paired[0].cells.map(grid.point)), 100, 100, step),
+      'a merged circuit must return to the same entry area with both ends facing the approach')
+  }
   mergeHeatingJobs(grid, jobs, new Set(jobs.flatMap((job) => job.cells)), { ...settings, connectionMode: 'zone' }, 100, source, 1, 0,
     { connectionZone: zone, targetCount: 1, routes: 100, deadline: Date.now() + 3000 })
   assert.equal(jobs.length, 1)
   assert.ok(jobs[0].points?.some((p, i, all) => i > 0 && Math.abs(p.x - all[i - 1].x) > .01 && Math.abs(p.y - all[i - 1].y) > .01))
   const pipe = createHeatingPipe('joined', openHeatingTurns(jobs[0].points!, 6.4, 1.28), { ...heatingDefaults('pipe', 100), ...settings, automatic: true, circuitId: 'VV01', pipeRole: 'loop' })
   const geometry = heatingPipeGeometry(pipe)
+  assert.equal(heatingPairedEntries(geometry.points, 100, 100, step), false, 'the unrestricted join has ends on opposite sides')
   assert.ok(geometry.bends.every((bend) => bend.radiusMm >= 79.9))
   assert.ok(geometry.length / 80 < 2.5)
 })

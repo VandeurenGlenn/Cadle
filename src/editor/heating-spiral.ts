@@ -36,8 +36,17 @@ export const openHeatingTurns = (points: Point[], radius: number, pipeDiameter =
 }
 
 export type HeatingSpiralField = { doorAligned?: boolean; packingGroup?: string; points?: Point[]; fieldBox?: { left: number; right: number; top: number; bottom: number }; rectangular?: boolean; cells: number[]; sourceMask?: number; pattern?: 'spiral' | 'meander' | 'mixed'; roomName: string; roomKey?: string; roomMembers?: { key: string; name: string }[]; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
-type Settings = { leadAllowances?: Readonly<Record<string, number>>; returnToEntrySide?: boolean; leadDistances?: Int32Array; leadStubMm?: number; entryGroups?: ReadonlyMap<string, number>; connectionBounds?: { x: number; y: number; width: number; height: number }; balanceLoads?: boolean; nativeRoom?: Int32Array; nativeRoomAreas?: ReadonlyMap<number, number>; preferMeanderRoomKeys?: readonly string[]; connectionMode?: 'ports' | 'zone'; deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; manifoldSide?: 'auto' | 'top' | 'bottom'; design?: HeatingDesignInputs }
+type Settings = { leadAllowances?: Readonly<Record<string, number>>; returnToEntrySide?: boolean; pairedEntries?: boolean; leadDistances?: Int32Array; leadStubMm?: number; entryGroups?: ReadonlyMap<string, number>; connectionBounds?: { x: number; y: number; width: number; height: number }; balanceLoads?: boolean; nativeRoom?: Int32Array; nativeRoomAreas?: ReadonlyMap<number, number>; preferMeanderRoomKeys?: readonly string[]; connectionMode?: 'ports' | 'zone'; deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; manifoldSide?: 'auto' | 'top' | 'bottom'; design?: HeatingDesignInputs }
 type CellRect = { left: number; top: number; right: number; bottom: number }
+
+export const heatingPairedEntries = (points: readonly Point[], spacingMm: number, scale: DrawingScale, gridStep = 0) => {
+  if (points.length < 3) return false
+  const first = points[0], next = points[1], last = points.at(-1)!, previous = points.at(-2)!
+  const ax = first.x - next.x, ay = first.y - next.y, bx = last.x - previous.x, by = last.y - previous.y
+  const lengths = Math.hypot(ax, ay) * Math.hypot(bx, by)
+  return lengths > 1e-8 && (ax * bx + ay * by) / lengths >= .7 &&
+    Math.hypot(first.x - last.x, first.y - last.y) <= drawingUnitsForMetres(2 * spacingMm / 1000, scale) + gridStep + 1e-6
+}
 
 /** Both arms wind inward in the same direction, one pitch apart. Reverse the
  * second arm at the centre to obtain one continuous counterflow double spiral. */
@@ -178,6 +187,7 @@ export const buildHeatingSpiralFields = (grid: HeatingGrid, settings: Settings, 
         const path = (pattern === 'spiral' ? rectangularHeatingSpiral : rectangularHeatingMeander)(w, h, selected, scale, checkpoint, axis)
         if (!path || returnToEntrySide && path.length === originalLength) continue
         originalLength = path.length
+        if (settings.pairedEntries && !heatingPairedEntries(path, settings.spacingMm, scale, grid.step)) continue
         const pipe = createHeatingPipe('field-cost', openHeatingTurns(path, drawingUnitsForMetres(limits.minBendRadiusMm / 1000, scale), drawingUnitsForMetres(settings.diameterMm / 1000, scale)),
           { ...heatingDefaults('pipe', scale), ...settings, automatic: true, pipeRole: 'loop' })
         result.push({ path, axis, pattern, loopM: drawingLengthMetres(heatingPipeGeometry(pipe).length, scale) })

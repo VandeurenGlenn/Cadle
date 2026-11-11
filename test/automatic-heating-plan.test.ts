@@ -7,6 +7,7 @@ import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
 import type { RectShape, Shape } from '../src/editor/model/types.ts'
 import { rescaleGroundPlan } from '../src/editor/layout/drawing-scale.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
+import { heatingPairedEntries } from '../src/editor/heating-spiral.ts'
 import { heatingRoomKey } from '../src/editor/heating-coverage.ts'
 
 const scene = (): Shape[] => {
@@ -141,6 +142,7 @@ test('generates a complete 16 mm / 100 mm plan rather than repeatedly rejecting 
   for (const pipe of result.shapes.filter((shape) => shape.heating?.kind === 'pipe')) {
     assert.equal(pipe.heating!.pattern, 'spiral')
     assert.ok(heatingPipeGeometry(pipe).bends.every((bend) => bend.radiusMm >= 79.9), `${pipe.heating!.pipeRole} also requires R80`)
+    if (pipe.heating!.pipeRole === 'loop') assert.ok(heatingPairedEntries(heatingPipeGeometry(pipe).points, 100, 100, 1.6))
   }
 })
 

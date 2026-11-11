@@ -22,9 +22,11 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   final rounded routes still require geometry and continuity checks before any result replaces the existing plan.
   Door leaves and swing arcs are above-floor geometry, never pipe obstacles, including legacy obstacle flags on doors.
   The actual threshold defines the room boundary and passage; walls, jambs and fixed furnishings still constrain routes.
+  New automatic loops return to the same entry area: their ends face the same approach and are at most two laying
+  intervals apart, plus one raster cell. Field merging must preserve this before the physical connections are routed.
   Inaccessible rectangular field entries can change axes rather than only mirror, including previously door-aligned fields.
   Interior-mounted sources may route directly through recognised internal partitions from the initial feeder reservation,
-  including the source-room wall. Facades, shafts, furnishings and door jambs remain unavailable for new passages.
+  including the source-room wall and partitions whose sides connect elsewhere. Facades, shafts, furnishings and door jambs remain unavailable for new passages.
   Open tails then stay near the source rather than being forced toward its door. All used wall crossings, including
   joined loops and retained circuits, are marked from the rendered curves and require construction/protection review.
   `test/fixtures/heating-cadle-project.json` preserves the supplied complete version-2 Cadle export, separately from

@@ -37,6 +37,7 @@ type OneWireCatalogComponent = {
   sourceShapeId?: string
   sourcePath?: string
   sourceName?: string
+  socketCount?: number
   breakerCurrentA?: number
   cableSectionMm2?: number
   poles?: number
@@ -77,6 +78,7 @@ type OneWireResolvedComponent = {
   kind: 'switch' | 'load' | 'empty'
   sourcePath?: string
   sourceName?: string
+  socketCount?: number
   sourceShapeId?: string
   breakerCurrentA?: number
   cableSectionMm2?: number
@@ -539,6 +541,9 @@ export const buildOneWireRowSection = (
       bindingId,
       groupId: rowGroupId
     }
+    if (entry.socketCount) {
+      probe.electrical = { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: entry.socketCount }
+    }
     if (typeof rotation === 'number') probe.rotation = rotation
     const bounds = oneWireSymbolBounds(probe) ?? deps.symbolContentBounds(probe)
     const repeatCount = repeatedLightingCounts.get(component.path.toLowerCase()) ?? 1
@@ -587,6 +592,9 @@ export const buildOneWireRowSection = (
       groupId: rowGroupId
     }
     const source = orderedEntries[symbolIndex]
+    if (source?.socketCount) {
+      symbol.electrical = { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: source.socketCount }
+    }
     symbol.sourceLink = {
       kind: source?.sourceShapeId ? 'device' : 'circuit',
       id: source?.sourceShapeId ?? bindingId,

@@ -11,15 +11,18 @@ const compact = (points: readonly Point[]) => points.filter((p, i, all) => !i ||
  * when fixtures divide the free floor into several rectangular spiral fields. */
 export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Bounds, obstacles: readonly Bounds[],
   spacing: number, radius: number, valid: (points: Point[], remaining: readonly Point[][]) => boolean,
-  patternFor: (points: Point[]) => HeatingPattern = () => 'spiral'): { points: Point[]; pattern: HeatingPattern } | null => {
+  patternFor: (points: Point[]) => HeatingPattern = () => 'spiral',
+  options: { timeMs?: number; auditLimit?: number; checkpoint?: () => void } = {}): { points: Point[]; pattern: HeatingPattern } | null => {
   if (fields.length < 2) return fields[0]?.[0] ? { points: fields[0][0], pattern: patternFor(fields[0][0]) } : null
   if (fields.length > 24) return null
-  const stop = Symbol('manual-zone-work-limit'), deadline = Date.now() + 300
-  const checkpoint = () => { if (Date.now() > deadline) throw stop }
+  const stop = Symbol('manual-zone-work-limit'), deadline = Date.now() + (options.timeMs ?? 300), auditLimit = options.auditLimit ?? 96
+  const checkpoint = () => { options.checkpoint?.(); if (Date.now() > deadline) throw stop }
   try {
-    const step = spacing / 4, origin = { x: bounds.x - step * 2, y: bounds.y - step * 2 }
+    let divisions = 4
+    for (let n = 4; n <= 24; n += 2) if (Math.abs(radius * n / spacing - Math.round(radius * n / spacing)) < 1e-6) { divisions = n; break }
+    const step = spacing / divisions, origin = { x: bounds.x - step * 2, y: bounds.y - step * 2 }
     const width = Math.ceil(bounds.width / step) + 5, height = Math.ceil(bounds.height / step) + 5, size = width * height
-    if (size > 250_000) return null
+    if (size > 900_000) return null
     const point = (cell: number) => ({ x: origin.x + cell % width * step, y: origin.y + Math.floor(cell / width) * step })
     const index = (p: Point) => Math.round((p.y - origin.y) / step) * width + Math.round((p.x - origin.x) / step)
     const obstacle = new Uint8Array(size), wall = new Uint8Array(size), room = new Int32Array(size)
@@ -55,7 +58,7 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
     }
     let audits = 0, pairs = 0
     const safe = (candidate: Point[], a: number, b: number) => {
-      if (++audits > 96) return false
+      if (++audits > auditLimit) return false
       const remaining = pending.filter((_, i) => i !== a && i !== b).map((variants) => variants[0])
       return valid(candidate, remaining)
     }
@@ -63,18 +66,25 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       if (!safe(candidate, a, b)) return false
       pending[a] = orientations(candidate, pattern); pending.splice(b, 1); return true
     }
-    while (pending.length > 1 && audits < 96 && pairs < 256) {
+    while (pending.length > 1 && audits < auditLimit && pairs < 256) {
       let joined = false
+      const boxes = pending.map((variants) => {
+        const xs = variants[0].map((p) => p.x), ys = variants[0].map((p) => p.y)
+        return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) }
+      })
+      const neighbours = boxes.flatMap((a, i) => boxes.flatMap((b, j) => i === j ? [] : [{ a: i, b: j,
+        gap: Math.hypot(Math.max(0, a.left - b.right, b.left - a.right), Math.max(0, a.top - b.bottom, b.top - a.bottom)) }]))
+        .sort((a, b) => a.gap - b.gap || a.a - b.a || a.b - b.b)
       // Insert wide fields at facing runs first. This keeps both original ends
       // available for a narrow adjacent field that cannot fit two side bridges.
-      for (let a = 0; a < pending.length && !joined; a++) for (let b = 0; b < pending.length && !joined; b++) {
-        if (a === b || ++pairs > 256) continue
+      for (const { a, b } of neighbours) {
+        if (joined || ++pairs > 256) break
         const alternatives: Point[][] = []
         for (const av of entryVariants(pending[a])) for (const bv of entryVariants(pending[b])) {
           const x = raster(av), y = raster(bv)
           if (!x || !y) continue
-          for (const cells of heatingSpliceCandidates(x, y, grid, 4, radius / step, checkpoint)) {
-            if (alternatives.length >= 8 || audits >= 96) break
+          for (const cells of heatingSpliceCandidates(x, y, grid, divisions, radius / step, checkpoint)) {
+            if (alternatives.length >= 8 || audits >= auditLimit) break
             const candidate = compact(cells.map(point))
             if (safe(candidate, a, b)) { patterns.set(candidate, combineHeatingPatterns([patterns.get(av), patterns.get(bv)])); alternatives.push(candidate) }
           }
@@ -89,7 +99,7 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       choices.sort((a, b) => a.distance - b.distance)
       for (const { a, b, x, y } of choices) {
         checkpoint()
-        if (audits >= 96) break
+        if (audits >= auditLimit) break
         const p = x.at(-1)!, before = x.at(-2)!, q = y[0], after = y[1]
         const ul = Math.hypot(p.x - before.x, p.y - before.y), vl = Math.hypot(after.x - q.x, after.y - q.y)
         const u = { x: (p.x - before.x) / ul, y: (p.y - before.y) / ul }, v = { x: (after.x - q.x) / vl, y: (after.y - q.y) / vl }

@@ -6,6 +6,7 @@ import { connectionBounds, sanitizeConnection } from './electrical-connection.js
 import { compactUnusedHeatingManifolds, sanitizeHeating } from '../heating-plan.js'
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
 import { sanitizeRoomLabel } from '../room-labels.js'
+import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -701,7 +702,15 @@ export const shapeBounds = (shape: Shape) => {
     }
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
-      return { x: shape.position.x - size / 2, y: shape.position.y - size / 2, width: size, height: size }
+      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
+      const minOffset = offsets[0] ?? 0
+      const maxOffset = offsets[offsets.length - 1] ?? 0
+      return {
+        x: shape.position.x - size / 2 + minOffset,
+        y: shape.position.y - size / 2,
+        width: size + maxOffset - minOffset,
+        height: size
+      }
     }
     case 'image':
       return {

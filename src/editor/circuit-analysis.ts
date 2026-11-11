@@ -65,6 +65,7 @@ export type CircuitComponent = {
   breakerCurve?: 'B' | 'C' | 'D' | 'other'
   rcdSensitivityMa?: number
   rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
+  socketCount?: number
   roomName?: string
 }
 
@@ -241,6 +242,7 @@ export const analyzeCircuits = (
       component.breakerCurve = metadata.breakerCurve
       component.rcdSensitivityMa = metadata.rcdSensitivityMa
       component.rcdType = metadata.rcdType
+      component.socketCount = metadata.socketCount
     }
     const anchor = shapeAnchorPoint(shape)
     const roomName = anchor ? roomNameAtPoint(roomRegions, anchor) : undefined

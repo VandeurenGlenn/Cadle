@@ -10,7 +10,7 @@ export type HeatingCoverage = {
   signature?: string; stale?: boolean
 }
 export const heatingCoverageSignature = (shapes: readonly Shape[]) => JSON.stringify(shapes.filter((s) =>
-  ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating && (s.locked || s.heatingObstacle !== undefined)) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
+  ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
   [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.locked, s.heatingObstacle, s.groupId, s.heating?.points,
     s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm,
     s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys, s.heating.heatSourceRoom, s.heating.shareSmallRooms, s.heating.manifoldSide, s.heating.circuitSpacingMm, s.heating.connectionMode] : null]))

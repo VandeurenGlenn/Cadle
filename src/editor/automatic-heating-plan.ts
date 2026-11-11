@@ -17,7 +17,8 @@ import { heatingSpliceCandidates, heatingReopenCandidates } from './heating-spli
 import { heatingFeedLanes } from './heating-feed-lanes.js'
 import { pruneRedundantHeatingFields, deferHeatingFeedRemnants } from './heating-field-pruning.js'
 import { orientHeatingFields } from './heating-field-orientation.js'
-import { heatingFallbackPassage, heatingInternalWallCells } from './heating-wall-policy.js'
+import { heatingFallbackPassage } from './heating-wall-policy.js'
+import { buildHeatingAreaFields } from './heating-area-fields.js'
 import { heatingAccessDistances } from './heating-access-distances.js'
 import { heatingObstacleBounds } from './heating-openings.js'
 
@@ -642,6 +643,16 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
     fieldGrid = shared
   }
   budget.onProgress?.({ phase: 'circuits', attempt })
+  if (budget.sourceScene && budget.roomTargets) {
+    const result = buildHeatingAreaFields(fieldGrid, budget.sourceScene, settings, scale, position, {
+      targets: budget.roomTargets, omitted: unheated, leads: budget.leadDistances,
+      nativeGrid: nativeFloor, capacity: settings.capacity,
+      checkpoint: () => checkHeatingDeadline(budget),
+      onRoom: (roomName, completedRooms, rooms) => budget.onProgress?.({ phase: 'circuits', attempt, roomName, completedRooms, rooms })
+    })
+    if (result.failedRoom) throw new Error(`${result.failedRoom}: geen doorlopend legvlak voor ${result.requested} kringen gevonden. Er zijn geen extra kringen toegevoegd.`)
+    return { jobs: result.jobs as CircuitJob[], occupied: result.occupied, initialFieldCount: result.jobs.length, combiningFinished: true }
+  }
   const rooms = [...grid.rooms].sort((a, b) => {
     const distance = (r: typeof a) => { const p = grid.point(r.minY * grid.width + r.minX), q = grid.point(r.maxY * grid.width + r.maxX); return Math.abs((p.x + q.x) / 2 - position.x) + Math.abs((p.y + q.y) / 2 - position.y) }
     return distance(b) - distance(a)
@@ -797,8 +808,9 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   const sourceRegion = heatingSourceRoom(template, position)
   const sourceRoomId = sourceRegion?.id ?? template.room[template.index(position)]
   const included = template.rooms.filter((room) => !settings.excludedRoomKeys?.includes(heatingRoomKey(room)))
-  budget.internalWallCells ??= sourceRoomId > 0 && !budget.wallPassage
-    ? heatingInternalWallCells({ ...template, rooms: included }, scale, () => checkHeatingDeadline(budget)) : new Set()
+  // Start with the real door network. Opening every partition at once lets
+  // the cheapest raster path bypass the source door and scatter penetrations.
+  budget.internalWallCells ??= new Set()
   const isConnectionZone = settings.connectionMode === 'zone'
   const zone = isConnectionZone ? budget.connectionZone ??= heatingConnectionZone(template, scene, position, settings.capacity, settings.diameterMm, limits.minBendRadiusMm, scale,
     { preferDoor: !budget.internalWallCells.size }) : undefined
@@ -1565,7 +1577,7 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   scale: DrawingScale, nextId: () => string, pageArea: { x: number; y: number; width: number; height: number },
   lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult => {
   const search: HeatingSearch = { layouts: new Set() }
-  const work: HeatingWorkBudget = { ...budget, pairedEntries: true, patternFallbackRooms: new Set(budget.patternFallbackRooms), loopFactors: {}, deadline: budget.deadline ?? Date.now() + 30000,
+  const work: HeatingWorkBudget = { ...budget, pairedEntries: false, patternFallbackRooms: new Set(budget.patternFallbackRooms), loopFactors: {}, deadline: budget.deadline ?? Date.now() + 30000,
     onRouteFailure: (reason, point, detail) => { work.lastRouteFailure = { reason, point, detail }; budget.onRouteFailure?.(reason, point, detail) },
     onProgress: (value) => budget.onProgress?.({ ...value, layoutLimit: MAX_HEATING_LAYOUTS,
       attempt: Math.min(MAX_HEATING_LAYOUTS, value.phase === 'circuits' || value.phase === 'feeds' ? search.layouts.size + 1 : Math.max(1, search.layouts.size)) }) }

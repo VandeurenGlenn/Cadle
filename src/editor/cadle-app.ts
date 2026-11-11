@@ -71,6 +71,7 @@ import type {
 } from './model/types.js'
 import type { Project, UUID } from '../types.js'
 import { electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
+import { isSocketSymbol, socketCountFromKeyboardEvent, withSocketCount } from './socket-multiplicity.js'
 import { connectionDefaults, connectionPoints, connectionSegments, isConnectionKind, type ConnectionKind } from './model/electrical-connection.js'
 import { setProjectData } from '../api/project.js'
 import pubsub from '../pubsub.js'
@@ -3643,6 +3644,7 @@ export class CadleApp extends LiteElement {
     sourceShapeId?: string
     sourcePath?: string
     sourceName?: string
+    socketCount?: number
     breakerCurrentA: number
     cableSectionMm2: number
     poles: number
@@ -3654,6 +3656,7 @@ export class CadleApp extends LiteElement {
       sourceShapeId?: string
       sourcePath?: string
       sourceName?: string
+      socketCount?: number
       breakerCurrentA: number
       cableSectionMm2: number
       poles: number
@@ -3693,7 +3696,8 @@ export class CadleApp extends LiteElement {
           poles: group.specification.poles,
           breakerCurve: group.specification.breakerCurve,
           sourcePath,
-          sourceName: component.name
+          sourceName: component.name,
+          socketCount: component.socketCount
         })
       }
     }
@@ -4099,7 +4103,10 @@ export class CadleApp extends LiteElement {
   }
 
   #shapeTemplate(shape: Shape, selected: boolean, extraClass = '') {
-    const content = shapeTemplate(shape, selected, extraClass, this.#symbolStrokeWidth,
+    // Sizing a draft is a pointer preview, not a new layout calculation on
+    // every mouse movement. Calculate its tubes when the zone is committed.
+    const preview = extraClass === 'draft' && shape.heating?.kind === 'zone' ? { ...shape, heating: undefined } : shape
+    const content = shapeTemplate(preview, selected, extraClass, this.#symbolStrokeWidth,
       shape.heating?.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [])
     if (this.#highlightedHeatingCircuit && !shape.hidden && shape.heating?.kind === 'pipe') {
       const active = shape.heating.circuitId === this.#highlightedHeatingCircuit
@@ -6399,6 +6406,11 @@ export class CadleApp extends LiteElement {
       return
     }
     if (isEditableKeyboardEvent(event)) return
+    const requestedSocketCount = socketCountFromKeyboardEvent(event)
+    if (requestedSocketCount !== null && this.#applySocketCount(requestedSocketCount)) {
+      event.preventDefault()
+      return
+    }
     if (this.#tools.current === 'heating-pipe' && (event.key === 'Enter' || event.key === 'Escape')) {
       event.preventDefault()
       if (event.key === 'Enter') this.#commitHeatingPipe()
@@ -6426,5 +6438,38 @@ export class CadleApp extends LiteElement {
     }
 
     if (this.#applyNativeHotkey(action)) event.preventDefault()
+  }
+
+  #applySocketCount = (count: number): boolean => {
+    let changed = false
+    const selectedIds = new Set(this.#selectedShapeIds())
+    this.#document.shapes = this.#document.shapes.map(shape => {
+      if (!selectedIds.has(shape.id) || shape.kind !== 'symbol' || !isSocketSymbol(shape)) return shape
+      changed = true
+      return withSocketCount(shape, count)
+    })
+
+    if (!changed && this.#pendingCatalogSymbol) {
+      const electrical = electricalMetadataFromCatalog(
+        this.#pendingCatalogSymbol.metadata,
+        this.#pendingCatalogSymbol.name,
+        this.#pendingCatalogSymbol.path
+      )
+      if (isSocketSymbol({ ...this.#pendingCatalogSymbol, electrical })) {
+        this.#pendingCatalogSymbol = {
+          ...this.#pendingCatalogSymbol,
+          metadata: {
+            ...(this.#pendingCatalogSymbol.metadata ?? {}),
+            electrical: { ...electrical, socketCount: count }
+          }
+        }
+        changed = true
+      }
+    }
+
+    if (!changed) return false
+    this.#pushHistory()
+    this.#render()
+    return true
   }
 }

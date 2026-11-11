@@ -21,6 +21,13 @@ export const allocateHeatingCircuits = (grid: HeatingGrid, point: Point, capacit
     rooms.sort((a, b) => b.floorM / b.count + b.leadM - a.floorM / a.count - a.leadM)
     rooms[0].count++
   }
+  // The average lead estimate must not leave a long, irregular room without
+  // a usable group while the manifold still has spare outlets.
+  for (let used = requested; used < capacity; used++) {
+    rooms.sort((a, b) => b.floorM / b.count + b.leadM - a.floorM / a.count - a.leadM)
+    if (rooms[0].floorM / rooms[0].count + rooms[0].leadM + allowanceM <= maxM * .9) break
+    rooms[0].count++
+  }
   const suggestedMaxM = Math.ceil(Math.max(...rooms.map((r) => r.floorM / r.count + r.leadM + allowanceM)) / 5) * 5
   return { targets: new Map(rooms.map((r) => [r.key, r.count])), suggestedMaxM }
 }

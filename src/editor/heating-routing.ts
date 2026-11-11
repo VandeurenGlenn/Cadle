@@ -89,7 +89,7 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     }
   }
   for (const b of heatingObstacleBounds(shapes, shapeBounds)) {
-    for (const [target, clearance] of [[obstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step],
+    for (const [target, clearance] of [[obstacle, drawingUnitsForMetres((pipe?.pipeDiameterMm ?? 16) / 2000, scale) + step / 2],
       [loopObstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.minBendRadiusMm ?? 80) * .002 + (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step]] as const) {
       const minX = Math.max(0, Math.floor((b.x - clearance - origin.x) / step))
       const maxX = Math.min(width - 1, Math.ceil((b.x + b.width + clearance - origin.x) / step))

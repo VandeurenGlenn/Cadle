@@ -15,6 +15,7 @@ import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
 import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
 import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
+import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -329,6 +330,7 @@ export const shapeMarkup = (
         `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
+      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
       const x = shape.position.x - size / 2
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
@@ -342,7 +344,7 @@ export const shapeMarkup = (
           `--symbol-stroke-width:${typeof shape.strokeWidth === 'number' ? shape.strokeWidth : normalizedStrokeWidth};`
         return `
           <g class="shape shape-symbol ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${shapeTransform(shape)}>
-            <svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${metadataText.inner}</svg>${metadataText.annotations}
+            ${offsets.map((offset, index) => `<svg x="${shape.position.x - size / 2 + offset}" y="${y}" width="${size}" height="${size}" viewBox="${escapeHtml(symbolSvg.viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="visible" style="${symbolStyle}overflow:visible;">${symbolInner}${index === 0 ? metadataText.inner : ''}</svg>`).join('')}${metadataText.annotations}
           </g>
         `
       }

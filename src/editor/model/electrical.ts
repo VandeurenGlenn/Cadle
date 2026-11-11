@@ -43,6 +43,8 @@ export type ElectricalDeviceMetadata = {
   boardId?: string
   railId?: string
   notes?: string
+  /** Number of outlets represented by one socket point. */
+  socketCount?: number
 }
 
 export const phaseConfigurationLabel = (
@@ -239,7 +241,10 @@ export const electricalMetadataFromCatalog = (
     rcdType: isRcdType(explicit.rcdType) ? explicit.rcdType : defaultRcdTypeForDevice(name, path),
     boardId: typeof explicit.boardId === 'string' ? explicit.boardId.trim() || undefined : undefined,
     railId: typeof explicit.railId === 'string' ? explicit.railId.trim() || undefined : undefined,
-    notes: typeof explicit.notes === 'string' ? explicit.notes.trim() || undefined : undefined
+    notes: typeof explicit.notes === 'string' ? explicit.notes.trim() || undefined : undefined,
+    ...(typeof explicit.socketCount === 'number' && Number.isInteger(explicit.socketCount)
+      ? { socketCount: Math.max(1, Math.min(9, explicit.socketCount)) }
+      : {})
   }
 }
 
@@ -311,6 +316,9 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
     rcdType: raw.rcdType === 'AC' || raw.rcdType === 'A' || raw.rcdType === 'F' || raw.rcdType === 'B' || raw.rcdType === 'other' ? raw.rcdType : undefined,
     boardId: typeof raw.boardId === 'string' ? raw.boardId.trim() || undefined : undefined,
     railId: typeof raw.railId === 'string' ? raw.railId.trim() || undefined : undefined,
-    notes: typeof raw.notes === 'string' ? raw.notes.trim() || undefined : undefined
+    notes: typeof raw.notes === 'string' ? raw.notes.trim() || undefined : undefined,
+    ...(typeof raw.socketCount === 'number' && Number.isInteger(raw.socketCount)
+      ? { socketCount: Math.max(1, Math.min(9, raw.socketCount)) }
+      : {})
   }
 }

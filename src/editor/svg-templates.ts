@@ -22,6 +22,7 @@ import {
 import { namedRoomRegions } from './room-regions.js'
 import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
+import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -285,7 +286,7 @@ export const shapeTemplate = (
       `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
-      const x = shape.position.x - size / 2
+      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
       const symbolInner = symbolSvg
@@ -303,7 +304,7 @@ export const shapeTemplate = (
         <g class=${shapeClass} data-shape-id=${shape.id} data-selected=${selectedAttr} transform=${shapeTransform(shape) || nothing}>
           ${
             symbolSvg
-              ? svg`<svg x=${x} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${unsafeSVG(metadataText.inner)}</svg>${unsafeSVG(metadataText.annotations)}`
+              ? svg`${offsets.map((offset, index) => svg`<svg x=${shape.position.x - size / 2 + offset} y=${y} width=${size} height=${size} viewBox=${symbolSvg.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" style=${`${symbolStyle}overflow:visible;`}>${unsafeSVG(symbolInner)}${index === 0 ? unsafeSVG(metadataText.inner) : nothing}</svg>`)}${unsafeSVG(metadataText.annotations)}`
               : nothing
           }
         </g>

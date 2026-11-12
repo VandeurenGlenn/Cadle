@@ -287,7 +287,7 @@ export const shapeTemplate = (
       `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
-      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
+      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size, shape.path) : [0]
       const connector = oneWireSocketConnector(shape)
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)

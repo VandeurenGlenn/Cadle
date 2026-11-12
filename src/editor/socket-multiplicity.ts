@@ -15,9 +15,10 @@ export const socketCountFromKeyboardEvent = (
   return Number(event.key)
 }
 
-export const socketCopyOffsets = (count: number, size: number): number[] => {
+export const socketCopyOffsets = (count: number, size: number, path = ''): number[] => {
   const normalized = Math.max(1, Math.min(9, Math.round(count)))
-  const step = size * 0.9
+  const narrow = /socket outlets\/wall outlet with (?:grounding(?: and integrated safety shutter)?|integrated safety shutter)\.svg$/i.test(path)
+  const step = size * (narrow ? 0.5 : 0.75)
   const start = -((normalized - 1) * step) / 2
   return Array.from({ length: normalized }, (_, index) => start + index * step)
 }

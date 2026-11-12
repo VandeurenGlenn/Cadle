@@ -117,7 +117,7 @@ export const symbolContentBounds = (shape: Extract<Shape, { kind: 'symbol' }>) =
   const fullBox = { x, y, width: size, height: size }
   const expandSockets = (bounds: typeof fullBox) => {
     if (!isSocketSymbol(shape)) return bounds
-    const offsets = socketCopyOffsets(socketCount(shape), size)
+    const offsets = socketCopyOffsets(socketCount(shape), size, shape.path)
     const span = (offsets.at(-1) ?? 0) - (offsets[0] ?? 0)
     const radians = (shape.rotation ?? 0) * Math.PI / 180
     const dx = span * Math.abs(Math.cos(radians)), dy = span * Math.abs(Math.sin(radians))

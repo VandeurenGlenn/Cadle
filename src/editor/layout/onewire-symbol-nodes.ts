@@ -442,7 +442,7 @@ export const oneWireSymbolBounds = (shape: { path: string; scale: number; positi
   const cos = Math.abs(Math.cos(radians))
   const sin = Math.abs(Math.sin(radians))
   const offsets = isSocketSymbol({ name: shape.name ?? '', path: shape.path, electrical: shape.electrical })
-    ? socketCopyOffsets(socketCount(shape), 24 * renderedSymbolScale(shape.path, shape.scale)) : [0]
+    ? socketCopyOffsets(socketCount(shape), 24 * renderedSymbolScale(shape.path, shape.scale), shape.path) : [0]
   const span = (offsets.at(-1) ?? 0) - (offsets[0] ?? 0)
   const width = svgScale * (spec.viewBox.width * cos + spec.viewBox.height * sin) + span * cos
   const height = svgScale * (spec.viewBox.width * sin + spec.viewBox.height * cos) + span * sin
@@ -451,7 +451,7 @@ export const oneWireSymbolBounds = (shape: { path: string; scale: number; positi
 
 export const oneWireSocketConnector = (shape: SymbolShape): { start: Point; end: Point } | null => {
   if (!shape.groupId?.startsWith('onewire-') || !isSocketSymbol(shape)) return null
-  const offsets = socketCopyOffsets(socketCount(shape), 24 * renderedSymbolScale(shape.path, shape.scale))
+  const offsets = socketCopyOffsets(socketCount(shape), 24 * renderedSymbolScale(shape.path, shape.scale), shape.path)
   if (offsets.length < 2) return null
   const node = oneWireSymbolNodeInfo(shape.path, shape.scale)
   if (!node || node.cutHalfWidth !== null) return null

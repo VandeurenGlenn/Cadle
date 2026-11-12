@@ -331,7 +331,7 @@ export const shapeMarkup = (
         `
     case 'symbol': {
       const size = 24 * renderedSymbolScale(shape.path, shape.scale)
-      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size) : [0]
+      const offsets = isSocketSymbol(shape) ? socketCopyOffsets(socketCount(shape), size, shape.path) : [0]
       const connector = oneWireSocketConnector(shape)
       const connectorMarkup = connector
         ? `<line x1="${connector.start.x}" y1="${connector.start.y}" x2="${connector.end.x}" y2="${connector.end.y}" stroke="#000000" stroke-width="2"></line>` : ''

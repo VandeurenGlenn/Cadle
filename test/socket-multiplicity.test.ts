@@ -31,7 +31,7 @@ test('socket multiplicity stays one selectable object and is visually centered',
   assert.equal(isSocketSymbol(socket), true)
   const updated = withSocketCount(socket, 3) as SymbolShape
   assert.equal(updated.electrical?.socketCount, 3)
-  assert.deepEqual(socketCopyOffsets(3, 20), [-18, 0, 18])
+  assert.deepEqual(socketCopyOffsets(3, 20), [-15, 0, 15])
   for (const count of [1, 2, 9]) {
     const offsets = socketCopyOffsets(count, 20)
     assert.equal(offsets.length, count)
@@ -45,8 +45,10 @@ test('multiple socket copies have visible clearance and rotated layout bounds in
       const shape: SymbolShape = { ...socket, path: `symbols/Socket outlets/Wall outlet ${variant}${suffix}.svg`,
         scale: 1.05, electrical: { ...socket.electrical!, socketCount: 3 } }
       const single = oneWireSymbolBounds({ ...shape, electrical: { ...shape.electrical!, socketCount: 1 } })!
-      const size = 24 * shape.scale, offsets = socketCopyOffsets(3, size)
-      assert.ok(offsets[1] - offsets[0] - single.width >= size * .1)
+      const size = 24 * shape.scale, offsets = socketCopyOffsets(3, size, shape.path)
+      const clearance = offsets[1] - offsets[0] - single.width
+      assert.ok(clearance > 0, `${shape.path} copies should not overlap`)
+      assert.ok(clearance < size * .08, `${shape.path} copies should remain close`)
       const bounds = oneWireSymbolBounds(shape)!
       assert.ok(Math.abs(bounds.width - single.width - (offsets[2] - offsets[0])) < 1e-8)
       const rotated = oneWireSymbolBounds({ ...shape, rotation: -90 })!
@@ -62,7 +64,7 @@ test('one-wire socket copies remain connected, including uncached SVG exports', 
     groupId: 'onewire-test', rotation: -90, electrical: { ...socket.electrical!, socketCount: 3 } }
   const connector = oneWireSocketConnector(shape)!
   const node = oneWireSymbolNodeInfo(shape.path, shape.scale)!
-  const offsets = socketCopyOffsets(3, 24 * shape.scale)
+  const offsets = socketCopyOffsets(3, 24 * shape.scale, shape.path)
   assert.equal(connector.start.x, shape.position.x + node.offset.x + offsets[0])
   assert.equal(connector.end.x, shape.position.x + node.offset.x + offsets[2])
   assert.equal(connector.start.y, shape.position.y + node.offset.y)

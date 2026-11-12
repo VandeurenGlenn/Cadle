@@ -17,7 +17,7 @@ type SymbolStyleDefaults = {
   flipY?: unknown
 }
 
-const WALL_LIGHT_SCALE = 1.5
+const WALL_LIGHT_SCALE = 1
 const FLUORESCENT_LAMP_SCALE = 2
 const DISTRIBUTION_BOARD_SCALE = 2
 const BATTERY_BANK_SCALE = 2

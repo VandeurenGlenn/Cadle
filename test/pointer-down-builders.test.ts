@@ -114,7 +114,7 @@ test('uses readable floor-plan sizes for wide switch controls', () => {
   }
 })
 
-test('uses a larger scale for wall lights', () => {
+test('uses a compact floor-plan scale for wall lights while preserving custom and saved sizes', () => {
   const shape = createSymbolShape(
     'wall-light',
     { x: 10, y: 20 },
@@ -124,7 +124,12 @@ test('uses a larger scale for wall lights', () => {
     }
   )
 
-  assert.equal(shape.scale, 2.25 * 1.15)
+  assert.equal(shape.scale, 1.5 * 1.15)
+  assert.equal(createSymbolShape('custom', { x: 10, y: 20 }, {
+    name: shape.name, path: shape.path, metadata: { symbolDefaults: { scale: 2.4 } }
+  }).scale, 2.4)
+  const saved = { ...shape, scale: 2.25 * 1.15 }
+  assert.deepEqual(sanitizeShapes([saved], 'groundplan'), [saved])
 })
 
 test('compensates the wide view box of fluorescent lamps', () => {
@@ -202,6 +207,7 @@ test('catalog placement on one-wire uses the same sizes as generated components'
     'symbols/Switches/Push button.svg',
     'symbols/Switches/Double push button.svg',
     'symbols/Consumption appliances/Lighting.svg',
+    'symbols/Consumption appliances/Wall light.svg',
     'symbols/Socket outlets/Wall outlet with grounding.svg'
   ]) {
     const symbol = { name: 'Component', path }

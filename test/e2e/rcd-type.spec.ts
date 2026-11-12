@@ -1,5 +1,36 @@
 import { expect, test } from '@playwright/test'
 
+test('edits protection pole counts independently and retains them after reopening', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const topologyPage = page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000103"]')
+  await topologyPage.click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const poles = page.locator('object-pane').getByRole('combobox', { name: 'Poles (nP)', exact: true })
+  const devices = [
+    { viewBox: '0 0 28.783 28.8265', value: '1' },
+    { viewBox: '0 0 38.5625 29.8893', value: '4' }
+  ]
+  const selectDevice = async (viewBox: string) => {
+    await app.locator(`g.shape-symbol svg[viewBox="${viewBox}"] path`).nth(1).click()
+  }
+  for (const device of devices) {
+    await selectDevice(device.viewBox)
+    await poles.selectOption(device.value)
+    const symbol = app.locator('g.shape-symbol').filter({ has: page.locator(`svg[viewBox="${device.viewBox}"]`) })
+    await expect(symbol.locator('text').filter({ hasText: new RegExp(`^${device.value}P$`) })).toHaveCount(1)
+  }
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000104"]').click()
+  await topologyPage.click()
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  for (const device of devices) {
+    await selectDevice(device.viewBox)
+    await expect(poles).toHaveValue(device.value)
+  }
+})
+
 test('defaults RCDs to A and retains an explicit type through reopening and regeneration', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

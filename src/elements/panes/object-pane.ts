@@ -1011,6 +1011,19 @@ ${this.#renderConnectionProperties()}
 `, false)}
           ${isProtectionDevice ? html`
 ${this.#propertySection('protection', 'Protection', html`
+<label><span class="native-label">Poles (nP)</span>
+  <select
+    data-electrical-field="poles"
+    class="native-select"
+    .value=${String(this.#effectiveElectrical().poles ?? '')}
+    @change=${(event: Event) => this.#updateElectrical('poles', (event.target as HTMLSelectElement).value)}>
+    <option value="">Not set</option>
+    <option value="1">1P</option>
+    <option value="2">2P</option>
+    <option value="3">3P</option>
+    <option value="4">4P</option>
+  </select>
+</label>
 <label
                         ><span class="native-label">${isResidualBreaker ? 'Rated current (A)' : 'Breaker (A)'}</span
                         ><input

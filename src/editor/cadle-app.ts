@@ -5432,7 +5432,8 @@ export class CadleApp extends LiteElement {
 
   #heatingSettingsFrom(data: HeatingData): AutomaticHeatingSettings {
     return { diameterMm: data.diameterMm, spacingMm: data.spacingMm, design: data.design, edgeMm: data.edgeMm,
-      connectionMode: data.connectionMode ?? 'zone', circuitSpacingMm: data.circuitSpacingMm, shareSmallRooms: data.shareSmallRooms, heatSourceRoom: data.heatSourceRoom, manifoldSide: data.manifoldSide,
+      connectionMode: data.connectionMode ?? 'zone', preferredCapacity: data.preferredCapacity, preferredCircuitLengthM: data.preferredCircuitLengthM,
+      allowExtraCircuit: data.allowExtraCircuit ?? true, allowLongerCircuits: data.allowLongerCircuits ?? true, allowWallPassages: data.allowWallPassages ?? true, circuitSpacingMm: data.circuitSpacingMm, shareSmallRooms: data.shareSmallRooms, heatSourceRoom: data.heatSourceRoom, manifoldSide: data.manifoldSide,
       capacity: data.capacity ?? Math.max(data.circuits, 12), excludedRoomKeys: data.excludedRoomKeys }
   }
 
@@ -5455,7 +5456,7 @@ export class CadleApp extends LiteElement {
     this.#heatingDiagnosticRoom = null
     this.#automaticHeatingError = null
     this.#automaticHeatingRetry = null
-    this.#automaticHeatingSettings = { connectionMode: 'zone', shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto', ...settings }
+    this.#automaticHeatingSettings = { allowExtraCircuit: true, allowLongerCircuits: true, allowWallPassages: true, connectionMode: 'zone', shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto', ...settings }
     this.#activateTool('heating-manifold')
   }
 
@@ -5466,6 +5467,9 @@ export class CadleApp extends LiteElement {
     const page = this.#pageKey
     const values = await globalThis.cadleShell.requestInput({ title: 'Verdelerinstellingen', submitLabel: retry ? 'Opnieuw berekenen' : 'Toepassen', fields: [
       { name: 'capacity', label: 'Beschikbare verdelergroepen', type: 'number', min: 1, max: 24, value: String(previous.capacity ?? 12), required: true },
+      { name: 'allowExtraCircuit', label: 'Eén extra kring', value: previous.allowExtraCircuit ? 'yes' : 'no', options: [{ value: 'yes', label: 'Toevoegen als dat een beter plan geeft' }, { value: 'no', label: 'Binnen het ingestelde aantal blijven' }] },
+      { name: 'allowLongerCircuits', label: 'Langere kringen', value: previous.allowLongerCircuits ? 'yes' : 'no', options: [{ value: 'yes', label: 'Tot 120 m als laatste terugval' }, { value: 'no', label: 'De ingestelde lengtegrens aanhouden' }] },
+      { name: 'allowWallPassages', label: 'Muurdoorvoeren', value: previous.allowWallPassages !== false ? 'yes' : 'no', options: [{ value: 'yes', label: 'Beperkt, bij een grote omweg via deuren' }, { value: 'no', label: 'Alleen bestaande doorgangen' }] },
       { name: 'edgeMm', label: 'Randafstand tot muren (mm)', type: 'number', min: 0, max: 1000, value: String(previous.edgeMm ?? 100), required: true },
       { name: 'heatSourceRoom', label: 'Ruimte van de verdeler', value: previous.heatSourceRoom === false ? 'no' : 'yes', options: [{ value: 'no', label: 'Alleen doorvoer, geen eigen verwarmingslus' }, { value: 'yes', label: 'Ook verwarmen' }] },
       { name: 'shareSmallRooms', label: 'Kleine aangrenzende ruimtes', value: previous.shareSmallRooms ? 'yes' : 'no', options: [{ value: 'yes', label: 'Mogen een kring delen' }, { value: 'no', label: 'Afzonderlijke kringen' }] },
@@ -5479,7 +5483,8 @@ export class CadleApp extends LiteElement {
     const maxCircuitLengthM = Number(values.maxCircuitLengthM)
     if (!Number.isFinite(maxCircuitLengthM) || maxCircuitLengthM < 20 || maxCircuitLengthM > 300) return
     const profile = readHeatingPipeProfiles().find((p) => p.id === values.profile)
-    const settings: AutomaticHeatingSettings = { ...previous, capacity, edgeMm, heatSourceRoom: values.heatSourceRoom === 'yes', shareSmallRooms: values.shareSmallRooms === 'yes',
+    const settings: AutomaticHeatingSettings = { ...previous, capacity, preferredCapacity: capacity, preferredCircuitLengthM: maxCircuitLengthM,
+      allowExtraCircuit: values.allowExtraCircuit === 'yes', allowLongerCircuits: values.allowLongerCircuits === 'yes', allowWallPassages: values.allowWallPassages === 'yes', edgeMm, heatSourceRoom: values.heatSourceRoom === 'yes', shareSmallRooms: values.shareSmallRooms === 'yes',
       manifoldSide: values.manifoldSide as AutomaticHeatingSettings['manifoldSide'], diameterMm: profile?.diameterMm ?? previous.diameterMm,
       design: profile ? applyHeatingPipeProfile(profile, previous.design) : { ...previous.design, maxCircuitLengthM } }
     if (pending && pending === this.#automaticHeatingRetry) void this.#generateHeatingAt(pending.point, settings, pending.onlyRoom, pending.onlyCircuitId)

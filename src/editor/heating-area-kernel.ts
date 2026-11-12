@@ -20,6 +20,14 @@ const precision = 1000
 const integerPaths = (paths: readonly Point[][]) => paths.map((path) => path.map(({ x, y }) => ({ X: Math.round(x * precision), Y: Math.round(y * precision) })))
 const drawingPaths = (paths: { X: number; Y: number }[][]): Point[][] => paths.map((path) => path.map(({ X, Y }) => ({ x: X / precision, y: Y / precision })))
 const signedArea = (points: readonly Point[]) => points.reduce((sum, a, i) => { const b = points[(i + 1) % points.length]; return sum + a.x * b.y - b.x * a.y }, 0) / 2
+const layingContours = (area: HeatingArea, pitch: number, radius: number): HeatingArea => {
+  if (area.boundaries.filter((ring) => signedArea(ring) > 0).length < 2) return area
+  const components = heatingAreaComponents(area).filter((component) => {
+    const box = heatingAreaBounds(component)
+    return heatingAreaSurface(component) >= pitch * pitch * 8 || Math.min(box.width, box.height) >= radius * 2
+  })
+  return { ...area, boundaries: components.flatMap((component) => component.boundaries) }
+}
 const clockwise = (points: readonly Point[]) => signedArea(points) < 0 ? [...points].reverse() : [...points]
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
 const compact = (points: Point[]) => {
@@ -107,6 +115,24 @@ const segmentDistance = (p: Point, a: Point, b: Point) => {
   const t = length2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2)) : 0
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
 }
+const segmentIndex = (segments: readonly { a: Point; b: Point }[], reach: number, bucket: number) => {
+  const cells = new Map<string, { a: Point; b: Point }[]>()
+  for (const segment of segments) {
+    const { a, b } = segment
+    for (let y = Math.floor((Math.min(a.y, b.y) - reach) / bucket); y <= Math.floor((Math.max(a.y, b.y) + reach) / bucket); y++) {
+      for (let x = Math.floor((Math.min(a.x, b.x) - reach) / bucket); x <= Math.floor((Math.max(a.x, b.x) + reach) / bucket); x++) {
+        const key = `${x}:${y}`, list = cells.get(key) ?? []
+        list.push(segment); cells.set(key, list)
+      }
+    }
+  }
+  return (p: Point, distance: number, inclusive = false) => (cells.get(`${Math.floor(p.x / bucket)}:${Math.floor(p.y / bucket)}`) ?? []).some(({ a, b }) => {
+    const dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy
+    const t = length2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2)) : 0
+    const x = p.x - a.x - t * dx, y = p.y - a.y - t * dy, squared = x * x + y * y
+    return inclusive ? squared <= distance * distance : squared < distance * distance
+  })
+}
 
 /** Both callers get the same rounded geometry and the same rejection rules.
  * An unsuccessful area never turns into extra, unrequested circuits. */
@@ -118,10 +144,10 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
   const diameter = drawingUnitsForMetres(settings.diameterMm / 1000, scale)
   const edge = drawingUnitsForMetres((settings.edgeMm ?? 100) / 1000, scale)
   const outline = trimHeatingAreaJogs(area, radius * 2)
-  const initial = insetHeatingArea(outline, edge), rings: Point[][] = []
+  const initial = layingContours(insetHeatingArea(outline, edge), pitch, radius), rings: Point[][] = []
   for (let depth = 0; depth < 250; depth++) {
     checkpoint()
-    const inset = depth ? insetHeatingArea(outline, edge + depth * pitch) : initial
+    const inset = depth ? layingContours(insetHeatingArea(outline, edge + depth * pitch), pitch, radius) : initial
     if (inset.boundaries.length !== 1 || signedArea(inset.boundaries[0]) <= 0) break
     rings.push(clockwise(inset.boundaries[0]))
   }
@@ -130,10 +156,11 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
   const physical = area.clearance ? { boundaries: area.clearance.boundaries, entry: area.entry } : area
   const boundary = physical.boundaries.flatMap((path) => path.map((a, i) => [a, path[(i + 1) % path.length]] as const))
   const physicalEdge = area.clearance?.edge ?? edge
+  const nearBoundary = segmentIndex(boundary.map(([a, b]) => ({ a, b })), physicalEdge, Math.max(pitch, physicalEdge))
   const inside = (p: Point) => {
     const b = area.clearance?.bounds
     return (!b || p.x >= b.x + edge - 1e-5 && p.y >= b.y + edge - 1e-5 && p.x <= b.x + b.width - edge + 1e-5 && p.y <= b.y + b.height - edge + 1e-5) &&
-      contains(physical, p) && boundary.every(([a, b]) => segmentDistance(p, a, b) >= physicalEdge - 1e-5)
+      contains(physical, p) && !nearBoundary(p, Math.max(0, physicalEdge - 1e-5))
   }
   const box = heatingAreaBounds(area), samples: Point[] = []
   const sampleStep = Math.max(pitch / 2, Math.max(box.width, box.height) / 250)
@@ -167,8 +194,22 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
       }
     }
     if (checkHeatingPlan([pipe], [], settings.design, [], { stopOnConflict: true, checkpoint }).errors) { reject('collision'); return }
+    const nearTube = segmentIndex(geometry.pieces, Math.max(pitch * .8, diameter), pitch)
+    // A collision-free coil can still have an unusable entrance: a concave
+    // return may cross its outward tangent. Reject that seam here, while other
+    // corners are still available, instead of rebuilding the same floor later.
+    for (const [head, next] of [[points[0], points[1]], [points.at(-1)!, points.at(-2)!]]) {
+      const length = distance(head, next), dx = (head.x - next.x) / length, dy = (head.y - next.y) / length
+      for (let advance = diameter * 1.01; advance <= radius + diameter; advance += diameter / 2) {
+        const p = { x: head.x + dx * advance, y: head.y + dy * advance }
+        if (!contains(physical, p) || nearBoundary(p, diameter / 2) || nearTube(p, diameter - 1e-5)) { reject('entry-tangent', p); return }
+      }
+    }
     let gaps = 0
-    for (const p of samples) if (geometry.pieces.every((piece) => segmentDistance(p, piece.a, piece.b) > pitch * .8)) gaps++
+    for (let i = 0; i < samples.length; i++) {
+      if (i % 2048 === 0) checkpoint()
+      if (!nearTube(samples[i], pitch * .8, true)) gaps++
+    }
     const result = { points, pattern, lengthM: geometry.length * scale / 8000, gapRatio: gaps / Math.max(1, samples.length) }
     if (!best || result.gapRatio < best.gapRatio - .001 || Math.abs(result.gapRatio - best.gapRatio) <= .001 && distance(points[0], area.entry) < distance(best.points[0], area.entry)) best = result
   }
@@ -349,9 +390,13 @@ type AreaPartition = { areas: HeatingArea[]; score: number }
 export const partitionHeatingArea = (source: HeatingArea, count: number, settings: HeatingAreaSettings, scale: number,
   options: { checkpoint?: () => void; leadM?: (point: Point) => number; axis?: 'x' | 'y'; onRejectedArea?: (area: HeatingArea, trace?: HeatingAreaTrace) => void } = {}) => {
   const checkpoint = options.checkpoint ?? (() => {}), pitch = drawingUnitsForMetres(settings.spacingMm / 1000, scale)
-  const padding = Math.max(0, drawingUnitsForMetres((settings.edgeMm ?? 100) / 1000, scale) - pitch / 2)
-  const area = insetHeatingArea(source, padding), localSettings = { ...settings, edgeMm: settings.spacingMm / 2 }
+  const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
   const physicalEdge = drawingUnitsForMetres((settings.edgeMm ?? 100) / 1000, scale)
+  // Partition the usable centre-line floor. A narrow threshold remnant may
+  // disappear at the physical edge offset; it must not make otherwise valid
+  // cuts look disconnected at the earlier half-pitch offset.
+  const centreFloor = layingContours(insetHeatingArea(source, physicalEdge), pitch, radius)
+  const area = insetHeatingArea(centreFloor, -pitch / 2), localSettings = { ...settings, edgeMm: settings.spacingMm / 2 }
   area.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(area) }
   const memo = new Map<string, AreaPartition[]>(), loopMemo = new Map<string, HeatingAreaLoop | null>(), rejected = new Set<string>(), traces = new Map<string, HeatingAreaTrace>()
   const cost = (a: HeatingArea, groups: number) => {
@@ -366,8 +411,8 @@ export const partitionHeatingArea = (source: HeatingArea, count: number, setting
     if (cached) return cached
     if (groups === 1) {
       if (rejected.has(JSON.stringify(a.boundaries))) return []
-      const laying = insetHeatingArea(a, pitch / 2)
-      return laying.boundaries.length === 1 ? [{ areas: [a], score: cost(a, 1) }] : []
+      const laying = layingContours(insetHeatingArea(a, pitch / 2), pitch, radius)
+      return laying.boundaries.filter((ring) => signedArea(ring) > 0).length === 1 ? [{ areas: [a], score: cost(a, 1) }] : []
     }
     if (++expanded > 1000 || depth > 6) return []
     const box = heatingAreaBounds(a), areaM2 = heatingAreaSurface(a), candidates: { a: HeatingArea; b: HeatingArea; left: number; score: number }[] = []
@@ -377,8 +422,8 @@ export const partitionHeatingArea = (source: HeatingArea, count: number, setting
       for (let group = 1; group < groups; group++) for (const shift of [-.06, 0, .06]) values.add(start + span * (group / groups + shift))
       for (const value of values) {
         if (value < start + 3 * pitch || value > start + span - 3 * pitch) continue
-        const first = intersectHeatingAreas(a, rectangularHeatingArea({ ...box, ...(axis === 'x' ? { width: value - box.x } : { height: value - box.y }) }))
-        const second = intersectHeatingAreas(a, rectangularHeatingArea({ ...box, ...(axis === 'x' ? { x: value, width: box.x + box.width - value } : { y: value, height: box.y + box.height - value }) }))
+        const first = layingContours(intersectHeatingAreas(a, rectangularHeatingArea({ ...box, ...(axis === 'x' ? { width: value - box.x } : { height: value - box.y }) })), pitch, radius)
+        const second = layingContours(intersectHeatingAreas(a, rectangularHeatingArea({ ...box, ...(axis === 'x' ? { x: value, width: box.x + box.width - value } : { y: value, height: box.y + box.height - value }) })), pitch, radius)
         first.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(first) }
         second.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(second) }
         if (first.boundaries.filter((p) => signedArea(p) > 0).length !== 1 || second.boundaries.filter((p) => signedArea(p) > 0).length !== 1) continue

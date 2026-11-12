@@ -28,7 +28,9 @@ const mode = process.argv.includes('--manual-only') ? 'manual' : 'all'
 const source = { x: position[0], y: position[1] }
 const bytes = readFileSync(input), document = JSON.parse(bytes), shapes = sanitizeShapes(document.shapes ?? document)
 const scale = document.drawingScale ?? 100
-const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capacity: 12, shareSmallRooms: true, heatSourceRoom: false }
+const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capacity: Number(option('capacity', '12')),
+  shareSmallRooms: true, heatSourceRoom: false, allowExtraCircuit: process.argv.includes('--extra'), allowLongerCircuits: process.argv.includes('--longer'),
+  allowWallPassages: !process.argv.includes('--doors-only'), ...(option('max-length', '') ? { design: { maxCircuitLengthM: Number(option('max-length', '100')) } } : {}) }
 const hash = createHash('sha256').update(bytes).update(JSON.stringify({ scale, settings, source, timeout, mode }))
 // Include dependencies as well as the planner. A geometry/model or lockfile
 // change invalidates the cache; unchanged investigations reuse their evidence.
@@ -61,7 +63,9 @@ for (const zone of shapes.filter((s) => s.kind === 'rect' && s.heating?.kind ===
     spacingMm: zone.heating.spacingMm, lengthM: layout.lengthM, warning: layout.warning, elapsedMs: Math.round(performance.now() - start) })
 }
 if (mode === 'all') {
-  let id = 0, last = '', lastFailure
+  let id = 0, last = '', lastFailure, recordedCoils = false
+  const routeFailures = {}, connections = new Map()
+  const areaParts = {}
   const start = performance.now()
   try {
     const result = generateAutomaticHeatingPlan(shapes, source, settings, scale, () => `diagnostic-${id++}`,
@@ -71,13 +75,27 @@ if (mode === 'all') {
           const key = JSON.stringify([progress.phase, progress.attempt, progress.roomName, progress.completedRooms])
           if (key === last) return
           last = key; report.progress.push({ elapsedMs: Math.round(performance.now() - start), ...progress })
-        }, onRouteFailure(reason, point, detail) { lastFailure = { reason, point, detail } } })
+        }, onRouteFailure(reason, point, detail) {
+          lastFailure = { reason, point, detail }
+          const failure = routeFailures[reason] ??= { count: 0, first: { point, detail } }; failure.count++
+        },
+        onAreaParts(group, parts) { areaParts[group] = parts; writeFileSync(`${output}.areas.json`, JSON.stringify({ fingerprint: key, groups: areaParts })) },
+        onConnectionCandidate(parts, coils, jobs) {
+          if (parts.length) { connections.set(parts[0].heating.circuitId, parts); return }
+          if (recordedCoils) return
+          recordedCoils = true
+          writeFileSync(`${output}.candidate.json`, JSON.stringify({ fingerprint: key, source, settings, coils, jobs }))
+        } })
     report.automatic = { status: 'success', elapsedMs: Math.round(performance.now() - start), rows: result.rows,
       audit: result.shapes.find((s) => s.heating?.kind === 'manifold')?.heating?.audit, wallCrossings: result.wallCrossings }
+    writeFileSync(`${output}.plan.json`, JSON.stringify({ version: 2, paperLayoutVersion: 1, drawingScale: scale,
+      paperPreset: document.paperPreset ?? 'a4-landscape', printMargin: document.printMargin ?? 10, worldWidth: document.worldWidth ?? 2376,
+      worldHeight: document.worldHeight ?? 1680, shapes: [...shapes, ...result.shapes] }))
   } catch (error) {
     report.automatic = { status: 'failure', elapsedMs: Math.round(performance.now() - start), message: error.message,
-      diagnostics: error.diagnostics, lastFailure }
+      diagnostics: error.diagnostics, lastFailure, routeFailures }
   }
+  if (connections.size) writeFileSync(`${output}.connections.json`, JSON.stringify({ fingerprint: key, parts: [...connections.values()].flat() }))
 }
 const temporary = `${output}.${process.pid}.tmp`
 writeFileSync(temporary, JSON.stringify(report, null, 2))

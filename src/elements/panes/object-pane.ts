@@ -771,7 +771,8 @@ export class ObjectPane extends LiteElement {
         ${numeric('edgeMm', 'Randafstand tot muren (mm)', 0, 1000)}
         ${numeric('capacity', 'Beschikbare verdelergroepen', 1, MAX_HEATING_CIRCUITS)}
         <label><input type="checkbox" .checked=${data.shareSmallRooms === true} @change=${(e: Event) => update({ shareSmallRooms: (e.target as HTMLInputElement).checked })} /> Kleine aangrenzende ruimtes mogen een kring delen</label>
-        <label><input type="checkbox" .checked=${data.heatSourceRoom !== false} @change=${(e: Event) => update({ heatSourceRoom: (e.target as HTMLInputElement).checked })} /> Ruimte van de verdeler ook verwarmen</label>
+        <label><input type="checkbox" .checked=${data.heatSourceRoom !== false} @change=${(e: Event) => update({ heatSourceRoom: (e.target as HTMLInputElement).checked })} /> Aparte verwarmingslussen in de verdelerruimte</label>
+        <p class="dimension-caption">Aansluitleidingen mogen door deze ruimte lopen en tellen mee bij de kringlengtes.</p>
         ${data.connectionMode !== 'zone' ? html`<label><span class="native-label">Aansluitzijde verdeler</span><select class="native-select" .value=${data.manifoldSide ?? 'auto'} @change=${(e: Event) => update({ manifoldSide: (e.target as HTMLSelectElement).value as HeatingData['manifoldSide'] })}><option value="auto">Automatisch richting doorgang</option><option value="top">Bovenkant op plan</option><option value="bottom">Onderkant op plan</option></select></label>` : ''}
         ${data.connectionMode === 'zone' ? html`<p class="dimension-caption">Verdelersymbool verborgen. Aanvoer en retour eindigen open bij de verdelerpositie; de aansluiting op de verdeler is nog niet uitgewerkt.</p>` : ''}
         <div class="dimension-caption">${data.circuits} automatisch berekende kringen</div>

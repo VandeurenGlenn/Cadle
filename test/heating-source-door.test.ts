@@ -23,7 +23,7 @@ test('the supplied Cadle project routes lower-left feed pairs through partitions
   const wallCells = heatingInternalWallCells(grid, 100)
   assert.ok(wallCells.has(grid.index({ x: 744, y: 624 })), 'the source-side wall to the lower-left room is available')
   assert.ok(wallCells.has(grid.index({ x: 868, y: 844 })), 'the next lower room can use its shared partition')
-  assert.ok(wallCells.has(grid.index({ x: 900, y: 704 })), 'a partition remains usable when its two sides connect elsewhere')
+  assert.ok(!wallCells.has(grid.index({ x: 900, y: 704 })), 'the stair footprint is never a drilling location')
   assert.ok(!wallCells.has(grid.index({ x: 620, y: 800 })), 'a facade is never a shortcut')
   assert.ok(!wallCells.has(grid.index({ x: 868, y: 584 })), 'an unrecognised shaft is not a passage')
   assert.ok(!wallCells.has(grid.index({ x: 868, y: 728 })), 'a door jamb is not a drilling location')

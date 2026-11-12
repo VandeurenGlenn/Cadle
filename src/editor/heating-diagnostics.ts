@@ -19,7 +19,7 @@ export const describeHeatingPlan = (grid: HeatingGrid, settings: { diameterMm: n
   const distance = heatingWallDistances(grid), areas = new Map(grid.rooms.map((room) => [heatingRoomKey(room), room.cells.filter((cell) => !grid.obstacle[cell] && distance[cell] * grid.step * scale / 8 >= (settings.edgeMm ?? 100)).length * (grid.step * scale / 8000) ** 2]))
   const rooms = grid.rooms.map((room) => {
     const key = heatingRoomKey(room), areaM2 = areas.get(key) ?? 0, p = grid.point(room.minY * grid.width + room.minX), q = grid.point(room.maxY * grid.width + room.maxX)
-    const own = fields.filter((field) => field.roomKey === key || field.roomMembers?.some((r) => r.key === key))
+    const own = fields.filter((field) => field.roomMembers?.length ? field.roomMembers.some((r) => r.key === key) : field.roomKey === key)
     const centre = room.cells.reduce((sum, cell) => { const p = grid.point(cell); return { x: sum.x + p.x / room.cells.length, y: sum.y + p.y / room.cells.length } }, { x: 0, y: 0 })
     const nearest = room.cells.reduce((best, cell) => {
       const p = grid.point(cell), old = grid.point(best)

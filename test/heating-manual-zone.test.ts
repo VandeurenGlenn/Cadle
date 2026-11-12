@@ -12,7 +12,7 @@ test('one manual circuit remains one continuous tube around a fixture, rather th
   const shape = zone(), layout = heatingLayout(shape, [fixture])
   assert.equal(layout.circuits.length, 1)
   assert.equal((layout.circuits[0].path.match(/M /g) ?? []).length, 1)
-  assert.ok(layout.lengthM > 150 && layout.lengthM < 160)
+  assert.ok(layout.lengthM > 170 && layout.lengthM < 190, 'complete inset contours cover the floor around the fixture')
   assert.equal(layout.warning, undefined)
   for (const arc of layout.circuits[0].path.matchAll(/ A ([\d.e+-]+) ([\d.e+-]+)/g)) assert.ok(Number(arc[1]) >= 6.39 && Number(arc[2]) >= 6.39, 'all actual arcs retain R80 at scale 1:100')
   const markup = heatingMarkup(shape, false, false, [fixture])

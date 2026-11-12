@@ -82,19 +82,23 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
       rasterDoor(start, end)
     }
     if (shape.hidden || !('start' in shape)) continue
-    if (shape.kind === 'wall') raster(shape.start, shape.end, Math.max(step * .75, (shape.strokeWidth ?? 6) / 2), wall)
+    if (shape.kind === 'wall') raster(shape.start, shape.end, Math.max(step * .75, (shape.strokeWidth ?? 6) / 2) +
+      drawingUnitsForMetres((pipe?.pipeDiameterMm ?? 16) / 2000, scale) + step / 2, wall)
     if (shape.kind === 'door' || shape.kind === 'window' || shape.kind === 'gate') {
       raster(shape.start, shape.end, step * .8, wall)
       if (shape.kind !== 'window') rasterDoor(shape.start, shape.end)
     }
   }
   for (const b of heatingObstacleBounds(shapes, shapeBounds)) {
-    for (const [target, clearance] of [[obstacle, drawingUnitsForMetres((pipe?.pipeDiameterMm ?? 16) / 2000, scale) + step / 2],
+    // These are centre-line nodes, not solid raster squares. Adding half a
+    // cell here blocked physically clear R80 approaches near fixtures; the
+    // final rounded-curve audit checks the actual tube envelope as well.
+    for (const [target, clearance] of [[obstacle, drawingUnitsForMetres((pipe?.pipeDiameterMm ?? 16) / 2000, scale)],
       [loopObstacle, drawingUnitsForMetres(Math.max(.05, (pipe?.minBendRadiusMm ?? 80) * .002 + (pipe?.pipeDiameterMm ?? 16) / 2000), scale) + step]] as const) {
-      const minX = Math.max(0, Math.floor((b.x - clearance - origin.x) / step))
-      const maxX = Math.min(width - 1, Math.ceil((b.x + b.width + clearance - origin.x) / step))
-      const minY = Math.max(0, Math.floor((b.y - clearance - origin.y) / step))
-      const maxY = Math.min(height - 1, Math.ceil((b.y + b.height + clearance - origin.y) / step))
+      const minX = Math.max(0, Math.ceil((b.x - clearance - origin.x) / step))
+      const maxX = Math.min(width - 1, Math.floor((b.x + b.width + clearance - origin.x) / step))
+      const minY = Math.max(0, Math.ceil((b.y - clearance - origin.y) / step))
+      const maxY = Math.min(height - 1, Math.floor((b.y + b.height + clearance - origin.y) / step))
       for (let y = minY; y <= maxY; y++) target.fill(1, y * width + minX, y * width + maxX + 1)
     }
   }

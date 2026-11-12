@@ -31,6 +31,11 @@ export type HeatingData = {
   connectionMode?: 'ports' | 'zone'
   connectionZoneRadiusMm?: number
   capacity?: number
+  preferredCapacity?: number
+  preferredCircuitLengthM?: number
+  allowExtraCircuit?: boolean
+  allowLongerCircuits?: boolean
+  allowWallPassages?: boolean
   circuitSpacingMm?: Record<string, number>
   shareSmallRooms?: boolean
   heatSourceRoom?: boolean
@@ -115,13 +120,15 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if (raw.automatic === true) data.automatic = true
   if (raw.pattern === 'spiral' || raw.pattern === 'meander' || raw.pattern === 'mixed') data.pattern = raw.pattern
   if (typeof raw.capacity === 'number' && Number.isFinite(raw.capacity)) data.capacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.capacity)))
+  if (typeof raw.preferredCapacity === 'number' && Number.isFinite(raw.preferredCapacity)) data.preferredCapacity = Math.max(1, Math.min(MAX_HEATING_CIRCUITS, Math.round(raw.preferredCapacity)))
+  if (typeof raw.preferredCircuitLengthM === 'number' && Number.isFinite(raw.preferredCircuitLengthM)) data.preferredCircuitLengthM = Math.max(20, Math.min(300, raw.preferredCircuitLengthM))
   const circuitSpacing = sanitizeHeatingCircuitSpacing(raw.circuitSpacingMm)
   if (circuitSpacing) data.circuitSpacingMm = circuitSpacing
   if (raw.connectionMode === 'zone' || raw.connectionMode === 'ports') data.connectionMode = raw.connectionMode
   if (typeof raw.connectionZoneRadiusMm === 'number' && Number.isFinite(raw.connectionZoneRadiusMm)) data.connectionZoneRadiusMm = Math.max(100, Math.min(5000, raw.connectionZoneRadiusMm))
   if (typeof raw.circuitLocked === 'boolean') data.circuitLocked = raw.circuitLocked
   if (Number.isInteger(raw.wallPassages) && (raw.wallPassages as number) >= 0 && (raw.wallPassages as number) <= 1000) data.wallPassages = raw.wallPassages as number
-  for (const key of ['shareSmallRooms', 'heatSourceRoom'] as const) if (typeof raw[key] === 'boolean') data[key] = raw[key]
+  for (const key of ['shareSmallRooms', 'heatSourceRoom', 'allowExtraCircuit', 'allowLongerCircuits', 'allowWallPassages'] as const) if (typeof raw[key] === 'boolean') data[key] = raw[key]
   if (raw.manifoldSide === 'auto' || raw.manifoldSide === 'top' || raw.manifoldSide === 'bottom') data.manifoldSide = raw.manifoldSide
   if (Array.isArray(raw.roomMembers)) data.roomMembers = sanitizeRoomMembers(raw.roomMembers)
   for (const key of ['activeCircuitIds', 'excludedRoomKeys'] as const) if (Array.isArray(raw[key])) data[key] = raw[key].filter((v): v is string => typeof v === 'string').slice(0, 100).map((v) => v.slice(0, 160))

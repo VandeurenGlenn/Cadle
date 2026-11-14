@@ -286,6 +286,7 @@ export class CadleApp extends LiteElement {
   #roomLabelJob = 0
   #showHeatingCoverage = false
   #highlightedHeatingCircuit: string | null = null
+  #automaticHeatingResume: (() => void) | null = null
   #automaticHeatingBusy = false
   #automaticHeatingAbort: AbortController | null = null
   #automaticHeatingProgress: HeatingPlanningProgress | null = null
@@ -4638,7 +4639,8 @@ export class CadleApp extends LiteElement {
               ${this.#roomLabelError ?? 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.'}
             </div>` : ''}
             ${this.#automaticHeatingSettings || this.#automaticHeatingBusy || this.#heatingPipeReplacement ? html`<div class="heating-planner-status" role="status">
-              ${this.#automaticHeatingBusy ? heatingProgressText(this.#automaticHeatingProgress) : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
+              ${this.#automaticHeatingResume ? 'De berekening lijkt erg lang te duren en is gepauzeerd. Hervat om verder te rekenen; het berekende werk blijft bewaard.' : this.#automaticHeatingBusy ? heatingProgressText(this.#automaticHeatingProgress) : this.#heatingPipeReplacement ? 'Traject opnieuw tekenen: klik de punten van begin tot einde. Enter bewaart; Escape annuleert.' : 'Klik het startpunt van de verdeler aan. Escape om te annuleren.'}
+              ${this.#automaticHeatingResume ? html`<button type="button" @click=${() => this.#automaticHeatingResume?.()}>Hervatten</button>` : ''}
               ${this.#automaticHeatingBusy ? html`<button type="button" @click=${() => { this.#cancelHeatingCalculation(); this.#activateTool('select') }}>Berekening annuleren</button>` : ''}
               ${this.#automaticHeatingSettings && !this.#automaticHeatingBusy ? html`<button type="button" @click=${() => this.#configureHeatingPlacement()}>Verdelerinstellingen</button>` : ''}
             </div>` : ''}
@@ -5494,6 +5496,7 @@ export class CadleApp extends LiteElement {
   #cancelHeatingCalculation() {
     this.#automaticHeatingAbort?.abort()
     this.#automaticHeatingAbort = null
+    this.#automaticHeatingResume = null
     this.#automaticHeatingBusy = false
     this.#automaticHeatingProgress = null
     this.#automaticHeatingSettings = null
@@ -5507,6 +5510,7 @@ export class CadleApp extends LiteElement {
     const controller = new AbortController()
     this.#automaticHeatingAbort = controller
     this.#automaticHeatingBusy = true
+    this.#automaticHeatingResume = null
     this.#automaticHeatingProgress = null
     this.#automaticHeatingDiagnostic = null
     this.#heatingDiagnosticRoom = null
@@ -5525,6 +5529,18 @@ export class CadleApp extends LiteElement {
       const result = await runHeatingPlanner({ scene, position: point, settings, preserved, existingManifold, onlyRoom, reflowCircuit,
         scale: this.#drawingScale ?? DEFAULT_DRAWING_SCALE, pageArea: this.#safeAreaRect() }, {
         signal: controller.signal,
+        onPaused: (resume) => {
+          if (this.#automaticHeatingAbort !== controller) return
+          this.#automaticHeatingResume = () => {
+            if (signature !== JSON.stringify(this.#nativeDocumentState())) {
+              this.#cancelHeatingCalculation()
+              this.#automaticHeatingError = 'De tekening is gewijzigd. Bereken het legplan opnieuw met de aangepaste tekening.'
+              this.#render(); return
+            }
+            this.#automaticHeatingResume = null; this.#render(); resume()
+          }
+          this.#render()
+        },
         onProgress: (progress) => {
           if (this.#automaticHeatingAbort !== controller) return
           this.#automaticHeatingProgress = progress
@@ -5564,6 +5580,7 @@ export class CadleApp extends LiteElement {
     } finally {
       if (this.#automaticHeatingAbort === controller) {
         this.#automaticHeatingAbort = null
+        this.#automaticHeatingResume = null
         this.#automaticHeatingBusy = false
         this.#automaticHeatingProgress = null
       }

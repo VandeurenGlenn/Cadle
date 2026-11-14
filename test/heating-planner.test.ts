@@ -78,3 +78,38 @@ test('merge progress names the active room and shows work within that room', () 
   const message = heatingProgressText({ phase: 'circuits', rooms: 7, completedRooms: 2, roomName: 'Living', remainingFields: 6, routeAttempts: 18, attempt: 3 })
   for (const text of ['2/7', 'Living', '6 deelvlakken', '18 routepogingen', 'indeling 3']) assert.ok(message.includes(text))
 })
+
+test('a slow calculation pauses without terminating and resumes the same worker for another three minutes', async () => {
+  const worker = mockWorker(), controller = new AbortController()
+  let resume: (() => void) | undefined
+  const pending = runHeatingPlanner(input, { createWorker: () => worker, signal: controller.signal,
+    onPaused: (continueWork, message) => { resume = continueWork; assert.match(message, /gepauzeerd/) } })
+  const request = worker.messages[0] as { id: string; timeSliceMs: number }
+  assert.equal(request.timeSliceMs, 180000)
+  worker.emit({ type: 'paused', message: 'Berekening gepauzeerd.' })
+  assert.equal(worker.terminated, 0)
+  assert.ok(resume)
+  resume(); resume()
+  assert.equal(worker.messages.length, 2)
+  assert.deepEqual(worker.messages[1], { type: 'resume', id: request.id, timeSliceMs: 180000 })
+  worker.emit({ type: 'result', result })
+  assert.deepEqual(await pending, result)
+  assert.equal(worker.terminated, 1)
+})
+
+test('cancelling a paused calculation releases its retained worker and disables resume', async () => {
+  const worker = mockWorker(), controller = new AbortController()
+  let resume: (() => void) | undefined
+  const pending = runHeatingPlanner(input, { createWorker: () => worker, signal: controller.signal, onPaused: (r) => { resume = r } })
+  worker.emit({ type: 'paused', message: 'Gepauzeerd.' })
+  controller.abort()
+  await assert.rejects(pending, { name: 'AbortError' })
+  resume!()
+  assert.equal(worker.terminated, 1)
+  assert.equal(worker.messages.length, 1)
+})
+
+test('connection preparation and route search progress remain distinguishable', () => {
+  assert.match(heatingProgressText({ phase: 'connections', circuits: 13, completedCircuits: 0, preparedCircuits: 7 }), /voorbereiden.*7\/13/)
+  assert.match(heatingProgressText({ phase: 'connections', circuits: 13, completedCircuits: 9, preparedCircuits: 13, routeAttempts: 4 }), /9\/13.*routepoging 4/)
+})

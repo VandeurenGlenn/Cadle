@@ -12,7 +12,7 @@ export type HeatingCoverage = {
 export const heatingCoverageSignature = (shapes: readonly Shape[]) => JSON.stringify(shapes.filter((s) =>
   ['wall', 'door', 'gate', 'window', 'symbol'].includes(s.kind) || (s.kind === 'rect' && !s.heating) || ['pipe', 'manifold', 'exclusion'].includes(s.heating?.kind)).map((s: any) =>
   [s.id, s.kind, s.start, s.end, s.position, s.rotation, s.flipX, s.flipY, s.scale, s.path, s.hidden, s.locked, s.heatingObstacle, s.groupId, s.heating?.points,
-    s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm,
+    s.heating?.automatic, s.heating?.diameterMm, s.heating?.spacingMm, s.heating?.design?.minBendRadiusMm, s.heating?.bendRadiusMm,
     s.heating?.kind === 'manifold' ? [s.heating.edgeMm, s.heating.capacity, s.heating.excludedRoomKeys, s.heating.heatSourceRoom, s.heating.shareSmallRooms, s.heating.manifoldSide, s.heating.circuitSpacingMm, s.heating.connectionMode] : null]))
 export const heatingRoomKey = (room: HeatingRoom) => room.roomKey ?? `region-${room.id}`
 const wallDistanceCache = new WeakMap<Uint8Array, Uint16Array>()

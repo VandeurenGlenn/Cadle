@@ -1,3 +1,4 @@
+import { HEATING_PLANNING_SLICE_MS, HeatingPlanningPaused } from './heating-planning-session.js'
 import { describeHeatingPlan, HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
 import type { Point, RectShape, Shape } from './model/types.js'
 import { drawingLengthMetres, drawingUnitsForMetres, type DrawingScale } from './layout/drawing-scale.js'
@@ -13,15 +14,16 @@ import { HeatingFeedReservationFailure, reserveHeatingAccess, reserveHeatingFeed
 import { heatingConnectionZone } from './heating-connection-zone.js'
 import { allocateHeatingCircuits } from './heating-allocation.js'
 import { routeHeatingBundle, heatingAccessCapacity } from './heating-bundle.js'
+import { refineHeatingConnectionBundle, type HeatingConnectionRefinementState } from './heating-connection-refinement.js'
 import { heatingSpliceCandidates, heatingReopenCandidates } from './heating-splice.js'
 import { heatingFeedLanes } from './heating-feed-lanes.js'
 import { pruneRedundantHeatingFields, deferHeatingFeedRemnants } from './heating-field-pruning.js'
 import { orientHeatingFields } from './heating-field-orientation.js'
 import { heatingFallbackPassage, heatingPlanningPassages } from './heating-wall-policy.js'
-import { buildHeatingAreaFields } from './heating-area-fields.js'
+import { buildHeatingAreaFields, type HeatingMeasuredLead } from './heating-area-fields.js'
 import { heatingAccessDistances } from './heating-access-distances.js'
 import { heatingObstacleBounds } from './heating-openings.js'
-import { heatingPointClearance } from './heating-clearance.js'
+import { heatingPointClearance, heatingEntryTangentConflict } from './heating-clearance.js'
 
 import { buildHeatingSpiralFields, heatingPairedEntries, heatingRectangleVariants, openHeatingTurns, type HeatingSpiralField } from './heating-spiral.js'
 export { openHeatingTurns } from './heating-spiral.js'
@@ -52,16 +54,44 @@ export const softenHeatingJogs = (points: Point[], radius: number, free: (p: Poi
 
 export type AutomaticHeatingSettings = { preferredCapacity?: number; preferredCircuitLengthM?: number; allowExtraCircuit?: boolean; allowLongerCircuits?: boolean; allowWallPassages?: boolean; connectionMode?: 'ports' | 'zone'; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; circuitSpacingMm?: Record<string, number>; shareSmallRooms?: boolean; heatSourceRoom?: boolean; manifoldSide?: 'auto' | 'top' | 'bottom'; excludedRoomKeys?: string[]; design?: HeatingDesignInputs }
 type RoomProposal = { jobs: CircuitJob[]; initialFields: number; finished: boolean; score: number[] }
-type HeatingWorkBudget = { onAreaParts?: (group: string, parts: { room: string; areaM2: number; boundaries: Point[][] }[]) => void; plannedPassages?: NonNullable<ReturnType<typeof heatingFallbackPassage>>[]; areaTargetsFixed?: boolean; pairedEntries?: boolean; internalWallCells?: ReadonlySet<number>; feedSources?: number[][]; nativeRoom?: Int32Array; nativeRoomAreas?: ReadonlyMap<number, number>; leadAllowances?: Record<string, number>; leadAllowanceM?: number; lengthRetries?: Map<string, number>; requiredGroups?: ReadonlySet<number>; leadDistances?: Int32Array; wallPassage?: ReturnType<typeof heatingFallbackPassage>; wallFallbackTried?: boolean; forbiddenGroups?: ReadonlySet<number>; patternFallbackRooms?: Set<string>; accessTargets?: Point[]; onConnectionCandidate?: (parts: RectShape[], coils: RectShape[], jobs?: CircuitJob[]) => void; connectionZone?: ReturnType<typeof heatingConnectionZone>; roomTargets?: Map<string, number>; suggestedMaxM?: number; targetCount?: number; reflowCircuit?: RectShape[]; focusCells?: Set<number>; lastRouteFailure?: { reason: string; point: Point; detail?: string }; onRouteFailure?: (reason: string, point: Point, detail?: string) => void; diagnostics?: HeatingPlanningDiagnostic; roomCandidates?: Map<string, RoomProposal[]>; reserveAccess?: boolean; lastSplitVariant?: string; loopFactors?: Record<string, number>; preserved?: RectShape[]; existingManifold?: RectShape; onlyRoom?: string; routes: number; sourceScene?: readonly Shape[]; grid?: HeatingGrid; deadline?: number; roomTimeMs?: number; roomDeadline?: number; onProgress?: (value: HeatingPlanningProgress) => void }
+type HeatingBundleCapture = { grid: HeatingGrid; blocked: Uint8Array; sourceStubs: number[][]; targetStubs: number[][];
+  permittedWallCells?: ReadonlySet<number>; coils: RectShape[]; jobs: CircuitJob[]; feedPaths?: number[][] }
+type HeatingWorkBudget = { measuredLeads?: HeatingMeasuredLead[]; triedRoomAllocations?: Set<string>; allocationBaseTargets?: Map<string, number>; allocationAlternatives?: number; allocationVariant?: number; entryVariants?: Map<string, number>; connectionRefinement?: { key: string; state: HeatingConnectionRefinementState }; session?: HeatingPlanningSession; pauseOnDeadline?: boolean; activeLayoutKey?: string; onBundleGrid?: (capture: HeatingBundleCapture) => void; onAreaParts?: (group: string, parts: { room: string; areaM2: number; boundaries: Point[][] }[]) => void; plannedPassages?: NonNullable<ReturnType<typeof heatingFallbackPassage>>[]; areaTargetsFixed?: boolean; pairedEntries?: boolean; internalWallCells?: ReadonlySet<number>; feedSources?: number[][]; nativeRoom?: Int32Array; nativeRoomAreas?: ReadonlyMap<number, number>; leadAllowances?: Record<string, number>; leadAllowanceM?: number; lengthRetries?: Map<string, number>; requiredGroups?: ReadonlySet<number>; leadDistances?: Int32Array; wallPassage?: ReturnType<typeof heatingFallbackPassage>; wallFallbackTried?: boolean; forbiddenGroups?: ReadonlySet<number>; patternFallbackRooms?: Set<string>; accessTargets?: Point[]; onConnectionCandidate?: (parts: RectShape[], coils: RectShape[], jobs?: CircuitJob[]) => void; connectionZone?: ReturnType<typeof heatingConnectionZone>; roomTargets?: Map<string, number>; suggestedMaxM?: number; targetCount?: number; reflowCircuit?: RectShape[]; focusCells?: Set<number>; lastRouteFailure?: { reason: string; point: Point; detail?: string }; onRouteFailure?: (reason: string, point: Point, detail?: string) => void; diagnostics?: HeatingPlanningDiagnostic; roomCandidates?: Map<string, RoomProposal[]>; reserveAccess?: boolean; lastSplitVariant?: string; loopFactors?: Record<string, number>; preserved?: RectShape[]; existingManifold?: RectShape; onlyRoom?: string; routes: number; sourceScene?: readonly Shape[]; grid?: HeatingGrid; deadline?: number; roomTimeMs?: number; roomDeadline?: number; onProgress?: (value: HeatingPlanningProgress) => void }
 const heatingPermittedWalls = (budget: HeatingWorkBudget) => budget.internalWallCells?.size ? budget.internalWallCells : budget.wallPassage?.cells
 const checkHeatingDeadline = (budget: HeatingWorkBudget) => {
-  if (budget.deadline !== undefined && Date.now() >= budget.deadline) throw new Error('De planner heeft binnen de rekentijd geen geldige indeling gevonden. Het bestaande plan is behouden.')
+  if (budget.deadline !== undefined && Date.now() >= budget.deadline) {
+    if (budget.pauseOnDeadline) throw new HeatingPlanningPaused()
+    throw new Error('De planner heeft binnen de rekentijd geen geldige indeling gevonden. Het bestaande plan is behouden.')
+  }
 }
 const heatingFeedReservations = new WeakMap<HeatingWorkBudget, { key: string; grid: HeatingGrid; wallCells?: ReadonlySet<number> }>()
 const heatingAreaFieldsCache = new WeakMap<HeatingWorkBudget, { key: string; corridor?: Uint8Array;
   result: ReturnType<typeof buildHeatingAreaFields> }>()
+class HeatingFieldAllocationFailure extends Error {
+  constructor(message: string, readonly roomKey?: string) { super(message) }
+}
 type CircuitJob = HeatingSpiralField
 type HeatingSearch = { layouts: Set<string>; lastFailure?: string }
+export type HeatingPlanningSession = { work?: HeatingWorkBudget; search?: HeatingSearch; lengthPass?: number; mergeVariant?: number;
+  best?: AutomaticHeatingResult; validLayouts?: number }
+const rememberHeatingMeasuredLeads = (budget: HeatingWorkBudget, grid: HeatingGrid, coils: RectShape[],
+  rows: ReturnType<typeof heatingSchedule>, maximumM: number) => {
+  const overLengthRooms = new Set<number>()
+  const samples = coils.flatMap((coil) => {
+    const points = heatingPipeGeometry(coil).points, a = points[0], b = points.at(-1)!
+    const point = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, roomId = grid.room[grid.index(point)]
+    const row = rows.find((row) => row.id === coil.heating!.circuitId)
+    if (!row || roomId <= 0) return []
+    if ((row.cutM ?? row.totalM) > maximumM + .05) overLengthRooms.add(roomId)
+    return [{ roomId, point, leadM: (row.supplyM + row.returnM) / 2 }]
+  })
+  // Redistribute the same floor between the same circuits using measured
+  // approaches. A long detour must not merely shrink a coil and leave a gap.
+  budget.measuredLeads = [...budget.measuredLeads?.filter((sample) => !overLengthRooms.has(sample.roomId)) ?? [],
+    ...samples.filter((sample) => overLengthRooms.has(sample.roomId))]
+  heatingAreaFieldsCache.delete(budget)
+}
+
 export const MAX_HEATING_LAYOUTS = 8
 // Keep tube clearance between neighbouring supply/return pairs.
 const automaticManifoldSize = heatingManifoldSize
@@ -622,6 +652,7 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
       const allocation = allocateHeatingCircuits(shared, position, (settings.capacity ?? 12) - fixed.size, settings.spacingMm, settings.edgeMm ?? 100, scale, settings.preferredCircuitLengthM ?? limits.maxCircuitLengthM, limits.allowanceM, unheated)
       budget.roomTargets = allocation.targets; budget.suggestedMaxM = allocation.suggestedMaxM
     }
+    budget.allocationBaseTargets ??= new Map(budget.roomTargets)
     const feedSources = budget.feedSources ?? budget.connectionZone?.stubs
     const wallCells = heatingPermittedWalls(budget)
     const key = JSON.stringify([...budget.roomTargets]), cached = heatingFeedReservations.get(budget)
@@ -631,8 +662,7 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
       budget.onProgress?.({ phase: 'feeds', circuits, completedCircuits: circuits, attempt })
     } else {
       shared = reserveHeatingAccess(shared, grid.obstacle, budget.sourceScene, position, scale, settings.diameterMm, settings.capacity ?? 12, heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm, () => checkHeatingDeadline(budget), {
-        original, targets: budget.roomTargets, spacingMm: settings.spacingMm, accessTargets: budget.accessTargets,
-        ...(budget.connectionZone ? { origin: grid.point(budget.connectionZone.stubs[Math.floor(budget.connectionZone.stubs.length / 2)].at(-1)!) } : {}) })
+        original, targets: budget.roomTargets, spacingMm: settings.spacingMm, accessTargets: budget.accessTargets, origin: position })
       if (feedSources) {
         const feeds = reserveHeatingFeedPairs({ ...shared, obstacle: grid.obstacle }, original, feedSources, budget.connectionZone?.interior ?? [], budget.roomTargets, unheated,
           scale, settings.diameterMm, heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm, settings.spacingMm,
@@ -649,16 +679,20 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
   }
   budget.onProgress?.({ phase: 'circuits', attempt })
   if (budget.sourceScene && budget.roomTargets) {
-    const key = JSON.stringify([settings, [...budget.roomTargets], budget.areaTargetsFixed])
+    const key = JSON.stringify([settings, [...budget.roomTargets], budget.areaTargetsFixed, budget.allocationVariant ?? 0, [...budget.entryVariants ?? []], budget.measuredLeads])
     const cached = heatingAreaFieldsCache.get(budget)
     const result = cached?.key === key && cached.corridor === fieldGrid.feedCorridor ? cached.result : buildHeatingAreaFields(fieldGrid, budget.sourceScene, settings, scale, position, {
-      targets: budget.roomTargets, omitted: unheated, leads: budget.leadDistances,
+      measuredLeads: budget.measuredLeads, allocationVariant: budget.allocationVariant, entryVariants: budget.entryVariants, targets: budget.roomTargets, omitted: unheated, leads: budget.leadDistances,
       nativeGrid: nativeFloor, capacity: settings.capacity, fixedCounts: budget.areaTargetsFixed,
       onParts: budget.onAreaParts, reserveFeeds: true, preferredMaxM: settings.preferredCircuitLengthM ?? heatingDesignLimits(settings.diameterMm, settings.design).maxCircuitLengthM,
       checkpoint: () => checkHeatingDeadline(budget),
       onRoom: (roomName, completedRooms, rooms) => budget.onProgress?.({ phase: 'circuits', attempt, roomName, completedRooms, rooms })
     })
-    if (result.failedRoom) throw new Error(`${result.failedRoom}: geen geldig doorlopend legvlak gevonden. ${result.failureDetail ?? ''}`.trim())
+    if (result.failedRoom) {
+      const room = fieldGrid.rooms.find((room) => room.name === result.failedRoom)
+      throw new HeatingFieldAllocationFailure(`${result.failedRoom}: geen geldig doorlopend legvlak gevonden. ${result.failureDetail ?? ''}`.trim(), result.failedRoomKey ?? (room ? heatingRoomKey(room) : undefined))
+    }
+    budget.allocationAlternatives = Math.max(budget.allocationAlternatives ?? 1, result.allocationAlternatives ?? 1)
     heatingAreaFieldsCache.set(budget, { key, corridor: fieldGrid.feedCorridor, result })
     return { jobs: [...result.jobs] as CircuitJob[], occupied: new Set(result.occupied), initialFieldCount: result.jobs.length, combiningFinished: true }
   }
@@ -835,7 +869,9 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   // Start with the real door network. Opening every partition at once lets
   // the cheapest raster path bypass the source door and scatter penetrations.
   if (!budget.internalWallCells) {
-    budget.plannedPassages = settings.allowWallPassages !== false && !preserved.length && sourceRoomId > 0
+    // Reconstruct the same local openings for retained pipes too. Otherwise
+    // their two tube centre-lines become two markers for one shared passage.
+    budget.plannedPassages = settings.allowWallPassages !== false && sourceRoomId > 0
       ? heatingPlanningPassages({ ...template, rooms: included }, position, scale, () => checkHeatingDeadline(budget)).slice(0, 1) : []
     budget.internalWallCells = new Set(budget.plannedPassages.flatMap((passage) => [...passage.cells]))
   }
@@ -948,7 +984,11 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       const key = job.roomKey ?? job.roomName
       required.set(key, (required.get(key) ?? 0) + 1)
     }
-    if ([...required].some(([key, count]) => count > (budget.roomTargets!.get(key) ?? 0))) {
+    // Equal totals can still put extra tubes through one room's doorway.
+    // Rebuild its reserved approaches once using the selected distribution,
+    // then keep that distribution fixed while laying the fields again.
+    if (!budget.areaTargetsFixed && (required.size !== budget.roomTargets.size ||
+      [...required].some(([key, count]) => count !== budget.roomTargets!.get(key)))) {
       budget.roomTargets = required
       budget.areaTargetsFixed = true
       budget.roomCandidates?.clear()
@@ -1056,7 +1096,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       throw new Error(search.lastFailure ?? 'Geen passende legindeling gevonden. Dezelfde indeling wordt niet opnieuw doorgerekend.')
     }
     if (search.layouts.size >= MAX_HEATING_LAYOUTS) throw new Error(search.lastFailure ?? `Geen volledig legplan gevonden na ${MAX_HEATING_LAYOUTS} verschillende indelingen.`)
-    search.layouts.add(key)
+    search.layouts.add(key); budget.activeLayoutKey = key
   }
   // The fan is a reservation for future ports, not a mandatory route. The
   // route search now starts at the actual manifold ports and prices every wall.
@@ -1137,10 +1177,33 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       if (jointFree(grid.point(cell))) { occupied.delete(cell); baseOccupied.delete(cell) }
     }
   }
-  const obstructedEntry = jobs.findIndex((_, index) => escapes[index].slice(2).some((path) => path.some((cell) => cell < 0 || grid.obstacle[cell] || occupied.has(cell))))
+  if (budget.onBundleGrid && zone) {
+    const sourceStubs = zone.stubs.filter((stub) => stub.every((cell) => cell >= 0 && !grid.obstacle[cell] && !occupied.has(cell) && heatingWallAllowed(grid, cell, feedWallOptions)))
+    const targetStubs = jobs.flatMap((job, index) => [[job.cells[0], ...escapes[index][2].slice(0, 1)], [job.cells.at(-1)!, ...escapes[index][3].slice(0, 1)]])
+    const blocked = grid.obstacle.slice()
+    for (const cell of [...zone.interior, ...occupied]) if (cell >= 0) blocked[cell] = 1
+    for (const stub of [...sourceStubs, ...targetStubs]) for (const cell of stub.slice(0, -1)) if (cell >= 0) blocked[cell] = 1
+    budget.onBundleGrid({ grid, blocked, sourceStubs, targetStubs, permittedWallCells: feedWallOptions.permittedWallCells, coils, jobs,
+      feedPaths: heatingFeedReservations.get(budget)?.grid.feedPaths })
+  }
+  let entryConflict: Point | undefined
+  const obstructedEntry = jobs.findIndex((_, index) => {
+    entryConflict = heatingEntryTangentConflict(coils[index], [...coils.filter((_, i) => i !== index), ...preserved])
+    if (entryConflict) return true
+    const points = geometryFor(coils[index]).points
+    for (const [head, next] of [[points[0], points[1]], [points.at(-1)!, points.at(-2)!]]) {
+      const length = Math.hypot(head.x - next.x, head.y - next.y)
+      for (let n = 1; n <= Math.ceil(radius / grid.step * 2); n++) {
+        const advance = radius * n / Math.ceil(radius / grid.step * 2)
+        const point = { x: head.x + (head.x - next.x) / length * advance, y: head.y + (head.y - next.y) / length * advance }
+        const cell = grid.index(point)
+        if (cell < 0 || grid.obstacle[cell] || !heatingWallAllowed(grid, cell, feedWallOptions)) { entryConflict = point; return true }
+      }
+    }
+    return false
+  })
   if (obstructedEntry >= 0) {
-    const cell = escapes[obstructedEntry].slice(2).flat().find((cell) => cell < 0 || grid.obstacle[cell] || occupied.has(cell))
-    budget.onRouteFailure?.('portal', cell >= 0 ? grid.point(cell) : geometryFor(coils[obstructedEntry]).points[0], common[obstructedEntry].circuitId)
+    budget.onRouteFailure?.('portal', entryConflict ?? geometryFor(coils[obstructedEntry]).points[0], common[obstructedEntry].circuitId)
     const message = `${jobs[obstructedEntry].roomName}: te weinig vrije tangentruimte voor een aansluiting met R${limits.minBendRadiusMm}.`
     if (search) search.lastFailure = message
     if (!budget.reserveAccess) { budget.reserveAccess = true; return { retry: { lengthPass, mergeVariant } } }
@@ -1310,7 +1373,9 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
     const sourceStubs = (zone?.stubs ?? stems.flat().map((stem) => Array.from({ length: reach + 1 }, (_, n) => stem[0] + outward * n * grid.width)))
       .filter((stub) => stub.every((cell, i) => cell >= 0 && !grid.obstacle[cell] && heatingWallAllowed(grid, cell, wallAccess) && ((!isConnectionZone && !i) || !occupied.has(cell))))
     if (sourceStubs.length < jobs.length * 2) { budget.onRouteFailure?.('bundle-sources', position, `${sourceStubs.length} vrije uiteinden voor ${jobs.length * 2} leidingen`); return null }
-    const targetStubs = jobs.flatMap((job, index) => [[job.cells[0], ...escapes[index][2]], [job.cells.at(-1)!, ...escapes[index][3]]])
+    // Flow needs only the entrance heading, not a solid R80-long control leg.
+    // The complete physical bends are searched and audited separately.
+    const targetStubs = jobs.flatMap((job, index) => [[job.cells[0], ...escapes[index][2].slice(0, 1)], [job.cells.at(-1)!, ...escapes[index][3].slice(0, 1)]])
     const blocked = grid.obstacle.slice(), immutable = new Set<number>()
     if (zone) for (const cell of zone.interior) blocked[cell] = 1
     for (const cell of occupied) if (cell >= 0) blocked[cell] = 1
@@ -1320,18 +1385,64 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
     }
     const sources = sourceStubs.map((stub) => stub.at(-1)!), goals = targetStubs.map((stub) => stub.at(-1)!)
     for (const cell of [...sources, ...goals]) if (blocked[cell]) { budget.onRouteFailure?.('bundle-overlap', grid.point(cell), 'Rechte aansluitingen overlappen elkaar.'); return null }
+    budget.onBundleGrid?.({ grid, blocked, sourceStubs, targetStubs, permittedWallCells: wallAccess.permittedWallCells, coils, jobs,
+      feedPaths: heatingFeedReservations.get(budget)?.grid.feedPaths })
     for (let trial = 0; trial < 3; trial++) {
       checkpoint()
       if (budget.routes < goals.length) return null
       budget.routes -= goals.length
-      const paths = routeHeatingBundle(grid, sources, goals, blocked, { ...wallAccess, checkpoint, onBlocked: (targets) => targets.forEach((target) => { const index = Math.floor(target / 2); budget.patternFallbackRooms?.add(jobs[index].roomKey ?? jobs[index].roomName); budget.onRouteFailure?.('bundle-entry', grid.point(goals[target]), `${common[index].circuitId}: ${target % 2 ? 'retour' : 'aanvoer'} niet bereikbaar`) }) }, (done) =>
+      const doorPaths = routeHeatingBundle(grid, sources, goals, blocked, { checkpoint })
+      const paths = doorPaths ?? routeHeatingBundle(grid, sources, goals, blocked, { ...wallAccess, checkpoint, onBlocked: (targets) => targets.forEach((target) => { const index = Math.floor(target / 2); budget.patternFallbackRooms?.add(jobs[index].roomKey ?? jobs[index].roomName); budget.onRouteFailure?.('bundle-entry', grid.point(goals[target]), `${common[index].circuitId}: ${target % 2 ? 'retour' : 'aanvoer'} niet bereikbaar`) }) }, (done) =>
         budget.onProgress?.({ phase: 'connections', circuits: jobs.length, completedCircuits: Math.floor(done / 2), attempt: lengthPass * 8 + mergeVariant + 1 }))
       if (!paths) return null
-      const fullPaths = paths.map((path, goal) => [...sourceStubs[path.source].slice(0, -1), ...path.cells, ...targetStubs[goal].slice(0, -1).reverse()])
+      const refinementKey = JSON.stringify(coils.map((coil) => geometryFor(coil).points))
+      if (budget.connectionRefinement?.key !== refinementKey) {
+        const previous = budget.connectionRefinement
+        const old = previous?.state.priority?.solution ?? previous?.state.priority?.bestSeed?.routes ?? previous?.state.priority?.root
+        const warmPairs = [...previous?.state.warmPairs ?? []]
+        if (old && previous) for (const [index, points] of (JSON.parse(previous.key) as Point[][]).entries()) {
+          const coilKey = JSON.stringify(points)
+          const existing = warmPairs.findIndex((pair) => pair.coilKey === coilKey)
+          if (existing >= 0) warmPairs.splice(existing, 1)
+          warmPairs.push({ coilKey, points: old.points.slice(index * 2, index * 2 + 2),
+            bendRadiusMm: old.bendRadiusMm.slice(index * 2, index * 2 + 2) })
+        }
+        // A changed inlet does not invalidate every other room. These are
+        // hints only: the refiner rechecks them against the complete new floor.
+        budget.connectionRefinement = { key: refinementKey, state: { warmPairs: warmPairs.slice(-32) } }
+      }
+      const physical = isConnectionZone ? refineHeatingConnectionBundle(grid, paths, sourceStubs, targetStubs, coils, settings, scale,
+        { state: budget.connectionRefinement.state, sourcePosition: position, sourceRadiusMm: Math.max(500, zone?.radiusMm ?? 1500), routeOptions: wallAccess, permittedWallCells: wallAccess.permittedWallCells ?? new Set(), obstacles, preserved, checkpoint,
+          onProgress: (done, preparedCircuits, routeAttempts) => budget.onProgress?.({ phase: 'connections', circuits: jobs.length, preparedCircuits, routeAttempts, completedCircuits: Math.floor(done / 2), attempt: lengthPass * 8 + mergeVariant + 1 }) }) : undefined
+      if (physical && physical.refined.length !== paths.length) {
+        // Change actual field entrances on the next attempt, rather than
+        // sending the same stranded seam through the router repeatedly.
+        const rooms = new Set(physical.failures.flatMap((failure) => jobs[Math.floor(failure.goal / 2)].roomMembers?.map((room) => room.key) ?? []))
+        budget.entryVariants ??= new Map()
+        for (const room of rooms) budget.entryVariants.set(room, (budget.entryVariants.get(room) ?? 0) + 1)
+        // After genuinely different entrances, try another feasible allocation
+        // within the authorised capacity. A different room distribution can
+        // remove a shared approach bottleneck without adding another group.
+        if ([...rooms].some((room) => budget.entryVariants!.get(room)! >= 2) &&
+          (budget.allocationVariant ?? 0) + 1 < (budget.allocationAlternatives ?? 1) && budget.allocationBaseTargets) {
+          // Change one search dimension at a time. These entrances belong to
+          // the layout just attempted; incrementing them as well skips the
+          // combination of the next allocation with the current entrances.
+          for (const room of rooms) budget.entryVariants.set(room, budget.entryVariants.get(room)! - 1)
+          budget.allocationVariant = (budget.allocationVariant ?? 0) + 1
+          budget.roomTargets = new Map(budget.allocationBaseTargets)
+          budget.areaTargetsFixed = false
+          budget.roomCandidates?.clear()
+        }
+        for (const failure of physical.failures) budget.onRouteFailure?.(`connection-${failure.reason}`, failure.point,
+          `${common[Math.floor(failure.goal / 2)].circuitId}: ${failure.goal % 2 ? 'retour' : 'aanvoer'} heeft geen veilige afgeronde aansluiting`)
+        return null
+      }
+      const fullPaths = physical?.paths ?? paths.map((path, goal) => [...sourceStubs[path.source].slice(0, -1), ...path.cells, ...targetStubs[goal].slice(0, -1).reverse()])
       // Flow establishes a complete non-crossing bundle, but its individual
       // square steps have no bend-radius constraint. Re-route each tube with
       // direction-aware rays while retaining every other tube's corridor.
-      for (let goal = 0; goal < fullPaths.length && budget.routes > 0; goal++) {
+      for (let goal = 0; !physical && goal < fullPaths.length && budget.routes > 0; goal++) {
         checkpoint(); budget.routes--
         const path = fullPaths[goal], others = new Set(occupied)
         for (let other = 0; other < fullPaths.length; other++) if (other !== goal) for (const cell of fullPaths[other]) others.add(cell)
@@ -1349,9 +1460,14 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
           // corners are not physical obstacles; the final curve audit rejects
           // any actual crossing after both neighbouring paths are smoothed.
           const free = (p: Point) => { const cell = grid.index(p); return cell >= 0 && !grid.obstacle[cell] && (!occupied.has(cell) || own.has(cell)) }
-          const points = openHeatingTurns(softenHeatingJogs(routePoints(cells), radius, free, grid.step), radius, drawingUnitsForMetres(settings.diameterMm / 1000, scale))
+          const physicalPoints = physical?.points[index * 2 + role]
+          const points = physicalPoints ? role ? [...physicalPoints].reverse() : physicalPoints :
+            openHeatingTurns(softenHeatingJogs(routePoints(cells), radius, free, grid.step), radius, drawingUnitsForMetres(settings.diameterMm / 1000, scale))
           const coilEnd = role ? geometryFor(coils[index]).points.at(-1)! : geometryFor(coils[index]).points[0]
-          parts.push(createHeatingPipe(ids[index][role + 1], exactConnectionEnd(exactConnectionEnd(points, physicalPort(index, role, routes[role][0]), !role), coilEnd, Boolean(role)), { ...common[index], name: `${common[index].circuitId} ${role ? 'retour' : 'aanvoer'}`, pipeRole: role ? 'return' : 'supply' }))
+          // Loose connection-zone ends remain at the physical search result;
+          // snapping them back to a virtual hardware port would undo that route.
+          const connected = physicalPoints ? points : exactConnectionEnd(exactConnectionEnd(points, physicalPort(index, role, routes[role][0]), !role), coilEnd, Boolean(role))
+          parts.push(createHeatingPipe(ids[index][role + 1], connected, { ...common[index], ...(physical ? { bendRadiusMm: physical.bendRadiusMm[index * 2 + role] } : {}), name: `${common[index].circuitId} ${role ? 'retour' : 'aanvoer'}`, pipeRole: role ? 'return' : 'supply' }))
         }
         budget.onConnectionCandidate?.(parts, coils)
         const length = parts.reduce((sum, part) => sum + drawingLengthMetres(geometryFor(part).length, scale), 0) + limits.allowanceM
@@ -1363,7 +1479,10 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
         }
         connections.push({ index, parts, paths: [routes[0], [...routes[1]].reverse()], reserved: [...routes[0], ...routes[1]] })
       }
-      if (bundleOverruns.size) return null
+      if (bundleOverruns.size) {
+        rememberHeatingMeasuredLeads(budget, grid, coils, heatingSchedule(connections.flatMap((connection) => connection.parts)), limits.maxCircuitLengthM)
+        return null
+      }
       const newParts = connections.flatMap((c) => c.parts.slice(1))
       const audit = checkHeatingPlan([...preserved, ...coils, ...newParts], [], settings.design, obstacles, { focusPipeIds: new Set(newParts.map((p) => p.id)), checkpoint, geometryFor })
       const errors = audit.issues.filter((issue) => issue.severity === 'error' && ['collision', 'bend', 'obstacle'].includes(issue.code))
@@ -1411,7 +1530,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }).sort((a, b) => b.distance - a.distance || a.index - b.index).map(({ index }) => index)
   const ascending = jobs.map((_, index) => index)
   const byLength = [...ascending].sort((a, b) => Number(tooLongCircuits.has(b)) - Number(tooLongCircuits.has(a)) || geometryFor(coils[b]).length - geometryFor(coils[a]).length)
-  let connections: Connection[] | null = !jobs.length ? [] : jobs.length > 1 ? bundleConnections() : null
+  let connections: Connection[] | null = !jobs.length ? [] : (jobs.length > 1 || isConnectionZone) ? bundleConnections() : null
   if (!connections && bundleOverruns.size) {
     const retries = budget.lengthRetries ??= new Map(), allowances = budget.leadAllowances ??= {}
     let changed = false
@@ -1432,7 +1551,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   let routeFloor = layoutFloor
   byLength.sort((a, b) => Number(tooLongCircuits.has(b)) - Number(tooLongCircuits.has(a)))
   const pairCache = new Map<string, Connection | null>()
-  for (const order of connections ? [] : [byLength, byDistance, ascending, [...ascending].reverse()]) {
+  for (const order of connections || isConnectionZone ? [] : [byLength, byDistance, ascending, [...ascending].reverse()]) {
     // A promising prefix needs enough work to finish every room. Dividing the
     // layout quota into thirds stopped a valid sequence after four circuits,
     // then discarded it before even trying the next room.
@@ -1587,6 +1706,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   let rows = heatingSchedule(shapes)
   if (lengthPass < 3 && rows.some((row) => (row.cutM ?? row.totalM) > limits.maxCircuitLengthM + .05)) {
+    rememberHeatingMeasuredLeads(budget, grid, coils, rows, limits.maxCircuitLengthM)
     return { retry: { lengthPass: lengthPass + 1, mergeVariant: 0 } }
   }
   budget.onProgress?.({ phase: 'checks', circuits: rows.length })
@@ -1626,18 +1746,59 @@ export const generateAutomaticHeatingPlan = (scene: readonly Shape[], position: 
   lengthPass = 0, mergeVariant = 0, budget: HeatingWorkBudget = { routes: 600 }): AutomaticHeatingResult => {
   const canExpand = !budget.preserved?.length && !budget.reflowCircuit?.length
   settings = heatingPlanningSettings(settings, canExpand)
-  const search: HeatingSearch = { layouts: new Set() }
-  const work: HeatingWorkBudget = { ...budget, pairedEntries: false, patternFallbackRooms: new Set(budget.patternFallbackRooms), loopFactors: {}, deadline: budget.deadline ?? Date.now() + 30000,
+  const session = budget.session
+  const search: HeatingSearch = session?.search ?? { layouts: new Set() }
+  const work: HeatingWorkBudget = session?.work ?? { ...budget, pairedEntries: false, patternFallbackRooms: new Set(budget.patternFallbackRooms), loopFactors: {}, deadline: budget.deadline ?? Date.now() + HEATING_PLANNING_SLICE_MS,
     onRouteFailure: (reason, point, detail) => { work.lastRouteFailure = { reason, point, detail }; budget.onRouteFailure?.(reason, point, detail) },
     onProgress: (value) => budget.onProgress?.({ ...value, layoutLimit: MAX_HEATING_LAYOUTS,
       attempt: Math.min(MAX_HEATING_LAYOUTS, value.phase === 'circuits' || value.phase === 'feeds' ? search.layouts.size + 1 : Math.max(1, search.layouts.size)) }) }
-  let best: AutomaticHeatingResult | undefined, validLayouts = 0
+  work.deadline = budget.deadline ?? Date.now() + HEATING_PLANNING_SLICE_MS
+  if (session) { session.work = work; session.search = search; lengthPass = session.lengthPass ?? lengthPass; mergeVariant = session.mergeVariant ?? mergeVariant }
+  let best = session?.best, validLayouts = session?.validLayouts ?? 0
   for (;;) {
+    if (session) { session.lengthPass = lengthPass; session.mergeVariant = mergeVariant; session.best = best; session.validLayouts = validLayouts }
+    work.activeLayoutKey = undefined
     let result: AutomaticHeatingResult | { retry: HeatingRetry }
     try {
       result = generateHeatingAttempt(scene, position, settings, scale, nextId, pageArea, lengthPass, mergeVariant, work, search)
     } catch (error) {
+      if (error instanceof HeatingPlanningPaused) {
+        if (best) return best
+        // Replay only the interrupted attempt. Completed fields and feed
+        // reservations remain cached on this same work object.
+        if (work.activeLayoutKey) search.layouts.delete(work.activeLayoutKey)
+        throw error
+      }
       if (best) return best
+      if (error instanceof HeatingFieldAllocationFailure && work.areaTargetsFixed && work.allocationBaseTargets &&
+        (work.allocationVariant ?? 0) + 1 < (work.allocationAlternatives ?? 1)) {
+        // Rebuilding the real feed approaches can invalidate the first thermal
+        // allocation. Try the next complete allocation instead of declaring
+        // the whole floor impossible or accepting a poorly covered fragment.
+        work.allocationVariant = (work.allocationVariant ?? 0) + 1
+        work.roomTargets = new Map(work.allocationBaseTargets)
+        work.areaTargetsFixed = false
+        work.roomCandidates?.clear()
+        continue
+      }
+      if (error instanceof HeatingFieldAllocationFailure && error.roomKey && work.roomTargets) {
+        const tried = work.triedRoomAllocations ??= new Set<string>()
+        const signature = (targets: Map<string, number>) => JSON.stringify([...targets].sort(([a], [b]) => a.localeCompare(b)))
+        tried.add(signature(work.roomTargets))
+        const donors = [...work.roomTargets].filter(([key, count]) => key !== error.roomKey && count > 1).sort((a, b) => b[1] - a[1])
+        let repaired = false
+        for (const [key, count] of donors) {
+          const targets = new Map(work.roomTargets)
+          targets.set(key, count - 1); targets.set(error.roomKey, (targets.get(error.roomKey) ?? 0) + 1)
+          if (tried.has(signature(targets)) || tried.size >= MAX_HEATING_LAYOUTS) continue
+          // Negotiate the same physical port budget with the failing room.
+          // A floor-area estimate is only a seed; actual reserved approaches
+          // can require a different count distribution without adding a port.
+          work.roomTargets = targets; work.areaTargetsFixed = true
+          work.roomCandidates?.clear(); repaired = true; break
+        }
+        if (repaired) continue
+      }
       if (error instanceof HeatingFeedReservationFailure && !work.internalWallCells?.size && !work.wallFallbackTried && work.grid) {
         work.wallFallbackTried = true
         const passage = heatingFallbackPassage(work.grid, position, error.point, scale)

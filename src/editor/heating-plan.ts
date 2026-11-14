@@ -48,6 +48,8 @@ export type HeatingData = {
   excludedRoomKeys?: string[]
   planningRooms?: { key: string; name: string }[]
   coverage?: HeatingCoverage
+  /** Chosen curve radius; the product minimum remains in design. */
+  bendRadiusMm?: number
   manualRoute?: boolean
   circuitId?: string
   roomName?: string
@@ -61,7 +63,7 @@ export type HeatingData = {
   rowOffset?: number
   rowLimit?: number
   /** Pipe waypoints in the shape's own 0..1 coordinate space. */
-  points?: Point[]
+  points?: (Point & { bendRadiusMm?: number })[]
 }
 
 export type HeatingScheduleRow = { id: string; room: string; roomKey?: string; roomMembers?: HeatingData['roomMembers']; locked?: boolean; diameterMm: number; spacingMm: number; areaM2: number;
@@ -142,6 +144,7 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
       ...(typeof c.signature === 'string' ? { signature: c.signature.slice(0, 1_000_000) } : {}), ...(c.stale ? { stale: true } : {})
     }
   }
+  if (typeof raw.bendRadiusMm === 'number' && Number.isFinite(raw.bendRadiusMm) && raw.bendRadiusMm >= 1 && raw.bendRadiusMm <= 5000) data.bendRadiusMm = raw.bendRadiusMm
   if (raw.manualRoute === true) data.manualRoute = true
   const design = sanitizeHeatingDesign(raw.design), audit = sanitizeHeatingAudit(raw.audit), checks = sanitizeHeatingAudit({ issues: raw.checks })?.issues
   if (design) data.design = design
@@ -168,8 +171,9 @@ export const sanitizeHeating = (value: unknown): HeatingData | undefined => {
   if ((raw.kind === 'pipe' || raw.kind === 'manifold') && Array.isArray(raw.points)) {
     data.points = raw.points.slice(0, 1000).flatMap((item) => {
       if (!item || typeof item !== 'object') return []
-      const { x, y } = item as Point
-      return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [{ x, y }] : []
+      const { x, y, bendRadiusMm } = item as Point & { bendRadiusMm?: number }
+      return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [{ x, y,
+        ...(typeof bendRadiusMm === 'number' && Number.isFinite(bendRadiusMm) && bendRadiusMm >= 1 && bendRadiusMm <= 5000 ? { bendRadiusMm } : {}) }] : []
     })
     if (data.points.length < 2) return
   }

@@ -5,6 +5,7 @@ import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
 import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingStairSymbol, heatingObstacleBounds } from './heating-openings.js'
 import { isRoomLabel, roomLabelName } from './room-labels.js'
+import { heatingLaneShift } from './heating-s-curve.js'
 
 export type HeatingRoom = { id: number; name: string; roomKey?: string; members?: { key: string; name: string }[]; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
@@ -20,6 +21,8 @@ export type HeatingGrid = {
 }
 
 export { segmentDistance } from './heating-distance.js'
+/** Stabilise half-cell ties against round-trip SVG/model floating-point noise. */
+export const heatingGridRound = (value: number) => Math.floor(value + .5 + 1e-9)
 
 /** Closed wall/door boundaries identify rooms; device footprints are always hard obstacles. */
 export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacingMm: number, manifold: Point,
@@ -46,7 +49,7 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
   if (size > 900_000) throw new Error('Dit grondplan is te groot voor deze legafstand. Verdeel het over meerdere legplannen.')
   const point = (i: number): Point => ({ x: origin.x + i % width * step, y: origin.y + Math.floor(i / width) * step })
   const index = (p: Point) => {
-    const x = Math.round((p.x - origin.x) / step), y = Math.round((p.y - origin.y) / step)
+    const x = heatingGridRound((p.x - origin.x) / step), y = heatingGridRound((p.y - origin.y) / step)
     return x < 0 || y < 0 || x >= width || y >= height ? -1 : y * width + x
   }
   const wall = new Uint8Array(size), door = new Uint8Array(size), obstacle = new Uint8Array(size), loopObstacle = new Uint8Array(size), room = new Int32Array(size)
@@ -198,6 +201,12 @@ export type HeatingRoutingOptions = {
   endDirection?: number
   radiusCells?: number
   preferArcs?: boolean
+  /** Opt in to fractional control points; read the result with heatingPathPoints. */
+  continuousTurns?: boolean
+  variableBends?: boolean
+  /** Free endpoints inside a connection zone; end is only a heuristic hint. */
+  goalRegion?: ReadonlySet<number>
+  goalRadiusCells?: number
   /** Exact clearance at fractional arc samples; static grid constraints still apply. */
   pointFree?: (point: Point) => boolean
   wallEntryPenalty?: number
@@ -206,6 +215,8 @@ export type HeatingRoutingOptions = {
   requiredCorridor?: ReadonlySet<number>
   preferredDoors?: ReadonlySet<number>
   obstacleHeuristic?: boolean
+  /** Bounded physical routing can favour progress while retaining all audits. */
+  searchWeight?: number
   lanePitchCells?: number
   lanePenalty?: Float32Array
   cellPenalty?: Float32Array
@@ -291,17 +302,18 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
     ? routeWithArcs(grid, start, end, options) ?? routeWithBends(grid, start, end, options)
     : routeWithBends(grid, start, end, options) ?? routeWithArcs(grid, start, end, options)
   const { width, height } = grid
-  if (start < 0 || end < 0 || grid.obstacle[start] || grid.obstacle[end]) return null
+  if (start < 0 || end < 0 || grid.obstacle[start] || !options.goalRegion && grid.obstacle[end]) return null
   const previous = new Int32Array(width * height).fill(-1), cost = new Float64Array(width * height).fill(Infinity)
   const closed = new Uint8Array(width * height), heap = new MinHeap()
-  const heuristic = (i: number) => (Math.abs(i % width - end % width) + Math.abs(Math.floor(i / width) - Math.floor(end / width))) * (options.preferredCorridor ? .9 : 1)
+  const heuristic = (i: number) => Math.max(0, Math.abs(i % width - end % width) + Math.abs(Math.floor(i / width) - Math.floor(end / width)) -
+    (options.goalRegion ? (options.goalRadiusCells ?? 0) * Math.SQRT2 : 0)) * (options.preferredCorridor ? .9 : 1)
   cost[start] = 0; heap.push(start, heuristic(start))
   let iterations = 0
   while (heap.values.length) {
     if (++iterations % 256 === 0) options.checkpoint?.()
     const i = heap.pop()
     if (closed[i]) continue
-    if (i === end) {
+    if (options.goalRegion ? options.goalRegion.has(i) : i === end) {
       const path = [i]
       while (path.at(-1) !== start) path.push(previous[path.at(-1)!])
       return path.reverse()
@@ -311,9 +323,9 @@ export const routeHeating = (grid: HeatingGrid, start: number, end: number,
     for (const n of [x ? i - 1 : -1, x + 1 < width ? i + 1 : -1, y ? i - width : -1, y + 1 < height ? i + width : -1]) {
       if (n < 0 || closed[n] || grid.obstacle[n] || (options.requiredCorridor && !options.requiredCorridor.has(n)) ||
         (i === start && options.startDirection !== undefined && n - i !== options.startDirection) ||
-        (n === end && options.endDirection !== undefined && n - i !== options.endDirection) ||
+        (!options.goalRegion && n === end && options.endDirection !== undefined && n - i !== options.endDirection) ||
         (options.roomId !== undefined && grid.room[n] !== options.roomId) ||
-        !heatingWallAllowed(grid, n, options) || (n !== end && n !== start && options.occupied?.has(n))) continue
+        !heatingWallAllowed(grid, n, options) || ((options.goalRegion || n !== end) && n !== start && (options.occupied?.has(n) || options.pointFree && !options.pointFree(grid.point(n))))) continue
       const last = previous[i], turn = last >= 0 && n - i !== i - last ? .15 : 0
       const next = cost[i] + 1 + turn + wallStepCost(grid, i, n, options) + (options.congestion?.get(n) ?? 0) * 30 + (options.preferredCorridor?.has(n) ? -.1 : 0)
       if (next >= cost[n]) continue
@@ -329,7 +341,11 @@ export const simplifyHeatingPath = (points: Point[]): Point[] => points.filter((
   return Math.abs((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x)) > 1e-7
 })
 
-type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uint32Array; closed: Uint32Array; generation: number; lowerCost?: Float64Array; lowerClosed?: Uint8Array }
+const continuousHeatingPaths = new WeakMap<number[], Point[]>()
+export const heatingPathPoints = (grid: HeatingGrid, path: number[]) =>
+  continuousHeatingPaths.get(path)?.map((p) => ({ ...p })) ?? path.map(grid.point)
+
+type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uint32Array; closed: Uint32Array; generation: number; lowerCost?: Float64Array; lowerClosed?: Uint8Array; laneShift?: Int8Array; cornerRadius?: Uint16Array }
 // A wall mask belongs to one immutable grid. Generation stamps avoid allocating and
 // clearing millions of state slots on every route; a new grid gets a fresh workspace.
 const routingWorkspaces = new WeakMap<Uint8Array, RoutingWorkspace>()
@@ -339,8 +355,9 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
   const { width, height } = grid, size = width * height, reach = Math.max(2, options.radiusCells ?? 2)
   const directions = [1, width, -1, -width]
   const validStep = (a: number, b: number) => b >= 0 && b < size && Math.abs(a % width - b % width) + Math.abs(Math.floor(a / width) - Math.floor(b / width)) === 1
-  const free = (i: number) => i >= 0 && i < size && !grid.obstacle[i] && (!options.requiredCorridor || options.requiredCorridor.has(i)) && (options.roomId === undefined || grid.room[i] === options.roomId) && heatingWallAllowed(grid, i, options) && (i === start || i === end || !options.occupied?.has(i))
-  if (!free(start) || !free(end)) return null
+  const free = (i: number) => i >= 0 && i < size && !grid.obstacle[i] && (!options.requiredCorridor || options.requiredCorridor.has(i)) && (options.roomId === undefined || grid.room[i] === options.roomId) && heatingWallAllowed(grid, i, options) &&
+    (i === start || !options.goalRegion && i === end || !options.occupied?.has(i) && (!options.pointFree || options.pointFree(grid.point(i))))
+  if (!free(start) || !options.goalRegion && !free(end)) return null
   const first: number[] = [start], last: number[] = [end]
   for (let n = 0; n < Math.ceil(reach / 2); n++) {
     if (options.startDirection !== undefined) {
@@ -348,7 +365,7 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
       if (!validStep(a, b) || !free(b)) return null
       first.push(b)
     }
-    if (options.endDirection !== undefined) {
+    if (!options.goalRegion && options.endDirection !== undefined) {
       const a = last[0], b = a - options.endDirection
       if (!validStep(a, b) || !free(b)) return null
       last.unshift(b)
@@ -367,8 +384,10 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
     const angle = Math.atan2(-vy, -vx), sign = ux * vy - uy * vx
     for (let n = 0; n <= 12; n++) {
       const theta = angle + sign * Math.PI / 2 * n / 12
-      const xx = Math.round(x + radius * Math.cos(theta)), yy = Math.round(y + radius * Math.sin(theta))
+      const xx = heatingGridRound(x + radius * Math.cos(theta)), yy = heatingGridRound(y + radius * Math.sin(theta))
       if (xx < 0 || yy < 0 || xx >= width || yy >= height || !free(yy * width + xx)) return false
+      if (options.pointFree && !options.pointFree({ x: grid.origin.x + (x + radius * Math.cos(theta)) * grid.step,
+        y: grid.origin.y + (y + radius * Math.sin(theta)) * grid.step })) return false
     }
     return true
   }
@@ -380,10 +399,12 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
   }
   if (workspace.generation >= 0xffffffff) { workspace.visited.fill(0); workspace.closed.fill(0); workspace.generation = 0 }
   const generation = ++workspace.generation, { cost, previous, visited, closed } = workspace, heap = new MinHeap()
-  let heuristic = (i: number) => (Math.abs(i % width - target % width) + Math.abs(Math.floor(i / width) - Math.floor(target / width))) * (options.preferredCorridor ? .9 : 1)
+  let heuristic = (i: number) => Math.max(0, Math.abs(i % width - target % width) + Math.abs(Math.floor(i / width) - Math.floor(target / width)) -
+    (options.goalRegion ? (options.goalRadiusCells ?? 0) * Math.SQRT2 : 0)) * (options.preferredCorridor ? .9 : 1)
   if (options.obstacleHeuristic) {
     const lower = workspace.lowerCost ??= new Float64Array(size), settled = workspace.lowerClosed ??= new Uint8Array(size), reverse = new MinHeap()
-    lower.fill(Infinity); settled.fill(0); lower[target] = 0; reverse.push(target, 0)
+    lower.fill(Infinity); settled.fill(0)
+    for (const goal of options.goalRegion ?? [target]) { lower[goal] = 0; reverse.push(goal, 0) }
     let steps = 0
     heuristic = (cell) => {
       while (!settled[cell] && reverse.values.length) {
@@ -414,7 +435,7 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
     if (++iterations % 256 === 0) options.checkpoint?.()
     const state = heap.pop(), i = Math.floor(state / 4), heading = state % 4
     if (closed[state] === generation) continue
-    if (i === target && (options.endDirection === undefined || directions[heading] !== -options.endDirection && cornerFree(i, heading, directions.indexOf(options.endDirection)))) {
+    if ((options.goalRegion ? options.goalRegion.has(i) : i === target) && (options.goalRegion || options.endDirection === undefined || directions[heading] !== -options.endDirection && cornerFree(i, heading, directions.indexOf(options.endDirection)))) {
       const nodes = [state]
       while (previous[nodes.at(-1)!] >= 0) {
         if (nodes.length % 256 === 0) options.checkpoint?.()
@@ -443,6 +464,7 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
         if (!validStep(n, next) || !free(next) || blocked.has(next)) { valid = false; break }
         added += 1 + wallStepCost(grid, n, next, options) + (options.congestion?.get(next) ?? 0) * 30 + (options.preferredCorridor?.has(next) ? -.1 : 0)
         n = next
+        if (options.goalRegion?.has(n) && (d === heading || step + 1 >= Math.ceil(reach / 2))) break
         if (n === target && (options.endDirection === undefined || directions[d] === options.endDirection || ((d === heading || step + 1 === reach) && directions[d] !== -options.endDirection))) break
       }
       if (!valid || !cornerFree(i, heading, d)) continue
@@ -461,11 +483,12 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
 const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: HeatingRoutingOptions): number[] | null => {
   const { width, height } = grid, size = grid.wall.length, radius = Math.ceil((options.radiusCells ?? 2) / 2)
   const directions = [1, width, -1, -width], vectors = [[1, 0], [0, 1], [-1, 0], [0, -1]]
+  const searchWeight = Math.max(1, Math.min(2, options.searchWeight ?? 1))
   const staticFree = (cell: number) => cell >= 0 && cell < size && !grid.obstacle[cell] &&
     (options.roomId === undefined || grid.room[cell] === options.roomId) && heatingWallAllowed(grid, cell, options)
   const free = (cell: number) => staticFree(cell) && (!options.requiredCorridor || options.requiredCorridor.has(cell)) &&
-    (cell === start || cell === end || !options.occupied?.has(cell) && (!options.pointFree || options.pointFree(grid.point(cell))))
-  if (!free(start) || !free(end)) return null
+    (cell === start || !options.goalRegion && cell === end || !options.occupied?.has(cell) && (!options.pointFree || options.pointFree(grid.point(cell))))
+  if (!free(start) || !options.goalRegion && !free(end)) return null
   let workspace = routingWorkspaces.get(grid.wall)
   if (!workspace) {
     workspace = { cost: new Float64Array(size * 4), previous: new Int32Array(size * 4), visited: new Uint32Array(size * 4), closed: new Uint32Array(size * 4), generation: 0 }
@@ -473,7 +496,42 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
   }
   if (workspace.generation >= 0xffffffff) { workspace.visited.fill(0); workspace.closed.fill(0); workspace.generation = 0 }
   const generation = ++workspace.generation, { cost, previous, visited, closed } = workspace, heap = new MinHeap()
-  const heuristic = (cell: number) => Math.hypot(cell % width - end % width, Math.floor(cell / width) - Math.floor(end / width))
+  let heuristic = (cell: number) => Math.max(0, Math.hypot(cell % width - end % width, Math.floor(cell / width) - Math.floor(end / width)) -
+    (options.goalRegion ? options.goalRadiusCells ?? 0 : 0))
+  if (options.obstacleHeuristic) {
+    const lower = workspace.lowerCost ??= new Float64Array(size), settled = workspace.lowerClosed ??= new Uint8Array(size), reverse = new MinHeap()
+    lower.fill(Infinity); settled.fill(0)
+    for (const goal of options.goalRegion ?? [end]) { lower[goal] = 0; reverse.push(goal, 0) }
+    let steps = 0
+    heuristic = (cell) => {
+      while (!settled[cell] && reverse.values.length) {
+        if (++steps % 4096 === 0) options.checkpoint?.()
+        const from = reverse.pop()
+        if (settled[from]) continue
+        settled[from] = 1
+        const x = from % width, y = Math.floor(from / width)
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy || x + dx < 0 || x + dx >= width || y + dy < 0 || y + dy >= height) continue
+          const next = from + dx + dy * width
+          if (settled[next] || !free(next)) continue
+          const candidate = lower[from] + Math.hypot(dx, dy)
+          if (candidate >= lower[next]) continue
+          lower[next] = candidate; reverse.push(next, candidate)
+        }
+      }
+      return lower[cell]
+    }
+    if (!Number.isFinite(heuristic(start))) return null
+  }
+  const laneShift = options.continuousTurns ? workspace.laneShift ??= new Int8Array(size * 4) : undefined
+  const cornerRadius = options.continuousTurns ? workspace.cornerRadius ??= new Uint16Array(size * 4) : undefined
+  const bendRadii = options.variableBends && options.continuousTurns ? [0, 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48].map((n) => radius + n) : [radius]
+  // One smooth S must be able to span the complete available lane. Restricting
+  // it to one/two cells forced long staircases or a detour around a whole coil.
+  const shiftCount = Math.min(16, radius * 2 - 1)
+  const offsets = Array.from({ length: shiftCount }, (_, i) =>
+    Math.max(1, Math.round(1 + i * (radius * 2 - 2) / Math.max(1, shiftCount - 1))))
+  const shifts = options.continuousTurns ? [...new Set(offsets)].map((offset) => heatingLaneShift(radius, offset)).filter((value) => value !== undefined) : []
   for (let heading = 0; heading < 4; heading++) if (options.startDirection === undefined || directions[heading] === options.startDirection) {
     const state = start * 4 + heading; cost[state] = 0; previous[state] = -1; visited[state] = generation; heap.push(state, heuristic(start))
   }
@@ -485,16 +543,41 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
     if (explored > limit) return null
     const state = heap.pop(), cell = Math.floor(state / 4), heading = state % 4
     if (closed[state] === generation) continue
-    if (cell === end && (options.endDirection === undefined || directions[heading] === options.endDirection)) {
+    if ((options.goalRegion ? options.goalRegion.has(cell) : cell === end) && (options.goalRegion || options.endDirection === undefined || directions[heading] === options.endDirection)) {
       const nodes = [state]
       while (previous[nodes.at(-1)!] >= 0) { nodes.push(previous[nodes.at(-1)!]); if (nodes.length > size * 4) return null }
       nodes.reverse()
+      if (laneShift) {
+        const controls: (Point & { bendRadiusMm?: number })[] = [grid.point(start)]
+        for (let i = 1; i < nodes.length; i++) {
+          const before = nodes[i - 1], after = nodes[i], from = grid.point(Math.floor(before / 4)), destination = grid.point(Math.floor(after / 4))
+          const [ux, uy] = vectors[before % 4], lateral = laneShift[after]
+          if (lateral) {
+            const shift = shifts.find((candidate) => candidate.lateral === Math.abs(lateral))!
+            controls.push({ x: from.x + ux * shift.cut * grid.step, y: from.y + uy * shift.cut * grid.step, bendRadiusMm: radius * cellMm },
+              { x: destination.x - ux * shift.cut * grid.step, y: destination.y - uy * shift.cut * grid.step, bendRadiusMm: radius * cellMm })
+          } else if (before % 4 !== after % 4) {
+            const bend = cornerRadius![after] || radius
+            controls.push({ x: from.x + ux * bend * grid.step, y: from.y + uy * bend * grid.step, bendRadiusMm: bend * cellMm })
+          }
+          controls.push(destination)
+        }
+        const vertices = simplifyHeatingPath(controls), path = [start]
+        for (let i = 1; i < vertices.length; i++) {
+          const a = vertices[i - 1], b = vertices[i], count = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / grid.step))
+          for (let n = 1; n <= count; n++) {
+            const cell = grid.index({ x: a.x + (b.x - a.x) * n / count, y: a.y + (b.y - a.y) * n / count })
+            if (cell >= 0 && cell !== path.at(-1)) path.push(cell)
+          }
+        }
+        continuousHeatingPaths.set(path, vertices); return path
+      }
       const vertices = [start]
       for (let i = 1; i < nodes.length; i++) {
         const before = nodes[i - 1], after = nodes[i]
         if (before % 4 !== after % 4) vertices.push(Math.floor(before / 4) + directions[before % 4] * radius)
       }
-      vertices.push(end)
+      vertices.push(cell)
       const path = [vertices[0]]
       for (const vertex of vertices.slice(1)) {
         const from = path.at(-1)!
@@ -508,30 +591,30 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
     }
     closed[state] = generation
     const x = cell % width, y = Math.floor(cell / width), [ux, uy] = vectors[heading]
-    for (const outgoing of [heading, (heading + 1) % 4, (heading + 3) % 4]) {
+    for (const outgoing of [heading, (heading + 1) % 4, (heading + 3) % 4]) for (const bend of outgoing === heading ? [radius] : bendRadii) {
       const turn = outgoing !== heading, [vx, vy] = vectors[outgoing]
-      const xx = x + (turn ? (ux + vx) * radius : ux), yy = y + (turn ? (uy + vy) * radius : uy)
+      const xx = x + (turn ? (ux + vx) * bend : ux), yy = y + (turn ? (uy + vy) * bend : uy)
       if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue
       const destination = yy * width + xx
       if (!free(destination)) continue
-      let extra = turn ? radius * (Math.PI / 2 + .6) : 1, valid = true
+      let extra = turn ? bend * (Math.PI / 2 + .6) : 1, valid = true
       if (turn) {
         // Keep virtual control legs within static walls and furnishings. Only
         // occupancy and corridor masks describe physical tubes, so those are
         // checked on the actual arc instead of its discarded square corner.
-        for (let n = 1; n <= radius; n++) if (!staticFree(cell + directions[heading] * n) || !staticFree(cell + directions[heading] * radius + directions[outgoing] * n)) { valid = false; break }
+        if (!options.continuousTurns) for (let n = 1; n <= bend; n++) if (!staticFree(cell + directions[heading] * n) || !staticFree(cell + directions[heading] * bend + directions[outgoing] * n)) { valid = false; break }
         if (!valid) continue
-        const cx = x + vx * radius, cy = y + vy * radius, angle = Math.atan2(-vy, -vx), sign = ux * vy - uy * vx
+        const cx = x + vx * bend, cy = y + vy * bend, angle = Math.atan2(-vy, -vx), sign = ux * vy - uy * vx
         let before = cell
-        for (let n = 1; n <= sampleCount; n++) {
-          const theta = angle + sign * Math.PI / 2 * n / sampleCount
-          const px = Math.round(cx + radius * Math.cos(theta)), py = Math.round(cy + radius * Math.sin(theta))
+        for (let n = 1; n <= Math.max(sampleCount, Math.ceil(bend * Math.PI)); n++) {
+          const theta = angle + sign * Math.PI / 2 * n / Math.max(sampleCount, Math.ceil(bend * Math.PI))
+          const px = heatingGridRound(cx + bend * Math.cos(theta)), py = heatingGridRound(cy + bend * Math.sin(theta))
           if (px < 0 || py < 0 || px >= width || py >= height) { valid = false; break }
           const at = py * width + px
           const exact = options.pointFree
-            ? staticFree(at) && (!options.requiredCorridor || options.requiredCorridor.has(at)) &&
-              options.pointFree({ x: grid.origin.x + (cx + radius * Math.cos(theta)) * grid.step,
-                y: grid.origin.y + (cy + radius * Math.sin(theta)) * grid.step })
+            ? staticFree(at) && !options.occupied?.has(at) && (!options.requiredCorridor || options.requiredCorridor.has(at)) &&
+              options.pointFree({ x: grid.origin.x + (cx + bend * Math.cos(theta)) * grid.step,
+                y: grid.origin.y + (cy + bend * Math.sin(theta)) * grid.step })
             : free(at)
           if (!exact) { valid = false; break }
           if (at !== before) extra += wallStepCost(grid, before, at, options) + (options.congestion?.get(at) ?? 0) * 30
@@ -541,7 +624,38 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
       if (!valid) continue
       const nextState = destination * 4 + outgoing, nextCost = cost[state] + extra
       if (closed[nextState] === generation || visited[nextState] === generation && nextCost >= cost[nextState]) continue
-      cost[nextState] = nextCost; previous[nextState] = state; visited[nextState] = generation; heap.push(nextState, nextCost + heuristic(destination))
+      cost[nextState] = nextCost; previous[nextState] = state; visited[nextState] = generation
+      if (laneShift) laneShift[nextState] = 0
+      if (cornerRadius) cornerRadius[nextState] = turn ? bend : 0
+      heap.push(nextState, nextCost + heuristic(destination) * searchWeight)
+    }
+    for (const shift of shifts) for (const side of [-1, 1]) {
+      // Broad shifts are useful at the constrained inlet. Trying every width
+      // at every point of a long route multiplies the search unnecessarily;
+      // the variable-bend fallback still explores them throughout the route.
+      if (shift.lateral > 2 && !options.variableBends && cost[state] > radius * 3) continue
+      const vx = -uy * side, vy = ux * side
+      const xx = x + ux * shift.run + vx * shift.lateral, yy = y + uy * shift.run + vy * shift.lateral
+      if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue
+      const destination = yy * width + xx
+      if (!free(destination)) continue
+      // This transition has two bends. Charging almost nothing for them made
+      // dozens of tiny S turns cheaper than a clean shared supply corridor.
+      let valid = true, before = cell, extra = shift.length + radius * 1.2
+      for (const [along, across] of shift.samples) {
+        const px = x + ux * along + vx * across, py = y + uy * along + vy * across
+        const ax = heatingGridRound(px), ay = heatingGridRound(py), at = ay * width + ax
+        if (ax < 0 || ay < 0 || ax >= width || ay >= height || !staticFree(at) || options.occupied?.has(at) ||
+          options.requiredCorridor && !options.requiredCorridor.has(at) ||
+          options.pointFree && !options.pointFree({ x: grid.origin.x + px * grid.step, y: grid.origin.y + py * grid.step })) { valid = false; break }
+        if (at !== before) extra += wallStepCost(grid, before, at, options) + (options.congestion?.get(at) ?? 0) * 30
+        before = at
+      }
+      if (!valid) continue
+      const nextState = destination * 4 + heading, nextCost = cost[state] + extra
+      if (closed[nextState] === generation || visited[nextState] === generation && nextCost >= cost[nextState]) continue
+      cost[nextState] = nextCost; previous[nextState] = state; visited[nextState] = generation; laneShift![nextState] = side * shift.lateral
+      heap.push(nextState, nextCost + heuristic(destination) * searchWeight)
     }
   }
   return null

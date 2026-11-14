@@ -13,7 +13,7 @@ import { joinHeatingZoneFields } from './heating-zone-join.js'
 type Bounds = { x: number; y: number; width: number; height: number }
 export type HeatingArea = { boundaries: Point[][]; entry: Point;
   clearance?: { boundaries: Point[][]; edge: number; bounds: Bounds } }
-export type HeatingAreaSettings = { diameterMm: number; spacingMm: number; edgeMm?: number; design?: HeatingDesignInputs }
+export type HeatingAreaSettings = { entryVariant?: number; diameterMm: number; spacingMm: number; edgeMm?: number; design?: HeatingDesignInputs }
 export type HeatingAreaLoop = { points: Point[]; pattern: 'spiral' | 'meander' | 'mixed'; lengthM: number; gapRatio: number }
 export type HeatingAreaTrace = { rings?: number; fields?: number; candidates?: number; rejected?: Record<string, number>; point?: Point; message?: string }
 const precision = 1000
@@ -177,6 +177,11 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
       points: points.map((p) => ({ x: w ? (p.x - x) / w : 0, y: h ? (p.y - y) / h : 0 })) } }
   }
   let best: HeatingAreaLoop | null = null
+  const entries = new Map<string, HeatingAreaLoop>()
+  const entryDistance = (points: readonly Point[]) => [[points[0], points[1]], [points.at(-1)!, points.at(-2)!]].reduce((sum, [head, next]) => {
+    const length = distance(head, next)
+    return sum + distance({ x: head.x + (head.x - next.x) / length * radius, y: head.y + (head.y - next.y) / length * radius }, area.entry)
+  }, 0)
   const reject = (reason: string, point?: Point) => {
     if (trace) { const counts = trace.rejected ??= {}; counts[reason] = (counts[reason] ?? 0) + 1; trace.point = point }
   }
@@ -211,49 +216,76 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
       if (!nearTube(samples[i], pitch * .8, true)) gaps++
     }
     const result = { points, pattern, lengthM: geometry.length * scale / 8000, gapRatio: gaps / Math.max(1, samples.length) }
-    if (!best || result.gapRatio < best.gapRatio - .001 || Math.abs(result.gapRatio - best.gapRatio) <= .001 && distance(points[0], area.entry) < distance(best.points[0], area.entry)) best = result
+    const entrySignature = (head: Point, next: Point) => {
+      const length = distance(head, next)
+      return [head.x, head.y, (head.x - next.x) / length, (head.y - next.y) / length].map((value) => Math.round(value * 1e6) / 1e6)
+    }
+    // Swapping supply and return does not open a different physical inlet.
+    const entryKey = JSON.stringify([entrySignature(points[0], points[1]), entrySignature(points.at(-1)!, points.at(-2)!) ]
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
+    const previous = entries.get(entryKey)
+    if (!previous || result.gapRatio < previous.gapRatio) entries.set(entryKey, result)
+    const acceptable = result.gapRatio <= .02, previousAcceptable = best && best.gapRatio <= .02
+    if (!best || acceptable && !previousAcceptable || acceptable && previousAcceptable && entryDistance(points) < entryDistance(best.points) - 1e-6 ||
+      !acceptable && !previousAcceptable && result.gapRatio < best.gapRatio - .001) best = result
+  }
+  const selected = () => {
+    const variants = [...entries.values()].filter((loop) => loop.gapRatio <= .02).sort((a, b) => entryDistance(a.points) - entryDistance(b.points))
+    return settings.entryVariant && variants.length ? variants[settings.entryVariant % variants.length] : best
   }
   // Rectangles retain the established, audited centre turn. Irregular areas
   // use complete inset outlines, rather than independent rectangle fragments.
   if (initial.boundaries.length === 1 && initial.boundaries[0].length === 4) {
     const b = heatingAreaBounds(initial), w = Math.floor(b.width / pitch + 1e-7) * pitch, h = Math.floor(b.height / pitch + 1e-7) * pitch
-    const field = rectangularHeatingField(w, h, { ...settings, returnToEntrySide: true }, scale, checkpoint)
-    if (field) for (const flipX of [false, true]) for (const flipY of [false, true]) evaluate(field.points.map((p) => ({ x: b.x + (b.width - w) / 2 + (flipX ? w - p.x : p.x), y: b.y + (b.height - h) / 2 + (flipY ? h - p.y : p.y) })), field.pattern)
-    if (best?.gapRatio < .02) return best
-  }
-  const outer = rings[0] ?? []
-  const seams = outer.map((corner, i) => ({ corner, previous: outer[(i + outer.length - 1) % outer.length], score: distance(corner, area.entry) }))
-    .filter(({ corner, previous }) => distance(corner, previous) >= 2 * pitch).sort((a, b) => a.score - b.score)
-  for (const seam of seams.slice(0, 8)) {
-    const ux = seam.corner.x - seam.previous.x, uy = seam.corner.y - seam.previous.y, length = Math.hypot(ux, uy)
-    const open = (ring: Point[]) => {
-      const choices = ring.map((corner, index) => ({ corner, index, previous: ring[(index + ring.length - 1) % ring.length] }))
-        .filter(({ corner, previous }) => Math.abs((corner.x - previous.x) * uy - (corner.y - previous.y) * ux) < 1e-6 &&
-          (corner.x - previous.x) * ux + (corner.y - previous.y) * uy > 0 && distance(corner, previous) >= 2 * pitch)
-        .sort((a, b) => distance(a.corner, seam.corner) - distance(b.corner, seam.corner))
-      const selected = choices[0]
-      if (!selected) return null
-      return [...Array.from({ length: ring.length }, (_, n) => ring[(selected.index + n) % ring.length]),
-        { x: selected.corner.x - ux / length * 2 * pitch, y: selected.corner.y - uy / length * 2 * pitch }]
-    }
-    const paths = rings.map(open)
-    for (let count = paths.findIndex((path) => !path) < 0 ? paths.length : paths.findIndex((path) => !path); count >= 2; count--) {
-      const supply = paths.slice(0, count).filter((_, i) => !(i % 2)).flat(), inwardReturn = paths.slice(0, count).filter((_, i) => i % 2).flat()
-      const advance = (path: Point[], amount: number) => {
-        const end = path.at(-1)!, previous = path.at(-2)!, length = distance(end, previous)
-        return [...path.slice(0, -1), { x: end.x + (end.x - previous.x) / length * amount, y: end.y + (end.y - previous.y) / length * amount }]
+    const anchored = { x: area.entry.x < b.x + b.width / 2 ? 0 : b.width - w,
+      y: area.entry.y < b.y + b.height / 2 ? 0 : b.height - h }
+    for (const offset of [anchored, { x: (b.width - w) / 2, y: (b.height - h) / 2 }]) {
+      for (const axis of [undefined, 'x', 'y'] as const) {
+        const field = rectangularHeatingField(w, h, { ...settings, returnToEntrySide: true }, scale, checkpoint, axis)
+        if (field) for (const flipX of [false, true]) for (const flipY of [false, true]) evaluate(field.points.map((p) => ({ x: b.x + offset.x + (flipX ? w - p.x : p.x), y: b.y + offset.y + (flipY ? h - p.y : p.y) })), field.pattern)
       }
-      for (const amount of [0, pitch / 2, pitch, pitch * 1.5]) {
-        const x = advance(supply, amount), y = advance(inwardReturn, amount), a = x.at(-1)!, b = y.at(-1)!
-        for (const corner of [{ x: a.x, y: b.y }, { x: b.x, y: a.y }]) evaluate([...x, corner, ...[...y].reverse()], 'spiral')
-      }
-      if (best?.gapRatio < .02) break
+      if (best?.gapRatio < .02) return selected()
     }
-    if (best?.gapRatio < .02) break
   }
-  if ((!best || best.gapRatio > .02) && initial.boundaries.length === 1) {
+  for (const orientedRings of [rings, rings.map((ring) => [...ring].reverse())]) {
+    const outer = orientedRings[0] ?? []
+    const seams = outer.map((corner, i) => ({ corner, previous: outer[(i + outer.length - 1) % outer.length], score: distance(corner, area.entry) }))
+      .filter(({ corner, previous }) => distance(corner, previous) >= 2 * pitch).sort((a, b) => a.score - b.score)
+    for (const seam of seams.slice(0, 8)) {
+      const ux = seam.corner.x - seam.previous.x, uy = seam.corner.y - seam.previous.y, length = Math.hypot(ux, uy)
+      const open = (ring: Point[]) => {
+        const choices = ring.map((corner, index) => ({ corner, index, previous: ring[(index + ring.length - 1) % ring.length] }))
+          .filter(({ corner, previous }) => Math.abs((corner.x - previous.x) * uy - (corner.y - previous.y) * ux) < 1e-6 &&
+            (corner.x - previous.x) * ux + (corner.y - previous.y) * uy > 0 && distance(corner, previous) >= 2 * pitch)
+          .sort((a, b) => distance(a.corner, seam.corner) - distance(b.corner, seam.corner))
+        const selected = choices[0]
+        if (!selected) return null
+        return [...Array.from({ length: ring.length }, (_, n) => ring[(selected.index + n) % ring.length]),
+          { x: selected.corner.x - ux / length * 2 * pitch, y: selected.corner.y - uy / length * 2 * pitch }]
+      }
+      const paths = orientedRings.map(open)
+      for (let count = paths.findIndex((path) => !path) < 0 ? paths.length : paths.findIndex((path) => !path); count >= 2; count--) {
+        const supply = paths.slice(0, count).filter((_, i) => !(i % 2)).flat(), inwardReturn = paths.slice(0, count).filter((_, i) => i % 2).flat()
+        const advance = (path: Point[], amount: number) => {
+          const end = path.at(-1)!, previous = path.at(-2)!, length = distance(end, previous)
+          return [...path.slice(0, -1), { x: end.x + (end.x - previous.x) / length * amount, y: end.y + (end.y - previous.y) / length * amount }]
+        }
+        for (const amount of [0, pitch / 2, pitch, pitch * 1.5]) {
+          const x = advance(supply, amount), y = advance(inwardReturn, amount), a = x.at(-1)!, b = y.at(-1)!
+          for (const corner of [{ x: a.x, y: b.y }, { x: b.x, y: a.y }]) evaluate([...x, corner, ...[...y].reverse()], 'spiral')
+        }
+        if (best?.gapRatio < .02) break
+      }
+      if (best?.gapRatio < .02 && !settings.entryVariant) break
+    }
+    if (best?.gapRatio < .02 && !settings.entryVariant) break
+  }
+  if ((!best || best.gapRatio > .02 || entryDistance(best.points) > radius * 8) && initial.boundaries.length === 1) {
     // A U-shaped area can lose its connecting neck during inward offsets.
     // A bounded monotone sweep plus one outer return keeps it a single tube.
+    // Also compare this fallback when a complete spiral can only enter far
+    // from the accessible corner. Otherwise a valid coil can seal its own
+    // practical approach, despite a mixed pattern having a nearby inlet.
     for (const transpose of [false, true]) for (const flipX of [false, true]) for (const flipY of [false, true]) {
       const transform = (p: Point) => ({ x: (transpose ? p.y : p.x) * (flipX ? -1 : 1), y: (transpose ? p.x : p.y) * (flipY ? -1 : 1) })
       const inverse = (p: Point) => { const x = p.x * (flipX ? -1 : 1), y = p.y * (flipY ? -1 : 1); return transpose ? { x: y, y: x } : { x, y } }
@@ -359,7 +391,7 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
       if (joined) evaluate(joined.points, joined.pattern)
     }
   }
-  return best
+  return selected()
 }
 
 const areaLoopCache = new Map<string, { loop: HeatingAreaLoop | null; trace: HeatingAreaTrace }>()
@@ -373,7 +405,7 @@ export const generateHeatingAreaLoop = (area: HeatingArea, settings: HeatingArea
   const normalized: HeatingArea = { boundaries: area.boundaries.map((ring) => ring.map(shift)), entry: shift(area.entry),
     ...(area.clearance ? { clearance: { boundaries: area.clearance.boundaries.map((ring) => ring.map(shift)), edge: area.clearance.edge,
       bounds: { ...area.clearance.bounds, x: area.clearance.bounds.x - origin.x, y: area.clearance.bounds.y - origin.y } } } : {}) }
-  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, scale])
+  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, scale, settings.entryVariant ?? 0])
   let cached = areaLoopCache.get(key)
   if (!cached) {
     const details: HeatingAreaTrace = {}, loop = buildHeatingAreaLoop(normalized, settings, scale, checkpoint, details)
@@ -387,8 +419,9 @@ export const generateHeatingAreaLoop = (area: HeatingArea, settings: HeatingArea
 type AreaPartition = { areas: HeatingArea[]; score: number }
 /** Allocate connected areas before drawing tubes. Structural vertices are
  * candidate cuts too: a cabinet recess is not forced into an equal-width strip. */
-export const partitionHeatingArea = (source: HeatingArea, count: number, settings: HeatingAreaSettings, scale: number,
-  options: { checkpoint?: () => void; leadM?: (point: Point) => number; axis?: 'x' | 'y'; onRejectedArea?: (area: HeatingArea, trace?: HeatingAreaTrace) => void } = {}) => {
+type PartitionOptions = { checkpoint?: () => void; leadM?: (point: Point) => number; entryPoint?: Point; axis?: 'x' | 'y'; variant?: number; onRejectedArea?: (area: HeatingArea, trace?: HeatingAreaTrace) => void }
+const partitionHeatingAreaWithAxes = (source: HeatingArea, count: number, settings: HeatingAreaSettings, scale: number,
+  options: PartitionOptions = {}) => {
   const checkpoint = options.checkpoint ?? (() => {}), pitch = drawingUnitsForMetres(settings.spacingMm / 1000, scale)
   const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
   const physicalEdge = drawingUnitsForMetres((settings.edgeMm ?? 100) / 1000, scale)
@@ -399,12 +432,29 @@ export const partitionHeatingArea = (source: HeatingArea, count: number, setting
   const area = insetHeatingArea(centreFloor, -pitch / 2), localSettings = { ...settings, edgeMm: settings.spacingMm / 2 }
   area.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(area) }
   const memo = new Map<string, AreaPartition[]>(), loopMemo = new Map<string, HeatingAreaLoop | null>(), rejected = new Set<string>(), traces = new Map<string, HeatingAreaTrace>()
-  const cost = (a: HeatingArea, groups: number) => {
+  const cost = (a: HeatingArea, groups: number): number => {
+    const components = heatingAreaComponents(a)
+    if (groups > 1 && components.length === groups) return Math.max(...components.map((component) => cost(component, 1)))
     const b = heatingAreaBounds(a), surface = heatingAreaSurface(a), length = surface * (scale / 8000) ** 2 / (settings.spacingMm / 1000)
     const lead = options.leadM?.({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) ?? 0
     return length / groups + 2 * lead
   }
   let expanded = 0
+  const family = (areas: HeatingArea[], aspect = true) => JSON.stringify(areas.map((area) => {
+    const box = heatingAreaBounds(area)
+    const corners = area.boundaries.reduce((sum, ring) => sum + ring.filter((p, i) => {
+      const before = ring[(i + ring.length - 1) % ring.length], next = ring[(i + 1) % ring.length]
+      return distance(before, p) >= radius && distance(p, next) >= radius &&
+        Math.abs((p.x - before.x) * (next.y - p.y) - (p.y - before.y) * (next.x - p.x)) > 1e-5
+    }).length, 0)
+    return [corners, area.boundaries.length, aspect ? box.width >= box.height ? 1 : 0 : 0]
+  }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
+  const diverse = <T>(values: T[], signature: (value: T) => string) => {
+    const first = new Map<string, T>()
+    for (const value of values) if (!first.has(signature(value))) first.set(signature(value), value)
+    const chosen = new Set(first.values())
+    return [...chosen, ...values.filter((value) => !chosen.has(value))]
+  }
   const plan = (a: HeatingArea, groups: number, depth = 0): AreaPartition[] => {
     checkpoint()
     const key = JSON.stringify([a.boundaries, groups]), cached = memo.get(key)
@@ -415,7 +465,28 @@ export const partitionHeatingArea = (source: HeatingArea, count: number, setting
       return laying.boundaries.filter((ring) => signedArea(ring) > 0).length === 1 ? [{ areas: [a], score: cost(a, 1) }] : []
     }
     if (++expanded > 1000 || depth > 6) return []
-    const box = heatingAreaBounds(a), areaM2 = heatingAreaSurface(a), candidates: { a: HeatingArea; b: HeatingArea; left: number; score: number }[] = []
+    const components = heatingAreaComponents(a)
+    if (components.length > 1) {
+      if (components.length > groups) return []
+      let states = [{ areas: [] as HeatingArea[], score: 0, used: 0 }]
+      for (const [index, component] of components.entries()) {
+        if (a.clearance) component.clearance = { ...a.clearance, bounds: heatingAreaBounds(component) }
+        const next: (AreaPartition & { used: number })[] = []
+        for (const state of states) for (let count = 1; count <= groups - state.used - (components.length - index - 1); count++) {
+          for (const child of plan(component, count, depth + 1).slice(0, 2)) next.push({
+            areas: [...state.areas, ...child.areas], used: state.used + count,
+            score: Math.max(state.score, child.score) + (state.score + child.score) * .001 })
+        }
+        const retained = new Map<number, number>()
+        states = next.sort((a, b) => a.score - b.score).filter((state) => {
+          const count = retained.get(state.used) ?? 0
+          retained.set(state.used, count + 1); return count < 8
+        })
+      }
+      const result = states.filter((state) => state.used === groups).slice(0, 8)
+      memo.set(key, result); return result
+    }
+    const box = heatingAreaBounds(a), areaM2 = heatingAreaSurface(a), candidates: { a: HeatingArea; b: HeatingArea; left: number; score: number; family: string }[] = []
     for (const axis of options.axis ? [options.axis] : ['x', 'y'] as const) {
       const start = axis === 'x' ? box.x : box.y, span = axis === 'x' ? box.width : box.height
       const values = new Set(a.boundaries.flatMap((path) => path.flatMap((p) => [-4, -2, 0, 2, 4].map((n) => p[axis] + n * pitch))))
@@ -426,45 +497,104 @@ export const partitionHeatingArea = (source: HeatingArea, count: number, setting
         const second = layingContours(intersectHeatingAreas(a, rectangularHeatingArea({ ...box, ...(axis === 'x' ? { x: value, width: box.x + box.width - value } : { y: value, height: box.y + box.height - value }) })), pitch, radius)
         first.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(first) }
         second.clearance = { boundaries: source.boundaries, edge: physicalEdge, bounds: heatingAreaBounds(second) }
-        if (first.boundaries.filter((p) => signedArea(p) > 0).length !== 1 || second.boundaries.filter((p) => signedArea(p) > 0).length !== 1) continue
+        const firstCount = first.boundaries.filter((p) => signedArea(p) > 0).length
+        const secondCount = second.boundaries.filter((p) => signedArea(p) > 0).length
+        if (!firstCount || !secondCount || firstCount + secondCount > groups) continue
         const ratio = heatingAreaSurface(first) / areaM2
-        for (const left of new Set([Math.round(ratio * groups), Math.floor(ratio * groups), Math.ceil(ratio * groups)])) {
-          if (left < 1 || left >= groups) continue
+        for (const left of new Set([Math.round(ratio * groups), Math.floor(ratio * groups), Math.ceil(ratio * groups), firstCount, groups - secondCount])) {
+          if (left < firstCount || groups - left < secondCount) continue
           const ca = cost(first, left), cb = cost(second, groups - left)
-          candidates.push({ a: first, b: second, left, score: Math.max(ca, cb) + Math.abs(ca - cb) * .1 })
+          candidates.push({ a: first, b: second, left, family: `${axis}:${firstCount}:${secondCount}:${left}`,
+            score: Math.max(ca, cb) + Math.abs(ca - cb) * .1 })
         }
       }
     }
     candidates.sort((a, b) => a.score - b.score)
     const result: AreaPartition[] = []
-    for (const choice of candidates.slice(0, depth ? 8 : 16)) {
+    for (const choice of diverse(candidates, (choice) => choice.family).slice(0, depth ? 8 : 16)) {
       const left = plan(choice.a, choice.left, depth + 1), right = plan(choice.b, groups - choice.left, depth + 1)
       for (const a of left.slice(0, 2)) for (const b of right.slice(0, 2)) result.push({ areas: [...a.areas, ...b.areas], score: Math.max(a.score, b.score) + (a.score + b.score) * .001 })
     }
     result.sort((a, b) => a.score - b.score)
-    memo.set(key, result.slice(0, 8)); return result.slice(0, 8)
+    const retained = diverse(result, (partition) => family(partition.areas)).slice(0, 8)
+    memo.set(key, retained); return retained
   }
   if (!Number.isInteger(count) || count < 1 || count > 24 || !area.boundaries.length) return null
   let best: { loops: HeatingAreaLoop[]; areas: HeatingArea[]; maxM: number; gapRatio: number } | null = null
+  const alternatives: NonNullable<typeof best>[] = [], seenPartitions = new Set<string>()
+  const variant = Number.isSafeInteger(options.variant) && options.variant! >= 0 ? options.variant! : 0
+  const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+  const score = (candidate: NonNullable<typeof best>) => [candidate.gapRatio > .05 ? 1 : 0,
+    Math.max(0, candidate.maxM + limits.allowanceM - limits.maxCircuitLengthM), candidate.gapRatio > .02 ? 1 : 0,
+    candidate.loops.filter((loop) => loop.pattern !== 'spiral').length, candidate.maxM, candidate.gapRatio]
+  const better = (candidate: NonNullable<typeof best>, previous: NonNullable<typeof best>) => {
+    const a = score(candidate), b = score(previous)
+    const difference = a.map((value, i) => value - b[i]).find((value) => Math.abs(value) > 1e-7)
+    return difference !== undefined && difference < 0
+  }
   for (let round = 0; round < 4; round++) {
     const previousRejected = rejected.size, plans = plan(area, count)
     for (const proposal of plans.slice(0, 8)) {
     const loops: HeatingAreaLoop[] = []
     for (const a of proposal.areas) {
       const key = JSON.stringify(a.boundaries)
+      if (options.entryPoint) a.entry = options.entryPoint
+      else if (options.leadM && !loopMemo.has(key)) {
+        const centre = layingContours(insetHeatingArea(a, pitch / 2), pitch, radius)
+        let bestCost = Infinity
+        for (const ring of centre.boundaries) for (let i = 0; i < ring.length; i++) for (const next of [ring[(i + 1) % ring.length], ring[(i + ring.length - 1) % ring.length]]) {
+          const head = ring[i], length = distance(head, next)
+          if (!length) continue
+          const entry = { x: head.x + (head.x - next.x) / length * radius, y: head.y + (head.y - next.y) / length * radius }
+          const cost = options.leadM(entry)
+          if (cost < bestCost) { bestCost = cost; a.entry = entry }
+        }
+      }
       if (!loopMemo.has(key)) { const trace = {}; traces.set(key, trace); loopMemo.set(key, generateHeatingAreaLoop(a, localSettings, scale, checkpoint, trace)) }
       const loop = loopMemo.get(key)
       if (!loop) { rejected.add(key); options.onRejectedArea?.(a, traces.get(key)); break }
+      if (loop.gapRatio > .05) { rejected.add(key); break }
+      if (loop.lengthM + (options.leadM?.(loop.points[0]) ?? 0) + (options.leadM?.(loop.points.at(-1)!) ?? 0) + limits.allowanceM > limits.maxCircuitLengthM + .05) {
+        // Feed lengths can unbalance unequal wings even when their combined
+        // average looks fine. Feed this failed leaf back into the partitioner.
+        rejected.add(key); break
+      }
       loops.push(loop)
     }
     if (loops.length !== count) continue
     const maxM = Math.max(...loops.map((loop) => loop.lengthM + (options.leadM?.(loop.points[0]) ?? 0) + (options.leadM?.(loop.points.at(-1)!) ?? 0)))
     const gapRatio = Math.max(...loops.map((loop) => loop.gapRatio)), candidate = { loops, areas: proposal.areas, maxM, gapRatio }
-    if (!best || gapRatio < best.gapRatio - .01 || Math.abs(gapRatio - best.gapRatio) <= .01 && maxM < best.maxM) best = candidate
-    if (gapRatio <= .02 && maxM + heatingDesignLimits(settings.diameterMm, settings.design).allowanceM <= heatingDesignLimits(settings.diameterMm, settings.design).maxCircuitLengthM) return best
+    if (!best || better(candidate, best)) best = candidate
+    if (gapRatio <= .02 && maxM + limits.allowanceM <= limits.maxCircuitLengthM) {
+      const signature = JSON.stringify(proposal.areas.map((area) => JSON.stringify(area.boundaries)).sort())
+      if (!seenPartitions.has(signature)) {
+        seenPartitions.add(signature); alternatives.push(candidate)
+        const spirals = alternatives.filter((candidate) => candidate.loops.every((loop) => loop.pattern === 'spiral'))
+        if (spirals.length > variant) return spirals[variant]
+      }
+    }
     }
     if (rejected.size === previousRejected) break
     memo.clear(); expanded = 0
   }
-  return best
+  alternatives.sort((a, b) => a.loops.filter((loop) => loop.pattern !== 'spiral').length - b.loops.filter((loop) => loop.pattern !== 'spiral').length ||
+    a.maxM - b.maxM || a.gapRatio - b.gapRatio)
+  const choices = diverse(alternatives, (partition) => family(partition.areas, false))
+  return choices.length ? choices[variant % choices.length] : best
+}
+
+/** Preserve a complete preferred layout; use directional searches to recover
+ * geometry that the mixed-axis estimate could otherwise prune too early. */
+export const partitionHeatingArea = (source: HeatingArea, count: number, settings: HeatingAreaSettings, scale: number,
+  options: PartitionOptions = {}) => {
+  const preferred = partitionHeatingAreaWithAxes(source, count, settings, scale, options)
+  const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+  const feasible = (candidate: NonNullable<typeof preferred>) => candidate.gapRatio <= .05 &&
+    candidate.maxM + limits.allowanceM <= limits.maxCircuitLengthM + .05
+  if (options.axis || count < 3 || preferred && feasible(preferred) && preferred.loops.every((loop) => loop.pattern === 'spiral')) return preferred
+  const candidates = [preferred, ...(['x', 'y'] as const).map((axis) => partitionHeatingAreaWithAxes(source, count, settings, scale, { ...options, axis }))]
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+  candidates.sort((a, b) => Number(!feasible(a)) - Number(!feasible(b)) ||
+    a.loops.filter((loop) => loop.pattern !== 'spiral').length - b.loops.filter((loop) => loop.pattern !== 'spiral').length)
+  return candidates[0] ?? null
 }

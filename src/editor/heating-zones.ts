@@ -25,7 +25,12 @@ export const reserveHeatingFeedPairs = (grid: HeatingGrid, original: HeatingGrid
       const cells = member.cells.filter((cell) => grid.room[cell] === room.id && !grid.obstacle[cell] && !omitted.has(cell) && distances[cell] > radius)
       return cells.length ? [{ id: member.id, cells, count: 0 }] : []
     })
-    for (let i = 0; i < count; i++) {
+    // Small native rooms still need a supply and return when the group budget
+    // can give each room a coil. Pure area weighting starved landings while
+    // reserving those same tubes unnecessarily inside the largest room.
+    const minimum = count >= members.length ? members.length : 0
+    if (minimum) for (const member of members) member.count = 1
+    for (let i = minimum; i < count; i++) {
       checkpoint()
       members.sort((a, b) => b.cells.length / (b.count + 1) - a.cells.length / (a.count + 1))
       if (!members.length) throw new Error(`${room.name}: geen vrije ruimte voor aanvoer en retour.`)
@@ -63,9 +68,18 @@ export const reserveHeatingFeedPairs = (grid: HeatingGrid, original: HeatingGrid
   const cellPenalty = grid.feedReservation ? Float32Array.from(grid.feedReservation, (value, cell) => !value && grid.room[cell] > 0 ? 10 : 0) : undefined
   onProgress?.(0, goals.length)
   let blockedGoal = 0
-  const paths = routeHeatingBundle(grid, stubs.map((stub) => stub.at(-1)!), goals, blocked,
-    { allowWalls: true, permittedWallCells, checkpoint, cellPenalty, onBlocked: (indices) => { blockedGoal = indices[0] ?? 0 } },
-    (done) => onProgress?.(done, goals.length))
+  const endpoints = stubs.map((stub) => stub.at(-1)!)
+  const progress = (done: number) => onProgress?.(done, goals.length)
+  // Reserve the actual door network before laying any coils. Cheap wall
+  // shortcuts otherwise leave the source door with no usable transit corridor.
+  let routeWalls: ReadonlySet<number> = new Set()
+  let paths = routeHeatingBundle(grid, endpoints, goals, blocked,
+    { checkpoint, cellPenalty, onBlocked: (indices) => { blockedGoal = indices[0] ?? 0 } }, progress)
+  if (!paths && permittedWallCells.size) {
+    routeWalls = permittedWallCells
+    paths = routeHeatingBundle(grid, endpoints, goals, blocked,
+      { allowWalls: true, permittedWallCells, checkpoint, cellPenalty, onBlocked: (indices) => { blockedGoal = indices[0] ?? 0 } }, progress)
+  }
   if (!paths) throw new HeatingFeedReservationFailure(grid.point(goals[blockedGoal]))
   const loopObstacle = grid.loopObstacle.slice(), feedReservation = grid.feedReservation?.slice() ?? new Uint8Array(grid.wall.length)
   const feedCorridor = grid.feedCorridor?.slice() ?? new Uint8Array(grid.wall.length)
@@ -76,7 +90,7 @@ export const reserveHeatingFeedPairs = (grid: HeatingGrid, original: HeatingGrid
     const first = path.findIndex((cell) => original.room[cell] === nativeIds[index])
     return first > 0 ? path.slice(0, first + 1) : path
   })
-  const leadDistances = heatingAccessDistances(original, stubs.map((stub) => stub.at(-1)!), permittedWallCells,
+  const leadDistances = heatingAccessDistances(original, stubs.map((stub) => stub.at(-1)!), routeWalls,
     original.room[stubs[0].at(-1)!] > 0, checkpoint)
   const feedDistances = leadDistances.slice(), assigned = new Set(nativeIds)
   for (const room of original.rooms) if (assigned.has(room.id)) for (const cell of room.cells) feedDistances[cell] = -1
@@ -215,7 +229,9 @@ export const reserveHeatingAccess = (grid: HeatingGrid, routingObstacle: Uint8Ar
   const centred = routingObstacle.slice()
   for (let cell = 0; cell < centred.length; cell++) if (clear[cell] < bundleClearance) centred[cell] = 1
   const routingGrid = { ...grid, obstacle: centred }, loopObstacle = grid.loopObstacle.slice(), origin = options.origin ?? position
-  const sourceCells = zone.cells.filter((cell) => !centred[cell])
+  // A shared thermal zone can contain several native rooms. Its free laying
+  // cells are not interchangeable with the actual distributor room.
+  const sourceCells = zone.cells.filter((cell) => original.room[cell] === originalSource && !centred[cell])
   if (!sourceCells.length) return grid
   const source = sourceCells.reduce((best, cell) => {
     const p = grid.point(cell), q = grid.point(best)

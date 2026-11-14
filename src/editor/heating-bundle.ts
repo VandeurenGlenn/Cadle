@@ -23,7 +23,8 @@ class Heap {
  * bundle exists. This avoids exponential backtracking of fixed port pairs.
  * Rounded geometry remains a separate, mandatory validation step. */
 export const routeHeatingBundle = (grid: HeatingGrid, sources: readonly number[], goals: readonly number[], blocked: Uint8Array,
-  options: HeatingRoutingOptions & { onBlocked?: (goals: number[]) => void }, onProgress?: (done: number) => void): Path[] | null => {
+  options: HeatingRoutingOptions & { onBlocked?: (goals: number[]) => void;
+    onBottleneck?: (routed: number, cut: number[]) => void }, onProgress?: (done: number) => void): Path[] | null => {
   if (!sources.length || sources.length < goals.length || new Set(sources).size !== sources.length || new Set(goals).size !== goals.length) return null
   const size = grid.wall.length, states = size * 2
   if ([...sources, ...goals].some((c) => c < 0 || blocked[c] || grid.obstacle[c] || !heatingWallAllowed(grid, c, options))) return null
@@ -80,7 +81,14 @@ export const routeHeatingBundle = (grid: HeatingGrid, sources: readonly number[]
         }
       } else if (incoming[cell] >= 0) relax(state, incoming[cell] * 2 + 1, -cost(incoming[cell], cell), incoming[cell] - cell)
     }
-    if (found < 0) { options.onBlocked?.(goals.flatMap((_, i) => !goalUsed[i] ? [i] : [])); return null }
+    if (found < 0) {
+      if (options.onBottleneck) {
+        const cut: number[] = []
+        for (let cell = 0; cell < size; cell++) if (used[cell] && closed[cell * 2] && !closed[cell * 2 + 1]) cut.push(cell)
+        options.onBottleneck(flow, cut)
+      }
+      options.onBlocked?.(goals.flatMap((_, i) => !goalUsed[i] ? [i] : [])); return null
+    }
     const endDistance = distance[found]
     for (let i = 0; i < states; i++) potential[i] += Math.min(distance[i], endDistance)
     const path: number[] = [found]

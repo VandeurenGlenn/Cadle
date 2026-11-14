@@ -12,6 +12,7 @@ export type HeatingPlanningProgress = {
   circuits?: number
   completedRooms?: number
   completedCircuits?: number
+  preparedCircuits?: number
   attempt?: number
   layoutLimit?: number
 }
@@ -26,8 +27,9 @@ export type HeatingPlannerInput = {
   scale: DrawingScale
   pageArea: { x: number; y: number; width: number; height: number }
 }
-export type HeatingPlannerRequest = HeatingPlannerInput & { id: string }
+export type HeatingPlannerRequest = (HeatingPlannerInput & { id: string; type?: 'start'; timeSliceMs?: number }) | { id: string; type: 'resume'; timeSliceMs?: number }
 export type HeatingPlannerResponse =
+  | { type: 'paused'; message: string }
   | { type: 'progress'; progress: HeatingPlanningProgress }
   | { type: 'result'; result: AutomaticHeatingResult }
   | { type: 'error'; message: string; diagnostics?: import('./heating-diagnostics.js').HeatingPlanningDiagnostic }
@@ -37,6 +39,7 @@ export const heatingProgressText = (progress: HeatingPlanningProgress | null): s
   const attempt = progress.layoutLimit ? ` · indeling ${progress.attempt ?? 1}/${progress.layoutLimit}` : progress.attempt && progress.attempt > 1 ? ` · indeling ${progress.attempt}` : ''
   if (progress.phase === 'feeds') return `Aanvoer en retour reserveren · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} paren${attempt}…`
   if (progress.phase === 'circuits') return `Slakkenhuizen indelen${attempt}${progress.rooms ? ` · ${progress.completedRooms ?? 0}/${progress.rooms} ruimtes` : ''}${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.remainingFields !== undefined ? ` · ${progress.remainingFields} deelvlakken` : ''}${progress.routeAttempts ? ` · ${progress.routeAttempts} routepogingen` : ''}…`
-  if (progress.phase === 'connections') return `Aansluitingen zoeken · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} kringen${progress.roomName ? ` · ${progress.roomName}` : ''}${attempt}…`
+  if (progress.phase === 'connections' && progress.preparedCircuits !== undefined && progress.preparedCircuits < (progress.circuits ?? 0)) return `Aansluitingen voorbereiden · ${progress.preparedCircuits}/${progress.circuits} kringen${attempt}…`
+  if (progress.phase === 'connections') return `Aansluitingen zoeken · ${progress.completedCircuits ?? 0}/${progress.circuits ?? 0} kringen${progress.roomName ? ` · ${progress.roomName}` : ''}${progress.routeAttempts ? ` · routepoging ${progress.routeAttempts}` : ''}${attempt}…`
   return 'Kringen, lengtes en kringentabel controleren…'
 }

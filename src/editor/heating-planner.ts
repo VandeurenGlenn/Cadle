@@ -1,3 +1,4 @@
+import { HEATING_PLANNING_SLICE_MS } from './heating-planning-session.js'
 import type { AutomaticHeatingResult } from './automatic-heating-plan.js'
 import { HeatingPlanningFailure } from './heating-diagnostics.js'
 import type { HeatingPlannerInput, HeatingPlannerResponse, HeatingPlanningProgress } from './heating-planner-protocol.js'
@@ -16,6 +17,8 @@ export const runHeatingPlanner = (input: HeatingPlannerInput, options: {
   onProgress?: (progress: HeatingPlanningProgress) => void
   createWorker?: () => HeatingPlannerWorker
   timeoutMs?: number
+  timeSliceMs?: number
+  onPaused?: (resume: () => void, message: string) => void
 } = {}): Promise<AutomaticHeatingResult> => new Promise((resolve, reject) => {
   const aborted = () => new DOMException('Berekening geannuleerd.', 'AbortError')
   if (options.signal?.aborted) { reject(aborted()); return }
@@ -32,12 +35,25 @@ export const runHeatingPlanner = (input: HeatingPlannerInput, options: {
     else resolve(result!)
   }
   const cancel = () => finish(aborted())
+  const id = crypto.randomUUID(), timeSliceMs = options.timeSliceMs ?? HEATING_PLANNING_SLICE_MS
+  let paused = false
+  // This watchdog covers an unresponsive worker, not a cooperative pause.
+  const armWatchdog = () => { clearTimeout(timer); timer = setTimeout(() => finish(new Error('De achtergrondplanner reageert niet meer; de berekening is gestopt omdat ze te lang duurde. Het bestaande plan is behouden.')), options.timeoutMs ?? timeSliceMs + 10000) }
+  const resume = () => {
+    if (settled || !paused) return
+    paused = false; armWatchdog()
+    try { worker.postMessage({ type: 'resume', id, timeSliceMs }) } catch { finish(new Error('De achtergrondplanner kon niet hervatten.')) }
+  }
   try {
     worker = options.createWorker?.() ?? new Worker(new URL('./heating-planner-worker.js', import.meta.url), { type: 'module' })
     worker.onmessage = ({ data }) => {
       if (settled) return
       if (data.type === 'result') finish(undefined, data.result)
       else if (data.type === 'error') finish(data.diagnostics ? new HeatingPlanningFailure(data.message, data.diagnostics) : new Error(data.message))
+      else if (data.type === 'paused') {
+        clearTimeout(timer); paused = true
+        try { if (options.onPaused) options.onPaused(resume, data.message); else finish(new Error(data.message)) } catch (error) { finish(error instanceof Error ? error : new Error(String(error))) }
+      }
       else if (data.type === 'progress') {
         try { options.onProgress?.(data.progress) } catch (error) { finish(error instanceof Error ? error : new Error(String(error))) }
       }
@@ -46,7 +62,7 @@ export const runHeatingPlanner = (input: HeatingPlannerInput, options: {
     worker.onmessageerror = () => finish(new Error('Het resultaat van de achtergrondplanner kon niet worden gelezen.'))
     options.signal?.addEventListener('abort', cancel, { once: true })
     if (options.signal?.aborted) { cancel(); return }
-    timer = setTimeout(() => finish(new Error('De berekening is gestopt omdat ze te lang duurde. Het bestaande plan is behouden.')), options.timeoutMs ?? 60000)
-    worker.postMessage({ ...input, id: crypto.randomUUID() })
+    armWatchdog()
+    worker.postMessage({ ...input, id, timeSliceMs })
   } catch (error) { finish(error instanceof Error ? error : new Error(String(error))) }
 })

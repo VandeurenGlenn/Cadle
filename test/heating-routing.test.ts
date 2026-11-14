@@ -1,6 +1,10 @@
+import { createHeatingPipe, heatingPipeData } from '../src/editor/heating-pipe.ts'
+import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
+import { segmentDistance } from '../src/editor/heating-distance.ts'
+import { heatingPathPoints } from '../src/editor/heating-routing.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { routeHeating, heatingSharedDoors, heatingRouteCorridor, type HeatingGrid } from '../src/editor/heating-routing.ts'
+import { routeHeating, heatingGridRound, heatingSharedDoors, heatingRouteCorridor, type HeatingGrid } from '../src/editor/heating-routing.ts'
 
 const grid = (width: number, height: number): HeatingGrid => ({
   origin: { x: 0, y: 0 }, step: 1, width, height,
@@ -12,6 +16,24 @@ const grid = (width: number, height: number): HeatingGrid => ({
 })
 const entries = (g: HeatingGrid, path: number[]) => path.filter((cell, i) =>
   g.wall[cell] && !g.door[cell] && (!i || !g.wall[path[i - 1]] || g.door[path[i - 1]])).length
+
+test('rendered and searched half-cell positions keep the same wall and doorway classification', () => {
+  assert.equal(heatingGridRound(10.5 - 1e-12), 11)
+  assert.equal(heatingGridRound(10.5 + 1e-12), 11)
+  assert.equal(heatingGridRound(10.49), 10)
+  assert.equal(heatingGridRound(-.5 - 1e-12), 0)
+})
+
+test('every routing strategy keeps physical tube obstacles, including the arc fallback', () => {
+  const g = grid(61, 41), start = g.index({ x: 10, y: 20 }), end = g.index({ x: 50, y: 20 })
+  const pointFree = (p: { x: number; y: number }) => Math.abs(p.x - 30) > 1
+  for (const options of [{}, { radiusCells: 8 }, { radiusCells: 8, preferArcs: true }]) {
+    assert.equal(routeHeating(g, start, end, { ...options, pointFree }), null, 'a fallback must not erase the physical obstacle')
+    const path = routeHeating(g, start, end, { ...options, pointFree: (p) => pointFree(p) || p.y < 10 })!
+    assert.ok(path)
+    assert.ok(path.every((cell) => pointFree(g.point(cell)) || g.point(cell).y < 10))
+  }
+})
 
 test('paired leads stay on the same side of an intervening room', () => {
   const g = grid(81, 81)
@@ -109,3 +131,36 @@ for (const radiusCells of [undefined, 2]) {
     for (let i = 1; i < path.length; i++) assert.equal(Math.abs(path[i] - path[i - 1]), 1)
   })
 }
+
+for (const options of [{}, { radiusCells: 8 }, { radiusCells: 8, preferArcs: true, continuousTurns: true }]) {
+  test(`free source region accepts a reachable end instead of a blocked fixed hint (${JSON.stringify(options)})`, () => {
+    const g = grid(61, 41), start = g.index({ x: 10, y: 20 }), hint = g.index({ x: 50, y: 20 })
+    g.obstacle[hint] = 1
+    const occupiedGoal = g.index({ x: 45, y: 20 }), goalRegion = new Set([occupiedGoal, g.index({ x: 45, y: 19 }), g.index({ x: 45, y: 21 })])
+    const path = routeHeating(g, start, hint, { ...options, goalRegion, goalRadiusCells: 7, pointFree: (p) => g.index(p) !== occupiedGoal })
+    assert.ok(path)
+    assert.ok(goalRegion.has(path.at(-1)!))
+    assert.notEqual(path.at(-1), occupiedGoal)
+    assert.notEqual(path.at(-1), hint)
+  })
+}
+
+
+test('a connection can keep an R120 trunk bend and an R80 entrance in the same physical route', () => {
+  const g = grid(150, 150)
+  g.step = 1.6; g.drawingScale = 100
+  g.point = (cell) => ({ x: cell % g.width * g.step, y: Math.floor(cell / g.width) * g.step })
+  g.index = (p) => heatingGridRound(p.y / g.step) * g.width + heatingGridRound(p.x / g.step)
+  const data = { ...heatingPipeData(100), automatic: true, design: { minBendRadiusMm: 80 } }
+  const reference = createHeatingPipe('reference', [{ x: 40, y: 40 }, { x: 120, y: 40, bendRadiusMm: 120 },
+    { x: 120, y: 120, bendRadiusMm: 80 }, { x: 176, y: 120 }], data)
+  const pieces = heatingPipeGeometry(reference).pieces
+  const pointFree = (p: { x: number; y: number }) => pieces.some((piece) => segmentDistance(p, piece.a, piece.b) <= .6)
+  const path = routeHeating(g, g.index({ x: 40, y: 40 }), g.index({ x: 176, y: 120 }),
+    { radiusCells: 8, preferArcs: true, continuousTurns: true, variableBends: true, startDirection: 1, endDirection: 1, pointFree })
+  assert.ok(path)
+  const actual = heatingPipeGeometry(createHeatingPipe('mixed-radius', heatingPathPoints(g, path), data))
+  assert.ok(actual.bends.some((bend) => Math.abs(bend.radiusMm - 120) < .1))
+  assert.ok(actual.bends.every((bend) => bend.radiusMm >= 79.9))
+  assert.ok(actual.pieces.every((piece) => pointFree(piece.a) && pointFree(piece.b)))
+})

@@ -9,7 +9,7 @@ export type PipeGeometry = { path: string; length: number; localPoints: Point[];
 export const heatingPipeGeometry = (shape: RectShape): PipeGeometry => {
   const data = shape.heating!, x = Math.min(shape.start.x, shape.end.x), y = Math.min(shape.start.y, shape.end.y)
   const width = Math.abs(shape.end.x - shape.start.x), height = Math.abs(shape.end.y - shape.start.y)
-  const points = (data.points ?? []).map((p) => ({ x: x + p.x * width, y: y + p.y * height }))
+  const points = (data.points ?? []).map((p) => ({ x: x + p.x * width, y: y + p.y * height, ...(p.bendRadiusMm === undefined ? {} : { bendRadiusMm: p.bendRadiusMm }) }))
   const pieces: PipePiece[] = [], bends: PipeGeometry['bends'] = []
   if (!points.length) return { path: '', length: 0, localPoints: points, points, pieces, bends }
   let path = `M ${points[0].x} ${points[0].y}`, cursor = points[0], length = 0, primitive = 0
@@ -19,7 +19,7 @@ export const heatingPipeGeometry = (shape: RectShape): PipeGeometry => {
     cursor = to
   }
   const limit = heatingDesignLimits(data.diameterMm, data.design).minBendRadiusMm
-  const desired = drawingUnitsForMetres(Math.max(limit / 1000, data.pipeRole === 'loop' ? Math.min(.1, data.spacingMm / 2000) : 0), data.drawingScale)
+  const desired = drawingUnitsForMetres(Math.max(limit / 1000, (data.bendRadiusMm ?? 0) / 1000, data.pipeRole === 'loop' ? Math.min(.1, data.spacingMm / 2000) : 0), data.drawingScale)
   // Allocate tangent lengths per shared segment. Endpoint segments have their full
   // length available; neighbouring fillets share only the segment between them.
   const cuts = points.map(() => 0)
@@ -27,7 +27,7 @@ export const heatingPipeGeometry = (shape: RectShape): PipeGeometry => {
     const a = points[i - 1], p = points[i], b = points[i + 1], u = Math.hypot(p.x - a.x, p.y - a.y), v = Math.hypot(b.x - p.x, b.y - p.y)
     if (!u || !v) continue
     const dot = Math.max(-1, Math.min(1, ((p.x - a.x) * (b.x - p.x) + (p.y - a.y) * (b.y - p.y)) / (u * v)))
-    if (Math.abs((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x)) > 1e-8) cuts[i] = desired * Math.tan(Math.acos(dot) / 2)
+    if (Math.abs((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x)) > 1e-8) cuts[i] = Math.max(desired, drawingUnitsForMetres((p.bendRadiusMm ?? 0) / 1000, data.drawingScale)) * Math.tan(Math.acos(dot) / 2)
   }
   for (let i = 1; i < points.length; i++) {
     const available = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y), used = cuts[i - 1] + cuts[i]
@@ -60,7 +60,7 @@ export const heatingPipeGeometry = (shape: RectShape): PipeGeometry => {
   const cx = x + width / 2, cy = y + height / 2, radians = (shape.rotation ?? 0) * Math.PI / 180
   const transform = (p: Point): Point => {
     const dx = (p.x - cx) * (shape.flipX ? -1 : 1), dy = (p.y - cy) * (shape.flipY ? -1 : 1)
-    return { x: cx + dx * Math.cos(radians) - dy * Math.sin(radians), y: cy + dx * Math.sin(radians) + dy * Math.cos(radians) }
+    return { ...p, x: cx + dx * Math.cos(radians) - dy * Math.sin(radians), y: cy + dx * Math.sin(radians) + dy * Math.cos(radians) }
   }
   return { path, length, localPoints: points, points: points.map(transform), pieces: pieces.map((p) => ({ ...p, a: transform(p.a), b: transform(p.b) })),
     bends: bends.map((bend) => ({ ...bend, point: transform(bend.point) })) }

@@ -56,7 +56,7 @@ test('the supplied Cadle project gives the lower-left room complete wall-fed cir
   const area = { x: 80, y: 80, width: project.worldWidth - 160, height: project.worldHeight - 160 }
   const result = generateAutomaticHeatingPlan(scene, source, settings, project.drawingScale, () => `lower-left-${id++}`, area)
   const owner = result.shapes.find((shape) => shape.heating?.kind === 'manifold')!
-  assert.ok(result.rows.length > 0)
+  assert.equal(result.rows.length, 1, 'a room fitting the preferred length does not need an extra pair of approach pipes')
   assert.equal(owner.heating!.audit!.errors, 0)
   assert.ok(result.rows.every((row) => row.roomKey === 'region-9' && row.supplyM > 0 && row.returnM > 0 && row.cutM! <= 100.05))
   assert.ok(result.wallCrossings > 0)
@@ -84,6 +84,16 @@ test('reserves both feeds of every allocated circuit before any coil and rejects
   })
   const reserved = reserveHeatingFeedPairs(approaches, original, zone.stubs, zone.interior, targets, omitted, 100, 16, 80, 100, new Set(), () => {})
   assert.equal(reserved.feedPaths!.length, 24)
+  const landing = original.room[original.index({ x: 1000, y: 580 })]
+  assert.ok(landing > 0)
+  assert.ok(reserved.feedPaths!.filter((path) => original.room[path.at(-1)!] === landing).length >= 2,
+    'the small landing has both feeds reserved instead of donating its access to the largest room')
+  const wallShortcuts = heatingInternalWallCells(original, 100)
+  const withShortcuts = reserveHeatingFeedPairs(approaches, original, zone.stubs, zone.interior, targets, omitted,
+    100, 16, 80, 100, wallShortcuts, () => {})
+  assert.equal(withShortcuts.feedPaths!.length, 24)
+  assert.ok(withShortcuts.feedPaths!.every((path) => path.every((cell) => !original.wall[cell] || original.door[cell])),
+    'permission for wall shortcuts does not displace an available complete door bundle')
   const direct = heatingAccessDistances(original, zone.stubs.map((stub) => stub.at(-1)!), new Set(), true, () => {})
   assert.ok(reserved.feedDistances!.some((distance, cell) => direct[cell] >= 0 && distance > direct[cell]),
     'field length budgets include detours imposed by the complete bundle')

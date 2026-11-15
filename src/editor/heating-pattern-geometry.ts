@@ -4,6 +4,7 @@ import { heatingPipeGeometry } from './heating-geometry.js'
 import { checkHeatingPlan } from './heating-checks.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { heatingDesignLimits, type HeatingDesignInputs } from './heating-design.js'
+import { heatingLaneShift } from './heating-s-curve.js'
 
 type Settings = { diameterMm: number; spacingMm: number; design?: HeatingDesignInputs; returnToEntrySide?: boolean }
 
@@ -30,6 +31,51 @@ export const openHeatingTurns = (points: Point[], radius: number, pipeDiameter =
       }
     }
     result.push(points[i])
+  }
+  return result
+}
+
+/** A fillet at a re-entrant floor corner cuts across the excluded quadrant.
+ * Move that corner into free floor and bridge the parallel legs with tangent
+ * S-bends. The original endpoints and their directions stay fixed. Callers
+ * still audit the complete rounded tube for clearance and self-intersection. */
+export const clearHeatingConcaveTurns = (points: Point[], radius: number, inside: (point: Point) => boolean): Point[] | null => {
+  const moved = points.map((point) => ({ ...point })), cuts = points.map(() => 0)
+  let changed = false
+  for (let i = 1; i < points.length - 1; i++) {
+    const a = points[i - 1], b = points[i], c = points[i + 1]
+    const before = Math.hypot(b.x - a.x, b.y - a.y), after = Math.hypot(c.x - b.x, c.y - b.y)
+    if (!before || !after) return null
+    const u = { x: (b.x - a.x) / before, y: (b.y - a.y) / before }, v = { x: (c.x - b.x) / after, y: (c.y - b.y) / after }
+    const dot = Math.max(-1, Math.min(1, u.x * v.x + u.y * v.y)), angle = Math.acos(dot)
+    cuts[i] = radius * Math.tan(angle / 2)
+    if (Math.abs(dot) > 1e-6) continue
+    const cross = u.x * v.y - u.y * v.x
+    const from = { x: b.x - u.x * radius, y: b.y - u.y * radius }
+    const centre = { x: from.x + v.x * radius, y: from.y + v.y * radius }
+    const theta = Math.atan2(from.y - centre.y, from.x - centre.x)
+    if (Array.from({ length: 11 }, (_, n) => {
+      const turn = theta + cross * Math.PI / 2 * (n + 1) / 12
+      return inside({ x: centre.x + radius * Math.cos(turn), y: centre.y + radius * Math.sin(turn) })
+    }).every(Boolean)) continue
+    moved[i] = { x: b.x + (u.x - v.x) * radius, y: b.y + (u.y - v.y) * radius }
+    changed = true
+  }
+  if (!changed) return null
+  const result: Point[] = [moved[0]]
+  for (let i = 1; i < points.length; i++) {
+    const a = moved[i - 1], b = moved[i], length = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
+    const u = { x: (points[i].x - points[i - 1].x) / length, y: (points[i].y - points[i - 1].y) / length }, normal = { x: -u.y, y: u.x }
+    const lateral = (b.x - a.x) * normal.x + (b.y - a.y) * normal.y
+    if (Math.abs(lateral) > 1e-6) {
+      const shift = heatingLaneShift(radius, Math.abs(lateral)), run = (b.x - a.x) * u.x + (b.y - a.y) * u.y - cuts[i - 1] - cuts[i]
+      if (!shift || run < shift.run - 1e-6) return null
+      const start = { x: a.x + u.x * (cuts[i - 1] + (run - shift.run) / 2), y: a.y + u.y * (cuts[i - 1] + (run - shift.run) / 2) }
+      const end = { x: start.x + u.x * shift.run + normal.x * lateral, y: start.y + u.y * shift.run + normal.y * lateral }
+      result.push({ x: start.x + u.x * shift.cut, y: start.y + u.y * shift.cut },
+        { x: end.x - u.x * shift.cut, y: end.y - u.y * shift.cut })
+    }
+    result.push(b)
   }
   return result
 }

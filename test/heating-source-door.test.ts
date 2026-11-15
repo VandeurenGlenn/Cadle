@@ -8,6 +8,7 @@ import { heatingFallbackPassage, heatingInternalWallCells } from '../src/editor/
 import type { Shape } from '../src/editor/model/types.ts'
 import { reserveHeatingAccess, reserveHeatingFeedPairs, shareSmallHeatingRooms } from '../src/editor/heating-zones.ts'
 import { allocateHeatingCircuits } from '../src/editor/heating-allocation.ts'
+import { measureHeatingCoverage } from '../src/editor/heating-coverage.ts'
 import { heatingAccessDistances } from '../src/editor/heating-access-distances.ts'
 import { generateAutomaticHeatingPlan } from '../src/editor/automatic-heating-plan.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
@@ -56,7 +57,14 @@ test('the supplied Cadle project gives the lower-left room complete wall-fed cir
   const area = { x: 80, y: 80, width: project.worldWidth - 160, height: project.worldHeight - 160 }
   const result = generateAutomaticHeatingPlan(scene, source, settings, project.drawingScale, () => `lower-left-${id++}`, area)
   const owner = result.shapes.find((shape) => shape.heating?.kind === 'manifold')!
-  assert.equal(result.rows.length, 1, 'a room fitting the preferred length does not need an extra pair of approach pipes')
+  assert.ok(result.rows.length >= 1 && result.rows.length <= settings.capacity)
+  const coverage = owner.heating!.coverage!.rooms.find((room) => room.key === 'region-9')!
+  const native = buildHeatingGrid(scene, project.drawingScale, 100, source, { pipeDiameterMm: 16, minBendRadiusMm: 80 })
+  const originalFloor = measureHeatingCoverage(native, [], project.drawingScale, 100, 100, () => {}, false).coverage.rooms
+    .find((room) => room.key === 'region-9')!
+  assert.equal(coverage.eligibleM2, originalFloor.eligibleM2, 'the full original floor remains eligible')
+  assert.ok(coverage.gapM2 <= Math.max(.05, coverage.eligibleM2 * .02),
+    'a short but incomplete single coil cannot beat a complete covered layout')
   assert.equal(owner.heating!.audit!.errors, 0)
   assert.ok(result.rows.every((row) => row.roomKey === 'region-9' && row.supplyM > 0 && row.returnM > 0 && row.cutM! <= 100.05))
   assert.ok(result.wallCrossings > 0)

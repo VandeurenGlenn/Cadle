@@ -1,4 +1,5 @@
 import { createHeatingPipe } from './heating-pipe.js'
+import { heatingCircuitColor, heatingCircuitLabelPosition } from './heating-presentation.js'
 export { createHeatingPipe } from './heating-pipe.js'
 import type { Point, RectShape, Shape } from './model/types.js'
 import { drawingLengthMetres, drawingUnitsForMetres, isDrawingScale, DEFAULT_DRAWING_SCALE } from './layout/drawing-scale.js'
@@ -462,21 +463,25 @@ export const heatingMarkup = (shape: RectShape, selected = false, monochrome = f
   } else {
     if (data.kind === 'zone') markup += `<rect class="heating-zone-boundary" x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="none" stroke="#777" stroke-width="1" stroke-dasharray="6 5"/>`
     for (const [index, circuit] of layout.circuits.entries()) {
-      const color = data.kind === 'pipe' && data.pipeRole === 'return' ? blue : red
-      markup += `<path class="heating-circuit" data-circuit="${index + 1}" d="${circuit.path}" stroke="${color}"${data.automatic && data.pipeRole === 'return' ? ' stroke-dasharray="8 4"' : ''}/>`
+      const color = data.kind === 'pipe' && data.automatic ? heatingCircuitColor(data.circuitId, monochrome) : data.kind === 'pipe' && data.pipeRole === 'return' ? blue : red
+      markup += `<path class="heating-circuit" data-circuit="${index + 1}"${data.automatic && data.circuitId ? ` data-circuit-id="${escape(data.circuitId)}"` : ''} d="${circuit.path}" stroke="${color}"/>`
       if (data.kind === 'zone') {
         markup += `<circle cx="${circuit.start.x}" cy="${circuit.start.y}" r="3" fill="${red}" stroke="none"/><circle cx="${circuit.end.x}" cy="${circuit.end.y}" r="3" fill="${blue}" stroke="none"/>`
         markup += `<text x="${circuit.start.x + 8}" y="${circuit.start.y + 18}" fill="#111111" stroke="white" stroke-width="3" paint-order="stroke" font-family="Segoe UI, Arial, sans-serif" font-size="16">${index + 1}</text>`
       }
     }
     const details = data.kind === 'zone' ? `${data.name} · ${layout.circuits.length} ${layout.circuits.length === 1 ? 'kring' : 'kringen'} · ${layout.lengthM.toFixed(1)} m${layout.pattern && layout.pattern !== 'spiral' ? ` · ${heatingPatternLabel(layout.pattern)}` : ''}${layout.warning ? ' · nazien' : ''}` : `${data.name} · Ø${data.diameterMm} · ${layout.lengthM.toFixed(1)} m`
-    if (!data.automatic || data.pipeRole === 'loop') markup += label(b.x, b.y - 10, data.automatic ? data.circuitId ?? data.name : details)
+    if (data.kind === 'pipe' && data.automatic && data.pipeRole === 'loop') {
+      const at = heatingCircuitLabelPosition(shape, obstacles)
+      if (at) markup += `<text class="heating-circuit-label" x="${at.x}" y="${at.y}" text-anchor="middle" dominant-baseline="central" fill="${monochrome ? '#000000' : '#111111'}" stroke="white" stroke-width="1.4" paint-order="stroke" font-family="Segoe UI, Arial, sans-serif" font-size="${at.fontSize}" font-weight="600">${escape(at.text)}</text>`
+    } else if (!data.automatic) markup += label(b.x, b.y - 10, details)
   }
   const markers = (data.pipeRole === 'loop' ? data.checks ?? [] : []).filter((issue) => issue.point && issue.circuits[0] === data.circuitId).map((issue) => {
     const p = issue.point!, color = monochrome ? '#000' : issue.severity === 'error' ? '#b42318' : '#9a6700'
     return `<g class="heating-check-marker" data-check="${escape(issue.code)}" data-severity="${issue.severity}"><title>${escape(issue.message)}</title><circle cx="${p.x}" cy="${p.y}" r="8" fill="white" stroke="${color}" stroke-width="2"/><path d="M ${p.x} ${p.y - 4} V ${p.y + 1} M ${p.x} ${p.y + 4} h .1" stroke="${color}" stroke-width="2"/></g>`
   }).join('')
-  return `<g class="shape heating-shape heating-${data.kind}" data-shape-id="${escape(shape.id)}" data-selected="${selected}" transform="${transform}" fill="none" stroke-width="${shape.strokeWidth ?? 2}" stroke-linecap="round" stroke-linejoin="round"><title>${escape(`${data.name} · ${data.roomName ?? ''} · ${layout.lengthM.toFixed(1)} m${layout.warning ? ` · ${layout.warning}` : ''}`)}</title>${markup}</g>${markers}`
+  const strokeWidth = shape.strokeWidth ?? 2
+  return `<g class="shape heating-shape heating-${data.kind}" data-shape-id="${escape(shape.id)}" data-selected="${selected}" transform="${transform}" fill="none" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"><title>${escape(`${data.automatic && data.circuitId ? `${data.circuitId} · ` : ''}${data.name} · ${data.roomName ?? ''} · ${layout.lengthM.toFixed(1)} m${layout.warning ? ` · ${layout.warning}` : ''}`)}</title>${markup}</g>${markers}`
 }
 
 

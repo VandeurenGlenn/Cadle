@@ -58,8 +58,9 @@ export const heatingFeedPairCoherent = (pair: readonly RectShape[], spacingMm: n
 export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coils: readonly RectShape[], fixed: readonly RectShape[],
   settings: { diameterMm: number; spacingMm: number; design?: HeatingDesignInputs }, scale: number,
   options: { source: Point; target?: Point; targetRadiusMm?: number; sourceRadiusMm: number; permittedWallCells: ReadonlySet<number>; nativeFloor?: HeatingGrid;
-    nativeWallCells?: ReadonlySet<number>; obstacles?: readonly Box[]; routeOptions?: Pick<HeatingRoutingOptions, 'wallEntryPenalty' | 'preferredDoors' | 'manifoldAccess'>;
-    guideCells?: readonly number[][]; fieldMask?: Uint32Array; ownField?: number; fast?: boolean; searchBudget?: { remaining: number }; checkpoint: () => void; rejectedSearches?: string[]; onSearch?: () => void }): [Vertex[], Vertex[]] | null => {
+    nativeWallCells?: ReadonlySet<number>; obstacles?: readonly Box[]; geometryFor?: typeof heatingPipeGeometry; routeOptions?: Pick<HeatingRoutingOptions, 'wallEntryPenalty' | 'preferredDoors' | 'manifoldAccess'>;
+    guideCells?: readonly number[][]; fieldMask?: Uint32Array; ownField?: number; fast?: boolean; searchBudget?: { remaining: number }; searchKey?: string; checkpoint: () => void; rejectedSearches?: string[]; onSearch?: () => void;
+    acceptPair?: (pipes: readonly RectShape[]) => boolean; onLaunches?: (count: number, prefixes: readonly (readonly RectShape[])[]) => void }): [Vertex[], Vertex[]] | null => {
   const vertices = heatingPipeGeometry(coil).points, originalHeads = [vertices[0], vertices.at(-1)!]
   const u = unit(vertices[1], originalHeads[0]), other = unit(vertices.at(-2)!, originalHeads[1])
   if (!Number.isFinite(u.x) || u.x * other.x + u.y * other.y < .999) return null
@@ -83,10 +84,10 @@ export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coil
     { ...coil.heating!, automatic: true, pipeRole: 'supply', bendRadiusMm: limits.minBendRadiusMm })
   const valid = (pipes: RectShape[]) => !pipes.some((p) => heatingCurveWallConflict(floor, heatingPipeGeometry(p).pieces, wallOptions)) &&
     !checkHeatingPlan([...all, ...pipes], [], settings.design, [...options.obstacles ?? []],
-      { focusPipeIds: new Set(pipes.map((p) => p.id)), stopOnConflict: true, checkpoint: options.checkpoint }).errors
+      { focusPipeIds: new Set(pipes.map((p) => p.id)), stopOnConflict: true, checkpoint: options.checkpoint, geometryFor: options.geometryFor }).errors
   const sourceRoom = grid.room[grid.index(options.source)]
   const nativeSourceRoom = floor.room[floor.index(options.source)]
-  const launches: { points: Vertex[][]; centre: Point; heading: Point; score: number }[] = []
+  const launches: { points: Vertex[][]; pipes: RectShape[]; centre: Point; heading: Point; score: number }[] = []
   for (const turn of [0, -1, 1]) {
     options.checkpoint()
     let start = middle, heading = u
@@ -130,11 +131,13 @@ export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coil
       const pipes = points.map((p, i) => make(`paired-launch-${i}`, p))
       if (!valid(pipes)) continue
       const centre = add(start, heading, a.advance + straight)
-      launches.push({ points, centre, heading, score: pipes.reduce((sum, pipe) => sum + heatingPipeGeometry(pipe).length, 0) / 2 +
+      launches.push({ points, pipes, centre, heading, score: pipes.reduce((sum, pipe) => sum + heatingPipeGeometry(pipe).length, 0) / 2 +
         Math.hypot(centre.x - options.source.x, centre.y - options.source.y) })
     }
   }
   launches.sort((a, b) => a.score - b.score)
+  options.onLaunches?.(launches.length, launches.map((launch) => launch.pipes))
+  if (options.searchBudget && options.searchBudget.remaining <= 0) return null
   let cellPenalty: Float32Array | undefined
   if (options.guideCells?.some((path) => path.length)) {
     const size = grid.wall.length, distance = new Uint16Array(size).fill(65535), queue = new Int32Array(size)
@@ -163,7 +166,7 @@ export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coil
     const prefixes = launch.points.map((p, i) => make(`paired-launch-${i}`, p))
     const joints = new Map(coilJoints)
     for (const p of prefixes) joints.set(p.id, [heatingPipeGeometry(p).points.at(-1)!])
-    const free = heatingPointClearance([...all, ...prefixes], settings.diameterMm + separationMm, scale, { joints })
+    const free = heatingPointClearance([...all, ...prefixes], settings.diameterMm + separationMm, scale, { joints, geometryFor: options.geometryFor })
     const clearance = new Uint8Array(grid.wall.length)
     let restrictFields = Boolean(options.fieldMask)
     const at = (p: Point) => {
@@ -187,7 +190,7 @@ export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coil
       return clearance[cell] === 1
     }
     const target = options.target ?? options.source
-    for (const radiusMm of options.targetRadiusMm ? [options.targetRadiusMm] : [...new Set([Math.min(500, options.sourceRadiusMm), options.sourceRadiusMm])].sort((a, b) => a - b)) {
+    for (const radiusMm of options.targetRadiusMm ? [options.targetRadiusMm] : [...new Set([options.sourceRadiusMm, Math.min(500, options.sourceRadiusMm)])]) {
       options.checkpoint()
       const searchKey = `${launchIndex}:${radiusMm}`
       if (options.rejectedSearches?.includes(searchKey)) continue
@@ -202,37 +205,45 @@ export const routePairedHeatingFeeds = (grid: HeatingGrid, coil: RectShape, coil
         }
       if (!goals.size) continue
       const heading = launch.heading.x ? Math.sign(launch.heading.x) : Math.sign(launch.heading.y) * grid.width
-      let path: number[] | null = null
+      const accept = (path: number[]): [Vertex[], Vertex[]] | null => {
+        const centre = heatingPathPoints(phase, path)
+        const v = { x: -launch.heading.y, y: launch.heading.x }
+        const pair = launch.points.map((prefix) => {
+          if (centre.length < 2) return prefix
+          const end = prefix.at(-1)!, offset = Math.sign((end.x - launch.centre.x) * v.x + (end.y - launch.centre.y) * v.y) * half
+          const ribbon = offsetHeatingRoute(centre, offset, centreRadiusMm, scale)
+          return [...prefix, ...ribbon.slice(1)]
+        })
+        if (pair.some((p) => p.some((q) => !Number.isFinite(q.x + q.y)))) return null
+        const pipes = pair.map((p, i) => make(`paired-feed-${i}`, p))
+        return valid(pipes) && (!options.acceptPair || options.acceptPair(pipes))
+          ? pair.map((p) => [...p].reverse()) as [Vertex[], Vertex[]] : null
+      }
       for (const restricted of options.fieldMask ? [true, false] : [false]) {
         restrictFields = restricted
         for (const variableBends of options.fast ? [false] : [false, true]) {
-          for (const obstacleHeuristic of variableBends && coils.length >= 4 ? [true, false] : [false]) {
+          for (const obstacleHeuristic of coils.length >= 4 ? [true, false] : [false]) {
             const attempt = `${searchKey}:${restricted}:${variableBends}:${obstacleHeuristic}`
             if (options.rejectedSearches?.includes(attempt)) continue
-            if (options.searchBudget && options.searchBudget.remaining-- <= 0) return null
+            if (options.searchBudget && options.searchBudget.remaining <= 0) return null
             options.onSearch?.()
-            path = routeHeating(phase, root, hint, { ...options.routeOptions, allowWalls: true, permittedWallCells: options.permittedWallCells,
+            const path = routeHeating(phase, root, hint, { ...options.routeOptions, allowWalls: true, permittedWallCells: options.permittedWallCells,
               goalRegion: goals, goalRadiusCells: Math.ceil(sourceRadius / grid.step), radiusCells: Math.ceil(2 * centreRadius / grid.step),
-              startDirection: heading, preferArcs: true, continuousTurns: true, variableBends, obstacleHeuristic, pointFree, cellPenalty, searchWeight: 1.25, checkpoint: options.checkpoint })
-            if (path) break
+              resumeKey: options.searchKey ? `${options.searchKey}:${attempt}` : undefined,
+              startDirection: heading, preferArcs: true, arcOnly: true, continuousTurns: true, variableBends, obstacleHeuristic, pointFree, cellPenalty, searchWeight: 1.25, checkpoint: options.checkpoint })
+            // Acceptance includes physical and pending-entry checks. A pause
+            // during that work still owns the unfinished query's budget slot.
+            const pair = path ? accept(path) : null
+            if (options.searchBudget) options.searchBudget.remaining--
+            if (pair) return pair
+            // A found centreline can fail the tube or pending-entry audit.
+            // Keep trying the variable-radius route for this same launch;
+            // a short concentric corner can be valid where a fixed-radius
+            // path takes a long detour around another field.
             options.rejectedSearches?.push(attempt)
           }
-          if (path) break
         }
-        if (path) break
       }
-      if (!path) { options.rejectedSearches?.push(searchKey); continue }
-      const centre = heatingPathPoints(phase, path)
-      const v = { x: -launch.heading.y, y: launch.heading.x }
-      const pair = launch.points.map((prefix) => {
-        if (centre.length < 2) return prefix
-        const end = prefix.at(-1)!, offset = Math.sign((end.x - launch.centre.x) * v.x + (end.y - launch.centre.y) * v.y) * half
-        const ribbon = offsetHeatingRoute(centre, offset, centreRadiusMm, scale)
-        return [...prefix, ...ribbon.slice(1)]
-      })
-      if (pair.some((p) => p.some((q) => !Number.isFinite(q.x + q.y)))) continue
-      const pipes = pair.map((p, i) => make(`paired-feed-${i}`, p))
-      if (valid(pipes)) return pair.map((p) => [...p].reverse()) as [Vertex[], Vertex[]]
       options.rejectedSearches?.push(searchKey)
     }
   }

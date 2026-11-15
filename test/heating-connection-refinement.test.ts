@@ -35,7 +35,7 @@ test('overlapping loose source lanes are repaired locally without rerouting vali
     warmPairs: fixture.coils.map((coil, index) => ({ coilKey: JSON.stringify(heatingPipeGeometry(coil).points),
       points: fixture.points.slice(index * 2, index * 2 + 2), bendRadiusMm: fixture.radii.slice(index * 2, index * 2 + 2) })),
     priority: { rootDone: 0, root, queue: [], seen: [], expanded: 0,
-    seedPolicy: 'native-room-local-order-v14', pendingSeeds: [], triedSeeds: [],
+    seedPolicy: 'native-room-local-order-v17', pendingSeeds: [], triedSeeds: [],
     seed: { order: fixture.coils.map((_, i) => i), next: count - 1, routes: { ...root, refined: accepted } } } }
   const stubs = paths.map((path) => [path[0], path[0] - width]), targetStubs = paths.map((path) => [path.at(-1)!])
   const deadline = Date.now() + 5000
@@ -133,4 +133,85 @@ test('individual nested bend radii survive serialization and retain their exact 
   const resumed = createHeatingPipe('resumed-individual-bends', after.points, restored.heating)
   assert.deepEqual(heatingPipeGeometry(resumed).bends.map((bend) => Math.round(bend.radiusMm)), [80, 120],
     'world-coordinate snapshots must retain the chosen radius at each corner')
+})
+
+test('loose connections use the actual source zone when a virtual ordering lane is occupied', () => {
+  const width = 250, height = 180, step = 1.6, size = width * height
+  const grid: HeatingGrid = { drawingScale: 100, origin: { x: 400, y: 400 }, step, width, height,
+    wall: new Uint8Array(size), door: new Uint8Array(size), obstacle: new Uint8Array(size), loopObstacle: new Uint8Array(size),
+    room: new Int32Array(size).fill(1), rooms: [],
+    point: (cell) => ({ x: 400 + cell % width * step, y: 400 + Math.floor(cell / width) * step }),
+    index: (p) => Math.round((p.y - 400) / step) * width + Math.round((p.x - 400) / step) }
+  const obstacle = { x: 465, y: 535, width: 13, height: 50 }
+  for (let cell = 0; cell < size; cell++) { const p = grid.point(cell); if (p.x >= 464 && p.x <= 480 && p.y >= 534 && p.y <= 586) grid.obstacle[cell] = 1 }
+  const vertices = [[600, 480], [700, 480], [700, 640], [600, 640], [600, 624], [684, 624], [684, 488], [600, 488]]
+    .map(([x, y]) => ({ x, y }))
+  const data = { ...heatingPipeData(100), diameterMm: 16, spacingMm: 100, automatic: true, circuitId: 'source-zone' }
+  const coil = createHeatingPipe('zone-coil', vertices, { ...data, pipeRole: 'loop' })
+  const stubs = [550, 570].map((y) => { const cell = grid.index({ x: 470, y }); return [cell, cell + 1] })
+  const targets = [vertices[0], vertices.at(-1)!].map((p) => { const cell = grid.index(p); return [cell, cell - 1] })
+  const flows = targets.map((stub, i) => ({ source: i, cells: [stubs[i].at(-1)!, stub.at(-1)!] }))
+  const source = { x: 440, y: 560 }, deadline = Date.now() + 5000
+  const result = refineHeatingConnectionBundle(grid, flows, stubs, targets, [coil], data, 100,
+    { sourcePosition: source, sourceRadiusMm: 500, permittedWallCells: new Set(), obstacles: [obstacle],
+      checkpoint() { assert.ok(Date.now() < deadline, 'an occupied virtual target must not monopolise the search') } })
+  assert.equal(result.refined.length, 2, JSON.stringify(result.failures))
+  const feeds = result.points.map((points, i) => createHeatingPipe(`zone-feed-${i}`, points, { ...data, pipeRole: 'supply', bendRadiusMm: result.bendRadiusMm[i] }))
+  assert.equal(checkHeatingPlan([coil, ...feeds], [], undefined, [obstacle]).errors, 0)
+  assert.ok(result.points.every((points) => Math.hypot(points[0].x - source.x, points[0].y - source.y) <= 40 + 1e-6))
+})
+
+test('a complete multi-circuit cached solution also places doorway tips inside the native source room', () => {
+  const width = 170, height = 180, step = .8, size = width * height
+  const grid: HeatingGrid = { drawingScale: 100, origin: { x: 0, y: -100 }, step, width, height,
+    wall: new Uint8Array(size), obstacle: new Uint8Array(size), loopObstacle: new Uint8Array(size),
+    door: new Uint8Array(size), room: new Int32Array(size), rooms: [],
+    point: (cell) => ({ x: cell % width * step, y: -100 + Math.floor(cell / width) * step }),
+    index: (p) => Math.round((p.y + 100) / step) * width + Math.round(p.x / step) }
+  for (let cell = 0; cell < size; cell++) { const p = grid.point(cell); grid.room[cell] = p.y >= 0 ? 1 : 2; if (Math.abs(p.y) <= 2) grid.door[cell] = 1 }
+  const data = { ...heatingPipeData(100), diameterMm: 16, spacingMm: 100, automatic: true }
+  const coils = [20, 80].map((x, i) => createHeatingPipe(`interior-coil-${i}`,
+    [{ x, y: -40 }, { x, y: -80 }, { x: x + 20, y: -80 }, { x: x + 20, y: -40 }],
+    { ...data, circuitId: `I${i}`, pipeRole: 'loop' }))
+  const points = [20, 40, 80, 100].map((x) => [{ x, y: -1 }, { x, y: -40 }])
+  const paths = points.map((p) => p.map(grid.index)), sources = [0, 1, 2, 3], radii = [80, 80, 80, 80]
+  const solution = { paths, points, sources, bendRadiusMm: radii, refined: [...sources], failures: [] }
+  const state: HeatingConnectionRefinementState = { priority: { rootDone: 2, queue: [], seen: [], expanded: 0, solution } }
+  const result = refineHeatingConnectionBundle(grid, paths.map((cells, source) => ({ cells, source })),
+    paths.map((p) => [p[0], p[0] - width]), paths.map((p) => [p.at(-1)!]), coils, data, 100,
+    { fineGrid: true, state, sourcePosition: { x: 10, y: 10 }, sourceRadiusMm: 1500, permittedWallCells: new Set() })
+  assert.equal(result.refined.length, 4, JSON.stringify(result.failures))
+  assert.ok(result.points.every((p) => grid.room[grid.index(p[0])] === 1), 'global solution return uses the same final source validation as one circuit')
+  assert.ok(state.priority!.solution!.points.every((p) => grid.room[grid.index(p[0])] === 1), 'the completed checkpoint retains the corrected tips')
+  const feeds = result.points.map((p, goal) => createHeatingPipe(`interior-feed-${goal}`, p,
+    { ...data, circuitId: `I${goal >> 1}`, pipeRole: 'supply' }))
+  assert.equal(checkHeatingPlan([...coils, ...feeds], []).errors, 0)
+})
+
+test('improving coil interiors reuses safe unchanged entrances without searching the feeds again', () => {
+  const width = 170, height = 180, step = .8, size = width * height
+  const grid: HeatingGrid = { drawingScale: 100, origin: { x: 0, y: -100 }, step, width, height,
+    wall: new Uint8Array(size), obstacle: new Uint8Array(size), loopObstacle: new Uint8Array(size),
+    door: new Uint8Array(size), room: new Int32Array(size), rooms: [],
+    point: (cell) => ({ x: cell % width * step, y: -100 + Math.floor(cell / width) * step }),
+    index: (p) => Math.round((p.y + 100) / step) * width + Math.round(p.x / step) }
+  for (let cell = 0; cell < size; cell++) grid.room[cell] = grid.point(cell).y >= 0 ? 1 : 2
+  const data = { ...heatingPipeData(100), diameterMm: 16, spacingMm: 100, automatic: true }
+  const makeCoils = (bottom: number) => [20, 80].map((x, i) => createHeatingPipe(`coverage-coil-${i}`,
+    [{ x, y: -40 }, { x, y: bottom }, { x: x + 20, y: bottom }, { x: x + 20, y: -40 }],
+    { ...data, circuitId: `C${i}`, pipeRole: 'loop' }))
+  const before = makeCoils(-70), after = makeCoils(-80)
+  const points = [20, 40, 80, 100].map((x) => [{ x, y: 10 }, { x, y: -40 }])
+  const paths = points.map((p) => p.map(grid.index))
+  const state: HeatingConnectionRefinementState = { warmPairs: before.map((coil, i) => ({
+    coilKey: JSON.stringify(heatingPipeGeometry(coil).points), points: points.slice(i * 2, i * 2 + 2), bendRadiusMm: [80, 80] })) }
+  const result = refineHeatingConnectionBundle(grid, paths.map((cells, source) => ({ cells, source })),
+    paths.map((p) => [p[0], p[0] - width]), paths.map((p) => [p.at(-1)!]), after, data, 100,
+    { fineGrid: true, state, sourcePosition: { x: 10, y: 10 }, sourceRadiusMm: 1500, permittedWallCells: new Set(),
+      checkpoint() { assert.equal(state.routeAttempts ?? 0, 0, 'unchanged safe entrances do not start a new route search') } })
+  assert.equal(result.refined.length, 4, JSON.stringify(result.failures))
+  assert.deepEqual(result.points, points)
+  const feeds = result.points.map((p, goal) => createHeatingPipe(`coverage-feed-${goal}`, p,
+    { ...data, circuitId: `C${goal >> 1}`, pipeRole: 'supply' }))
+  assert.equal(checkHeatingPlan([...after, ...feeds], []).errors, 0)
 })

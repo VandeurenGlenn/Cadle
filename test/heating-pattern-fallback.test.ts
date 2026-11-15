@@ -70,18 +70,16 @@ test('a connection fallback changes only its failed room, retaining spirals else
   assert.ok(result.jobs.filter((job) => job.roomKey !== failed).every((job) => job.pattern === 'spiral'))
 })
 
-test('an automatic narrow-room fallback saves its actual pattern and complete supply/return geometry', () => {
+test('an automatic room narrower than R80 plus its wall offsets is rejected instead of producing unsafe extra circuits', () => {
+  // 360 mm outside height leaves less than the 160 mm centre-line turn after
+  // the two 100 mm offsets and the native wall envelope are removed.
   const c = [{ x: 400, y: 400 }, { x: 800, y: 400 }, { x: 800, y: 428.8 }, { x: 400, y: 428.8 }]
   const shapes: Shape[] = c.map((start, i) => ({ id: `narrow-wall-${i}`, kind: 'wall', start, end: c[(i + 1) % 4] }))
   shapes.push({ id: 'narrow-door', kind: 'door', start: { x: 560, y: 400 }, end: { x: 640, y: 400 } })
+  const before = structuredClone(shapes)
   let id = 0
-  const result = generateAutomaticHeatingPlan(shapes, { x: 180, y: 280 }, { ...settings, connectionMode: 'zone', capacity: 12 }, 100,
-    () => `fallback-${id++}`, { x: 80, y: 80, width: 2216, height: 1384 })
-  const owner = result.shapes.find((s) => s.heating?.kind === 'manifold')!
-  assert.equal(owner.heating!.pattern, 'meander')
-  assert.equal(owner.heating!.audit!.errors, 0)
-  assert.equal(result.rows.length, 1)
-  assert.ok(result.rows[0].supplyM > 0 && result.rows[0].returnM > 0)
-  assert.ok(result.shapes.filter((s) => s.heating?.kind === 'pipe').every((s) => sanitizeHeating(JSON.parse(JSON.stringify(s.heating)))!.pattern === 'meander'))
-  assert.ok(result.shapes.filter((s) => s.heating?.kind === 'table').every((s) => heatingMarkup(s).includes('Meander')))
+  assert.throws(() => generateAutomaticHeatingPlan(shapes, { x: 180, y: 280 },
+    { ...settings, connectionMode: 'zone', capacity: 12 }, 100, () => `fallback-${id++}`,
+    { x: 80, y: 80, width: 2216, height: 1384 }), /geen geldig doorlopend legvlak/)
+  assert.deepEqual(shapes, before)
 })

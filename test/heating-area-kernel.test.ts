@@ -119,3 +119,34 @@ test('measured long approaches redistribute the same room into three complete ci
   assert.equal(checkHeatingPlan(result.loops.map((loop, i) => createHeatingPipe(`measured-${i}`, loop.points,
     { ...heatingDefaults('pipe', 100), ...settings, automatic: true, circuitId: `M${i}`, pipeRole: 'loop' })), [], settings.design).errors, 0)
 })
+
+test('the default concave spiral compares both windings before choosing an accessible inlet', () => {
+  const area = JSON.parse(readFileSync(new URL('./fixtures/heating-concave-inlet.json', import.meta.url), 'utf8'))
+  const entryDistance = (points: { x: number; y: number }[]) => [[points[0], points[1]], [points.at(-1)!, points.at(-2)!]]
+    .reduce((sum, [head, next]) => {
+      const length = Math.hypot(head.x - next.x, head.y - next.y)
+      return sum + Math.hypot(head.x + (head.x - next.x) / length * 6.4 - area.entry.x,
+        head.y + (head.y - next.y) / length * 6.4 - area.entry.y)
+    }, 0)
+  const variants = [0, 1, 2].map((entryVariant) => partitionHeatingArea(area, 1,
+    { diameterMm: 16, spacingMm: 100, edgeMm: 198, entryVariant, design: { maxCircuitLengthM: 120 } }, 100,
+    { entryPoint: area.entry })!)
+  assert.ok(variants.every((result) => result?.loops[0].gapRatio <= .02))
+  const cost = entryDistance(variants[0].loops[0].points)
+  assert.ok(variants.every((result) => entryDistance(result.loops[0].points) >= cost - 1e-6),
+    'the first collision-free winding is not automatically the best room entrance')
+})
+
+test('changing one field inlet preserves the other independently connected field in the same room', () => {
+  const area = rectangularHeatingArea({ x: 0, y: 0, width: 400, height: 240 }, { x: 0, y: 120 })
+  const settings = { diameterMm: 16, spacingMm: 100, design: { maxCircuitLengthM: 120 } }
+  const original = partitionHeatingArea(area, 2, settings, 100)!
+  assert.ok(original)
+  const fieldEntryVariants = new Map([[JSON.stringify(original.areas[0].boundaries), 1]])
+  const changed = partitionHeatingArea(area, 2, settings, 100, { fieldEntryVariants })!
+  assert.ok(changed)
+  assert.deepEqual(changed.areas.map((area) => area.boundaries), original.areas.map((area) => area.boundaries))
+  assert.notDeepEqual(changed.loops[0].points, original.loops[0].points)
+  assert.deepEqual(changed.loops[1].points, original.loops[1].points, 'the neighbour retains its already usable inlet')
+  assert.ok(changed.loops.every((loop) => loop.gapRatio <= .02))
+})

@@ -2,6 +2,7 @@
 // node --import tsx scripts/audit-heating-drawing.mjs original.json generated.json
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
 import { heatingSchedule } from '../src/editor/heating-plan.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
@@ -9,11 +10,17 @@ import { buildHeatingGrid, heatingCurveWallConflict, heatingSourceRoom } from '.
 import { heatingInternalWallCells } from '../src/editor/heating-wall-policy.ts'
 import { heatingObstacleBounds } from '../src/editor/heating-openings.ts'
 import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
+import { measureHeatingCoverage, heatingRoomKey } from '../src/editor/heating-coverage.ts'
 
-if (process.argv.length !== 4) throw new Error('Use original.json generated.json')
+if (process.argv.length < 4 || process.argv.length > 5 || process.argv.length === 5 && process.argv[4] !== '--require-coverage')
+  throw new Error('Use original.json generated.json [--require-coverage]')
 const bytes = readFileSync(process.argv[2]), original = JSON.parse(bytes)
 const generated = JSON.parse(readFileSync(process.argv[3], 'utf8'))
 const scene = sanitizeShapes(original.shapes ?? original), shapes = sanitizeShapes(generated.shapes ?? generated)
+const generatedById = new Map(shapes.map((shape) => [shape.id, shape]))
+const originalDrawingProblems = scene.flatMap((shape) => !generatedById.has(shape.id)
+  ? [{ id: shape.id, reason: 'original-shape-missing' }] : !isDeepStrictEqual(shape, generatedById.get(shape.id))
+    ? [{ id: shape.id, reason: 'original-shape-changed' }] : [])
 const pipes = shapes.filter((shape) => shape.heating?.kind === 'pipe')
 const owner = shapes.find((shape) => shape.heating?.kind === 'manifold')
 if (!owner || !pipes.length) throw new Error('A generated manifold position and pipes are required.')
@@ -34,6 +41,13 @@ const permittedWallCells = heatingInternalWallCells(grid, scale)
 const markers = shapes.filter((shape) => shape.generationKey?.startsWith('heating-penetration:')).map((shape) => ({
   x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 }))
 const feeds = pipes.filter((pipe) => pipe.heating.pipeRole !== 'loop')
+// Recompute coverage from the original architecture and actual rounded tubes.
+// Saved owner metadata must not hide an omitted room or retain stale coverage
+// after a loop has been improved without changing its feeds.
+const coverageGrid = { ...grid, rooms: grid.rooms.filter((room) =>
+  !settings.excludedRoomKeys?.includes(heatingRoomKey(room)) && (settings.heatSourceRoom !== false || room.id !== sourceRoom)) }
+const coverage = measureHeatingCoverage(coverageGrid, pipes, scale, settings.spacingMm, settings.edgeMm ?? 100, () => {}, false).coverage
+const coverageProblems = coverage.rooms.filter((room) => room.gapM2 > Math.max(.05, room.eligibleM2 * .02))
 for (const pipe of pipes) {
   const curve = geometry.get(pipe)
   const wall = heatingCurveWallConflict(grid, curve.pieces, { allowWalls: true, permittedWallCells })
@@ -64,9 +78,12 @@ const result = { sourceSha256: createHash('sha256').update(bytes).digest('hex'),
   pipeDiametersMm: [...new Set(pipes.map((pipe) => pipe.heating.diameterMm))],
   nominalSpacingsMm: [...new Set(pipes.map((pipe) => pipe.heating.spacingMm))],
   minimumBendRadiusMm: Math.min(...[...geometry.values()].flatMap((curve) => curve.bends.map((bend) => bend.radiusMm))),
+  originalShapes: scene.length, originalDrawingProblems,
   geometryErrors: errors.length, geometryIssues: errors, nativeSceneProblems: problems, wallPassages: markers.length,
   sourceEnds: feeds.length, maximumDrawnCircuitM: Math.max(...rows.map((row) => row.totalM)),
   maximumCuttingLengthM: Math.max(...rows.map((row) => row.cutM ?? row.totalM)),
   cuttingReserveM: settings.design?.allowanceM ?? 0, designReviews: owner.heating.audit?.issues.filter((issue) => issue.severity === 'review') ?? [] }
+result.coverage = { rooms: coverage.rooms, gapM2: coverage.rooms.reduce((sum, room) => sum + room.gapM2, 0),
+  eligibleM2: coverage.rooms.reduce((sum, room) => sum + room.eligibleM2, 0), roomsRequiringReview: coverageProblems.map((room) => room.key) }
 console.log(JSON.stringify(result, null, 2))
-if (errors.length || problems.length) process.exitCode = 1
+if (originalDrawingProblems.length || errors.length || problems.length || process.argv.includes('--require-coverage') && coverageProblems.length) process.exitCode = 1

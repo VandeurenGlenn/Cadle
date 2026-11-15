@@ -3,6 +3,21 @@ import { heatingSourceRoom, type HeatingGrid } from './heating-routing.js'
 import { heatingWallDistances } from './heating-coverage.js'
 import { heatingAccessDistances } from './heating-access-distances.js'
 
+/** Rooms adjoining an already authorised opening in the source-room wall. */
+export const heatingSourceShortcutRooms = (grid: HeatingGrid, source: Point, wallCells: ReadonlySet<number>, scale: number): ReadonlySet<number> => {
+  const sourceRoom = heatingSourceRoom(grid, source)?.id, result = new Set<number>(), probe = Math.max(1600 / scale, grid.step * 2)
+  if (!sourceRoom) return result
+  for (const cell of wallCells) {
+    const p = grid.point(cell), neighbours = new Set<number>()
+    for (const [dx, dy] of [[probe, 0], [-probe, 0], [0, probe], [0, -probe]]) {
+      const index = grid.index({ x: p.x + dx, y: p.y + dy })
+      if (index >= 0 && grid.room[index] > 0) neighbours.add(grid.room[index])
+    }
+    if (neighbours.has(sourceRoom)) for (const room of neighbours) if (room !== sourceRoom) result.add(room)
+  }
+  return result
+}
+
 /** A partition needs recognised floor on both sides, even when those sides
  * connect elsewhere. Facades, shafts and furnishings never become shortcuts. */
 export const heatingInternalWallCells = (grid: HeatingGrid, scale: number, checkpoint: () => void = () => {}): ReadonlySet<number> => {

@@ -7,9 +7,10 @@ import { drawingUnitsForMetres, drawingLengthMetres, type DrawingScale } from '.
 import { heatingDesignLimits, type HeatingDesignInputs } from './heating-design.js'
 import { heatingRoomKey, heatingWallDistances, measureHeatingCoverage } from './heating-coverage.js'
 import type { HeatingGrid } from './heating-routing.js'
+import type { HeatingArea, HeatingAreaSettings } from './heating-area-kernel.js'
 import { balancedHeatingCuts } from './heating-field-balance.js'
 
-export type HeatingSpiralField = { doorAligned?: boolean; packingGroup?: string; points?: Point[]; fieldBox?: { left: number; right: number; top: number; bottom: number }; rectangular?: boolean; cells: number[]; sourceMask?: number; pattern?: 'spiral' | 'meander' | 'mixed'; roomName: string; roomKey?: string; roomMembers?: { key: string; name: string }[]; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
+export type HeatingSpiralField = { entryArea?: HeatingArea; entrySettings?: HeatingAreaSettings; entryMaxGapRatio?: number; entryKey?: string; entryVariant?: number; doorAligned?: boolean; packingGroup?: string; points?: Point[]; fieldBox?: { left: number; right: number; top: number; bottom: number }; rectangular?: boolean; cells: number[]; sourceMask?: number; pattern?: 'spiral' | 'meander' | 'mixed'; roomName: string; roomKey?: string; roomMembers?: { key: string; name: string }[]; areaM2: number; spacingMinMm: number; spacingMaxMm: number }
 type Settings = { leadAllowances?: Readonly<Record<string, number>>; returnToEntrySide?: boolean; pairedEntries?: boolean; leadDistances?: Int32Array; leadStubMm?: number; entryGroups?: ReadonlyMap<string, number>; connectionBounds?: { x: number; y: number; width: number; height: number }; balanceLoads?: boolean; nativeRoom?: Int32Array; nativeRoomAreas?: ReadonlyMap<number, number>; preferMeanderRoomKeys?: readonly string[]; connectionMode?: 'ports' | 'zone'; deferCoverage?: boolean; reserveAccess?: boolean; loopBudgetByRoom?: Readonly<Record<string, number>>; diameterMm: number; spacingMm: number; edgeMm?: number; capacity?: number; manifoldSide?: 'auto' | 'top' | 'bottom'; design?: HeatingDesignInputs }
 type CellRect = { left: number; top: number; right: number; bottom: number }
 

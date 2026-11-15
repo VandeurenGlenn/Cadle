@@ -11,7 +11,10 @@ export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape
   const sourceRoom = sourceRegion?.id ?? grid.room[centre]
   const cx = centre % grid.width, cy = Math.floor(centre / grid.width), cellMm = grid.step * scale / 8
   const separation = Math.max(1, Math.ceil(diameterMm * 1.2 / cellMm)), apron = Math.ceil(radiusMm / cellMm)
-  const width = Math.ceil(Math.max(600, capacity * 75 + 100) / cellMm), halfHeight = Math.ceil(150 / cellMm)
+  // Leave one full bend at either end of the loose-tail fan. A fixed 100 mm
+  // margin is narrower than two R80 bends and couples the reserved trunk to
+  // an artificially tight source box. This changes space, never group count.
+  const width = Math.ceil(Math.max(600, capacity * 75 + 2 * radiusMm + diameterMm) / cellMm), halfHeight = Math.ceil(150 / cellMm)
   const boxes = [
     { left: cx, right: cx + width, top: cy - halfHeight, bottom: cy + halfHeight },
     { left: cx - width, right: cx, top: cy - halfHeight, bottom: cy + halfHeight },

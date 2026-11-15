@@ -1,6 +1,7 @@
 import type { Point } from './model/types.js'
 import type { HeatingGrid } from './heating-routing.js'
 import { heatingSpliceCandidates } from './heating-splice.js'
+import { exactHeatingSpliceCandidates } from './heating-paired-splice.js'
 import { combineHeatingPatterns, type HeatingPattern } from './heating-pattern.js'
 
 type Bounds = { x: number; y: number; width: number; height: number }
@@ -12,11 +13,17 @@ const compact = (points: readonly Point[]) => points.filter((p, i, all) => !i ||
 export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Bounds, obstacles: readonly Bounds[],
   spacing: number, radius: number, valid: (points: Point[], remaining: readonly Point[][]) => boolean,
   patternFor: (points: Point[]) => HeatingPattern = () => 'spiral',
-  options: { timeMs?: number; auditLimit?: number; checkpoint?: () => void } = {}): { points: Point[]; pattern: HeatingPattern } | null => {
+  options: { timeMs?: number; auditLimit?: number; checkpoint?: () => void; prepare?: (points: Point[]) => Point[] } = {}): { points: Point[]; pattern: HeatingPattern } | null => {
   if (fields.length < 2) return fields[0]?.[0] ? { points: fields[0][0], pattern: patternFor(fields[0][0]) } : null
   if (fields.length > 24) return null
   const stop = Symbol('manual-zone-work-limit'), deadline = Date.now() + (options.timeMs ?? 300), auditLimit = options.auditLimit ?? 96
   const checkpoint = () => { options.checkpoint?.(); if (Date.now() > deadline) throw stop }
+  const prepared = new WeakMap<Point[], Point[]>()
+  const prepare = (points: Point[]) => {
+    let result = prepared.get(points)
+    if (!result) { result = options.prepare?.(points) ?? points; prepared.set(points, result); prepared.set(result, result) }
+    return result
+  }
   try {
     let divisions = 4
     for (let n = 4; n <= 24; n += 2) if (Math.abs(radius * n / spacing - Math.round(radius * n / spacing)) < 1e-6) { divisions = n; break }
@@ -45,20 +52,32 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       }
       return result
     }
-    const patterns = new WeakMap<Point[], HeatingPattern>()
+    const patterns = new WeakMap<Point[], HeatingPattern>(), bases = new WeakMap<Point[], Point[]>()
     const orientations = (points: Point[], pattern: HeatingPattern) => {
       const reversed = [...points].reverse(); patterns.set(points, pattern); patterns.set(reversed, pattern)
+      bases.set(points, points); bases.set(reversed, points)
       return [points, reversed]
     }
-    const pending = fields.map((variants) => variants.flatMap((points) => orientations(points, patternFor(points))))
+    const pending = fields.map((variants) => variants.flatMap((points) => orientations(prepare(points), patternFor(points))))
     const entryVariants = (variants: Point[][]) => {
-      const first = variants[0], dx = first[1].x - first[0].x, dy = first[1].y - first[0].y
-      const other = variants.find((points) => Math.abs(dx * (points[1].y - points[0].y) - dy * (points[1].x - points[0].x)) > 1e-7)
-      return other ? [first, other] : [first]
+      // Reversing supply/return does not move a physical inlet. Counting both
+      // used half the variant budget before the farther, door-facing corners.
+      const unique = [...new Set(variants.map((points) => bases.get(points) ?? points))]
+      const signature = (points: Point[]) => JSON.stringify([[points[0], points[1]], [points.at(-1)!, points.at(-2)!]].map(([p, q]) => {
+        const length = Math.hypot(q.x - p.x, q.y - p.y)
+        return [p.x, p.y, (q.x - p.x) / length, (q.y - p.y) / length].map((n) => Math.round(n * 1e6) / 1e6)
+      }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
+      const entrances = new Map<string, Point[]>()
+      for (const points of unique) if (!entrances.has(signature(points))) entrances.set(signature(points), points)
+      // Joined fields can have several safe bridge locations with the same
+      // inlet heading. A later pocket may need one of those other locations.
+      return [...new Set([...entrances.values(), ...unique])].slice(0, 12)
     }
-    let audits = 0, pairs = 0
+    const backtracks: { pending: Point[][][]; blocked: Set<string> }[] = []
+    let blocked = new Set<string>()
+    let audits = 0, pairs = 0, stateLimit = auditLimit
     const safe = (candidate: Point[], a: number, b: number) => {
-      if (++audits > auditLimit) return false
+      if (++audits > stateLimit) return false
       const remaining = pending.filter((_, i) => i !== a && i !== b).map((variants) => variants[0])
       return valid(candidate, remaining)
     }
@@ -67,6 +86,7 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       pending[a] = orientations(candidate, pattern); pending.splice(b, 1); return true
     }
     while (pending.length > 1 && audits < auditLimit && pairs < 256) {
+      stateLimit = Math.min(auditLimit, audits + Math.max(16, Math.floor(auditLimit / 4)))
       let joined = false
       const boxes = pending.map((variants) => {
         const xs = variants[0].map((p) => p.x), ys = variants[0].map((p) => p.y)
@@ -79,17 +99,31 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       // available for a narrow adjacent field that cannot fit two side bridges.
       for (const { a, b } of neighbours) {
         if (joined || ++pairs > 256) break
+        const key = `${a}:${b}`
+        if (blocked.has(key)) continue
         const alternatives: Point[][] = []
-        for (const av of entryVariants(pending[a])) for (const bv of entryVariants(pending[b])) {
+        variants: for (const av of entryVariants(pending[a])) for (const bv of entryVariants(pending[b])) {
+          if (audits >= stateLimit) break variants
+          // Keep exact fractional bends when fields have different raster
+          // phases. Rounding every retained corner can shrink an R80 to R74.
+          for (const raw of exactHeatingSpliceCandidates(av, bv, spacing, radius, checkpoint)) {
+            if (alternatives.length >= 8 || audits >= stateLimit) break
+            const candidate = prepare(compact(raw))
+            if (safe(candidate, a, b)) { patterns.set(candidate, combineHeatingPatterns([patterns.get(av), patterns.get(bv)])); alternatives.push(candidate) }
+          }
+          if (alternatives.length) continue
           const x = raster(av), y = raster(bv)
           if (!x || !y) continue
           for (const cells of heatingSpliceCandidates(x, y, grid, divisions, radius / step, checkpoint)) {
-            if (alternatives.length >= 8 || audits >= auditLimit) break
-            const candidate = compact(cells.map(point))
+            if (alternatives.length >= 8 || audits >= stateLimit) break
+            const candidate = prepare(compact(cells.map(point)))
             if (safe(candidate, a, b)) { patterns.set(candidate, combineHeatingPatterns([patterns.get(av), patterns.get(bv)])); alternatives.push(candidate) }
           }
         }
-        if (alternatives.length) { pending[a] = alternatives.flatMap((points) => orientations(points, patterns.get(points)!)); pending.splice(b, 1); joined = true }
+        if (alternatives.length) {
+          if (pending.length > 2 && backtracks.length < 24) backtracks.push({ pending: pending.map((variants) => [...variants]), blocked: new Set([...blocked, key]) })
+          pending[a] = alternatives.flatMap((points) => orientations(points, patterns.get(points)!)); pending.splice(b, 1); blocked = new Set(); joined = true
+        }
       }
       if (joined) continue
       const choices: { a: number; b: number; x: Point[]; y: Point[]; distance: number }[] = []
@@ -99,7 +133,8 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
       choices.sort((a, b) => a.distance - b.distance)
       for (const { a, b, x, y } of choices) {
         checkpoint()
-        if (audits >= auditLimit) break
+        if (blocked.has(`${a}:${b}`)) continue
+        if (audits >= stateLimit) break
         const p = x.at(-1)!, before = x.at(-2)!, q = y[0], after = y[1]
         const ul = Math.hypot(p.x - before.x, p.y - before.y), vl = Math.hypot(after.x - q.x, after.y - q.y)
         const u = { x: (p.x - before.x) / ul, y: (p.y - before.y) / ul }, v = { x: (after.x - q.x) / vl, y: (after.y - q.y) / vl }
@@ -114,12 +149,20 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
         }
         for (const bridge of bridges) {
           if (bridge.some((p) => p.x < bounds.x || p.y < bounds.y || p.x > bounds.x + bounds.width || p.y > bounds.y + bounds.height)) continue
-          const candidate = compact([...x, ...bridge.slice(1, -1), ...y])
-          if (accept(candidate, a, b, combineHeatingPatterns([patterns.get(x), patterns.get(y)]))) { joined = true; break }
+          const candidate = prepare(compact([...x, ...bridge.slice(1, -1), ...y]))
+          const previous = pending.length > 2 ? pending.map((variants) => [...variants]) : undefined
+          if (accept(candidate, a, b, combineHeatingPatterns([patterns.get(x), patterns.get(y)]))) {
+            if (previous && backtracks.length < 24) backtracks.push({ pending: previous, blocked: new Set([...blocked, `${a}:${b}`]) })
+            blocked = new Set(); joined = true; break
+          }
         }
         if (joined) break
       }
-      if (!joined) return null
+      if (!joined) {
+        const previous = backtracks.pop()
+        if (!previous) return null
+        pending.splice(0, pending.length, ...previous.pending); blocked = previous.blocked
+      }
     }
     return pending.length === 1 ? { points: pending[0][0], pattern: patterns.get(pending[0][0])! } : null
   } catch (error) {

@@ -11,6 +11,7 @@ import { generateAutomaticHeatingPlan } from '../src/editor/automatic-heating-pl
 import { heatingLayout } from '../src/editor/heating-plan.ts'
 import { heatingObstacleBounds } from '../src/editor/heating-openings.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
+import { heatingConnectionEntryKey } from '../src/editor/heating-connection-refinement.ts'
 import { sanitizeShapes, shapeBounds } from '../src/editor/model/model.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -27,8 +28,8 @@ if (!Number.isInteger(slices) || slices < 1 || slices > 8) throw new Error('Use 
 if (position.length !== 2 || !position.every(Number.isFinite) || !Number.isFinite(timeout) || timeout < 1 || timeout > 600000) {
   throw new Error('Use --source=x,y and --timeout=1..600000 (milliseconds).')
 }
-const mode = process.argv.includes('--manual-only') ? 'manual' : process.argv.includes('--capture-only') ? 'capture' : 'all'
-const captureBundle = process.argv.includes('--capture-bundle') || mode === 'capture'
+const mode = process.argv.includes('--manual-only') ? 'manual' : process.argv.includes('--capture-feeds') ? 'capture-feeds' : process.argv.includes('--capture-only') ? 'capture' : 'all'
+const captureBundle = process.argv.includes('--capture-bundle') || mode === 'capture' || mode === 'capture-feeds'
 const source = { x: position[0], y: position[1] }
 const resumePath = option('resume-routing', '')
 const resume = resumePath ? JSON.parse(readFileSync(resumePath, 'utf8')) : undefined
@@ -46,17 +47,26 @@ const entryVariants = resume?.entryVariants ?? option('entry-variants', '').spli
 })
 const allocationVariant = Number(option('allocation-variant', resume?.allocationVariant ?? '0'))
 if (!Number.isInteger(allocationVariant) || allocationVariant < 0) throw new Error('Use a non-negative --allocation-variant integer.')
+const roomTargets = option('room-targets', '').split(',').filter(Boolean).map((value) => {
+  const [room, count] = value.split(':')
+  if (!room || !Number.isInteger(Number(count)) || Number(count) < 1 || Number(count) > 24)
+    throw new Error('Use --room-targets=region-2:6,region-3:3,region-7:3')
+  return [room, Number(count)]
+})
 const bytes = readFileSync(input), document = JSON.parse(bytes), shapes = sanitizeShapes(document.shapes ?? document)
 const scale = document.drawingScale ?? 100
 const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capacity: Number(option('capacity', '12')),
   shareSmallRooms: true, heatSourceRoom: false, allowExtraCircuit: process.argv.includes('--extra'), allowLongerCircuits: process.argv.includes('--longer'),
   ...(option('exclude-rooms', '') ? { excludedRoomKeys: option('exclude-rooms', '').split(',') } : {}),
   allowWallPassages: !process.argv.includes('--doors-only'), ...(option('max-length', '') ? { design: { maxCircuitLengthM: Number(option('max-length', '100')) } } : {}) }
+if (new Set(roomTargets.map(([room]) => room)).size !== roomTargets.length || roomTargets.reduce((sum, [, count]) => sum + count, 0) > settings.capacity)
+  throw new Error('Room targets must have unique keys and fit the requested physical capacity.')
 const hash = createHash('sha256').update(bytes).update(JSON.stringify({ scale, settings, source, timeout, slices, mode, captureBundle }))
 if (resume) hash.update(JSON.stringify(resume))
 if (warmBytes) hash.update(warmBytes)
 hash.update(JSON.stringify(entryVariants))
 hash.update(JSON.stringify(allocationVariant))
+hash.update(JSON.stringify(roomTargets))
 // Include dependencies as well as the planner. A geometry/model or lockfile
 // change invalidates the cache; unchanged investigations reuse their evidence.
 const fingerprint = (folder) => {
@@ -99,13 +109,24 @@ if (mode !== 'manual') {
   const start = performance.now()
   try {
     const budget = { session: {}, measuredLeads: resume?.measuredLeads ?? resumeBundle?.measuredLeads,
-        allocationVariant, entryVariants: new Map(entryVariants), pauseOnDeadline: slices > 1, routes: 600, deadline: Date.now() + timeout,
+        ...(roomTargets.length ? { roomTargets: new Map(roomTargets) } : {}),
+        allocationVariant, entryVariants: new Map(entryVariants), fieldEntryVariants: new Map(resume?.fieldEntryVariants ?? resumeBundle?.fieldEntryVariants ?? []), pauseOnDeadline: slices > 1, routes: 600, deadline: Date.now() + timeout,
+        onFeedReservations(grid, nativeFloor, targets) {
+          if (!captureBundle) return
+          const encode = (array) => array && Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString('base64')
+          writeFileSync(`${output}.reserved-feeds.json`, JSON.stringify({ fingerprint: key, source, settings, scale, targets: [...targets], nativeRooms: nativeFloor.rooms,
+            grid: { origin: grid.origin, step: grid.step, width: grid.width, height: grid.height, rooms: grid.rooms,
+              room: encode(grid.room), wall: encode(grid.wall), door: encode(grid.door), obstacle: encode(grid.obstacle),
+              feedCorridor: encode(grid.feedCorridor), feedPaths: grid.feedPaths, feedDistances: encode(grid.feedDistances) } }))
+          if (mode === 'capture-feeds') { capturedOnly = true; throw new Error('Heating feed reservations checkpoint captured') }
+        },
         onBundleGrid({ grid, blocked, sourceStubs, targetStubs, permittedWallCells, coils, jobs, feedPaths }) {
           if (!captureBundle && !resume) return
           const encode = (array) => Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString('base64')
           const bundle = { fingerprint: key, source, settings, scale,
             allocationVariant: budget.session.work?.allocationVariant ?? allocationVariant,
             entryVariants: [...budget.session.work?.entryVariants ?? budget.entryVariants],
+            fieldEntryVariants: [...budget.session.work?.fieldEntryVariants ?? budget.fieldEntryVariants],
             measuredLeads: budget.session.work?.measuredLeads ?? budget.measuredLeads,
             grid: { origin: grid.origin, step: grid.step, width: grid.width, height: grid.height,
               room: encode(grid.room), wall: encode(grid.wall), door: encode(grid.door), obstacle: encode(grid.obstacle) },
@@ -133,6 +154,12 @@ if (mode !== 'manual') {
                 coilKey: JSON.stringify(heatingPipeGeometry(coil).points), points: goals.map((goal) => snapshot.points[goal]),
                 bendRadiusMm: goals.map((goal) => snapshot.bendRadiusMm[goal]) }] : []
             })
+            // An inlet retry changes only a few fields. Retain independently
+            // checked pairs from prior layouts as hints as well as the active
+            // snapshot; the physical refiner validates every hint again.
+            const remembered = [...warm.state?.warmPairs ?? [], ...pairs]
+            const distinct = new Map(remembered.map((pair) => [pair.coilKey, pair]))
+            pairs.splice(0, pairs.length, ...[...distinct.values()].slice(-32))
             const routingKey = JSON.stringify(coils.map((coil) => heatingPipeGeometry(coil).points))
             budget.session.work.connectionRefinement = { key: routingKey, state: { warmPairs: pairs } }
             warmedRouting = true
@@ -182,7 +209,7 @@ if (mode !== 'manual') {
           const bundle = JSON.parse(readFileSync(`${output}.bundle.json`, 'utf8'))
           if (JSON.stringify(bundle.coils.map((coil) => heatingPipeGeometry(coil).points)) === checkpoint.key)
             writeFileSync(`${output}.routing-checkpoint.json`, JSON.stringify({ fingerprint: key, key: checkpoint.key, bundle, allocationVariant: bundle.allocationVariant,
-            entryVariants: bundle.entryVariants, measuredLeads: bundle.measuredLeads,
+            entryVariants: bundle.entryVariants, fieldEntryVariants: bundle.fieldEntryVariants, measuredLeads: bundle.measuredLeads,
             state: { ...checkpoint.state, fineGrid: undefined } }))
         }
         if (!(error instanceof HeatingPlanningPaused) || slice + 1 === slices) throw error
@@ -190,6 +217,33 @@ if (mode !== 'manual') {
         report.progress.push({ phase: 'paused', elapsedMs, resumedSlice: slice + 2 })
         console.log(JSON.stringify({ paused: true, elapsedMs, resumingSlice: slice + 2 }))
       }
+    }
+    // A successful run supersedes its last paused checkpoint. Keep a complete
+    // matching state, rather than reporting an old nine-circuit snapshot as
+    // though it were the outcome of the completed plan.
+    const refinement = budget.session.work?.connectionRefinement
+    if (captureBundle && refinement?.state.priority?.solution && existsSync(`${output}.bundle.json`)) {
+      const bundle = JSON.parse(readFileSync(`${output}.bundle.json`, 'utf8'))
+      const loops = new Map(result.shapes.filter((shape) => shape.heating?.pipeRole === 'loop').map((shape) => [shape.heating.circuitId, shape]))
+      const snapshot = refinement.state.priority.solution
+      const close = (a, b) => a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-6)
+      const matches = bundle.coils.every((coil, i) => {
+        const loop = loops.get(coil.heating.circuitId)
+        if (!loop || heatingConnectionEntryKey(heatingPipeGeometry(coil).points) !== heatingConnectionEntryKey(heatingPipeGeometry(loop).points)) return false
+        // A coverage patch can change only the coil interior. Its completed
+        // routing checkpoint still belongs to the pre-patch coils if BOTH
+        // actual final feeds match the saved solution exactly.
+        return ['supply', 'return'].every((role, n) => {
+          const pipe = result.shapes.find((shape) => shape.heating?.circuitId === coil.heating.circuitId && shape.heating.pipeRole === role)
+          if (!pipe) return false
+          const points = heatingPipeGeometry(pipe).points
+          return close(role === 'return' ? [...points].reverse() : points, snapshot.points[i * 2 + n])
+        })
+      })
+      if (matches && JSON.stringify(bundle.coils.map((coil) => heatingPipeGeometry(coil).points)) === refinement.key)
+        writeFileSync(`${output}.routing-checkpoint.json`, JSON.stringify({ fingerprint: key, complete: true, key: refinement.key, bundle,
+          allocationVariant: bundle.allocationVariant, entryVariants: bundle.entryVariants, fieldEntryVariants: bundle.fieldEntryVariants,
+          measuredLeads: bundle.measuredLeads, state: { ...refinement.state, fineGrid: undefined } }))
     }
     report.automatic = { status: 'success', elapsedMs: Math.round(performance.now() - start), rows: result.rows,
       audit: result.shapes.find((s) => s.heating?.kind === 'manifold')?.heating?.audit, wallCrossings: result.wallCrossings,

@@ -63,6 +63,15 @@ test('complete proposal scoring compares connection cost after complete circuit 
   assert.ok(shortcut[5] < noWall[5])
   assert.ok(heatingPlanScore(make(0, 1))[6] < heatingPlanScore(make(1, 1))[6], 'prefer a doorway when connection lengths tie')
 })
+test('proposal quality prioritises missing floor per room over a shorter incomplete loop', () => {
+  const make = (gap: number, totalM: number, smallRoom = false): any => ({
+    shapes: [{ kind: 'rect', heating: { kind: 'manifold', preferredCircuitLengthM: 100,
+      coverage: { rooms: [{ eligibleM2: smallRoom ? 1 : 40, gapM2: gap },
+        ...(smallRoom ? [{ eligibleM2: 100, gapM2: 0 }] : [])] } } }],
+    wallCrossings: 0, rows: [{ supplyM: 8, returnM: 8, totalM }] })
+  assert.ok(heatingPlanScore(make(1, 119))[1] < heatingPlanScore(make(7, 90))[1], 'both warning plans retain their real coverage difference')
+  assert.ok(heatingPlanScore(make(0, 119))[1] < heatingPlanScore(make(.3, 90, true))[1], 'a large covered room cannot conceal a gap in a small room')
+})
 test('scoped recalculation preserves the other room, its ports and every fixed path', () => {
   const source = walls()
   source.push({ id: 'partition', kind: 'wall', start: { x: 600, y: 400 }, end: { x: 600, y: 720 } },

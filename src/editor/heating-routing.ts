@@ -192,6 +192,10 @@ class MinHeap {
 export type HeatingRoutingOptions = {
   /** Checked inside the search, so a single difficult route cannot exhaust a room's budget. */
   checkpoint?: () => void
+  /** Stable physical-query identity; retain an interrupted arc frontier in the live session. */
+  resumeKey?: string
+  /** Use the tangent/arc graph without repeating the square-ray fallback. */
+  arcOnly?: boolean
   roomId?: number
   occupied?: ReadonlySet<number>
   allowWalls?: boolean
@@ -298,6 +302,7 @@ export const wallStepCost = (grid: HeatingGrid, from: number, to: number, option
 export const routeHeating = (grid: HeatingGrid, start: number, end: number,
   options: HeatingRoutingOptions = {}): number[] | null => {
   options.checkpoint?.()
+  if (options.radiusCells && options.arcOnly) return routeWithArcs(grid, start, end, options)
   if (options.radiusCells) return options.preferArcs
     ? routeWithArcs(grid, start, end, options) ?? routeWithBends(grid, start, end, options)
     : routeWithBends(grid, start, end, options) ?? routeWithArcs(grid, start, end, options)
@@ -349,6 +354,9 @@ type RoutingWorkspace = { cost: Float64Array; previous: Int32Array; visited: Uin
 // A wall mask belongs to one immutable grid. Generation stamps avoid allocating and
 // clearing millions of state slots on every route; a new grid gets a fresh workspace.
 const routingWorkspaces = new WeakMap<Uint8Array, RoutingWorkspace>()
+// One interrupted query per immutable mask. Weak keys release the frontier
+// with its planner session; changed geometry/search keys discard it immediately.
+const interruptedArcSearches = new WeakMap<Uint8Array, { key: string; generation: number; control: { checkpoint?: () => void }; run: () => number[] | null }>()
 
 /** Direction-aware rays leave at least two bend radii between successive corners. */
 const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: HeatingRoutingOptions): number[] | null => {
@@ -482,6 +490,7 @@ const routeWithBends = (grid: HeatingGrid, start: number, end: number, options: 
  * the actual quarter circle keeps the requested clearance. */
 const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: HeatingRoutingOptions): number[] | null => {
   const { width, height } = grid, size = grid.wall.length, radius = Math.ceil((options.radiusCells ?? 2) / 2)
+  const control = { checkpoint: options.checkpoint }, checkpoint = () => control.checkpoint?.()
   const directions = [1, width, -1, -width], vectors = [[1, 0], [0, 1], [-1, 0], [0, -1]]
   const searchWeight = Math.max(1, Math.min(2, options.searchWeight ?? 1))
   const staticFree = (cell: number) => cell >= 0 && cell < size && !grid.obstacle[cell] &&
@@ -494,6 +503,13 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
     workspace = { cost: new Float64Array(size * 4), previous: new Int32Array(size * 4), visited: new Uint32Array(size * 4), closed: new Uint32Array(size * 4), generation: 0 }
     routingWorkspaces.set(grid.wall, workspace)
   }
+  const interrupted = interruptedArcSearches.get(grid.wall)
+  interruptedArcSearches.delete(grid.wall)
+  if (options.resumeKey && interrupted?.key === options.resumeKey && interrupted.generation === workspace.generation) {
+    interrupted.control.checkpoint = options.checkpoint
+    try { return interrupted.run() }
+    catch (error) { interruptedArcSearches.set(grid.wall, interrupted); throw error }
+  }
   if (workspace.generation >= 0xffffffff) { workspace.visited.fill(0); workspace.closed.fill(0); workspace.generation = 0 }
   const generation = ++workspace.generation, { cost, previous, visited, closed } = workspace, heap = new MinHeap()
   let heuristic = (cell: number) => Math.max(0, Math.hypot(cell % width - end % width, Math.floor(cell / width) - Math.floor(end / width)) -
@@ -505,7 +521,7 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
     let steps = 0
     heuristic = (cell) => {
       while (!settled[cell] && reverse.values.length) {
-        if (++steps % 4096 === 0) options.checkpoint?.()
+        if (++steps % 4096 === 0) checkpoint()
         const from = reverse.pop()
         if (settled[from]) continue
         settled[from] = 1
@@ -521,7 +537,6 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
       }
       return lower[cell]
     }
-    if (!Number.isFinite(heuristic(start))) return null
   }
   const laneShift = options.continuousTurns ? workspace.laneShift ??= new Int8Array(size * 4) : undefined
   const cornerRadius = options.continuousTurns ? workspace.cornerRadius ??= new Uint16Array(size * 4) : undefined
@@ -533,16 +548,27 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
     Math.max(1, Math.round(1 + i * (radius * 2 - 2) / Math.max(1, shiftCount - 1))))
   const shifts = options.continuousTurns ? [...new Set(offsets)].map((offset) => heatingLaneShift(radius, offset)).filter((value) => value !== undefined) : []
   for (let heading = 0; heading < 4; heading++) if (options.startDirection === undefined || directions[heading] === options.startDirection) {
-    const state = start * 4 + heading; cost[state] = 0; previous[state] = -1; visited[state] = generation; heap.push(state, heuristic(start))
+    const state = start * 4 + heading; cost[state] = 0; previous[state] = -1; visited[state] = generation; heap.push(state, 0)
   }
   const sampleCount = Math.max(8, Math.ceil(radius * Math.PI)), cellMm = grid.step * (grid.drawingScale ?? 100) / 8
   const limit = Math.min(size * 4, 400000, Math.ceil(80000 * (25 / cellMm) ** 2))
-  let explored = 0
+  let explored = 0, iterations = 0, initialised = false, inFlight = -1
+  const search = (): number[] | null => {
+  if (!initialised) {
+    if (!Number.isFinite(heuristic(start))) return null
+    initialised = true
+  }
+  // A pause inside the reverse heuristic may interrupt one expansion. Replay
+  // that expansion; completed successors are already queued, and no successor
+  // is committed until its heuristic is available.
+  if (inFlight >= 0) { closed[inFlight] = 0; heap.push(inFlight, cost[inFlight]); inFlight = -1 }
   while (heap.values.length) {
-    if (++explored % 1024 === 0) options.checkpoint?.()
-    if (explored > limit) return null
+    if (++iterations % 1024 === 0) checkpoint()
     const state = heap.pop(), cell = Math.floor(state / 4), heading = state % 4
     if (closed[state] === generation) continue
+    // Improved costs leave stale entries in the heap. They are not newly
+    // explored states and must not prematurely exhaust the graph budget.
+    if (++explored > limit) return null
     if ((options.goalRegion ? options.goalRegion.has(cell) : cell === end) && (options.goalRegion || options.endDirection === undefined || directions[heading] === options.endDirection)) {
       const nodes = [state]
       while (previous[nodes.at(-1)!] >= 0) { nodes.push(previous[nodes.at(-1)!]); if (nodes.length > size * 4) return null }
@@ -589,7 +615,7 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
       }
       return path
     }
-    closed[state] = generation
+    closed[state] = generation; inFlight = state
     const x = cell % width, y = Math.floor(cell / width), [ux, uy] = vectors[heading]
     for (const outgoing of [heading, (heading + 1) % 4, (heading + 3) % 4]) for (const bend of outgoing === heading ? [radius] : bendRadii) {
       const turn = outgoing !== heading, [vx, vy] = vectors[outgoing]
@@ -624,10 +650,11 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
       if (!valid) continue
       const nextState = destination * 4 + outgoing, nextCost = cost[state] + extra
       if (closed[nextState] === generation || visited[nextState] === generation && nextCost >= cost[nextState]) continue
+      const priority = nextCost + heuristic(destination) * searchWeight
       cost[nextState] = nextCost; previous[nextState] = state; visited[nextState] = generation
       if (laneShift) laneShift[nextState] = 0
       if (cornerRadius) cornerRadius[nextState] = turn ? bend : 0
-      heap.push(nextState, nextCost + heuristic(destination) * searchWeight)
+      heap.push(nextState, priority)
     }
     for (const shift of shifts) for (const side of [-1, 1]) {
       // Broad shifts are useful at the constrained inlet. Trying every width
@@ -654,9 +681,17 @@ const routeWithArcs = (grid: HeatingGrid, start: number, end: number, options: H
       if (!valid) continue
       const nextState = destination * 4 + heading, nextCost = cost[state] + extra
       if (closed[nextState] === generation || visited[nextState] === generation && nextCost >= cost[nextState]) continue
+      const priority = nextCost + heuristic(destination) * searchWeight
       cost[nextState] = nextCost; previous[nextState] = state; visited[nextState] = generation; laneShift![nextState] = side * shift.lateral
-      heap.push(nextState, nextCost + heuristic(destination) * searchWeight)
+      heap.push(nextState, priority)
     }
+    inFlight = -1
   }
   return null
+  }
+  try { return search() }
+  catch (error) {
+    if (options.resumeKey) interruptedArcSearches.set(grid.wall, { key: options.resumeKey, generation, control, run: search })
+    throw error
+  }
 }

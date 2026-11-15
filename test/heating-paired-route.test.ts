@@ -91,3 +91,23 @@ test('a tight opposite turn after the launch retains both R80 fillets', () => {
   assert.ok(feeds.every((pipe) => heatingPipeGeometry(pipe).bends.every((bend) => bend.radiusMm >= 79.9)))
   assert.ok(result.every((points) => Math.hypot(points[0].x - source.x, points[0].y - source.y) <= 4.01))
 })
+
+test('pausing a paired query preserves its budget slot until the query completes', () => {
+  const width = 300, height = 240, step = .8, size = width * height
+  const grid: HeatingGrid = { drawingScale: 100, origin: { x: 0, y: 0 }, step, width, height,
+    wall: new Uint8Array(size), door: new Uint8Array(size), obstacle: new Uint8Array(size), loopObstacle: new Uint8Array(size),
+    room: new Int32Array(size).fill(1), rooms: [], point: (i) => ({ x: i % width * step, y: Math.floor(i / width) * step }),
+    index: (p) => { const x = Math.round(p.x / step), y = Math.round(p.y / step); return x < 0 || x >= width || y < 0 || y >= height ? -1 : y * width + x } }
+  const data = { ...heatingPipeData(100), automatic: true, diameterMm: 16, spacingMm: 100, circuitId: 'budget' }
+  const coil = createHeatingPipe('budget-coil', [[120, 30], [200, 30], [200, 150], [120, 150], [120, 134], [184, 134], [184, 38], [120, 38]]
+    .map(([x, y]) => ({ x, y })), { ...data, pipeRole: 'loop' })
+  const searchBudget = { remaining: 1 }, paused = new Error('pause')
+  let started = false
+  const options = { source: { x: 30, y: 90 }, sourceRadiusMm: 500, permittedWallCells: new Set<number>(), searchBudget, searchKey: 'budget-test' }
+  assert.throws(() => routePairedHeatingFeeds(grid, coil, [coil], [], data, 100,
+    { ...options, onSearch() { started = true }, checkpoint() { if (started) throw paused } }), (error) => error === paused)
+  assert.equal(searchBudget.remaining, 1, 'an unfinished query has not consumed its slot')
+  const result = routePairedHeatingFeeds(grid, coil, [coil], [], data, 100, { ...options, checkpoint() {} })
+  assert.ok(result, 'resuming can complete the same query with its retained slot')
+  assert.equal(searchBudget.remaining, 0)
+})

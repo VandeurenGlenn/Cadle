@@ -2,6 +2,7 @@
   <g fill="none" stroke="currentColor" stroke-width="2.5">
     <circle cx="50" cy="50" r="44"/>
     <circle cx="50" cy="50" r="16" stroke-width="2"/>
+    <path d="M30 27 Q50 9 70 27 M37 34 Q50 22 63 34" stroke-width="3" stroke-linecap="round"/>
   </g>
   <text x="50" y="50" dy=".35em" text-anchor="middle" fill="currentColor" font-family="Arial, sans-serif" font-size="12" font-weight="600">AP</text>
 </svg>

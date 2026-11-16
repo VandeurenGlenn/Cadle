@@ -19,6 +19,7 @@ export type SelectionShape = {
   connection?: ElectricalConnection
   id?: string
   kind?: string
+  rectVariant?: 'roof-left' | 'roof-right'
   path?: string
   text?: string
   symbolTextFields?: SymbolTextField[]
@@ -121,9 +122,10 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       heating: sanitizeHeating(shape.heating),
       heatingLayout: shape.heatingLayout,
       kind,
+      rectVariant: shape.rectVariant === 'roof-left' || shape.rectVariant === 'roof-right' ? shape.rectVariant : null,
       connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',
-      label: kind.charAt(0).toUpperCase() + kind.slice(1),
+      label: kind === 'roof-left' || kind === 'roof-right' ? 'Dakvlak' : kind.charAt(0).toUpperCase() + kind.slice(1),
       bindingId: typeof shape.bindingId === 'string' ? shape.bindingId : '',
       name: typeof shape.name === 'string' ? shape.name : '',
       isRoom: shape.isRoom === true,

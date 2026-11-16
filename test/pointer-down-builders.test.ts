@@ -7,6 +7,7 @@ import {
 } from '../src/editor/interaction/pointer-down-builders.js'
 import { oneWireSymbolScaleFor } from '../src/editor/layout/onewire-symbol-nodes.js'
 import { sanitizeShapes } from '../src/editor/model/model.js'
+import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE } from '../src/editor/roof-geometry.js'
 
 test('uses a two-pixel stroke for newly drawn lines and outline shapes', () => {
   const point = { x: 10, y: 20 }
@@ -24,6 +25,23 @@ test('keeps architectural tools on their specialized stroke defaults', () => {
   for (const tool of ['wall', 'room', 'door', 'window', 'gate'] as const) {
     const draft = createDraftShape(tool, point, tool)
     assert.equal(draft.strokeWidth, undefined, tool)
+  }
+})
+
+test('creates left and right roof drafts with their visible non-obstacle defaults', () => {
+  const point = { x: 10, y: 20 }
+
+  for (const tool of ['roof-left', 'roof-right'] as const) {
+    const draft = createDraftShape(tool, point, tool)
+    assert.equal(draft.kind, 'rect', tool)
+    if (draft.kind !== 'rect') continue
+    assert.equal(draft.variant, tool)
+    assert.deepEqual(draft.start, point)
+    assert.deepEqual(draft.end, point)
+    assert.equal(draft.fill, DEFAULT_ROOF_FILL)
+    assert.equal(draft.stroke, DEFAULT_ROOF_STROKE)
+    assert.equal(draft.strokeWidth, 2)
+    assert.equal(draft.heatingObstacle, false)
   }
 })
 

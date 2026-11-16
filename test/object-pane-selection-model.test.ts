@@ -25,3 +25,13 @@ test('normalizes object pane selection data at the event boundary', () => {
 test('represents an empty selection without a placeholder shape', () => {
   assert.deepEqual(normalizeSelection({ selectionCount: 0 }), { selectionCount: 0, shape: null })
 })
+
+test('presents roof variants as a readable roof object with an editable direction', () => {
+  const selection = normalizeSelection({
+    selectionCount: 1,
+    shape: { id: 'roof', kind: 'roof-left', rectVariant: 'roof-left' }
+  })
+
+  assert.equal(selection.shape?.label, 'Dakvlak')
+  assert.equal(selection.shape?.rectVariant, 'roof-left')
+})

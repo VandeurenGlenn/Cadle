@@ -524,6 +524,11 @@ output,
   stroke-width: 2;
 }
 
+.shape-roof > path {
+  fill: none;
+  pointer-events: none;
+}
+
 .shape-text {
   font:
     600 18px 'IBM Plex Sans',

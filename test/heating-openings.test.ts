@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildHeatingGrid, routeHeating } from '../src/editor/heating-routing.ts'
-import { isHeatingDoorSymbol, isHeatingSymbolObstacle } from '../src/editor/heating-openings.ts'
+import { heatingObstacleBounds, isHeatingDoorSymbol, isHeatingSymbolObstacle } from '../src/editor/heating-openings.ts'
 import { createHeatingPipe, heatingDefaults, presentHeatingTables } from '../src/editor/heating-plan.ts'
 import { shapeBounds } from '../src/editor/model/model.ts'
 import type { RectShape, Shape, SymbolShape } from '../src/editor/model/types.ts'
@@ -94,4 +94,20 @@ test('live schedule checks allow pipes through catalog doors but still flag appl
     .find((shape) => shape.id === 'manifold')!.heating!.audit!
   assert.ok(!audit(door()).issues.some((issue) => issue.code === 'obstacle'))
   assert.ok(audit(door({ path: 'symbols/Consumption appliances/Door bell.svg' })).issues.some((issue) => issue.code === 'obstacle'))
+})
+
+test('a roof overlay does not block floor heating unless explicitly marked as an obstacle', () => {
+  const roof: RectShape = {
+    id: 'roof',
+    kind: 'rect',
+    variant: 'roof-left',
+    start: { x: 10, y: 20 },
+    end: { x: 210, y: 100 },
+    heatingObstacle: false
+  }
+
+  assert.deepEqual(heatingObstacleBounds([roof], shapeBounds), [])
+  assert.deepEqual(heatingObstacleBounds([{ ...roof, heatingObstacle: true }], shapeBounds), [
+    { x: 10, y: 20, width: 200, height: 80 }
+  ])
 })

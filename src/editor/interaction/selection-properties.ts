@@ -1,5 +1,5 @@
 import { cloneShape, shapeBounds } from '../../editor/model/model.js'
-import type { LineShape, Point, Shape } from '../../editor/model/types.js'
+import type { LineShape, Point, RoofVariant, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
@@ -19,6 +19,7 @@ import {
 const phaseLabel = phaseConfigurationLabel
 
 export type SelectionPropertyUpdate = {
+  rectVariant?: RoofVariant
   heating?: Partial<HeatingData>
   connection?: Partial<ElectricalConnection> | null
   text?: string
@@ -228,6 +229,12 @@ const applyProperties = (
   context: SelectionUpdateContext
 ): Shape => {
   const updated = cloneShape(shape) as Shape & { fill?: string }
+  if (
+    updated.kind === 'rect' &&
+    (payload.rectVariant === 'roof-left' || payload.rectVariant === 'roof-right')
+  ) {
+    updated.variant = payload.rectVariant
+  }
   if (updated.kind === 'rect' && updated.heating && payload.heating) {
     updated.heating = sanitizeHeating({ ...updated.heating, ...payload.heating,
       design: payload.heating.design ? { ...updated.heating.design, ...payload.heating.design } : updated.heating.design, kind: updated.heating.kind,

@@ -7,6 +7,7 @@ import { compactUnusedHeatingManifolds, sanitizeHeating } from '../heating-plan.
 import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-layout.js'
 import { sanitizeRoomLabel } from '../room-labels.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
+import { oppositeRoofVariant } from '../roof-geometry.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -214,11 +215,13 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
-      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect') rect.variant = raw.variant
+      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'roof-left' || raw.variant === 'roof-right') rect.variant = raw.variant
       if (typeof raw.scale === 'number' && Number.isFinite(raw.scale)) rect.scale = Math.max(0.1, raw.scale)
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) rect.rotation = raw.rotation
-      if (raw.flipX === true) rect.flipX = true
-      if (raw.flipY === true) rect.flipY = true
+      if (raw.flipX === true && (rect.variant === 'roof-left' || rect.variant === 'roof-right')) {
+        rect.variant = oppositeRoofVariant(rect.variant)
+      } else if (raw.flipX === true) rect.flipX = true
+      if (raw.flipY === true && rect.variant !== 'roof-left' && rect.variant !== 'roof-right') rect.flipY = true
       const fill = raw.fill
       if (typeof fill === 'string' && fill) rect.fill = fill
       const stroke = raw.stroke
@@ -620,8 +623,7 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
 }
 
 export const scaleDraftShape = (shape: DraftShape, scaleX: number, scaleY: number): DraftShape => ({
-  id: shape.id,
-  kind: shape.kind,
+  ...shape,
   start: scalePoint(shape.start, scaleX, scaleY),
   end: scalePoint(shape.end, scaleX, scaleY)
 })

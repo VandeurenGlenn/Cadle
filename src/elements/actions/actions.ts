@@ -21,6 +21,8 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-wall', icon: 'polyline', title: 'Draw wall' },
   { action: 'draw-room', icon: 'pentagon', title: 'Draw room' },
   { action: 'draw-room-label', icon: 'label', title: 'Ruimte-ID en naam', hint: 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.', nativeOnly: true },
+  { action: 'draw-roof-left', icon: 'roofing', title: 'Dakvlak · punt links', hint: 'Sleep het dakvlak over de ruimte. De schuine daklijnen komen links en de nok loopt naar rechts.', nativeOnly: true },
+  { action: 'draw-roof-right', icon: 'roofing', title: 'Dakvlak · punt rechts', hint: 'Sleep het dakvlak over de ruimte. De schuine daklijnen komen rechts en de nok loopt naar links.', nativeOnly: true },
   { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
@@ -114,6 +116,7 @@ export class CadleActions extends LiteElement {
   #visibleTools(): DrawTool[] {
     return DRAW_TOOLS.filter((t) => {
       if (t.action === 'draw-room-label' && this.pageType !== 'groundplan') return false
+      if (t.action.startsWith('draw-roof-') && this.pageType !== 'groundplan') return false
       if (t.action.startsWith('draw-heating-') && this.pageType !== 'groundplan') return false
       if (this.isNativeRoute && t.classicOnly) return false
       if (!this.isNativeRoute && t.nativeOnly) return false

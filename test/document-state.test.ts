@@ -434,3 +434,43 @@ test('migrates legacy duplicate one-wire protection assets to the catalog symbol
     'rated-current': ''
   })
 })
+
+test('restores roof overlays and canonicalizes a legacy horizontal flip into the direction', () => {
+  const state = asNativeState({
+    version: 2,
+    shapes: [
+      {
+        id: 'roof-left',
+        kind: 'rect',
+        variant: 'roof-left',
+        start: { x: 10, y: 20 },
+        end: { x: 210, y: 100 },
+        fill: '#aaaaaa',
+        stroke: '#222222',
+        strokeWidth: 3,
+        heatingObstacle: false
+      },
+      {
+        id: 'legacy-flipped-roof',
+        kind: 'rect',
+        variant: 'roof-left',
+        start: { x: 300, y: 20 },
+        end: { x: 500, y: 100 },
+        flipX: true
+      }
+    ],
+    selectedId: null,
+    paperPreset: 'a4-landscape',
+    printMargin: 0,
+    worldWidth: 1000,
+    worldHeight: 700
+  })
+
+  const first = state?.shapes[0]
+  const second = state?.shapes[1]
+  assert.equal(first?.kind === 'rect' ? first.variant : null, 'roof-left')
+  assert.equal(first?.kind === 'rect' ? first.fill : null, '#aaaaaa')
+  assert.equal(first?.heatingObstacle, false)
+  assert.equal(second?.kind === 'rect' ? second.variant : null, 'roof-right')
+  assert.equal(second?.kind === 'rect' ? second.flipX : null, undefined)
+})

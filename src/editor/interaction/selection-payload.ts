@@ -1,4 +1,4 @@
-import type { Shape } from '../../editor/model/types.js'
+import type { RoofVariant, Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
 import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-cache.js'
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
@@ -22,6 +22,7 @@ export type NativeSelectionShapePayload = {
   connection?: ElectricalConnection
   id: string
   kind: string
+  rectVariant?: RoofVariant
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
@@ -113,6 +114,13 @@ export const createNativeSelectionChangedPayload = (
     id: selectedShape.id,
     kind, heatingObstacle: selectedShape.heatingObstacle
   }
+  if (
+    selectedShape.kind === 'rect' &&
+    (selectedShape.variant === 'roof-left' || selectedShape.variant === 'roof-right')
+  ) {
+    shapePayload.rectVariant = selectedShape.variant
+    shapePayload.name = 'Dakvlak'
+  }
   if (selectedShape.kind === 'rect' && selectedShape.heating) {
     shapePayload.heating = selectedShape.heating
     shapePayload.heatingLayout = heatingLayout(selectedShape, options?.heatingObstacles)
@@ -185,8 +193,13 @@ export const createNativeSelectionChangedPayload = (
     selectedShape.kind === 'rect'
   ) {
     shapePayload.rotation = typeof selectedShape.rotation === 'number' ? selectedShape.rotation : 0
-    shapePayload.flipX = selectedShape.flipX === true
-    shapePayload.flipY = selectedShape.flipY === true
+    if (
+      selectedShape.kind !== 'rect' ||
+      (selectedShape.variant !== 'roof-left' && selectedShape.variant !== 'roof-right')
+    ) {
+      shapePayload.flipX = selectedShape.flipX === true
+      shapePayload.flipY = selectedShape.flipY === true
+    }
   }
   if (
     selectedShape.kind === 'wall' ||

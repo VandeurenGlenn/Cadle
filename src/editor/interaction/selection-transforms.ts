@@ -1,5 +1,6 @@
 import type { Point, Shape } from '../../editor/model/types.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
+import { oppositeRoofVariant } from '../roof-geometry.js'
 
 export type SelectionTransformAction =
   | 'flip-horizontal'
@@ -118,13 +119,15 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
           y: (shape.start.y + shape.end.y) / 2
         }
         const nextCenter = transformPoint(currentCenter, center, action)
+        const roofVariant = shape.variant === 'roof-left' || shape.variant === 'roof-right' ? shape.variant : null
         return {
           ...shape,
           start: { x: nextCenter.x - width / 2, y: nextCenter.y - height / 2 },
           end: { x: nextCenter.x + width / 2, y: nextCenter.y + height / 2 },
           rotation: nextRotation(shape.rotation, action),
-          flipX: nextFlipX(shape.flipX, action),
-          flipY: nextFlipY(shape.flipY, action)
+          ...(roofVariant && action === 'flip-horizontal' ? { variant: oppositeRoofVariant(roofVariant) } : {}),
+          flipX: roofVariant ? undefined : nextFlipX(shape.flipX, action),
+          flipY: roofVariant ? undefined : nextFlipY(shape.flipY, action)
         }
       }
 

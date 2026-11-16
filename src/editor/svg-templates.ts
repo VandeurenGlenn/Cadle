@@ -24,6 +24,7 @@ import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
+import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData } from './roof-geometry.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -213,6 +214,30 @@ export const shapeTemplate = (
       const bounds = shapeBounds(shape)
       const fill = shape.fill ?? 'transparent'
       const stroke = shape.stroke ?? '#000000'
+      if (shape.variant === 'roof-left' || shape.variant === 'roof-right') {
+        const transform = rectTransform(shape, bounds)
+        const roofPath = roofPathData(roofGeometry(bounds, shape.variant))
+        const roofFill = shape.fill ?? DEFAULT_ROOF_FILL
+        const roofStroke = shape.stroke ?? DEFAULT_ROOF_STROKE
+        return svg`
+          <g
+            class=${`${shapeClass} shape-roof`}
+            data-shape-id=${shape.id}
+            data-roof-direction=${shape.variant === 'roof-left' ? 'left' : 'right'}
+            data-selected=${selectedAttr}
+            transform=${transform || nothing}
+            style=${strokeWidthStyle}>
+            <rect
+              x=${bounds.x}
+              y=${bounds.y}
+              width=${Math.max(1, bounds.width)}
+              height=${Math.max(1, bounds.height)}
+              fill=${roofFill}
+              stroke=${roofStroke}></rect>
+            <path d=${roofPath} fill="none" stroke=${roofStroke}></path>
+          </g>
+        `
+      }
       if (shape.variant === 'circle') {
         const cx = bounds.x + bounds.width / 2
         const cy = bounds.y + bounds.height / 2

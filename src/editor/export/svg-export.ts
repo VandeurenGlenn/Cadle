@@ -17,6 +17,7 @@ import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
+import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData } from '../roof-geometry.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -255,6 +256,24 @@ export const shapeMarkup = (
       const strokeAttr = ` stroke="${escapeHtml(shape.stroke ?? '#000000')}"`
       const strokeWidthStyle =
         typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+      if (shape.variant === 'roof-left' || shape.variant === 'roof-right') {
+        const transform = rectTransform(shape, bounds)
+        const roofPath = roofPathData(roofGeometry(bounds, shape.variant))
+        const roofFillAttr = ` fill="${escapeHtml(shape.fill ?? DEFAULT_ROOF_FILL)}"`
+        const roofStrokeAttr = ` stroke="${escapeHtml(shape.stroke ?? DEFAULT_ROOF_STROKE)}"`
+        return `
+          <g
+            class="shape shape-rect shape-roof ${extraClass}"
+            data-shape-id="${shape.id}"
+            data-selected="${selectedAttr}"
+            data-roof-direction="${shape.variant === 'roof-left' ? 'left' : 'right'}"
+            ${transform}
+            ${strokeWidthStyle}>
+            <rect x="${bounds.x}" y="${bounds.y}" width="${Math.max(1, bounds.width)}" height="${Math.max(1, bounds.height)}"${roofFillAttr}${roofStrokeAttr}></rect>
+            <path d="${roofPath}" fill="none"${roofStrokeAttr}></path>
+          </g>
+        `
+      }
       if (shape.variant === 'circle') {
         const cx = bounds.x + bounds.width / 2
         const cy = bounds.y + bounds.height / 2

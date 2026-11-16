@@ -16,6 +16,12 @@ export const resolvePointerUpPhase = (state: {
 }
 
 export const canCommitDraft = (draft: DraftShape, minDistance = 2): boolean => {
+  if (draft.kind === 'rect' && (draft.variant === 'roof-left' || draft.variant === 'roof-right')) {
+    return (
+      Math.abs(draft.end.x - draft.start.x) >= minDistance &&
+      Math.abs(draft.end.y - draft.start.y) >= minDistance
+    )
+  }
   const distance = Math.hypot(draft.end.x - draft.start.x, draft.end.y - draft.start.y)
   return distance >= minDistance
 }

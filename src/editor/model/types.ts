@@ -12,6 +12,8 @@ export type Tool =
   | 'rect'
   | 'circle'
   | 'arc'
+  | 'roof-left'
+  | 'roof-right'
   | 'text'
   | 'symbol'
   | 'onewire'
@@ -21,6 +23,8 @@ export type Tool =
   | 'heating-manifold'
 
 export type Point = { x: number; y: number }
+
+export type RoofVariant = 'roof-left' | 'roof-right'
 
 export type OneWireSourceLink = {
   kind: 'board' | 'circuit' | 'device'
@@ -65,7 +69,7 @@ export type RectShape = GeneratedShapeMetadata & {
   kind: 'rect'
   start: Point
   end: Point
-  variant?: 'rect' | 'circle' | 'arc'
+  variant?: 'rect' | 'circle' | 'arc' | RoofVariant
   scale?: number
   rotation?: number
   flipX?: boolean

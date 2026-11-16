@@ -52,6 +52,9 @@ export class ObjectPane extends LiteElement {
   private accessor _nativeSelectedKind = ''
 
   @property({ type: String, attribute: false })
+  private accessor _nativeRectVariant: '' | 'roof-left' | 'roof-right' = ''
+
+  @property({ type: String, attribute: false })
   private accessor _nativeBindingId = ''
 
   @property({ type: String, attribute: false })
@@ -169,6 +172,7 @@ export class ObjectPane extends LiteElement {
       this._activeObjectLabel = this._selectionCount > 1 ? 'Multiple objects selected' : 'No selection'
       this._nativeSelectedId = ''
       this._nativeSelectedKind = ''
+      this._nativeRectVariant = ''
       if (this._selectionCount === 0) this._nativeBindingId = ''
       this._nativeName = ''
       this._nativeIsRoom = false
@@ -206,6 +210,7 @@ export class ObjectPane extends LiteElement {
     this._nativeConnection = shape.connection
     this._nativeSelectedId = shape.id
     this._nativeSelectedKind = shape.kind
+    this._nativeRectVariant = shape.rectVariant ?? ''
     this._nativeBindingId = shape.bindingId
     this._nativeName = shape.name
     this._nativeIsRoom = shape.isRoom
@@ -920,6 +925,7 @@ export class ObjectPane extends LiteElement {
     }
 
     const multiple = this._selectionCount > 1
+    const isRoof = this._nativeRectVariant === 'roof-left' || this._nativeRectVariant === 'roof-right'
     return html`
       <cadle-header>
         <div class="title">${multiple ? 'Multiple objects selected' : this._activeObjectLabel}</div>
@@ -932,6 +938,20 @@ export class ObjectPane extends LiteElement {
       <section>
         ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple ? this.#heatingProperties() : ''}
+        ${!multiple && this._nativeRectVariant ? this.#propertySection('roof', 'Dakvlak', html`
+          <label><span class="native-label">Punt en schuine daklijnen</span>
+            <select class="native-select" data-roof-direction .value=${this._nativeRectVariant}
+              @change=${(event: Event) => {
+                const rectVariant = (event.target as HTMLSelectElement).value as 'roof-left' | 'roof-right'
+                this._nativeRectVariant = rectVariant
+                pubsub.publish('editor.object.update', { rectVariant })
+              }}>
+              <option value="roof-left">Punt links</option>
+              <option value="roof-right">Punt rechts</option>
+            </select>
+          </label>
+          <p class="dimension-hint">De nok loopt vanaf de punt naar de tegenoverliggende zijde.</p>
+        `, true) : ''}
         ${!multiple && !this._nativeHeating && ['rect', 'symbol'].includes(this._nativeSelectedKind) ? this.#propertySection('heating-obstacle', 'Vloerverwarming', html`<label><span class="native-label">Vrij te houden voorwerp</span><select class="native-select" .value=${this._nativeHeatingObstacle === null ? 'auto' : String(this._nativeHeatingObstacle)} @change=${(event: Event) => { const value = (event.target as HTMLSelectElement).value; pubsub.publish('editor.object.update', { heatingObstacle: value === 'auto' ? null : value === 'true' }) }}><option value="auto">Automatisch herkennen</option><option value="true">Geen buizen onder dit voorwerp</option><option value="false">Buizen toegestaan</option></select></label>`) : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'
           ? this._nativeSymbolTextFields.filter((field) => field.key === 'description').map((field) => html`
@@ -945,7 +965,7 @@ export class ObjectPane extends LiteElement {
           <div class="dimension-summary"><strong>${this._nativeRoomLabel.id}</strong><div>${this._nativeRoomLabel.name}</div></div>
           <button type="button" class="native-button" @click=${() => pubsub.publish('editor.controls.command', { action: 'edit-room-label' })}>Ruimte-ID en naam wijzigen</button>
         `, true) : ''}
-        ${!this._nativeHeating && !this._nativeRoomLabel ? html`<label class="native-label">Binding ID</label>
+        ${!this._nativeHeating && !this._nativeRoomLabel && !isRoof ? html`<label class="native-label">Binding ID</label>
         <input
           class="native-input native-binding-input"
           .value=${this._nativeBindingId}
@@ -1311,7 +1331,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
 
 `, false)}
 ` : ''}
-        ${!this._nativeHeating && (multiple || this._nativeSelectedKind !== 'symbol') ? this.#propertySection('circuit-operations', 'Circuit operations', html`
+        ${!this._nativeHeating && !isRoof && (multiple || this._nativeSelectedKind !== 'symbol') ? this.#propertySection('circuit-operations', 'Circuit operations', html`
         <div
           class="circuit-actions"
           aria-label="Circuit operations">
@@ -1340,7 +1360,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
 
 `, false) : ''}
         ${this.#propertySection('layout', 'Position & layout', html`
-        <label class="native-label">Label position</label>
+        ${!isRoof ? html`<label class="native-label">Label position</label>
         <div
           class="native-chip-row native-label-options"
           role="radiogroup"
@@ -1380,7 +1400,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
             @click=${() => this.#setBindingLabelSide('bottom')}>
             Bottom
           </button>
-        </div>
+        </div>` : ''}
         ${this._nativeX !== null && this._nativeY !== null
           ? html`
               <label class="native-label">Position</label>

@@ -323,3 +323,25 @@ test('renders RCD sensitivity and classification without replacing the serif I m
   assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.phase : null, '')
   assert.equal(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides?.['device-type'] : undefined, undefined)
 })
+
+test('switches a roof between its left and right top-view variants without mutating the source', () => {
+  const roof: Shape = {
+    id: 'roof',
+    kind: 'rect',
+    variant: 'roof-left',
+    start: { x: 10, y: 20 },
+    end: { x: 210, y: 100 },
+    fill: '#b8b8b8',
+    stroke: '#3b2c20',
+    heatingObstacle: false
+  }
+  const updated = updateSelectionProperties(
+    [roof],
+    { rectVariant: 'roof-right' },
+    { selectedIds: new Set(['roof']), selectedId: 'roof', groupedSelection: false }
+  )
+
+  assert.equal(roof.kind === 'rect' ? roof.variant : null, 'roof-left')
+  assert.equal(updated?.[0].kind === 'rect' ? updated[0].variant : null, 'roof-right')
+  assert.equal(updated?.[0].heatingObstacle, false)
+})

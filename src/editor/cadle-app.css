@@ -483,10 +483,22 @@ output,
   stroke-dasharray: 4 3;
 }
 
+.shape-sliding-door-panel {
+  fill: white;
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+
+.shape-sliding-door-jamb {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 3;
+}
+
 .shape-sliding-door-arrow {
   fill: none;
   stroke: #3b2c20;
-  stroke-width: 1.5;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -497,10 +509,21 @@ output,
   stroke-width: 1.5;
 }
 
+.shape-sliding-window-panel {
+  fill: white;
+  stroke: #3b2c20;
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+
+.shape-window-glass.shape-sliding-window-glass {
+  stroke-width: 2;
+}
+
 .shape-sliding-window-arrow {
   fill: none;
   stroke: #3b2c20;
-  stroke-width: 1.5;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

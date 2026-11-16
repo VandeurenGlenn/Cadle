@@ -20,7 +20,12 @@ test('renders a sliding panel, track and direction without a swing arc', () => {
   assert.match(markup, /shape-door-leaf/)
   assert.match(markup, /shape-sliding-door-arrow/)
   assert.doesNotMatch(markup, /shape-door-arc|shape-door-hinge/)
-  assert.match(markup, /x1="0" y1="12" x2="100" y2="12"/)
+  assert.match(markup, /shape-sliding-door-panel/)
+  assert.match(markup, /d="M 0 9 L 100 9 L 100 15 L 0 15 Z"/)
+  assert.match(markup, /shape-sliding-door-jamb/)
+  const geometry = slidingDoorGeometry(slidingDoor)
+  assert.equal(geometry.arrowTip.x - geometry.arrowStart.x, 60)
+  assert.equal(geometry.arrowStart.y, -14)
 })
 
 test('persists and transforms the sliding style and mirrors its panel side', () => {
@@ -36,7 +41,7 @@ test('persists and transforms the sliding style and mirrors its panel side', () 
   assert.equal(geometry.leafStart.y, -12)
 })
 
-test('renders a sliding window with parallel tracks and a slide-direction arrow', () => {
+test('renders overlapping window sashes with a clear slide-direction arrow away from the glass', () => {
   const window: LineShape = {
     id: 'sliding-window',
     kind: 'window',
@@ -48,9 +53,14 @@ test('renders a sliding window with parallel tracks and a slide-direction arrow'
   const geometry = slidingWindowGeometry(window)
 
   assert.match(markup, /shape-sliding-window-track/)
+  assert.match(markup, /shape-sliding-window-panel/)
   assert.match(markup, /shape-sliding-window-arrow/)
   assert.equal(geometry.upperStart.y, 4)
   assert.equal(geometry.lowerStart.y, -4)
+  assert.ok(geometry.upperEnd.x > geometry.lowerStart.x, 'the two sashes overlap')
+  assert.equal(geometry.arrowTip.x - geometry.arrowStart.x, 60)
+  assert.equal(geometry.arrowStart.y, -18)
+  assert.equal((markup.match(/shape-sliding-window-glass/g) ?? []).length, 2)
   assert.deepEqual(cloneShape(sanitizeShapes([JSON.parse(JSON.stringify(window))])[0]), window)
 })
 

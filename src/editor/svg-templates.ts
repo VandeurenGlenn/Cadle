@@ -151,8 +151,9 @@ export const shapeTemplate = (
               : nothing
           }
           <line class=${`shape shape-sliding-door-track ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${shape.start.x} y1=${shape.start.y} x2=${shape.end.x} y2=${shape.end.y}></line>
-          <line class=${`shape shape-door-leaf ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} x1=${geometry.leafStart.x} y1=${geometry.leafStart.y} x2=${geometry.leafEnd.x} y2=${geometry.leafEnd.y}></line>
-          <path class=${`shape shape-sliding-door-arrow ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+          <path class=${`shape shape-door-leaf shape-sliding-door-panel ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} d=${geometry.panelPath}></path>
+          <path class=${`shape shape-sliding-door-jamb ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} d=${geometry.jambPath}></path>
+          <path class=${`shape shape-sliding-door-arrow ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
         `
       }
       const { length, nx, ny } = lineMetrics(shape)
@@ -189,11 +190,12 @@ export const shapeTemplate = (
               ? svg`<line class=${`shape shape-door-opening ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${shape.start.x} y1=${shape.start.y} x2=${shape.end.x} y2=${shape.end.y}></line>`
               : nothing
           }
-          <line class=${`shape shape-window-glass ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} x1=${geometry.upperStart.x} y1=${geometry.upperStart.y} x2=${geometry.upperEnd.x} y2=${geometry.upperEnd.y}></line>
-          <line class=${`shape shape-sliding-window-track ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${geometry.lowerStart.x} y1=${geometry.lowerStart.y} x2=${geometry.lowerEnd.x} y2=${geometry.lowerEnd.y}></line>
-          <line class=${`shape shape-window-jamb ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${geometry.upperStart.x} y1=${geometry.upperStart.y} x2=${geometry.lowerStart.x} y2=${geometry.lowerStart.y}></line>
-          <line class=${`shape shape-window-jamb ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${geometry.upperEnd.x} y1=${geometry.upperEnd.y} x2=${geometry.lowerEnd.x} y2=${geometry.lowerEnd.y}></line>
-          <path class=${`shape shape-sliding-window-arrow ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+          <line class=${`shape shape-sliding-window-track ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${shape.start.x} y1=${shape.start.y} x2=${shape.end.x} y2=${shape.end.y}></line>
+          <path class=${`shape shape-sliding-window-panel ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} style=${strokeWidthStyle} d=${geometry.panelPath}></path>
+          <line class=${`shape shape-window-glass shape-sliding-window-glass ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${geometry.upperStart.x} y1=${geometry.upperStart.y} x2=${geometry.upperEnd.x} y2=${geometry.upperEnd.y}></line>
+          <line class=${`shape shape-window-glass shape-sliding-window-glass ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} x1=${geometry.lowerStart.x} y1=${geometry.lowerStart.y} x2=${geometry.lowerEnd.x} y2=${geometry.lowerEnd.y}></line>
+          <path class=${`shape shape-window-jamb ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} d=${geometry.jambPath}></path>
+          <path class=${`shape shape-sliding-window-arrow ${extraClass}`} data-shape-id=${shape.id} data-selected=${selectedAttr} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
         `
       }
       const { nx, ny } = lineMetrics(shape)

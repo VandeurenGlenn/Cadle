@@ -68,9 +68,13 @@ const EXPORT_STYLE_BLOCK = `
   .shape-door-arc { fill: none; stroke: #3b2c20; stroke-width: 2; stroke-dasharray: 8 5; stroke-linecap: round; }
   .shape-door-hinge { display: none; }
   .shape-sliding-door-track { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-dasharray: 4 3; }
-  .shape-sliding-door-arrow { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-sliding-door-panel { fill: white; stroke-width: 2; stroke-linejoin: miter; }
+  .shape-sliding-door-jamb { fill: none; stroke: #3b2c20; stroke-width: 3; }
+  .shape-sliding-door-arrow { fill: none; stroke: #3b2c20; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
   .shape-sliding-window-track { fill: none; stroke: #3b2c20; stroke-width: 1.5; }
-  .shape-sliding-window-arrow { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-sliding-window-panel { fill: white; stroke: #3b2c20; stroke-width: 2; stroke-linejoin: miter; }
+  .shape-window-glass.shape-sliding-window-glass { stroke-width: 2; }
+  .shape-sliding-window-arrow { fill: none; stroke: #3b2c20; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
   .shape-built-in-cabinet { fill: none; stroke: #3b2c20; }
   .shape-built-in-cabinet-inset, .shape-built-in-cabinet-divider { fill: none; stroke: #3b2c20; stroke-width: 1.4; }
 
@@ -206,8 +210,9 @@ export const shapeMarkup = (
           typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
         return `
           <line class="shape shape-sliding-door-track ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}"></line>
-          <line class="shape shape-door-leaf ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} x1="${geometry.leafStart.x}" y1="${geometry.leafStart.y}" x2="${geometry.leafEnd.x}" y2="${geometry.leafEnd.y}"></line>
-          <path class="shape shape-sliding-door-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+          <path class="shape shape-door-leaf shape-sliding-door-panel ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="${geometry.panelPath}"></path>
+          <path class="shape shape-sliding-door-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" d="${geometry.jambPath}"></path>
+          <path class="shape shape-sliding-door-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
         `
       }
       const { length, nx, ny } = lineMetrics(shape)
@@ -233,11 +238,12 @@ export const shapeMarkup = (
         const strokeWidthStyle =
           typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
         return `
-          <line class="shape shape-window-glass ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} x1="${geometry.upperStart.x}" y1="${geometry.upperStart.y}" x2="${geometry.upperEnd.x}" y2="${geometry.upperEnd.y}"></line>
-          <line class="shape shape-sliding-window-track ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.lowerStart.x}" y1="${geometry.lowerStart.y}" x2="${geometry.lowerEnd.x}" y2="${geometry.lowerEnd.y}"></line>
-          <line class="shape shape-window-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.upperStart.x}" y1="${geometry.upperStart.y}" x2="${geometry.lowerStart.x}" y2="${geometry.lowerStart.y}"></line>
-          <line class="shape shape-window-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.upperEnd.x}" y1="${geometry.upperEnd.y}" x2="${geometry.lowerEnd.x}" y2="${geometry.lowerEnd.y}"></line>
-          <path class="shape shape-sliding-window-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+          <line class="shape shape-sliding-window-track ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}"></line>
+          <path class="shape shape-sliding-window-panel ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="${geometry.panelPath}"></path>
+          <line class="shape shape-window-glass shape-sliding-window-glass ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.upperStart.x}" y1="${geometry.upperStart.y}" x2="${geometry.upperEnd.x}" y2="${geometry.upperEnd.y}"></line>
+          <line class="shape shape-window-glass shape-sliding-window-glass ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.lowerStart.x}" y1="${geometry.lowerStart.y}" x2="${geometry.lowerEnd.x}" y2="${geometry.lowerEnd.y}"></line>
+          <path class="shape shape-window-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" d="${geometry.jambPath}"></path>
+          <path class="shape shape-sliding-window-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
         `
       }
       const { nx, ny } = lineMetrics(shape)

@@ -33,19 +33,23 @@ export const slidingDoorGeometry = (shape: LineShape) => {
   const side = shape.flipSide ? -1 : 1
   const offset = 12 * side
   const midpoint = {
-    x: (shape.start.x + shape.end.x) / 2,
-    y: (shape.start.y + shape.end.y) / 2
+    x: (shape.start.x + shape.end.x) / 2 - nx * 14 * side,
+    y: (shape.start.y + shape.end.y) / 2 - ny * 14 * side
   }
-  const arrowHalfLength = Math.min(10, length / 4)
+  const arrowHalfLength = Math.min(40, length * 0.3)
   const arrowTip = {
     x: midpoint.x + ux * arrowHalfLength,
     y: midpoint.y + uy * arrowHalfLength
   }
-  const arrowHeadLength = Math.min(5, arrowHalfLength / 2)
-  const arrowHeadWidth = Math.min(3, arrowHalfLength / 3)
+  const arrowHeadLength = Math.min(8, arrowHalfLength / 2)
+  const arrowHeadWidth = Math.min(5, arrowHalfLength / 3)
+  const point = (anchor: Point, distance: number) =>
+    `${anchor.x + nx * distance} ${anchor.y + ny * distance}`
   return {
     leafStart: { x: shape.start.x + nx * offset, y: shape.start.y + ny * offset },
     leafEnd: { x: shape.end.x + nx * offset, y: shape.end.y + ny * offset },
+    panelPath: `M ${point(shape.start, offset - 3)} L ${point(shape.end, offset - 3)} L ${point(shape.end, offset + 3)} L ${point(shape.start, offset + 3)} Z`,
+    jambPath: `M ${point(shape.start, -6)} L ${point(shape.start, 6)} M ${point(shape.end, -6)} L ${point(shape.end, 6)}`,
     arrowStart: { x: midpoint.x - ux * arrowHalfLength, y: midpoint.y - uy * arrowHalfLength },
     arrowTip,
     arrowHeadStart: {
@@ -62,22 +66,32 @@ export const slidingDoorGeometry = (shape: LineShape) => {
 export const slidingWindowGeometry = (shape: LineShape) => {
   const { length, ux, uy, nx, ny } = lineMetrics(shape)
   const midpoint = {
-    x: (shape.start.x + shape.end.x) / 2,
-    y: (shape.start.y + shape.end.y) / 2
+    x: (shape.start.x + shape.end.x) / 2 - nx * 18,
+    y: (shape.start.y + shape.end.y) / 2 - ny * 18
   }
   const panelOffset = 4
-  const arrowHalfLength = Math.min(9, length / 4)
+  const arrowHalfLength = Math.min(40, length * 0.3)
   const arrowTip = {
     x: midpoint.x + ux * arrowHalfLength,
     y: midpoint.y + uy * arrowHalfLength
   }
-  const arrowHeadLength = Math.min(4, arrowHalfLength / 2)
-  const arrowHeadWidth = Math.min(2.5, arrowHalfLength / 3)
+  const arrowHeadLength = Math.min(8, arrowHalfLength / 2)
+  const arrowHeadWidth = Math.min(5, arrowHalfLength / 3)
+  const point = (fraction: number, offset: number): Point => ({
+    x: shape.start.x + ux * length * fraction + nx * offset,
+    y: shape.start.y + uy * length * fraction + ny * offset
+  })
+  const coordinates = (fraction: number, offset: number) => {
+    const p = point(fraction, offset)
+    return `${p.x} ${p.y}`
+  }
   return {
-    upperStart: { x: shape.start.x + nx * panelOffset, y: shape.start.y + ny * panelOffset },
-    upperEnd: { x: shape.end.x + nx * panelOffset, y: shape.end.y + ny * panelOffset },
-    lowerStart: { x: shape.start.x - nx * panelOffset, y: shape.start.y - ny * panelOffset },
-    lowerEnd: { x: shape.end.x - nx * panelOffset, y: shape.end.y - ny * panelOffset },
+    upperStart: point(0, panelOffset),
+    upperEnd: point(0.55, panelOffset),
+    lowerStart: point(0.45, -panelOffset),
+    lowerEnd: point(1, -panelOffset),
+    panelPath: `M ${coordinates(0, 1)} L ${coordinates(0.55, 1)} L ${coordinates(0.55, 7)} L ${coordinates(0, 7)} Z M ${coordinates(0.45, -7)} L ${coordinates(1, -7)} L ${coordinates(1, -1)} L ${coordinates(0.45, -1)} Z`,
+    jambPath: `M ${coordinates(0, -8)} L ${coordinates(0, 8)} M ${coordinates(1, -8)} L ${coordinates(1, 8)}`,
     arrowStart: { x: midpoint.x - ux * arrowHalfLength, y: midpoint.y - uy * arrowHalfLength },
     arrowTip,
     arrowHeadStart: {

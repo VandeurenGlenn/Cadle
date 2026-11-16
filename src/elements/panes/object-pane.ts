@@ -52,7 +52,10 @@ export class ObjectPane extends LiteElement {
   private accessor _nativeSelectedKind = ''
 
   @property({ type: String, attribute: false })
-  private accessor _nativeRectVariant: '' | 'roof-left' | 'roof-right' = ''
+  private accessor _nativeRectVariant: '' | 'roof-left' | 'roof-straight' | 'roof-right' = ''
+
+  @property({ type: String, attribute: false })
+  private accessor _nativeRoofPattern: 'none' | 'tiles' | 'slates' | 'standing-seam' = 'none'
 
   @property({ type: String, attribute: false })
   private accessor _nativeBindingId = ''
@@ -173,6 +176,7 @@ export class ObjectPane extends LiteElement {
       this._nativeSelectedId = ''
       this._nativeSelectedKind = ''
       this._nativeRectVariant = ''
+      this._nativeRoofPattern = 'none'
       if (this._selectionCount === 0) this._nativeBindingId = ''
       this._nativeName = ''
       this._nativeIsRoom = false
@@ -211,6 +215,10 @@ export class ObjectPane extends LiteElement {
     this._nativeSelectedId = shape.id
     this._nativeSelectedKind = shape.kind
     this._nativeRectVariant = shape.rectVariant ?? ''
+    this._nativeRoofPattern =
+      shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam'
+        ? shape.roofPattern
+        : 'none'
     this._nativeBindingId = shape.bindingId
     this._nativeName = shape.name
     this._nativeIsRoom = shape.isRoom
@@ -925,7 +933,7 @@ export class ObjectPane extends LiteElement {
     }
 
     const multiple = this._selectionCount > 1
-    const isRoof = this._nativeRectVariant === 'roof-left' || this._nativeRectVariant === 'roof-right'
+    const isRoof = this._nativeRectVariant === 'roof-left' || this._nativeRectVariant === 'roof-straight' || this._nativeRectVariant === 'roof-right'
     return html`
       <cadle-header>
         <div class="title">${multiple ? 'Multiple objects selected' : this._activeObjectLabel}</div>
@@ -939,18 +947,34 @@ export class ObjectPane extends LiteElement {
         ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple ? this.#heatingProperties() : ''}
         ${!multiple && this._nativeRectVariant ? this.#propertySection('roof', 'Dakvlak', html`
-          <label><span class="native-label">Punt en schuine daklijnen</span>
+          <label><span class="native-label">Dakvorm</span>
             <select class="native-select" data-roof-direction .value=${this._nativeRectVariant}
               @change=${(event: Event) => {
-                const rectVariant = (event.target as HTMLSelectElement).value as 'roof-left' | 'roof-right'
+                const rectVariant = (event.target as HTMLSelectElement).value as 'roof-left' | 'roof-straight' | 'roof-right'
                 this._nativeRectVariant = rectVariant
                 pubsub.publish('editor.object.update', { rectVariant })
               }}>
               <option value="roof-left">Punt links</option>
+              <option value="roof-straight">Zonder punt · rechte nok</option>
               <option value="roof-right">Punt rechts</option>
             </select>
           </label>
-          <p class="dimension-hint">De nok loopt vanaf de punt naar de tegenoverliggende zijde.</p>
+          <p class="dimension-hint">${this._nativeRectVariant === 'roof-straight'
+            ? 'De nok loopt recht door het midden, zonder schuine eindlijnen.'
+            : 'De nok loopt vanaf de punt naar de tegenoverliggende zijde.'}</p>
+          <label><span class="native-label">Dakafwerking</span>
+            <select class="native-select" data-roof-pattern .value=${this._nativeRoofPattern}
+              @change=${(event: Event) => {
+                const roofPattern = (event.target as HTMLSelectElement).value as 'none' | 'tiles' | 'slates' | 'standing-seam'
+                this._nativeRoofPattern = roofPattern
+                pubsub.publish('editor.object.update', { roofPattern })
+              }}>
+              <option value="none">Effen · geen lijnen</option>
+              <option value="tiles">Dakpannen · verspringend</option>
+              <option value="slates">Leien · fijn verspringend</option>
+              <option value="standing-seam">Staande naad · verticaal</option>
+            </select>
+          </label>
         `, true) : ''}
         ${!multiple && !this._nativeHeating && ['rect', 'symbol'].includes(this._nativeSelectedKind) ? this.#propertySection('heating-obstacle', 'Vloerverwarming', html`<label><span class="native-label">Vrij te houden voorwerp</span><select class="native-select" .value=${this._nativeHeatingObstacle === null ? 'auto' : String(this._nativeHeatingObstacle)} @change=${(event: Event) => { const value = (event.target as HTMLSelectElement).value; pubsub.publish('editor.object.update', { heatingObstacle: value === 'auto' ? null : value === 'true' }) }}><option value="auto">Automatisch herkennen</option><option value="true">Geen buizen onder dit voorwerp</option><option value="false">Buizen toegestaan</option></select></label>`) : ''}
         ${!multiple && this._nativeSelectedKind === 'symbol'

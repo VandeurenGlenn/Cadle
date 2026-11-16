@@ -24,7 +24,7 @@ import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
-import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData } from './roof-geometry.js'
+import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -214,16 +214,19 @@ export const shapeTemplate = (
       const bounds = shapeBounds(shape)
       const fill = shape.fill ?? 'transparent'
       const stroke = shape.stroke ?? '#000000'
-      if (shape.variant === 'roof-left' || shape.variant === 'roof-right') {
+      if (shape.variant === 'roof-left' || shape.variant === 'roof-straight' || shape.variant === 'roof-right') {
         const transform = rectTransform(shape, bounds)
         const roofPath = roofPathData(roofGeometry(bounds, shape.variant))
         const roofFill = shape.fill ?? DEFAULT_ROOF_FILL
         const roofStroke = shape.stroke ?? DEFAULT_ROOF_STROKE
+        const roofPattern = shape.roofPattern ?? 'none'
+        const patternPath = roofPatternPathData(bounds, roofPattern)
         return svg`
           <g
             class=${`${shapeClass} shape-roof`}
             data-shape-id=${shape.id}
-            data-roof-direction=${shape.variant === 'roof-left' ? 'left' : 'right'}
+            data-roof-direction=${shape.variant === 'roof-left' ? 'left' : shape.variant === 'roof-right' ? 'right' : 'straight'}
+            data-roof-pattern=${roofPattern}
             data-selected=${selectedAttr}
             transform=${transform || nothing}
             style=${strokeWidthStyle}>
@@ -234,7 +237,9 @@ export const shapeTemplate = (
               height=${Math.max(1, bounds.height)}
               fill=${roofFill}
               stroke=${roofStroke}></rect>
-            <path d=${roofPath} fill="none" stroke=${roofStroke}></path>
+            ${patternPath ? svg`<path class="roof-pattern" d=${patternPath} fill="none" stroke=${roofStroke}
+              stroke-width=${Math.max(0.75, (shape.strokeWidth ?? 2) * 0.55)} stroke-opacity="0.38"></path>` : nothing}
+            <path class="roof-ridges" d=${roofPath} fill="none" stroke=${roofStroke}></path>
           </g>
         `
       }

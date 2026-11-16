@@ -29,9 +29,17 @@ test('represents an empty selection without a placeholder shape', () => {
 test('presents roof variants as a readable roof object with an editable direction', () => {
   const selection = normalizeSelection({
     selectionCount: 1,
-    shape: { id: 'roof', kind: 'roof-left', rectVariant: 'roof-left' }
+    shape: { id: 'roof', kind: 'roof-left', rectVariant: 'roof-left', roofPattern: 'slates' }
   })
 
   assert.equal(selection.shape?.label, 'Dakvlak')
   assert.equal(selection.shape?.rectVariant, 'roof-left')
+  assert.equal(selection.shape?.roofPattern, 'slates')
+
+  const straight = normalizeSelection({
+    selectionCount: 1,
+    shape: { id: 'straight', kind: 'roof-straight', rectVariant: 'roof-straight' }
+  })
+  assert.equal(straight.shape?.label, 'Dakvlak')
+  assert.equal(straight.shape?.rectVariant, 'roof-straight')
 })

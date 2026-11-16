@@ -13,6 +13,7 @@ export type Tool =
   | 'circle'
   | 'arc'
   | 'roof-left'
+  | 'roof-straight'
   | 'roof-right'
   | 'text'
   | 'symbol'
@@ -24,7 +25,8 @@ export type Tool =
 
 export type Point = { x: number; y: number }
 
-export type RoofVariant = 'roof-left' | 'roof-right'
+export type RoofVariant = 'roof-left' | 'roof-straight' | 'roof-right'
+export type RoofPattern = 'none' | 'tiles' | 'slates' | 'standing-seam'
 
 export type OneWireSourceLink = {
   kind: 'board' | 'circuit' | 'device'
@@ -70,6 +72,7 @@ export type RectShape = GeneratedShapeMetadata & {
   start: Point
   end: Point
   variant?: 'rect' | 'circle' | 'arc' | RoofVariant
+  roofPattern?: RoofPattern
   scale?: number
   rotation?: number
   flipX?: boolean

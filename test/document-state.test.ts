@@ -448,6 +448,7 @@ test('restores roof overlays and canonicalizes a legacy horizontal flip into the
         fill: '#aaaaaa',
         stroke: '#222222',
         strokeWidth: 3,
+        roofPattern: 'slates',
         heatingObstacle: false
       },
       {
@@ -470,6 +471,7 @@ test('restores roof overlays and canonicalizes a legacy horizontal flip into the
   const second = state?.shapes[1]
   assert.equal(first?.kind === 'rect' ? first.variant : null, 'roof-left')
   assert.equal(first?.kind === 'rect' ? first.fill : null, '#aaaaaa')
+  assert.equal(first?.kind === 'rect' ? first.roofPattern : null, 'slates')
   assert.equal(first?.heatingObstacle, false)
   assert.equal(second?.kind === 'rect' ? second.variant : null, 'roof-right')
   assert.equal(second?.kind === 'rect' ? second.flipX : null, undefined)

@@ -1,5 +1,5 @@
 import { cloneShape, shapeBounds } from '../../editor/model/model.js'
-import type { LineShape, Point, RoofVariant, Shape } from '../../editor/model/types.js'
+import type { LineShape, Point, RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
@@ -20,6 +20,7 @@ const phaseLabel = phaseConfigurationLabel
 
 export type SelectionPropertyUpdate = {
   rectVariant?: RoofVariant
+  roofPattern?: RoofPattern
   heating?: Partial<HeatingData>
   connection?: Partial<ElectricalConnection> | null
   text?: string
@@ -231,9 +232,16 @@ const applyProperties = (
   const updated = cloneShape(shape) as Shape & { fill?: string }
   if (
     updated.kind === 'rect' &&
-    (payload.rectVariant === 'roof-left' || payload.rectVariant === 'roof-right')
+    (payload.rectVariant === 'roof-left' || payload.rectVariant === 'roof-straight' || payload.rectVariant === 'roof-right')
   ) {
     updated.variant = payload.rectVariant
+  }
+  if (
+    updated.kind === 'rect' &&
+    (updated.variant === 'roof-left' || updated.variant === 'roof-straight' || updated.variant === 'roof-right') &&
+    (payload.roofPattern === 'none' || payload.roofPattern === 'tiles' || payload.roofPattern === 'slates' || payload.roofPattern === 'standing-seam')
+  ) {
+    updated.roofPattern = payload.roofPattern
   }
   if (updated.kind === 'rect' && updated.heating && payload.heating) {
     updated.heating = sanitizeHeating({ ...updated.heating, ...payload.heating,

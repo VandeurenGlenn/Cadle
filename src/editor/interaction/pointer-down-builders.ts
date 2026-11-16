@@ -107,15 +107,15 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
+  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
     ? {
         id,
         kind: 'rect',
         start: point,
         end: point,
-        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-right' ? tool : rectVariant,
-        ...(tool === 'roof-left' || tool === 'roof-right'
-          ? { fill: DEFAULT_ROOF_FILL, stroke: DEFAULT_ROOF_STROKE, heatingObstacle: false }
+        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' ? tool : rectVariant,
+        ...(tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right'
+          ? { fill: DEFAULT_ROOF_FILL, stroke: DEFAULT_ROOF_STROKE, roofPattern: 'none' as const, heatingObstacle: false }
           : {}),
         ...(tool === 'room' ? {} : { strokeWidth: DEFAULT_DRAW_STROKE_WIDTH })
       }

@@ -16,10 +16,11 @@ test('maps the selected tool back to the canonical shell action', () => {
   assert.equal(tools.shellAction(), 'draw-square')
 })
 
-test('maps both roof actions and tools in both directions', () => {
+test('maps all roof actions and tools in both directions', () => {
   const tools = new ToolController()
   for (const [action, tool] of [
     ['draw-roof-left', 'roof-left'],
+    ['draw-roof-straight', 'roof-straight'],
     ['draw-roof-right', 'roof-right']
   ] as const) {
     assert.equal(tools.toolForShellAction(action), tool)

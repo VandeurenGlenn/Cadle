@@ -18,6 +18,7 @@ const ACTION_TO_TOOL: Readonly<Record<string, Tool>> = {
   'draw-circle': 'circle',
   'draw-arc': 'arc',
   'draw-roof-left': 'roof-left',
+  'draw-roof-straight': 'roof-straight',
   'draw-roof-right': 'roof-right',
   'draw-text': 'text',
   'draw-symbol': 'symbol',
@@ -44,6 +45,7 @@ const TOOL_TO_ACTION: Readonly<Record<Tool, string>> = {
   circle: 'draw-circle',
   arc: 'draw-arc',
   'roof-left': 'draw-roof-left',
+  'roof-straight': 'draw-roof-straight',
   'roof-right': 'draw-roof-right',
   text: 'draw-text',
   symbol: 'draw-symbol'

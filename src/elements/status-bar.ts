@@ -28,6 +28,7 @@ const TOOL_LABELS: Record<string, string> = {
   'draw-arc': 'Draw arc',
   'draw-square': 'Draw box',
   'draw-roof-left': 'Dakvlak · punt links',
+  'draw-roof-straight': 'Dakvlak · zonder punt',
   'draw-roof-right': 'Dakvlak · punt rechts',
   draw: 'Freedraw',
   'draw-text': 'Insert text'

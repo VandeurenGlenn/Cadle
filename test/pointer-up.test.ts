@@ -3,7 +3,7 @@ import test from 'node:test'
 import { canCommitDraft } from '../src/editor/interaction/pointer-up.ts'
 import type { RectShape } from '../src/editor/model/types.ts'
 
-const roof = (variant: 'roof-left' | 'roof-right', x: number, y: number): RectShape => ({
+const roof = (variant: 'roof-left' | 'roof-straight' | 'roof-right', x: number, y: number): RectShape => ({
   id: variant,
   kind: 'rect',
   variant,
@@ -12,7 +12,7 @@ const roof = (variant: 'roof-left' | 'roof-right', x: number, y: number): RectSh
 })
 
 test('commits roofs only when both dimensions meet the minimum size', () => {
-  for (const variant of ['roof-left', 'roof-right'] as const) {
+  for (const variant of ['roof-left', 'roof-straight', 'roof-right'] as const) {
     assert.equal(canCommitDraft(roof(variant, 100, 0)), false, `${variant}: zero height`)
     assert.equal(canCommitDraft(roof(variant, 0, 100)), false, `${variant}: zero width`)
     assert.equal(canCommitDraft(roof(variant, 100, 1.99)), false, `${variant}: height below minimum`)

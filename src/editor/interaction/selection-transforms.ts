@@ -119,7 +119,7 @@ export const transformShapeForSelection = (shape: Shape, center: Point, action: 
           y: (shape.start.y + shape.end.y) / 2
         }
         const nextCenter = transformPoint(currentCenter, center, action)
-        const roofVariant = shape.variant === 'roof-left' || shape.variant === 'roof-right' ? shape.variant : null
+        const roofVariant = shape.variant === 'roof-left' || shape.variant === 'roof-straight' || shape.variant === 'roof-right' ? shape.variant : null
         return {
           ...shape,
           start: { x: nextCenter.x - width / 2, y: nextCenter.y - height / 2 },

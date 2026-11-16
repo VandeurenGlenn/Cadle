@@ -28,10 +28,10 @@ test('keeps architectural tools on their specialized stroke defaults', () => {
   }
 })
 
-test('creates left and right roof drafts with their visible non-obstacle defaults', () => {
+test('creates pointed and straight roof drafts with their visible non-obstacle defaults', () => {
   const point = { x: 10, y: 20 }
 
-  for (const tool of ['roof-left', 'roof-right'] as const) {
+  for (const tool of ['roof-left', 'roof-straight', 'roof-right'] as const) {
     const draft = createDraftShape(tool, point, tool)
     assert.equal(draft.kind, 'rect', tool)
     if (draft.kind !== 'rect') continue
@@ -40,6 +40,7 @@ test('creates left and right roof drafts with their visible non-obstacle default
     assert.deepEqual(draft.end, point)
     assert.equal(draft.fill, DEFAULT_ROOF_FILL)
     assert.equal(draft.stroke, DEFAULT_ROOF_STROKE)
+    assert.equal(draft.roofPattern, 'none')
     assert.equal(draft.strokeWidth, 2)
     assert.equal(draft.heatingObstacle, false)
   }

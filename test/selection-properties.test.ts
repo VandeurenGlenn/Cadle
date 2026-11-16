@@ -337,11 +337,12 @@ test('switches a roof between its left and right top-view variants without mutat
   }
   const updated = updateSelectionProperties(
     [roof],
-    { rectVariant: 'roof-right' },
+    { rectVariant: 'roof-right', roofPattern: 'tiles' },
     { selectedIds: new Set(['roof']), selectedId: 'roof', groupedSelection: false }
   )
 
   assert.equal(roof.kind === 'rect' ? roof.variant : null, 'roof-left')
   assert.equal(updated?.[0].kind === 'rect' ? updated[0].variant : null, 'roof-right')
+  assert.equal(updated?.[0].kind === 'rect' ? updated[0].roofPattern : null, 'tiles')
   assert.equal(updated?.[0].heatingObstacle, false)
 })

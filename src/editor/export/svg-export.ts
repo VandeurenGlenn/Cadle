@@ -17,7 +17,7 @@ import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
-import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData } from '../roof-geometry.js'
+import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from '../roof-geometry.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -256,21 +256,25 @@ export const shapeMarkup = (
       const strokeAttr = ` stroke="${escapeHtml(shape.stroke ?? '#000000')}"`
       const strokeWidthStyle =
         typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
-      if (shape.variant === 'roof-left' || shape.variant === 'roof-right') {
+      if (shape.variant === 'roof-left' || shape.variant === 'roof-straight' || shape.variant === 'roof-right') {
         const transform = rectTransform(shape, bounds)
         const roofPath = roofPathData(roofGeometry(bounds, shape.variant))
         const roofFillAttr = ` fill="${escapeHtml(shape.fill ?? DEFAULT_ROOF_FILL)}"`
         const roofStrokeAttr = ` stroke="${escapeHtml(shape.stroke ?? DEFAULT_ROOF_STROKE)}"`
+        const roofPattern = shape.roofPattern ?? 'none'
+        const patternPath = roofPatternPathData(bounds, roofPattern)
         return `
           <g
             class="shape shape-rect shape-roof ${extraClass}"
             data-shape-id="${shape.id}"
             data-selected="${selectedAttr}"
-            data-roof-direction="${shape.variant === 'roof-left' ? 'left' : 'right'}"
+            data-roof-direction="${shape.variant === 'roof-left' ? 'left' : shape.variant === 'roof-right' ? 'right' : 'straight'}"
+            data-roof-pattern="${roofPattern}"
             ${transform}
             ${strokeWidthStyle}>
             <rect x="${bounds.x}" y="${bounds.y}" width="${Math.max(1, bounds.width)}" height="${Math.max(1, bounds.height)}"${roofFillAttr}${roofStrokeAttr}></rect>
-            <path d="${roofPath}" fill="none"${roofStrokeAttr}></path>
+            ${patternPath ? `<path class="roof-pattern" d="${patternPath}" fill="none"${roofStrokeAttr} stroke-width="${Math.max(0.75, (shape.strokeWidth ?? 2) * 0.55)}" stroke-opacity="0.38"></path>` : ''}
+            <path class="roof-ridges" d="${roofPath}" fill="none"${roofStrokeAttr}></path>
           </g>
         `
       }

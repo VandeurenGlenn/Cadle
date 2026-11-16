@@ -47,6 +47,16 @@ test('keeps the junction inside a tall narrow roof instead of crossing its centr
   assert.deepEqual(right.ridgeEnd, { x: 30, y: 140 })
 })
 
+test('draws a roof without a point as one straight full-width ridge', () => {
+  const straight = roofGeometry(bounds, 'roof-straight')
+  assert.deepEqual(straight, {
+    junction: { x: 10, y: 60 },
+    ridgeEnd: { x: 210, y: 60 },
+    segments: [{ start: { x: 10, y: 60 }, end: { x: 210, y: 60 } }]
+  })
+  assert.equal(roofPathData(straight), 'M 10 60 L 210 60')
+})
+
 test('normalizes reverse drag bounds before producing roof geometry', () => {
   const forward: RectShape = {
     id: 'forward',

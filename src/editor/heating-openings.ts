@@ -1,5 +1,6 @@
 import type { Point, Shape, SymbolShape } from './model/types.js'
 import { renderedSymbolScale } from './model/symbol-scale.js'
+import { isStairVariant } from './model/stair-geometry.js'
 
 const heatingSymbolPath = (shape: SymbolShape) =>
   shape.path.replaceAll('%20', ' ').replaceAll('\\', '/').split(/[?#]/)[0]
@@ -14,7 +15,9 @@ export const isHeatingStairSymbol = (shape: Shape): shape is SymbolShape => shap
 
 export const isHeatingSymbolObstacle = (shape: Shape): boolean =>
   !shape.hidden && shape.kind !== 'door' && shape.heatingObstacle !== false &&
-  (shape.heatingObstacle === true || shape.heating?.kind === 'exclusion' || (shape.kind === 'symbol' && !shape.heating)) && !isHeatingDoorSymbol(shape)
+  (shape.heatingObstacle === true || shape.heating?.kind === 'exclusion' ||
+    (shape.kind === 'rect' && isStairVariant(shape.variant)) ||
+    (shape.kind === 'symbol' && !shape.heating)) && !isHeatingDoorSymbol(shape)
 
 type Footprint = { x: number; y: number; width: number; height: number }
 /** Source rectangles are floor-plan furnishings unless explicitly allowed.

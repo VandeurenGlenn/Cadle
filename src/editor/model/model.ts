@@ -8,6 +8,7 @@ import { paperTextBounds, paperTextLinesForShape } from '../layout/paper-text-la
 import { sanitizeRoomLabel } from '../room-labels.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { isRoofPattern, oppositeRoofVariant } from '../roof-geometry.js'
+import { isStairVariant } from './stair-geometry.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -297,7 +298,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
-      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'built-in-cabinet' || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
+      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'built-in-cabinet' || isStairVariant(raw.variant) || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
       if (isRoofPattern(raw.roofPattern) && (rect.variant === 'roof-left' || rect.variant === 'roof-straight' || rect.variant === 'roof-right')) {
         rect.roofPattern = raw.roofPattern
       }

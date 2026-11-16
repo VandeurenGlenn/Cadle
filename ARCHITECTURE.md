@@ -13,7 +13,13 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - `src/editor/controllers/` — stateful editor controllers for history, tools, the viewport, and ordered persistence.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
+- Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size
+  catalog placements. Dragging defines their width and length with a live preview; Shift constrains the footprint
+  to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
+  editor and SVG export. Existing catalog stair symbols remain supported.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
+- The access-point and heat-pump drawing actions place catalog SVGs from `www/symbols/General/` and
+  `www/symbols/Consumption appliances/`. Both use explicit black artwork rather than inheriting the UI text color.
 - `src/editor/layout/onewire-circuit-presentation.ts` — pure resolution of circuit inspector values and generated
   one-wire labels/symbol presentation. It receives shapes and project-domain inputs and returns transformed shapes;
   it does not render, mutate editor state, or persist data.

@@ -2,10 +2,13 @@ import { expect, test } from '@playwright/test'
 
 test.use({ serviceWorkers: 'block' })
 
-test('draws sliding windows and cabinets and places mouse-following stairs and access points', async ({ page }) => {
+test('draws sized stairs, sliding windows and cabinets and places equipment symbols', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const pageKey = '00000000-0000-4000-8000-000000000102'
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, pageKey)
   const app = page.locator('cadle-app:not([read-only])')
   await app.evaluate(async (element: any) => { await element.exportA4PNG() })
 
@@ -33,40 +36,97 @@ test('draws sliding windows and cabinets and places mouse-following stairs and a
   await expect(app.locator('g.shape-built-in-cabinet')).toHaveCount(1)
 
   await more.click()
-  await page.getByRole('button', { name: 'Place stairs', exact: true }).click()
+  await page.getByRole('button', { name: 'Rechte trap tekenen', exact: true }).click()
   const first = await point(1000, 360)
   await page.mouse.move(first.x, first.y)
-  const preview = app.locator('g.symbol-preview > svg')
-  await expect(preview).toBeVisible()
-  await expect.poll(() => preview.getAttribute('x')).not.toBeNull()
-  const firstX = await preview.getAttribute('x')
-  const second = await point(1240, 540)
-  await page.mouse.move(second.x, second.y)
-  await expect.poll(() => preview.getAttribute('x')).not.toBe(firstX)
   await page.mouse.down()
+  const narrow = await point(1080, 600)
+  await page.mouse.move(narrow.x, narrow.y)
+  const stairPreview = app.locator('g.shape-stairs.draft .stairs-outline')
+  const footprint = () => stairPreview.evaluate((path: SVGPathElement) => {
+    const bounds = path.getBBox()
+    return { width: bounds.width, height: bounds.height }
+  })
+  await expect.poll(footprint).toEqual({ width: 80, height: 240 })
+  const wide = await point(1200, 680)
+  await page.mouse.move(wide.x, wide.y)
+  await expect.poll(footprint).toEqual({ width: 200, height: 320 })
   await page.mouse.up()
-  await expect(app.locator('g.shape-symbol[data-selected="true"]')).toHaveCount(1)
+  await expect(stairPreview).toHaveCount(0)
+  await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-straight"]')).toHaveCount(1)
 
+  await more.click()
+  await page.getByRole('button', { name: 'Kwartdraaitrap tekenen', exact: true }).click()
+  await draw(300, 700, 540, 1000)
+  await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-quarter-turn"]')).toHaveCount(1)
+
+  await more.click()
+  await page.getByRole('button', { name: 'Wenteltrap tekenen', exact: true }).click()
+  await draw(640, 700, 880, 940)
+  await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-spiral"]')).toHaveCount(1)
+
+  await app.evaluate((element) => { element.style.color = 'rgb(128, 0, 128)' })
   await more.click()
   await page.getByRole('button', { name: 'Place Wi-Fi access point', exact: true }).click()
   const accessPoint = await point(1440, 620)
   await page.mouse.move(accessPoint.x, accessPoint.y)
+  const preview = app.locator('g.symbol-preview > svg')
   await expect(preview).toBeVisible()
-  await expect(preview.locator('circle')).toHaveCount(2)
-  await expect(preview.locator('path[d="M30 27 Q50 9 70 27 M37 34 Q50 22 63 34"]')).toBeVisible()
+  await expect(preview.locator('circle')).toHaveCount(1)
+  await expect(preview.locator('path')).toBeVisible()
   await expect(preview.locator('text')).toHaveText('AP')
+  await expect(preview.locator('circle')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
   await page.mouse.down()
   await page.mouse.up()
   const placedAccessPoint = app.locator('g.shape-symbol[data-selected="true"]')
   await expect(placedAccessPoint).toHaveCount(1)
-  await expect(placedAccessPoint.locator('circle')).toHaveCount(2)
-  await expect(placedAccessPoint.locator('path[d="M30 27 Q50 9 70 27 M37 34 Q50 22 63 34"]')).toBeVisible()
+  await expect(placedAccessPoint.locator('circle')).toHaveCount(1)
   await expect(placedAccessPoint.locator('text')).toHaveText('AP')
+  await expect(placedAccessPoint.locator('circle')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
+  await expect(placedAccessPoint.locator('path')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
+  await expect(placedAccessPoint.locator('text')).toHaveCSS('fill', 'rgb(0, 0, 0)')
+  const accessPointGeometry = await placedAccessPoint.evaluate((element) => {
+    const circle = element.querySelector('circle')!
+    const path = element.querySelector('path')!
+    const arcs = path.getBBox()
+    const text = element.querySelector('text')!
+    return {
+      circleTop: circle.cy.baseVal.value - circle.r.baseVal.value - Number.parseFloat(getComputedStyle(circle).strokeWidth) / 2,
+      arcsBottom: arcs.y + arcs.height + Number.parseFloat(getComputedStyle(path).strokeWidth) / 2,
+      center: [circle.cx.baseVal.value, circle.cy.baseVal.value],
+      textAnchor: [text.x.baseVal.getItem(0).value, text.y.baseVal.getItem(0).value]
+    }
+  })
+  expect(accessPointGeometry.arcsBottom).toBeLessThan(accessPointGeometry.circleTop)
+  expect(accessPointGeometry.textAnchor).toEqual(accessPointGeometry.center)
+
+  await more.click()
+  await page.getByRole('button', { name: 'Warmtepomp plaatsen', exact: true }).click()
+  const heatPumpPoint = await point(1680, 620)
+  await page.mouse.move(heatPumpPoint.x, heatPumpPoint.y)
+  await expect(preview.locator('title')).toHaveText('Heat pump')
+  await expect(preview.locator('rect')).toBeVisible()
+  await page.mouse.down()
+  await page.mouse.up()
+  const placedHeatPump = app.locator('g.shape-symbol:not(.symbol-preview)').filter({ has: page.locator('title', { hasText: 'Heat pump' }) })
+  await expect(placedHeatPump).toHaveCount(1)
+  await expect(placedHeatPump.locator('rect')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
 
   const exported = await app.evaluate((element: any) => element.toSVG())
-  expect(exported).toContain('r="44"')
-  expect(exported).toContain('r="16"')
   expect(exported).toContain('>AP</text>')
-  expect(exported).toContain('M30 27 Q50 9 70 27 M37 34 Q50 22 63 34')
-  expect(exported).toContain('y1="88" x2="50" y2="12"')
+  expect(exported).toContain('M23 19 Q50 -7 77 19 M32 25 Q50 7 68 25')
+  expect(exported).toMatch(/<title\b[^>]*>Heat pump<\/title>/)
+  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-spiral']) {
+    expect(exported).toContain(`data-stair-variant="${variant}"`)
+  }
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000101') })
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, pageKey)
+  await expect(placedHeatPump).toHaveCount(1)
+  await expect(app.locator('g.shape-stairs')).toHaveCount(3)
+  await expect.poll(() => app.locator('g[data-stair-variant="stairs-straight"] .stairs-outline')
+    .evaluate((path: SVGPathElement) => {
+      const bounds = path.getBBox()
+      return { width: bounds.width, height: bounds.height }
+    })).toEqual({ width: 200, height: 320 })
 })

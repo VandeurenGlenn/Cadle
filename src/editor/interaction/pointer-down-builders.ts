@@ -6,6 +6,7 @@ import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import { oneWireSymbolScaleFor } from '../layout/onewire-symbol-nodes.js'
 import { appliancePaperScale, floorPlanSocketPaperScale, floorPlanSpotPaperScale, floorPlanSwitchPaperScale } from '../model/symbol-scale.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE } from '../roof-geometry.js'
+import { isStairVariant } from '../model/stair-geometry.js'
 export { DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 
 type SymbolStyleDefaults = {
@@ -107,13 +108,13 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'built-in-cabinet' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
+  tool === 'rect' || tool === 'built-in-cabinet' || isStairVariant(tool) || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
     ? {
         id,
         kind: 'rect',
         start: point,
         end: point,
-        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'built-in-cabinet' ? 'built-in-cabinet' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' ? tool : rectVariant,
+        variant: isStairVariant(tool) ? tool : tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'built-in-cabinet' ? 'built-in-cabinet' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' ? tool : rectVariant,
         ...(tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right'
           ? { fill: DEFAULT_ROOF_FILL, stroke: DEFAULT_ROOF_STROKE, roofPattern: 'none' as const, heatingObstacle: false }
           : {}),

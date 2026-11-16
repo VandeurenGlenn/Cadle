@@ -1,11 +1,12 @@
 import { segmentDistance } from './heating-distance.js'
-import type { Point, Shape, SymbolShape } from './model/types.js'
+import type { Point, Shape } from './model/types.js'
 import { drawingUnitsForMetres } from './layout/drawing-scale.js'
 import { shapeBounds } from './model/model.js'
 import { namedRoomRegions } from './room-regions.js'
 import { heatingDoorSymbolThreshold, isHeatingDoorSymbol, isHeatingStairSymbol, heatingObstacleBounds } from './heating-openings.js'
 import { isRoomLabel, roomLabelName } from './room-labels.js'
 import { heatingLaneShift } from './heating-s-curve.js'
+import { isStairVariant } from './model/stair-geometry.js'
 
 export type HeatingRoom = { id: number; name: string; roomKey?: string; members?: { key: string; name: string }[]; cells: number[]; minX: number; maxX: number; minY: number; maxY: number }
 export type HeatingGrid = {
@@ -137,8 +138,13 @@ export const buildHeatingGrid = (shapes: readonly Shape[], scale: number, spacin
     candidates.push({ hasDoor, room: { id, name: label ? roomLabelName(label.roomLabel) : named?.name ?? `Ruimte ${candidates.length + 1}`,
       ...(label ? { roomKey: label.id } : {}), cells, minX, maxX, minY, maxY } })
   }
-  const stairs = new Set(shapes.filter((shape): shape is SymbolShape => !shape.hidden && isHeatingStairSymbol(shape))
-    .map((shape) => room[index(shape.position)]).filter((roomId) => roomId > 0))
+  const stairs = new Set(shapes.flatMap((shape) => {
+    if (shape.hidden) return []
+    const position = isHeatingStairSymbol(shape) ? shape.position
+      : shape.kind === 'rect' && isStairVariant(shape.variant)
+        ? { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 } : null
+    return position ? [room[index(position)]] : []
+  }).filter((roomId) => roomId > 0))
   const rooms = candidates.filter(({ hasDoor, room }) => options.includeClosedRooms || hasDoor || stairs.has(room.id)).map(({ room }) => room)
   if (!rooms.length && candidates.length) throw new Error('Geen gesloten ruimtes met een deur of trap gevonden. Teken een deur of voeg een trap toe aan de ruimtes die je wilt gebruiken.')
   if (!rooms.length) throw new Error('Geen gesloten ruimtes herkend. Sluit de muren van het grondplan voordat je een legplan maakt.')

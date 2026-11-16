@@ -25,6 +25,7 @@ import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../pre
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
+import { isStairVariant, stairGeometry } from './model/stair-geometry.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -246,6 +247,19 @@ export const shapeTemplate = (
       const bounds = shapeBounds(shape)
       const fill = shape.fill ?? 'transparent'
       const stroke = shape.stroke ?? '#000000'
+      if (isStairVariant(shape.variant)) {
+        const geometry = stairGeometry(bounds, shape.variant)
+        const transform = rectTransform(shape, bounds)
+        return svg`
+          <g class=${`${shapeClass} shape-stairs`} data-shape-id=${shape.id} data-stair-variant=${shape.variant}
+            data-selected=${selectedAttr} transform=${transform || nothing} style=${strokeWidthStyle}
+            fill="none" stroke=${stroke} stroke-width=${shape.strokeWidth ?? 2} stroke-linejoin="round">
+            <path class="stairs-outline" d=${geometry.outline} fill=${fill}></path>
+            <path class="stairs-treads" d=${geometry.treads}></path>
+            <path class="stairs-arrow" d=${geometry.arrow}></path>
+          </g>
+        `
+      }
       if (shape.variant === 'built-in-cabinet') {
         const inset = Math.min(5, Math.max(0.5, Math.min(bounds.width, bounds.height) / 6))
         const x1 = bounds.x + inset

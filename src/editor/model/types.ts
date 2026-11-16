@@ -13,6 +13,7 @@ export type Tool =
   | 'gate'
   | 'rect'
   | 'built-in-cabinet'
+  | StairVariant
   | 'circle'
   | 'arc'
   | 'roof-left'
@@ -30,6 +31,7 @@ export type Point = { x: number; y: number }
 
 export type RoofVariant = 'roof-left' | 'roof-straight' | 'roof-right'
 export type RoofPattern = 'none' | 'tiles' | 'slates' | 'standing-seam'
+export type StairVariant = 'stairs-straight' | 'stairs-quarter-turn' | 'stairs-spiral'
 
 export type OneWireSourceLink = {
   kind: 'board' | 'circuit' | 'device'
@@ -76,7 +78,7 @@ export type RectShape = GeneratedShapeMetadata & {
   kind: 'rect'
   start: Point
   end: Point
-  variant?: 'rect' | 'circle' | 'arc' | 'built-in-cabinet' | RoofVariant
+  variant?: 'rect' | 'circle' | 'arc' | 'built-in-cabinet' | RoofVariant | StairVariant
   roofPattern?: RoofPattern
   scale?: number
   rotation?: number

@@ -126,3 +126,16 @@ test('built-in cabinet footprints block floor heating unless explicitly allowed'
   ])
   assert.deepEqual(heatingObstacleBounds([{ ...cabinet, heatingObstacle: false }], shapeBounds), [])
 })
+
+test('drawn stairs retain the catalog stairs room-access and floor-obstacle behavior', () => {
+  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-spiral'] as const) {
+    const stair: RectShape = {
+      id: variant, kind: 'rect', variant,
+      start: { x: 500, y: 440 }, end: { x: 620, y: 640 }
+    }
+    const grid = buildHeatingGrid([...roomScene(false).slice(0, 4), stair], 100, 100, { x: 180, y: 280 })
+    assert.equal(grid.rooms.length, 1, 'a room with stairs needs no doorway to be recognised')
+    assert.equal(grid.obstacle[grid.index({ x: 560, y: 540 })], 1)
+    assert.deepEqual(heatingObstacleBounds([{ ...stair, heatingObstacle: false }], shapeBounds), [])
+  }
+})

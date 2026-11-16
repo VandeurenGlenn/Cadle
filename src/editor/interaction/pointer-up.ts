@@ -1,4 +1,5 @@
 import type { DraftShape } from '../../editor/model/types.js'
+import { isStairVariant } from '../model/stair-geometry.js'
 
 export type PointerUpPhase = 'pan' | 'band' | 'draft' | 'drag' | 'none'
 
@@ -16,7 +17,7 @@ export const resolvePointerUpPhase = (state: {
 }
 
 export const canCommitDraft = (draft: DraftShape, minDistance = 2): boolean => {
-  if (draft.kind === 'rect' && (draft.variant === 'roof-left' || draft.variant === 'roof-straight' || draft.variant === 'roof-right')) {
+  if (draft.kind === 'rect' && (isStairVariant(draft.variant) || draft.variant === 'roof-left' || draft.variant === 'roof-straight' || draft.variant === 'roof-right')) {
     return (
       Math.abs(draft.end.x - draft.start.x) >= minDistance &&
       Math.abs(draft.end.y - draft.start.y) >= minDistance

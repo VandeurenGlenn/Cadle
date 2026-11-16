@@ -160,6 +160,7 @@ export const iconSetTemplate = html`
       <span name="shelves">@symbol-shelves</span>
       <span name="stairs">@symbol-stairs</span>
       <span name="wifi">@symbol-wifi</span>
+      <span name="heat_pump">@symbol-heat_pump</span>
       <span name="shelves">@symbol-shelves</span>
     </template>
   </custom-icon-set>

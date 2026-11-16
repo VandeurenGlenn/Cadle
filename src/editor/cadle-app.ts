@@ -445,8 +445,8 @@ export class CadleApp extends LiteElement {
   }
 
   #onShellAction = (action: string) => {
-    if (action === 'draw-stairs') {
-      this.#onNativeCatalogPick({ name: 'Stairs', path: 'symbols/Floor plan/stairs-straight-wide.svg' })
+    if (action === 'draw-heat-pump') {
+      this.#onNativeCatalogPick({ name: 'Warmtepomp', path: 'symbols/Consumption appliances/Heat pump.svg' })
       return
     }
     if (action === 'draw-access-point') {

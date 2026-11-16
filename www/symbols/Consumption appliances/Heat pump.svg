@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-cadle-symbol="1">
+  <title>Heat pump</title>
+  <g fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7" y="16" width="84" height="64" rx="3"/>
+    <circle cx="36" cy="48" r="23"/>
+    <circle cx="36" cy="48" r="4"/>
+    <path d="M35 44 C20 32 32 22 40 29 C46 35 40 39 38 44 M40 48 C57 41 59 57 49 60 C41 62 40 55 38 52 M34 52 C32 70 17 64 20 54 C22 46 28 49 32 47"/>
+    <path d="M66 28 H82 M66 36 H82 M66 44 H82 M66 52 H82 M66 60 H82 M66 68 H82 M17 80 V87 H30 V80 M68 80 V87 H81 V80 M91 37 H97 M91 59 H97"/>
+  </g>
+</svg>

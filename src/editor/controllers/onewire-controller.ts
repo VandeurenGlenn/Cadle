@@ -4,12 +4,14 @@ import { analyzeCircuits } from '../circuit-analysis.js'
 import {
   appendOneWireFamilyOffset,
   normalizeOneWireFamilyKey,
+  oneWireDestinationSheetLabels,
   oneWireRailSpanForAnchors,
   ONE_WIRE_LAYOUT_VERSION,
   packOneWireFamilyBounds,
   planOneWireLayout,
   type OneWireFamilyBounds,
-  type OneWireFamilyDemand
+  type OneWireFamilyDemand,
+  type OneWireFamilyPlacement
 } from '../layout/onewire-layout-plan.js'
 import {
   isOneWireRailShape,
@@ -50,6 +52,13 @@ export class OneWireController {
 
   familyKey(value: string | null) {
     return normalizeOneWireFamilyKey(value)
+  }
+
+  destinationSheetLabels(
+    placements: readonly OneWireFamilyPlacement[],
+    sheetNumber: (pageIndex: number) => number
+  ) {
+    return oneWireDestinationSheetLabels(placements, sheetNumber)
   }
 
   isRail(shape: Shape | null) {

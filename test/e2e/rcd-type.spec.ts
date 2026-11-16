@@ -29,6 +29,14 @@ test('edits protection pole counts independently and retains them after reopenin
     await selectDevice(device.viewBox)
     await expect(poles).toHaveValue(device.value)
   }
+  const regenerated = await app.evaluate((element: any) => element.generateAutoOneWire())
+  expect(regenerated.generated).toBe(true)
+  for (const device of devices) {
+    await selectDevice(device.viewBox)
+    await expect(poles).toHaveValue(device.value)
+    const symbol = app.locator('g.shape-symbol').filter({ has: page.locator(`svg[viewBox="${device.viewBox}"]`) })
+    await expect(symbol.locator('text').filter({ hasText: new RegExp(`^${device.value}P$`) })).toHaveCount(1)
+  }
 })
 
 test('defaults RCDs to A and retains an explicit type through reopening and regeneration', async ({ page }) => {

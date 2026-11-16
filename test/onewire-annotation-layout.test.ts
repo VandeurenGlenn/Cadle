@@ -33,6 +33,15 @@ const checkClearance = (shapes: Shape[]) => {
   const axisX = breaker.position.x + terminals.bottom!.x
   const bodyLeft = axisX + (5.6536 - 15.3836) * 24 * breaker.scale / 28.8265
   const cable = shapes.find((shape) => shape.sourceLink?.role === 'cable-section')!
+  const trunk = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
+  assert.ok(cable.kind === 'text' && trunk.kind === 'line')
+  const firstRowY = Math.max(...shapes.flatMap((shape) =>
+    shape.kind === 'line' && shape.sourceLink?.role === 'row-wire' && shape.start.x === trunk.start.x
+      ? [shape.start.y]
+      : []
+  ))
+  assert.equal(cable.textAnchor, 'middle')
+  assert.equal(cable.position.y, (trunk.start.y + firstRowY) / 2)
   const cableBox = oneWireLayoutBounds(cable)
   assert.ok(cableBox.x >= axisX + 12)
   const current = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-current')!
@@ -52,8 +61,6 @@ const checkClearance = (shapes: Shape[]) => {
     const box = oneWireLayoutBounds(row)
     assert.ok(box.y + box.height <= cableBox.y - 24 + 1e-8)
   }
-  const trunk = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
-  assert.ok(trunk.kind === 'line')
   assert.equal(trunk.start.y, breaker.position.y + terminals.top!.y)
   const wires = shapes.filter((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'row-wire')
   assert.ok(wires.some((wire) => wire.kind === 'line' && wire.start.x === trunk.end.x && wire.start.y === trunk.end.y))

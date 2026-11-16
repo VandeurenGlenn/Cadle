@@ -43,11 +43,15 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
     },
     residualBreaker: { type: 'boolean' },
     residualBreakerRatedCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
+    mainSwitchPoles: { type: 'integer', minimum: 1, maximum: 4 },
+    mainDifferentialPoles: { type: 'integer', minimum: 1, maximum: 4 },
+    residualBreakerPoles: { type: 'integer', minimum: 1, maximum: 4 },
     residualBreakerManufacturer: { type: 'string', minLength: 1, maxLength: 120 },
     residualBreakerNeutralPosition: { enum: ['left', 'right'] },
     gridProtectionCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
     solar: { type: 'boolean' },
     solarBreakerRatedCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
+    solarBreakerPoles: { type: 'integer', minimum: 1, maximum: 4 },
     solarBreakerManufacturer: { type: 'string', minLength: 1, maxLength: 120 },
     solarBreakerNeutralPosition: { enum: ['left', 'right'] },
     consumers: { type: 'boolean' },
@@ -65,6 +69,7 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
           boardId: { type: 'string', minLength: 1, maxLength: 120 },
           railId: { type: 'string', minLength: 1, maxLength: 120 },
           sensitivityMa: { type: 'number', exclusiveMinimum: 0, maximum: 3000 },
+          poles: { type: 'integer', minimum: 1, maximum: 4 },
           ratedCurrentA: { type: 'number', exclusiveMinimum: 0, maximum: 1000 },
           manufacturer: { type: 'string', minLength: 1, maxLength: 120 },
           neutralPosition: { enum: ['left', 'right'] },
@@ -95,11 +100,15 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
     'mainDifferential',
     'residualBreaker',
     'residualBreakerRatedCurrentA',
+    'mainSwitchPoles',
+    'mainDifferentialPoles',
+    'residualBreakerPoles',
     'residualBreakerManufacturer',
     'residualBreakerNeutralPosition',
     'gridProtectionCurrentA',
     'solar',
     'solarBreakerRatedCurrentA',
+    'solarBreakerPoles',
     'solarBreakerManufacturer',
     'solarBreakerNeutralPosition',
     'consumers',
@@ -127,6 +136,11 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
       (typeof value[key] !== 'number' || !Number.isFinite(value[key]) || value[key] <= 0)
     ) {
       errors.push(`${key} moet positief zijn.`)
+    }
+    for (const key of ['mainSwitchPoles', 'mainDifferentialPoles', 'residualBreakerPoles', 'solarBreakerPoles'] as const) {
+      if (value[key] !== undefined && (!Number.isInteger(value[key]) || Number(value[key]) < 1 || Number(value[key]) > 4)) {
+        errors.push(`${key} moet een geheel getal van 1 tot en met 4 zijn.`)
+      }
     }
   }
   for (const key of ['residualBreakerManufacturer', 'solarBreakerManufacturer'] as const) {
@@ -257,6 +271,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
               'boardId',
               'railId',
               'sensitivityMa',
+              'poles',
               'rcdType',
               'ratedCurrentA',
               'manufacturer',
@@ -295,6 +310,9 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
           differential.sensitivityMa <= 0
         ) {
           errors.push(`${prefix}.sensitivityMa moet positief zijn.`)
+        }
+        if (differential.poles !== undefined && (!Number.isInteger(differential.poles) || Number(differential.poles) < 1 || Number(differential.poles) > 4)) {
+          errors.push(`${prefix}.poles moet een geheel getal van 1 tot en met 4 zijn.`)
         }
         if (differential.rcdType !== undefined && !isRcdType(differential.rcdType)) errors.push(`${prefix}.rcdType is ongeldig.`)
         if (

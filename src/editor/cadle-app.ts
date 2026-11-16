@@ -730,6 +730,7 @@ export class CadleApp extends LiteElement {
       if (updatedProtection?.kind === 'symbol' && topology && this.#project) {
         const role = updatedProtection.sourceLink?.role ?? ''
         const ratedCurrentA = updatedProtection.electrical?.breakerCurrentA
+        const poles = updatedProtection.electrical?.poles
         const sensitivityMa = updatedProtection.electrical?.rcdSensitivityMa
         const manufacturer = updatedProtection.electrical?.manufacturer
         const neutralPosition = updatedProtection.electrical?.neutralPosition
@@ -745,22 +746,32 @@ export class CadleApp extends LiteElement {
             ...(manufacturer ? { manufacturer } : {}),
             ...(neutralPosition ? { neutralPosition } : {})
           }
-        } else if (role === 'main-differential' && topology.mainDifferential) {
-          topology.mainDifferential.rcdType = updatedProtection.electrical?.rcdType ?? 'A'
-          if (typeof ratedCurrentA === 'number') topology.mainDifferential.ratedCurrentA = ratedCurrentA
-          if (typeof sensitivityMa === 'number') topology.mainDifferential.sensitivityMa = sensitivityMa
-          if (manufacturer) topology.mainDifferential.manufacturer = manufacturer
-          else delete topology.mainDifferential.manufacturer
-          if (neutralPosition) topology.mainDifferential.neutralPosition = neutralPosition
-          else delete topology.mainDifferential.neutralPosition
-        } else if (role === 'residual-breaker' && typeof ratedCurrentA === 'number') {
-          topology.residualBreakerRatedCurrentA = ratedCurrentA
+          if (typeof poles === 'number') topology.mainSwitchPoles = poles
+          else delete topology.mainSwitchPoles
+        } else if (role === 'main-differential') {
+          if (typeof poles === 'number') topology.mainDifferentialPoles = poles
+          else delete topology.mainDifferentialPoles
+          if (topology.mainDifferential) {
+            topology.mainDifferential.rcdType = updatedProtection.electrical?.rcdType ?? 'A'
+            if (typeof ratedCurrentA === 'number') topology.mainDifferential.ratedCurrentA = ratedCurrentA
+            if (typeof sensitivityMa === 'number') topology.mainDifferential.sensitivityMa = sensitivityMa
+            if (manufacturer) topology.mainDifferential.manufacturer = manufacturer
+            else delete topology.mainDifferential.manufacturer
+            if (neutralPosition) topology.mainDifferential.neutralPosition = neutralPosition
+            else delete topology.mainDifferential.neutralPosition
+          }
+        } else if (role === 'residual-breaker') {
+          if (typeof ratedCurrentA === 'number') topology.residualBreakerRatedCurrentA = ratedCurrentA
+          if (typeof poles === 'number') topology.residualBreakerPoles = poles
+          else delete topology.residualBreakerPoles
           if (manufacturer) topology.residualBreakerManufacturer = manufacturer
           else delete topology.residualBreakerManufacturer
           if (neutralPosition) topology.residualBreakerNeutralPosition = neutralPosition
           else delete topology.residualBreakerNeutralPosition
-        } else if (role === 'solar-breaker' && typeof ratedCurrentA === 'number') {
-          topology.solarBreakerRatedCurrentA = ratedCurrentA
+        } else if (role === 'solar-breaker') {
+          if (typeof ratedCurrentA === 'number') topology.solarBreakerRatedCurrentA = ratedCurrentA
+          if (typeof poles === 'number') topology.solarBreakerPoles = poles
+          else delete topology.solarBreakerPoles
           if (manufacturer) topology.solarBreakerManufacturer = manufacturer
           else delete topology.solarBreakerManufacturer
           if (neutralPosition) topology.solarBreakerNeutralPosition = neutralPosition
@@ -784,6 +795,8 @@ export class CadleApp extends LiteElement {
               target.rcdType = updatedProtection.electrical?.rcdType ?? 'A'
               if (typeof ratedCurrentA === 'number') target.ratedCurrentA = ratedCurrentA
               else delete target.ratedCurrentA
+              if (typeof poles === 'number') target.poles = poles
+              else delete target.poles
               if (typeof sensitivityMa === 'number') target.sensitivityMa = sensitivityMa
               if (manufacturer) target.manufacturer = manufacturer
               else delete target.manufacturer
@@ -3416,11 +3429,9 @@ export class CadleApp extends LiteElement {
       const circuitPageIndex = topology ? pageIndex - 1 : pageIndex
       const totalPageCount = layoutPlan.pageCount + (topology ? 1 : 0)
       const electricalSheetNumber = (layoutPageIndex: number) => layoutPageIndex + (topology ? 2 : 1)
-      const destinationSheetLabels = Object.fromEntries(
-        layoutPlan.placements.map((placement) => [
-          `${placement.boardId ?? 'main'}::${placement.railId ?? '__unassigned__'}`,
-          `E${electricalSheetNumber(placement.pageIndex)}`
-        ])
+      const destinationSheetLabels = this.#oneWireController.destinationSheetLabels(
+        layoutPlan.placements,
+        electricalSheetNumber
       )
       const visiblePlacements = topologyPage
         ? []

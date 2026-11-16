@@ -393,6 +393,37 @@ test('hides phase-order text on every four-pole protection device', () => {
   assert.equal(solarBreaker.symbolTextOverrides?.phase, '')
 })
 
+test('preserves independent pole counts for each topology protection device', () => {
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      mainSwitchPoles: 1,
+      mainDifferentialPoles: 3,
+      residualBreaker: true,
+      residualBreakerPoles: 4,
+      solar: true,
+      solarBreakerPoles: 1,
+      consumers: true,
+      additionalDifferentials: [{ count: 1, sensitivityMa: 30, poles: 3, purpose: 'consumers' }]
+    },
+    { start: { x: 80, y: 700 }, end: { x: 920, y: 700 } },
+    ids()
+  )
+
+  for (const [role, poles] of [
+    ['main-switch', 1],
+    ['main-differential', 3],
+    ['residual-breaker', 4],
+    ['solar-breaker', 1],
+    ['additional-differential-consumers-1', 3]
+  ] as const) {
+    const shape = shapes.find((item) => item.sourceLink?.role === role)
+    assert.ok(shape?.kind === 'symbol', role)
+    assert.equal(shape.electrical?.poles, poles, role)
+    assert.equal(shape.symbolTextOverrides?.poles, `${poles}P`, role)
+  }
+})
+
 test('marks a solar-fed downstream rail without a remautomaat as unprotected', () => {
   const shapes = buildOneWireTopology(
     {

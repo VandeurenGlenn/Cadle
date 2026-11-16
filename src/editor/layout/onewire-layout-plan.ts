@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 96
+export const ONE_WIRE_LAYOUT_VERSION = 97
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
@@ -44,6 +44,21 @@ export type OneWireLayoutPlan = {
   pageCount: number
   railsPerPage: number
   slotsPerRail: number
+}
+
+export const oneWireDestinationSheetLabels = (
+  placements: readonly Pick<OneWireFamilyPlacement, 'boardId' | 'railId' | 'pageIndex'>[],
+  sheetNumber: (pageIndex: number) => number
+): Record<string, string> => {
+  const firstPages = new Map<string, number>()
+  for (const placement of placements) {
+    const key = `${placement.boardId ?? 'main'}::${placement.railId ?? '__unassigned__'}`
+    const firstPage = firstPages.get(key)
+    if (firstPage === undefined || placement.pageIndex < firstPage) firstPages.set(key, placement.pageIndex)
+  }
+  return Object.fromEntries(
+    [...firstPages].map(([key, pageIndex]) => [key, `E${sheetNumber(pageIndex)}`])
+  )
 }
 
 export type OneWireFamilyBounds = {

@@ -57,11 +57,15 @@ export type OneWireTopologyPlan = {
   }
   residualBreaker: boolean
   residualBreakerRatedCurrentA?: number
+  mainSwitchPoles?: number
+  mainDifferentialPoles?: number
+  residualBreakerPoles?: number
   residualBreakerManufacturer?: string
   residualBreakerNeutralPosition?: 'left' | 'right'
   gridProtectionCurrentA?: number
   solar: boolean
   solarBreakerRatedCurrentA?: number
+  solarBreakerPoles?: number
   solarBreakerManufacturer?: string
   solarBreakerNeutralPosition?: 'left' | 'right'
   consumers: boolean
@@ -71,6 +75,7 @@ export type OneWireTopologyPlan = {
     boardId?: string
     railId?: string
     sensitivityMa: number
+    poles?: number
     rcdType?: 'AC' | 'A' | 'F' | 'B' | 'other'
     ratedCurrentA?: number
     manufacturer?: string

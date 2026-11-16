@@ -123,12 +123,12 @@ export const buildOneWireTopology = (
     shape: SymbolShape,
     ratedCurrentA?: number,
     sensitivityMa?: number,
-    device?: { manufacturer?: string; neutralPosition?: 'left' | 'right'; rcdType?: NonNullable<SymbolShape['electrical']>['rcdType'] }
+    device?: { poles?: number; manufacturer?: string; neutralPosition?: 'left' | 'right'; rcdType?: NonNullable<SymbolShape['electrical']>['rcdType'] }
   ): SymbolShape => {
     const breakerCurve = shape.path === BREAKER_PATH && ratedCurrentA ? ('C' as const) : undefined
     const manufacturer = device?.manufacturer?.trim() || options.protectionManufacturer?.trim() || 'Schneider Electric'
     const neutralPosition = device?.neutralPosition ?? neutralPositionForManufacturer(manufacturer) ?? 'right'
-    const poles = options.defaultPoles ?? 2
+    const poles = device?.poles ?? options.defaultPoles ?? 2
     const phaseConfiguration = options.phaseConfiguration ?? 'single-phase'
     const rcdType = device?.rcdType ?? options.rcdTypesByRole?.[shape.sourceLink!.role] ?? DEFAULT_RCD_TYPE
     shape.electrical = {
@@ -208,7 +208,7 @@ export const buildOneWireTopology = (
     mainDifferential,
     plan.mainDifferential?.ratedCurrentA,
     plan.mainDifferential?.sensitivityMa,
-    plan.mainDifferential
+    { ...plan.mainDifferential, poles: plan.mainDifferentialPoles }
   )
   const mainBottom = terminalPoint(mainDifferential, 'bottom')
   const mainTitleY = protectionDescriptionLayout(mainDifferential)!.y
@@ -234,7 +234,7 @@ export const buildOneWireTopology = (
     plan.mainSwitch?.manufacturer?.trim() || options.protectionManufacturer?.trim() || 'Schneider Electric'
   const mainSwitchNeutralPosition =
     plan.mainSwitch?.neutralPosition ?? neutralPositionForManufacturer(mainSwitchManufacturer) ?? 'right'
-  const mainSwitchPoles = options.defaultPoles ?? 2
+  const mainSwitchPoles = plan.mainSwitchPoles ?? options.defaultPoles ?? 2
   const mainSwitchPhaseConfiguration = options.phaseConfiguration ?? 'single-phase'
   mainSwitch.electrical = {
     role: 'protection',
@@ -381,6 +381,7 @@ export const buildOneWireTopology = (
       breakerBottom
     )
     protectionValues(breaker, plan.residualBreakerRatedCurrentA ?? 40, undefined, {
+      poles: plan.residualBreakerPoles,
       manufacturer: plan.residualBreakerManufacturer,
       neutralPosition: plan.residualBreakerNeutralPosition
     })
@@ -534,6 +535,7 @@ export const buildOneWireTopology = (
       breakerBottom
     )
     protectionValues(solarBreaker, plan.solarBreakerRatedCurrentA ?? 20, undefined, {
+      poles: plan.solarBreakerPoles,
       manufacturer: plan.solarBreakerManufacturer,
       neutralPosition: plan.solarBreakerNeutralPosition
     })

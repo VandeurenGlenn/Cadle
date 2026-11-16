@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   appendOneWireFamilyOffset,
   normalizeOneWireFamilyKey,
+  oneWireDestinationSheetLabels,
   oneWireRailYForRows,
   oneWireRailSpanForAnchors,
   packOneWireFamilyBounds,
@@ -97,6 +98,18 @@ test('splits large circuit families into readable page chunks', () => {
     ]
   )
   assert.equal(plan.pageCount, 2)
+})
+
+test('references the first sheet when a destination continues across pages', () => {
+  const plan = planOneWireLayout(
+    [{ family: 'A', circuitCount: 30, boardId: 'main', railId: 'rail-1' }],
+    { usableWidth: 500, usableHeight: 700, maxCircuitsPerPage: 25 }
+  )
+
+  assert.deepEqual(
+    oneWireDestinationSheetLabels([...plan.placements].reverse(), (pageIndex) => pageIndex + 2),
+    { 'main::rail-1': 'E2' }
+  )
 })
 
 test('limits a vertical family to the rows that fit the usable page height', () => {
@@ -210,7 +223,7 @@ test('continues on a new page only after all family slots are occupied', () => {
 test('packs circuits by actual rows without reserving empty space above breaker labels', () => {
   const families = [
     { family: 'A', anchorX: 0, minX: -40, maxX: 190, ink: [
-      { x: 0, y: 0, width: 190, height: 30 }, { x: -40, y: 300, width: 90, height: 100 }
+      { x: 0, y: 0, width: 130, height: 30 }, { x: -40, y: 300, width: 90, height: 100 }
     ] },
     { family: 'B', anchorX: 400, minX: 360, maxX: 470, ink: [
       { x: 390, y: 0, width: 80, height: 30 }, { x: 360, y: 300, width: 90, height: 100 }

@@ -100,6 +100,30 @@ test('accepts manufacturer and neutral-position metadata', () => {
   assert.equal(result.valid, true)
 })
 
+test('validates independently saved topology pole counts', () => {
+  const valid = validateOneWireTopology({
+    version: 1,
+    mainSwitchPoles: 2,
+    mainDifferentialPoles: 4,
+    residualBreaker: true,
+    residualBreakerPoles: 3,
+    solar: true,
+    solarBreakerPoles: 1,
+    consumers: true,
+    additionalDifferentials: [{ count: 1, sensitivityMa: 30, poles: 2, purpose: 'consumers' }]
+  })
+  assert.equal(valid.valid, true)
+  const invalid = validateOneWireTopology({
+    version: 1,
+    mainSwitchPoles: 5,
+    residualBreaker: false,
+    solar: false,
+    consumers: false
+  })
+  assert.equal(invalid.valid, false)
+  assert.ok(invalid.errors.some((error) => error.includes('mainSwitchPoles')))
+})
+
 test('accepts one differential assigned to one cabinet row', () => {
   const result = validateOneWireTopology({
     version: 1,

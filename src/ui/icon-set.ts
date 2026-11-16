@@ -156,6 +156,11 @@ export const iconSetTemplate = html`
       <span name="vertical_align_bottom">@symbol-vertical_align_bottom</span>
       <span name="vertical_align_center">@symbol-vertical_align_center</span>
       <span name="vertical_align_top">@symbol-vertical_align_top</span>
+      <span name="door_sliding">@symbol-door_sliding</span>
+      <span name="shelves">@symbol-shelves</span>
+      <span name="stairs">@symbol-stairs</span>
+      <span name="wifi">@symbol-wifi</span>
+      <span name="shelves">@symbol-shelves</span>
     </template>
   </custom-icon-set>
 `

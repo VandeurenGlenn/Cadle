@@ -26,7 +26,8 @@ export const heatingObstacleBounds = (shapes: readonly Shape[], boundsFor: (shap
   const groups = new Map<string, Footprint>(), result: Footprint[] = []
   for (const shape of shapes) {
     if (shape.hidden || shape.heatingObstacle === false) continue
-    const fixedRect = shape.kind === 'rect' && !shape.heating && (!shape.variant || shape.variant === 'rect')
+    const fixedRect = shape.kind === 'rect' && !shape.heating &&
+      (!shape.variant || shape.variant === 'rect' || shape.variant === 'built-in-cabinet')
     if (!isHeatingSymbolObstacle(shape) && !fixedRect) continue
     const b = boundsFor(shape)
     if (fixedRect && shape.heatingObstacle !== true && shapes.some((wall) => wall.kind === 'wall' && !wall.hidden && [wall.start, wall.end].some((p) => p.x > b.x + 4 && p.x < b.x + b.width - 4 && p.y > b.y + 4 && p.y < b.y + b.height - 4))) continue

@@ -476,6 +476,47 @@ output,
   stroke: none;
 }
 
+.shape-sliding-door-track {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.shape-sliding-door-arrow {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shape-sliding-window-track {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 1.5;
+}
+
+.shape-sliding-window-arrow {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shape-built-in-cabinet {
+  fill: none;
+  stroke: #3b2c20;
+}
+
+.shape-built-in-cabinet-inset,
+.shape-built-in-cabinet-divider {
+  fill: none;
+  stroke: #3b2c20;
+  stroke-width: 1.4;
+}
+
 /* ── Window: glass pane + jamb markers ── */
 .shape-window-glass {
   fill: none;

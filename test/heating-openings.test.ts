@@ -111,3 +111,18 @@ test('a roof overlay does not block floor heating unless explicitly marked as an
     { x: 10, y: 20, width: 200, height: 80 }
   ])
 })
+
+test('built-in cabinet footprints block floor heating unless explicitly allowed', () => {
+  const cabinet: RectShape = {
+    id: 'built-in-cabinet',
+    kind: 'rect',
+    variant: 'built-in-cabinet',
+    start: { x: 420, y: 440 },
+    end: { x: 620, y: 520 }
+  }
+
+  assert.deepEqual(heatingObstacleBounds([cabinet], shapeBounds), [
+    { x: 420, y: 440, width: 200, height: 80 }
+  ])
+  assert.deepEqual(heatingObstacleBounds([{ ...cabinet, heatingObstacle: false }], shapeBounds), [])
+})

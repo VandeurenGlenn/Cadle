@@ -1,5 +1,5 @@
 import { wallJunctionMarkup } from '../layout/wall-junctions.js'
-import { escapeHtml, lineMetrics, shapeBounds } from '../../editor/model/model.js'
+import { escapeHtml, lineMetrics, shapeBounds, slidingDoorGeometry, slidingWindowGeometry } from '../../editor/model/model.js'
 import { renderedSymbolScale } from '../../editor/model/symbol-scale.js'
 import { heatingMarkup, type HeatingObstacle } from '../heating-plan.js'
 import { heatingObstacleBounds } from '../heating-openings.js'
@@ -67,6 +67,12 @@ const EXPORT_STYLE_BLOCK = `
   .shape-door-leaf { fill: none; stroke: #3b2c20; stroke-width: 3.5; stroke-linecap: round; }
   .shape-door-arc { fill: none; stroke: #3b2c20; stroke-width: 2; stroke-dasharray: 8 5; stroke-linecap: round; }
   .shape-door-hinge { display: none; }
+  .shape-sliding-door-track { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .shape-sliding-door-arrow { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-sliding-window-track { fill: none; stroke: #3b2c20; stroke-width: 1.5; }
+  .shape-sliding-window-arrow { fill: none; stroke: #3b2c20; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .shape-built-in-cabinet { fill: none; stroke: #3b2c20; }
+  .shape-built-in-cabinet-inset, .shape-built-in-cabinet-divider { fill: none; stroke: #3b2c20; stroke-width: 1.4; }
 
   .shape-window-glass { fill: none; stroke: rgba(100, 190, 240, 0.92); stroke-width: 12; stroke-linecap: butt; }
   .shape-window-jamb { fill: none; stroke: #3b2c20; stroke-width: 3; stroke-linecap: round; }
@@ -194,6 +200,16 @@ export const shapeMarkup = (
             y2="${shape.end.y}"></line>
         `
     case 'door': {
+      if (shape.doorStyle === 'sliding') {
+        const geometry = slidingDoorGeometry(shape)
+        const strokeWidthStyle =
+          typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+        return `
+          <line class="shape shape-sliding-door-track ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${shape.start.x}" y1="${shape.start.y}" x2="${shape.end.x}" y2="${shape.end.y}"></line>
+          <line class="shape shape-door-leaf ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} x1="${geometry.leafStart.x}" y1="${geometry.leafStart.y}" x2="${geometry.leafEnd.x}" y2="${geometry.leafEnd.y}"></line>
+          <path class="shape shape-sliding-door-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+        `
+      }
       const { length, nx, ny } = lineMetrics(shape)
       const side = shape.flipSide ? -1 : 1
       const fnx = nx * side
@@ -212,6 +228,18 @@ export const shapeMarkup = (
         `
     }
     case 'window': {
+      if (shape.windowStyle === 'sliding') {
+        const geometry = slidingWindowGeometry(shape)
+        const strokeWidthStyle =
+          typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+        return `
+          <line class="shape shape-window-glass ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} x1="${geometry.upperStart.x}" y1="${geometry.upperStart.y}" x2="${geometry.upperEnd.x}" y2="${geometry.upperEnd.y}"></line>
+          <line class="shape shape-sliding-window-track ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.lowerStart.x}" y1="${geometry.lowerStart.y}" x2="${geometry.lowerEnd.x}" y2="${geometry.lowerEnd.y}"></line>
+          <line class="shape shape-window-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.upperStart.x}" y1="${geometry.upperStart.y}" x2="${geometry.lowerStart.x}" y2="${geometry.lowerStart.y}"></line>
+          <line class="shape shape-window-jamb ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" x1="${geometry.upperEnd.x}" y1="${geometry.upperEnd.y}" x2="${geometry.lowerEnd.x}" y2="${geometry.lowerEnd.y}"></line>
+          <path class="shape shape-sliding-window-arrow ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}"${strokeWidthStyle} d="M ${geometry.arrowStart.x} ${geometry.arrowStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} M ${geometry.arrowHeadStart.x} ${geometry.arrowHeadStart.y} L ${geometry.arrowTip.x} ${geometry.arrowTip.y} L ${geometry.arrowHeadEnd.x} ${geometry.arrowHeadEnd.y}"></path>
+        `
+      }
       const { nx, ny } = lineMetrics(shape)
       const jambLength = 12
       const strokeWidthStyle =
@@ -256,6 +284,24 @@ export const shapeMarkup = (
       const strokeAttr = ` stroke="${escapeHtml(shape.stroke ?? '#000000')}"`
       const strokeWidthStyle =
         typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+      if (shape.variant === 'built-in-cabinet') {
+        const inset = Math.min(5, Math.max(0.5, Math.min(bounds.width, bounds.height) / 6))
+        const x1 = bounds.x + inset
+        const y1 = bounds.y + inset
+        const x2 = bounds.x + bounds.width - inset
+        const y2 = bounds.y + bounds.height - inset
+        const transform = rectTransform(shape, bounds)
+        const divider = bounds.width >= bounds.height
+          ? `<line class="shape-built-in-cabinet-divider" x1="${(x1 + x2) / 2}" y1="${y1}" x2="${(x1 + x2) / 2}" y2="${y2}"></line>`
+          : `<line class="shape-built-in-cabinet-divider" x1="${x1}" y1="${(y1 + y2) / 2}" x2="${x2}" y2="${(y1 + y2) / 2}"></line>`
+        return `
+          <g class="shape shape-rect shape-built-in-cabinet ${extraClass}" data-shape-id="${shape.id}" data-selected="${selectedAttr}" ${transform}${strokeWidthStyle}>
+            <rect x="${bounds.x}" y="${bounds.y}" width="${Math.max(1, bounds.width)}" height="${Math.max(1, bounds.height)}"${fillAttr}${strokeAttr}></rect>
+            <rect class="shape-built-in-cabinet-inset" x="${x1}" y="${y1}" width="${Math.max(0.5, x2 - x1)}" height="${Math.max(0.5, y2 - y1)}"></rect>
+            ${divider}
+          </g>
+        `
+      }
       if (shape.variant === 'roof-left' || shape.variant === 'roof-straight' || shape.variant === 'roof-right') {
         const transform = rectTransform(shape, bounds)
         const roofPath = roofPathData(roofGeometry(bounds, shape.variant))

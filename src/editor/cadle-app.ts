@@ -445,6 +445,14 @@ export class CadleApp extends LiteElement {
   }
 
   #onShellAction = (action: string) => {
+    if (action === 'draw-stairs') {
+      this.#onNativeCatalogPick({ name: 'Stairs', path: 'symbols/Floor plan/stairs-straight-wide.svg' })
+      return
+    }
+    if (action === 'draw-access-point') {
+      this.#onNativeCatalogPick({ name: 'Wi-Fi access point', path: 'symbols/General/Access point.svg' })
+      return
+    }
     const nextTool = this.#tools.toolForShellAction(action ?? '')
     this.#activateTool(nextTool)
   }
@@ -6093,7 +6101,7 @@ export class CadleApp extends LiteElement {
     const point =
       this.#tools.current === 'line'
         ? this.#snapToElectricalPoints(gridSnapped).point
-        : this.#tools.current === 'door' || this.#tools.current === 'window' || this.#tools.current === 'gate'
+        : this.#tools.current === 'door' || this.#tools.current === 'sliding-door' || this.#tools.current === 'window' || this.#tools.current === 'sliding-window' || this.#tools.current === 'gate'
           ? this.#snapToEndpoints(gridSnapped).point
           : gridSnapped
     this.#draft = createDraftShape(nextShapeId(), point, this.#tools.current)

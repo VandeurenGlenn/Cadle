@@ -25,6 +25,11 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-roof-straight', icon: 'square', title: 'Dakvlak · zonder punt', hint: 'Sleep een rechthoekig dakvlak met een rechte noklijn, zonder schuine eindlijnen.', nativeOnly: true },
   { action: 'draw-roof-right', icon: 'pentagon', title: 'Dakvlak · punt rechts', hint: 'Sleep het dakvlak over de ruimte. De schuine daklijnen komen rechts en de nok loopt naar links.', nativeOnly: true },
   { action: 'draw-door', icon: 'door_front', title: 'Draw door' },
+  { action: 'draw-sliding-door', icon: 'door_sliding', title: 'Draw sliding door' },
+  { action: 'draw-sliding-window', icon: 'window', title: 'Draw sliding window' },
+  { action: 'draw-built-in-cabinet', icon: 'shelves', title: 'Draw built-in cabinet', hint: 'Drag to draw the cabinet footprint.' },
+  { action: 'draw-stairs', icon: 'stairs', title: 'Place stairs', hint: 'Move the cursor to preview the stairs, then click to place.' },
+  { action: 'draw-access-point', icon: 'wifi', title: 'Place Wi-Fi access point', hint: 'Move the cursor to preview the access point, then click to place.' },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
   { action: 'draw-line', icon: 'horizontal_rule', title: 'Draw line' },
@@ -158,7 +163,7 @@ export class CadleActions extends LiteElement {
     const tools = this.#visibleTools()
     const oneWire = this.pageType === 'onewire'
     const heatingTools = tools.filter((tool) => tool.action === 'draw-heating-auto')
-    const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-room-label', 'draw-door', 'draw-window', 'draw-gate'].includes(tool.action))
+    const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-room-label', 'draw-door', 'draw-sliding-door', 'draw-window', 'draw-sliding-window', 'draw-gate'].includes(tool.action))
     const extraTools = tools.filter((tool) => tool.action !== 'select' && !['draw-text', 'draw-symbol'].includes(tool.action) &&
       !heatingTools.includes(tool) && (oneWire || !planTools.includes(tool)))
     const extraActive = extraTools.find((tool) => this.#isToolActive(tool))

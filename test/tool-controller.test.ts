@@ -5,6 +5,11 @@ import { ToolController } from '../src/editor/controllers/tool-controller.ts'
 test('maps shell actions to editor tools', () => {
   const tools = new ToolController()
   assert.equal(tools.toolForShellAction('draw-wall'), 'wall')
+  assert.equal(tools.toolForShellAction('draw-sliding-door'), 'sliding-door')
+  assert.equal(tools.toolForShellAction('draw-sliding-window'), 'sliding-window')
+  assert.equal(tools.toolForShellAction('draw-built-in-cabinet'), 'built-in-cabinet')
+  assert.equal(tools.toolForShellAction('draw-stairs'), 'symbol')
+  assert.equal(tools.toolForShellAction('draw-access-point'), 'symbol')
   assert.equal(tools.toolForShellAction('draw-room'), 'room')
   assert.equal(tools.toolForShellAction('draw-cable'), 'line')
   assert.equal(tools.toolForShellAction('unknown'), 'select')
@@ -12,6 +17,8 @@ test('maps shell actions to editor tools', () => {
 
 test('maps the selected tool back to the canonical shell action', () => {
   const tools = new ToolController()
+  tools.select('sliding-door')
+  assert.equal(tools.shellAction(), 'draw-sliding-door')
   tools.select('rect')
   assert.equal(tools.shellAction(), 'draw-square')
 })

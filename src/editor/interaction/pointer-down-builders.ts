@@ -107,13 +107,13 @@ export const createDraftShape = (
   tool: Tool,
   rectVariant: 'rect' | 'circle' | 'arc' = 'rect'
 ): DraftShape =>
-  tool === 'rect' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
+  tool === 'rect' || tool === 'built-in-cabinet' || tool === 'room' || tool === 'circle' || tool === 'arc' || tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' || tool === 'heating-zone' || tool === 'heating-exclusion'
     ? {
         id,
         kind: 'rect',
         start: point,
         end: point,
-        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' ? tool : rectVariant,
+        variant: tool === 'heating-zone' || tool === 'heating-exclusion' ? 'rect' : tool === 'built-in-cabinet' ? 'built-in-cabinet' : tool === 'circle' ? 'circle' : tool === 'arc' ? 'arc' : tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right' ? tool : rectVariant,
         ...(tool === 'roof-left' || tool === 'roof-straight' || tool === 'roof-right'
           ? { fill: DEFAULT_ROOF_FILL, stroke: DEFAULT_ROOF_STROKE, roofPattern: 'none' as const, heatingObstacle: false }
           : {}),
@@ -121,8 +121,10 @@ export const createDraftShape = (
       }
     : {
         id,
-        kind: tool === 'door' ? 'door' : tool === 'window' ? 'window' : tool === 'gate' ? 'gate' : 'line',
+        kind: tool === 'door' || tool === 'sliding-door' ? 'door' : tool === 'window' || tool === 'sliding-window' ? 'window' : tool === 'gate' ? 'gate' : 'line',
         start: point,
         end: point,
+        ...(tool === 'sliding-door' ? { doorStyle: 'sliding' as const } : {}),
+        ...(tool === 'sliding-window' ? { windowStyle: 'sliding' as const } : {}),
         ...(tool === 'line' ? { stroke: DEFAULT_DRAW_STROKE, strokeWidth: DEFAULT_DRAW_STROKE_WIDTH } : {})
       }

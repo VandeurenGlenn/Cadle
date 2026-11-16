@@ -28,6 +28,23 @@ test('keeps architectural tools on their specialized stroke defaults', () => {
   }
 })
 
+test('creates sliding doors as a persisted door style', () => {
+  const draft = createDraftShape('sliding-door', { x: 10, y: 20 }, 'sliding-door')
+  assert.equal(draft.kind, 'door')
+  if (draft.kind === 'door') assert.equal(draft.doorStyle, 'sliding')
+})
+
+test('creates sliding windows and cabinet drawing drafts with their proper shape types', () => {
+  const point = { x: 10, y: 20 }
+  const window = createDraftShape('window', point, 'sliding-window')
+  assert.equal(window.kind, 'window')
+  if (window.kind === 'window') assert.equal(window.windowStyle, 'sliding')
+
+  const cabinet = createDraftShape('cabinet', point, 'built-in-cabinet')
+  assert.equal(cabinet.kind, 'rect')
+  if (cabinet.kind === 'rect') assert.equal(cabinet.variant, 'built-in-cabinet')
+})
+
 test('creates pointed and straight roof drafts with their visible non-obstacle defaults', () => {
   const point = { x: 10, y: 20 }
 

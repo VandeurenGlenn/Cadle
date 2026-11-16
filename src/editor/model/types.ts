@@ -7,9 +7,12 @@ export type Tool =
   | 'room'
   | 'line'
   | 'door'
+  | 'sliding-door'
   | 'window'
+  | 'sliding-window'
   | 'gate'
   | 'rect'
+  | 'built-in-cabinet'
   | 'circle'
   | 'arc'
   | 'roof-left'
@@ -56,6 +59,8 @@ export type LineShape = GeneratedShapeMetadata & {
   wallId?: string
   roomName?: string
   flipSide?: boolean
+  doorStyle?: 'sliding'
+  windowStyle?: 'sliding'
   stroke?: string
   strokeWidth?: number
   energyFlow?: 'forward' | 'reverse' | 'bidirectional'
@@ -71,7 +76,7 @@ export type RectShape = GeneratedShapeMetadata & {
   kind: 'rect'
   start: Point
   end: Point
-  variant?: 'rect' | 'circle' | 'arc' | RoofVariant
+  variant?: 'rect' | 'circle' | 'arc' | 'built-in-cabinet' | RoofVariant
   roofPattern?: RoofPattern
   scale?: number
   rotation?: number

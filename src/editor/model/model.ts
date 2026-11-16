@@ -28,6 +28,69 @@ export const lineMetrics = (shape: LineShape) => {
   return { dx, dy, length, ux, uy, nx, ny }
 }
 
+export const slidingDoorGeometry = (shape: LineShape) => {
+  const { length, ux, uy, nx, ny } = lineMetrics(shape)
+  const side = shape.flipSide ? -1 : 1
+  const offset = 12 * side
+  const midpoint = {
+    x: (shape.start.x + shape.end.x) / 2,
+    y: (shape.start.y + shape.end.y) / 2
+  }
+  const arrowHalfLength = Math.min(10, length / 4)
+  const arrowTip = {
+    x: midpoint.x + ux * arrowHalfLength,
+    y: midpoint.y + uy * arrowHalfLength
+  }
+  const arrowHeadLength = Math.min(5, arrowHalfLength / 2)
+  const arrowHeadWidth = Math.min(3, arrowHalfLength / 3)
+  return {
+    leafStart: { x: shape.start.x + nx * offset, y: shape.start.y + ny * offset },
+    leafEnd: { x: shape.end.x + nx * offset, y: shape.end.y + ny * offset },
+    arrowStart: { x: midpoint.x - ux * arrowHalfLength, y: midpoint.y - uy * arrowHalfLength },
+    arrowTip,
+    arrowHeadStart: {
+      x: arrowTip.x - ux * arrowHeadLength + nx * arrowHeadWidth,
+      y: arrowTip.y - uy * arrowHeadLength + ny * arrowHeadWidth
+    },
+    arrowHeadEnd: {
+      x: arrowTip.x - ux * arrowHeadLength - nx * arrowHeadWidth,
+      y: arrowTip.y - uy * arrowHeadLength - ny * arrowHeadWidth
+    }
+  }
+}
+
+export const slidingWindowGeometry = (shape: LineShape) => {
+  const { length, ux, uy, nx, ny } = lineMetrics(shape)
+  const midpoint = {
+    x: (shape.start.x + shape.end.x) / 2,
+    y: (shape.start.y + shape.end.y) / 2
+  }
+  const panelOffset = 4
+  const arrowHalfLength = Math.min(9, length / 4)
+  const arrowTip = {
+    x: midpoint.x + ux * arrowHalfLength,
+    y: midpoint.y + uy * arrowHalfLength
+  }
+  const arrowHeadLength = Math.min(4, arrowHalfLength / 2)
+  const arrowHeadWidth = Math.min(2.5, arrowHalfLength / 3)
+  return {
+    upperStart: { x: shape.start.x + nx * panelOffset, y: shape.start.y + ny * panelOffset },
+    upperEnd: { x: shape.end.x + nx * panelOffset, y: shape.end.y + ny * panelOffset },
+    lowerStart: { x: shape.start.x - nx * panelOffset, y: shape.start.y - ny * panelOffset },
+    lowerEnd: { x: shape.end.x - nx * panelOffset, y: shape.end.y - ny * panelOffset },
+    arrowStart: { x: midpoint.x - ux * arrowHalfLength, y: midpoint.y - uy * arrowHalfLength },
+    arrowTip,
+    arrowHeadStart: {
+      x: arrowTip.x - ux * arrowHeadLength + nx * arrowHeadWidth,
+      y: arrowTip.y - uy * arrowHeadLength + ny * arrowHeadWidth
+    },
+    arrowHeadEnd: {
+      x: arrowTip.x - ux * arrowHeadLength - nx * arrowHeadWidth,
+      y: arrowTip.y - uy * arrowHeadLength - ny * arrowHeadWidth
+    }
+  }
+}
+
 export const scalePoint = (point: Point, scaleX: number, scaleY: number): Point => ({
   x: point.x * scaleX,
   y: point.y * scaleY
@@ -153,6 +216,8 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       flipY?: unknown
       wallId?: unknown
       roomName?: unknown
+      doorStyle?: unknown
+      windowStyle?: unknown
       roomLabel?: unknown
       bindingId?: unknown
       groupId?: unknown
@@ -190,6 +255,8 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       if (raw.flipY === true) line.flipY = true
       if (typeof raw.wallId === 'string' && raw.wallId.trim()) line.wallId = raw.wallId.trim()
       if (typeof raw.roomName === 'string' && raw.roomName.trim()) line.roomName = raw.roomName.trim()
+      if (raw.kind === 'door' && raw.doorStyle === 'sliding') line.doorStyle = 'sliding'
+      if (raw.kind === 'window' && raw.windowStyle === 'sliding') line.windowStyle = 'sliding'
       if ((raw as { flipSide?: unknown }).flipSide === true) line.flipSide = true
       if (typeof raw.stroke === 'string' && raw.stroke) line.stroke = raw.stroke
       if (typeof raw.strokeWidth === 'number' && Number.isFinite(raw.strokeWidth)) {
@@ -216,7 +283,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
-      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
+      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'built-in-cabinet' || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
       if (isRoofPattern(raw.roofPattern) && (rect.variant === 'roof-left' || rect.variant === 'roof-straight' || rect.variant === 'roof-right')) {
         rect.roofPattern = raw.roofPattern
       }
@@ -404,6 +471,8 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.wallId) cloned.wallId = shape.wallId
       if (shape.roomName) cloned.roomName = shape.roomName
       if (shape.flipSide) cloned.flipSide = true
+      if (shape.doorStyle) cloned.doorStyle = shape.doorStyle
+      if (shape.windowStyle) cloned.windowStyle = shape.windowStyle
       if (shape.stroke) cloned.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') cloned.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) cloned.energyFlow = shape.energyFlow
@@ -528,6 +597,8 @@ export const scaleShape = (shape: Shape, scaleX: number, scaleY: number): Shape 
       if (shape.flipY) scaled.flipY = true
       if (shape.wallId) scaled.wallId = shape.wallId
       if (shape.flipSide) scaled.flipSide = true
+      if (shape.doorStyle) scaled.doorStyle = shape.doorStyle
+      if (shape.windowStyle) scaled.windowStyle = shape.windowStyle
       if (shape.stroke) scaled.stroke = shape.stroke
       if (typeof shape.strokeWidth === 'number') scaled.strokeWidth = shape.strokeWidth
       if (shape.energyFlow) scaled.energyFlow = shape.energyFlow

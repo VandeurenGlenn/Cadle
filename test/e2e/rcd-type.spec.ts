@@ -1,5 +1,47 @@
 import { expect, test } from '@playwright/test'
 
+test('shows breaker curves for saved ratings and curve-only edits in the editor and export', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const pageKey = '00000000-0000-4000-8000-000000000104'
+  await page.locator(`project-element custom-drawer-item[data-project="${pageKey}"]`).click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'breaker-curve.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1,
+      shapes: [{ id: 'curve-breaker', kind: 'symbol', name: 'Automaat',
+        path: 'symbols/Protection devices/Automaat.svg', position: { x: 900, y: 600 }, scale: 4,
+        symbolTextOverrides: { 'rated-current': '20A' } }],
+      selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
+  })
+  const breaker = app.locator('g.shape-symbol[data-shape-id="curve-breaker"]')
+  await expect(breaker.locator('text').filter({ hasText: /^C20A$/ })).toHaveCount(1)
+  const selectBreaker = async () => {
+    const point = await breaker.locator('path').first().evaluate((path: SVGPathElement) => {
+      const point = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+    await page.mouse.click(point.x, point.y)
+  }
+  await selectBreaker()
+  const curve = page.locator('object-pane').getByRole('combobox', { name: 'Breaker curve', exact: true })
+  for (const value of ['B', 'D']) {
+    await curve.selectOption(value)
+    await expect(breaker.locator('text').filter({ hasText: new RegExp(`^${value}20A$`) })).toHaveCount(1)
+  }
+  await page.locator('object-pane [data-electrical-field="breakerCurrentA"]').fill('25')
+  await expect(breaker.locator('text').filter({ hasText: /^D25A$/ })).toHaveCount(1)
+  expect(await app.evaluate((element: any) => element.toSVG())).toContain('>D25A</text>')
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000103') })
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, pageKey)
+  await expect(breaker.locator('text').filter({ hasText: /^D25A$/ })).toHaveCount(1)
+  await selectBreaker()
+  await expect(curve).toHaveValue('D')
+})
+
 test('edits protection pole counts independently and retains them after reopening', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

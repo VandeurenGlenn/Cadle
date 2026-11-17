@@ -8,6 +8,7 @@ import {
 } from '../src/editor/layout/onewire-circuit-presentation.ts'
 import type { Shape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
 import { oneWireSymbolNodeInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import { symbolTextPresentation } from '../src/editor/symbol-metadata.ts'
 
 const linkedText = (id: string, role: string, text: string): TextShape => ({
   id,
@@ -55,11 +56,13 @@ test('updates circuit specifications immutably and excludes runtime metadata', (
 
 test('manual and generated circuit protections keep the same breaker curve when values change', () => {
   const symbol: SymbolShape = { id: 'manual', kind: 'symbol', name: 'Automaat',
-    path: 'symbols/Protection devices/Automaat.svg', position: { x: 300, y: 500 }, scale: 4, bindingId: 'A1' }
+    path: 'symbols/Protection devices/Automaat.svg', position: { x: 300, y: 500 }, scale: 4, bindingId: 'A1',
+    electrical: { role: 'protection', oneWireEligible: true, breakerCurve: 'C', breakerCurrentA: 16 } }
   const result = applyOneWireCircuitPresentation({ shapes: [symbol, linkedText('current', 'breaker-current', 'C16A')],
     circuitKey: 'A', stored: { breakerCurrentA: 25, breakerCurve: 'D' } })
   assert.equal((result.shapes[0] as SymbolShape).symbolTextOverrides?.['rated-current'], 'D25A')
   assert.equal((result.shapes[1] as TextShape).text, 'D25A')
+  assert.match(symbolTextPresentation(result.shapes[0] as SymbolShape).annotations, />D25A<\/text>/)
 })
 
 test('applies stored circuit values to generated labels and cable symbols', () => {

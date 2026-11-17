@@ -3,6 +3,7 @@ import type { CircuitGroup, CircuitSpecification } from '../circuit-analysis.js'
 import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../circuit-defaults.js'
 import {
+  breakerCurrentLabel,
   electricalMetadataFromCatalog,
   neutralPositionForManufacturer,
   rcdTypeLabel,
@@ -189,7 +190,7 @@ export const applyOneWireCircuitPresentation = ({
     shape.kind === 'line' && shape.sourceLink?.kind === 'board' && shape.sourceLink.id === circuitKey && shape.connection?.labelOwner === 'circuit')?.connection
   const labels: Record<string, string> = {
     'breaker-poles': `${specification.poles}P`,
-    'breaker-current': `${specification.breakerCurve ?? 'C'}${specification.breakerCurrentA}A`,
+    'breaker-current': breakerCurrentLabel(specification.breakerCurrentA, specification.breakerCurve),
     'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
       ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
       : '',
@@ -221,6 +222,8 @@ export const applyOneWireCircuitPresentation = ({
         ...shape,
         electrical: {
           ...(shape.electrical ?? { role: 'protection', oneWireEligible: true }),
+          breakerCurrentA: specification.breakerCurrentA,
+          ...(!isResidualBreaker ? { breakerCurve: specification.breakerCurve } : {}),
           manufacturer: specification.manufacturer,
           neutralPosition: specification.neutralPosition
         },
@@ -230,7 +233,8 @@ export const applyOneWireCircuitPresentation = ({
           phase: shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
             ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
             : '',
-          'rated-current': `${isResidualBreaker ? '' : (specification.breakerCurve ?? 'C')}${specification.breakerCurrentA}A`,
+          'rated-current': isResidualBreaker ? `${specification.breakerCurrentA}A`
+            : breakerCurrentLabel(specification.breakerCurrentA, specification.breakerCurve),
           ...(isResidualBreaker
             ? {
                 'residual-current': specification.rcdSensitivityMa ? `${specification.rcdSensitivityMa}mA` : '',

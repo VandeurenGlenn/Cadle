@@ -2,6 +2,54 @@ import { expect, test } from '@playwright/test'
 
 test.use({ serviceWorkers: 'block' })
 
+test('all symbol ink defaults to black without losing cutouts or editable colors', async ({ page }) => {
+  await page.route('**/symbols/General/Access%20point.svg', (route) => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" color="orange">
+      <style>.colored { stroke: blue; fill: red; }</style>
+      <rect id="colored-ink" class="colored" x="10" y="10" width="80" height="80"/>
+      <circle id="cutout" cx="50" cy="50" r="20" fill="#ffffff" stroke="none"/>
+      <path id="inherited-ink" d="M20 20L80 80" fill="none" stroke="currentColor"/>
+      <text id="default-ink" x="40" y="55">AP</text>
+    </svg>`
+  }))
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  await page.locator('app-shell').evaluate(async (element: any) => {
+    await element.loadPage('00000000-0000-4000-8000-000000000102')
+  })
+  const app = page.locator('cadle-app:not([read-only])')
+  await app.evaluate((element) => { element.style.color = 'purple' })
+  await page.getByRole('button', { name: 'More drawing tools', exact: true }).click()
+  await page.getByRole('button', { name: 'Place Wi-Fi access point', exact: true }).click()
+  const position = await app.locator('.world').evaluate((world: SVGGElement) => {
+    const point = new DOMPoint(1440, 620).matrixTransform(world.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(position.x, position.y)
+  const symbol = app.locator('g.shape-symbol[data-selected="true"]')
+  await expect(symbol.locator('#colored-ink')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
+  await expect(symbol.locator('#colored-ink')).toHaveCSS('fill', 'rgb(0, 0, 0)')
+  await expect(symbol.locator('#inherited-ink')).toHaveCSS('stroke', 'rgb(0, 0, 0)')
+  await expect(symbol.locator('#inherited-ink')).toHaveCSS('fill', 'none')
+  await expect(symbol.locator('#default-ink')).toHaveCSS('fill', 'rgb(0, 0, 0)')
+  await expect(symbol.locator('#cutout')).toHaveCSS('fill', 'rgb(255, 255, 255)')
+  await expect(symbol.locator('#cutout')).toHaveCSS('stroke', 'none')
+
+  const exportedInk = await app.evaluate((element: any) => {
+    const parsed = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    return parsed.querySelector('#colored-ink')?.getAttribute('style')
+  })
+  expect(exportedInk).toContain('stroke:var(--symbol-stroke, #000000)')
+  expect(exportedInk).toContain('fill:var(--symbol-fill, #000000)')
+  await symbol.locator('svg').evaluate((element: SVGSVGElement) => {
+    element.style.setProperty('--symbol-stroke', '#008000')
+    element.style.setProperty('--symbol-fill', '#ff0000')
+  })
+  await expect(symbol.locator('#colored-ink')).toHaveCSS('stroke', 'rgb(0, 128, 0)')
+  await expect(symbol.locator('#colored-ink')).toHaveCSS('fill', 'rgb(255, 0, 0)')
+})
+
 test('draws sized stairs, sliding windows and cabinets and places equipment symbols', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/?fixture=priority-suite#!/projects')

@@ -54,6 +54,7 @@ const decodeDataSvg = (path: string): string | null => {
 }
 
 const PRESENTATION_ATTRS = [
+  'color',
   'fill',
   'stroke',
   'stroke-width',
@@ -95,10 +96,16 @@ const parseStyleSheet = (css: string): Map<string, Map<string, string>> => {
 }
 
 // Wrap editable properties in CSS variables so the object pane can recolor/restyle
-// symbols while keeping the original values as fallbacks.
+// symbols while defaulting visible ink to black and retaining white cutouts.
 const toVarValue = (prop: string, value: string): string => {
-  if (prop === 'fill') return value === 'none' ? value : `var(--symbol-fill, ${value})`
-  if (prop === 'stroke') return value === 'none' ? value : `var(--symbol-stroke, ${value})`
+  if (prop === 'color') return '#000000'
+  if (prop === 'fill' || prop === 'stroke') {
+    const paint = value.trim().toLowerCase()
+    if (paint === 'none' || paint === 'transparent') return value
+    const fallback = /^(?:white|#fff|#ffffff|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\))$/.test(paint)
+      ? '#ffffff' : '#000000'
+    return `var(--symbol-${prop}, ${fallback})`
+  }
   if (prop === 'stroke-width') return `var(--symbol-stroke-width, ${value})`
   return value
 }
@@ -149,6 +156,10 @@ const sanitizeSvg = (source: string, path: string): CachedSymbolSvg | null => {
     }
     const existingStyle = element.getAttribute('style')
     if (existingStyle) for (const [key, value] of parseDeclarations(existingStyle)) declarations.set(key, value)
+    if (element === root) {
+      declarations.set('color', '#000000')
+      if (!declarations.has('fill')) declarations.set('fill', '#000000')
+    }
 
     // Ensure any stroked element honours the editable stroke-width default.
     const strokeValue = declarations.get('stroke')

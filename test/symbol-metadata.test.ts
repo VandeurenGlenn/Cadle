@@ -14,7 +14,7 @@ test('keeps protection text semantics outside the SVG geometry', () => {
     { key: 'description', defaultValue: '' },
     { key: 'poles', defaultValue: 'nP' },
     { key: 'phase', defaultValue: 'n' },
-    { key: 'rated-current', defaultValue: '20A' }
+    { key: 'rated-current', defaultValue: 'C20A' }
   ])
 })
 
@@ -35,6 +35,25 @@ test('escapes metadata-backed symbol labels', () => {
     'rated-current': '<20&A>'
   })
   assert.match(layer, /&lt;20&amp;A&gt;/)
+})
+
+test('shows breaker curves for saved numeric ratings without duplicating prefixes or linked labels', () => {
+  const shape = { id: 'breaker', kind: 'symbol' as const, name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', position: { x: 0, y: 0 }, scale: 3,
+    symbolTextOverrides: { 'rated-current': '20A' } }
+  assert.match(symbolTextPresentation(shape).annotations, />C20A<\/text>/)
+  for (const curve of ['B', 'C', 'D', 'other'] as const) {
+    const electrical = { role: 'protection' as const, oneWireEligible: true, breakerCurve: curve }
+    const expected = curve === 'other' ? '20A' : `${curve}20A`
+    assert.ok(symbolTextPresentation({ ...shape, electrical }).annotations.includes(`>${expected}</text>`))
+    assert.ok(symbolTextPresentation({ ...shape, electrical,
+      symbolTextOverrides: { 'rated-current': 'C20A' } }).annotations.includes(`>${expected}</text>`))
+    assert.doesNotMatch(symbolTextPresentation({ ...shape, electrical,
+      symbolTextOverrides: { 'rated-current': '' } }).annotations, /20A/)
+  }
+  const residual = { ...shape, path: 'symbols/Protection devices/Residual-current circuit breaker.svg',
+    electrical: { role: 'protection' as const, oneWireEligible: true, breakerCurve: 'D' as const } }
+  assert.doesNotMatch(symbolTextPresentation(residual).annotations, />D20A</)
 })
 
 test('renders the complete RCD marker as serif text instead of geometry', () => {
@@ -104,7 +123,7 @@ test('uses the same protection layout and type size for manual, topology and cir
       assert.deepEqual(symbolTextPresentation({ ...shape, generationKey }), manual)
     }
     assert.doesNotMatch(manual.inner, /N-L1|40A|2P/)
-    for (const value of ['2P', 'N-L1', '40A']) {
+    for (const value of ['2P', 'N-L1', name === 'Automaat' ? 'C40A' : '40A']) {
       const annotation = manual.annotations.split('</text>').find((label) => label.includes(`>${value}</`) || label.endsWith(`>${value}`))!
       assert.match(annotation, /font-size="20" font-weight="400"/)
       assert.match(annotation, /font-family="'IBM Plex Sans','Segoe UI',sans-serif"/)

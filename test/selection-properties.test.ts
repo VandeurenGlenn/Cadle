@@ -261,7 +261,7 @@ test('updates visible protection labels together with standalone electrical prop
   assert.deepEqual(updated?.[0].kind === 'symbol' ? updated[0].symbolTextOverrides : null, {
     poles: '2P',
     phase: 'L2-N',
-    'rated-current': '25A'
+    'rated-current': 'C25A'
   })
   assert.equal(updated?.[0].kind === 'symbol' && updated[0].electrical?.hasProtectiveConductor, false)
 
@@ -287,6 +287,22 @@ test('updates visible protection labels together with standalone electrical prop
     }
   )
   assert.equal(fourPole?.[0].kind === 'symbol' ? fourPole[0].symbolTextOverrides?.phase : null, '')
+})
+
+test('changing only a breaker curve retains the visible current and does not require a current edit', () => {
+  const breaker: Shape = { id: 'breaker', kind: 'symbol', name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', position: { x: 10, y: 20 }, scale: 3,
+    symbolTextOverrides: { 'rated-current': '16A' } }
+  const context = { selectedIds: new Set(['breaker']), selectedId: 'breaker', groupedSelection: false }
+  let shapes = [breaker]
+  for (const curve of ['D', 'B', 'C', 'other'] as const) {
+    shapes = updateSelectionProperties(shapes, { electrical: { breakerCurve: curve } }, context)!
+    const updated = shapes[0]
+    assert.ok(updated.kind === 'symbol')
+    assert.equal(updated.symbolTextOverrides?.['rated-current'], `${curve === 'other' ? '' : curve}16A`)
+  }
+  const cleared = updateSelectionProperties(shapes, { electrical: { breakerCurrentA: null } }, context)!
+  assert.equal(cleared[0].kind === 'symbol' && cleared[0].symbolTextOverrides?.['rated-current'], '')
 })
 
 test('renders RCD sensitivity and classification without replacing the serif I marker', () => {

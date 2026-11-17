@@ -19,10 +19,13 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   editor and SVG export. Existing catalog stair symbols remain supported.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
 - The access-point and heat-pump drawing actions place catalog SVGs from `www/symbols/General/` and
-  `www/symbols/Consumption appliances/`. Both use explicit black artwork rather than inheriting the UI text color.
+  `www/symbols/Consumption appliances/`. The shared SVG loader defaults all symbol ink to black, independent
+  of source colors and UI text color, while retaining transparent parts, white cutouts, and explicit object color overrides.
 - `src/editor/layout/onewire-circuit-presentation.ts` — pure resolution of circuit inspector values and generated
   one-wire labels/symbol presentation. It receives shapes and project-domain inputs and returns transformed shapes;
   it does not render, mutate editor state, or persist data.
+- Breaker ratings share `breakerCurrentLabel` for curve/current text (for example `C20A`), including manual devices,
+  generated labels, and annotation bounds. Curve-only edits retain the existing current; RCD ratings have no curve.
 - The automatic heating planner reserves a complete, disjoint supply/return approach bundle before packing leg fields.
   Measured feeder detours contribute to circuit length budgets. Additional fields trigger renewed pair reservations;
   final rounded routes still require geometry and continuity checks before any result replaces the existing plan.

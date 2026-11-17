@@ -92,6 +92,17 @@ export const shouldShowPhaseLabel = (
   showPhaseLabel: boolean | undefined
 ): boolean => poles !== 4 && showPhaseLabel !== false
 
+export const breakerCurrentLabel = (
+  current: number | string,
+  curve?: ElectricalDeviceMetadata['breakerCurve']
+): string => {
+  const text = typeof current === 'number' ? `${current}A` : current
+  const rating = /^([BCD])?(\d+(?:\.\d+)?)A$/i.exec(text.trim())
+  if (!rating) return text
+  const prefix = curve ?? rating[1]?.toUpperCase() ?? 'C'
+  return `${prefix === 'other' ? '' : prefix}${rating[2]}A`
+}
+
 export const DEFAULT_RCD_TYPE = 'A' as const
 
 export const isRcdType = (value: unknown): value is NonNullable<ElectricalDeviceMetadata['rcdType']> =>

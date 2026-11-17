@@ -6,7 +6,9 @@ import { GRID_SIZE } from '../constants.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import { sanitizeConnection, type ElectricalConnection } from '../model/electrical-connection.js'
 import { heatingManifoldSize, sanitizeHeating, type HeatingData } from '../heating-plan.js'
+import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import {
+  breakerCurrentLabel,
   inferCircuitType,
   inferElectricalRole,
   phaseConfigurationLabel,
@@ -407,6 +409,10 @@ const applyProperties = (
       )
       const showProtectionPhase =
         shouldShowPhaseLabel(electrical.poles, electrical.showPhaseLabel) && Boolean(electrical.phaseConfiguration)
+      const currentField = symbolTextFieldsFor(updated.path).find((field) => field.key === 'rated-current')
+      const currentLabel = updated.symbolTextOverrides?.['rated-current'] ??
+        currentField?.legacyKeys?.map((key) => updated.symbolTextOverrides?.[key]).find((value) => typeof value === 'string') ??
+        currentField?.defaultValue ?? ''
       updated.symbolTextOverrides = {
         ...(updated.symbolTextOverrides ?? {}),
         ...(typeof electrical.poles === 'number' ? { poles: `${electrical.poles}P` } : {}),
@@ -417,9 +423,11 @@ const applyProperties = (
             )
           : '',
         'rated-current':
-          typeof electrical.breakerCurrentA === 'number'
-            ? `${!isResidualBreaker && electrical.breakerCurve ? electrical.breakerCurve : ''}${electrical.breakerCurrentA}A`
-            : '',
+          isResidualBreaker
+            ? typeof electrical.breakerCurrentA === 'number' ? `${electrical.breakerCurrentA}A` : ''
+            : 'breakerCurrentA' in payload.electrical && typeof electrical.breakerCurrentA !== 'number'
+              ? ''
+              : breakerCurrentLabel(electrical.breakerCurrentA ?? currentLabel, electrical.breakerCurve),
         ...(isResidualBreaker
           ? {
               'residual-current':

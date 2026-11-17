@@ -2,6 +2,7 @@ import type { SymbolShape } from '../model/types.js'
 import { oneWireProtectionBodyEdges, oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { paperTextLineHeight, paperTextWidth, wrapPaperText } from './paper-text-layout.js'
+import { breakerCurrentLabel } from '../model/electrical.js'
 
 export const PROTECTION_TEXT_SIZE = 2.5 * PAPER_WORLD_UNITS_PER_MM
 export const PROTECTION_TEXT_WEIGHT = 400
@@ -60,7 +61,8 @@ export const protectionAnnotationBounds = (shape: SymbolShape) => {
       { x, y: point.y + size * 0.2 }, { x: x + width, y: point.y + size * 0.2 })
   }
   add(values.poles ?? values['desc:nP'] ?? 'nP', layout.poles, true)
-  const current = values['rated-current'] ?? values[rcd ? 'desc:40A' : 'desc:20A'] ?? (rcd ? '40A' : '20A')
+  const storedCurrent = values['rated-current'] ?? values[rcd ? 'desc:40A' : 'desc:20A'] ?? (rcd ? '40A' : '20A')
+  const current = rcd ? storedCurrent : breakerCurrentLabel(storedCurrent, shape.electrical?.breakerCurve)
   add([current, rcd ? values['rcd-type'] ?? 'Type A' : ''].filter(Boolean).join('  '), layout.current)
   if (rcd) add(`ΔI ${values['residual-current'] ?? values['desc:300mA'] ?? '300mA'}`, layout.residual, false, PROTECTION_TEXT_SIZE * 1.2)
   add(values.phase ?? values['desc:n'] ?? 'n', layout.phase)

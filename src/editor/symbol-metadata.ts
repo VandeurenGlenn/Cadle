@@ -1,6 +1,6 @@
 import type { SymbolShape } from './model/types.js'
 import { protectionAnnotationLayout, PROTECTION_FONT_FAMILY, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './layout/protection-label-layout.js'
-import { rcdTypeLabel } from './model/electrical.js'
+import { breakerCurrentLabel, rcdTypeLabel } from './model/electrical.js'
 import { paperTextContentMarkup } from './layout/paper-text-layout.js'
 
 
@@ -107,7 +107,7 @@ const SYMBOL_METADATA: Record<string, SymbolMetadataDefinition> = {
       { key: 'description', label: 'Benaming', defaultValue: '', x: 0, y: 0, fontSize: 0 },
       { key: 'poles', legacyKeys: ['desc:nP'], label: 'Poles', defaultValue: 'nP', x: 1.87, y: 16.3635, fontSize: 5 },
       { key: 'phase', legacyKeys: ['desc:n'], label: 'Phase', defaultValue: 'n', x: 8.8267, y: 27.01, fontSize: 6 },
-      { key: 'rated-current', legacyKeys: ['desc:20A'], label: 'Rated current', defaultValue: '20A', x: 17.0135, y: 16.3801, fontSize: 6 }
+      { key: 'rated-current', legacyKeys: ['desc:20A'], label: 'Rated current', defaultValue: 'C20A', x: 17.0135, y: 16.3801, fontSize: 6 }
     ]
   },
   'symbols/protection devices/residual-current circuit breaker.svg': {
@@ -181,6 +181,10 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
     shape.symbolTextOverrides?.[field.key] ?? field.legacyKeys?.map((key) => shape.symbolTextOverrides?.[key])
       .find((value) => typeof value === 'string') ?? field.defaultValue
   ]))
+  const ratedCurrent = values.get('rated-current')
+  if (!residual && ratedCurrent) {
+    values.set('rated-current', breakerCurrentLabel(ratedCurrent, shape.electrical?.breakerCurve))
+  }
   const inner = symbolTextLayer(shape.path, { ...shape.symbolTextOverrides, ...Object.fromEntries(keys.map((key) => [key, ''])) })
   const label = (key: string, point: { x: number; y: number }, anchor = 'start') => {
     const value = values.get(key)

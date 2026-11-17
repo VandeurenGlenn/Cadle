@@ -70,7 +70,7 @@ import type {
   Tool
 } from './model/types.js'
 import type { Project, UUID } from '../types.js'
-import { electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
+import { compareCircuitFamilies, electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
 import { isSocketSymbol, socketCountFromKeyboardEvent, withSocketCount } from './socket-multiplicity.js'
 import { connectionDefaults, connectionPoints, connectionSegments, isConnectionKind, type ConnectionKind } from './model/electrical-connection.js'
 import { setProjectData } from '../api/project.js'
@@ -3044,7 +3044,8 @@ export class CadleApp extends LiteElement {
     )
     const railUpdates = new Map<string, LineShape>()
     for (const rail of rails) {
-      const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id).sort((a, b) => a.x - b.x)
+      const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id)
+        .sort((a, b) => compareCircuitFamilies(a.family, b.family) || a.x - b.x)
       if (!railAnchors.length) continue
       const familyShapes = (anchor: typeof railAnchors[number]) => this.#document.shapes.filter((shape) =>
         !shape.hidden && !this.#isKamrailShape(shape) &&

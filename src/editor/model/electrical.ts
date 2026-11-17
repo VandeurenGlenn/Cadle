@@ -1,5 +1,12 @@
 import { sanitizeCableFireClass } from './cable-designation.js'
 export type ElectricalRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
+export const compareCircuitFamilies = (left: string, right: string): number => {
+  if (left === right) return 0
+  if (left === 'ALSB') return -1
+  if (right === 'ALSB') return 1
+  return left.length - right.length || left.localeCompare(right)
+}
+
 export type ElectricalCircuitType = 'lighting' | 'sockets' | 'motor' | 'mixed' | 'other'
 export type ElectricalPhaseConfiguration =
   | 'single-phase'

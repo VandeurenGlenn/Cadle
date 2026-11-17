@@ -6,9 +6,10 @@ import { oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { centerOneWireContent } from './page-scaling.js'
 import { isOneWireRailShape } from './onewire-regeneration.js'
 import { normalizeOneWireFamilyKey } from './onewire-layout-plan.js'
+import { compareCircuitFamilies } from '../model/electrical.js'
 
 type Area = { x: number; y: number; width: number; height: number }
-type Block = { shapes: Shape[]; rail: LineShape }
+type Block = { shapes: Shape[]; rail: LineShape; family: string }
 const family = (value = '') => normalizeOneWireFamilyKey(value) ?? value.trim().toUpperCase()
 const box = (shapes: readonly Shape[]): Area => {
   const boxes = shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
@@ -43,7 +44,7 @@ const splitRows = (block: Block, height: number, nextId: () => string): Block[] 
   const finish = () => {
     if (!placed.length) return
     const copied = base.map((shape) => output.length ? { ...cloneShape(shape), id: nextId() } as Shape : shape)
-    output.push({ rail: block.rail, shapes: [...copied, { ...(cloneShape(trunk) as LineShape),
+    output.push({ rail: block.rail, family: block.family, shapes: [...copied, { ...(cloneShape(trunk) as LineShape),
       id: output.length ? nextId() : trunk.id, start: { ...trunk.start },
       end: { x: trunk.start.x, y: lastJunctionY } }, ...placed] })
     placed = []; rowTop = top - 24
@@ -90,8 +91,10 @@ export const paginateOneWireCircuits = (shapes: readonly Shape[], area: Area, ne
       (shape.sourceLink?.kind === 'board' ? family(shape.sourceLink.id) === key : family(shape.bindingId) === key))
     if (!members.length || members.some((shape) => shape.locked)) return { ...unchanged, fits: false }
     members.forEach((shape) => used.add(shape.id))
-    blocks.push(...splitRows({ shapes: members, rail }, area.height - 188, nextId))
+    blocks.push(...splitRows({ shapes: members, rail, family: key }, area.height - 188, nextId))
   }
+  blocks.sort((left, right) => rails.indexOf(left.rail) - rails.indexOf(right.rail) ||
+    compareCircuitFamilies(left.family, right.family))
   if (blocks.some((block) => box(block.shapes).width > area.width - 48 || box(block.shapes).height > area.height - 188)) {
     return { ...unchanged, fits: false }
   }

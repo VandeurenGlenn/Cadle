@@ -162,6 +162,23 @@ test('packs separate families together while the page still has room', () => {
   )
 })
 
+test('does not backfill an earlier sheet with circuits after a wider family', () => {
+  const plan = planOneWireLayout(
+    [
+      { family: 'U', circuitCount: 1, requiredWidth: 400 },
+      { family: 'V', circuitCount: 1, requiredWidth: 600 },
+      { family: 'W', circuitCount: 1, requiredWidth: 200 }
+    ],
+    { usableWidth: 900, usableHeight: 700 }
+  )
+
+  assert.deepEqual(plan.placements.map(({ family, pageIndex }) => ({ family, pageIndex })), [
+    { family: 'U', pageIndex: 0 },
+    { family: 'V', pageIndex: 1 },
+    { family: 'W', pageIndex: 1 }
+  ])
+})
+
 test('keeps cabinet rows on separate continuation pages', () => {
   const plan = planOneWireLayout(
     [

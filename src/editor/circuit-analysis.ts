@@ -1,5 +1,6 @@
 import type { Shape } from '../editor/model/types.js'
 import {
+  compareCircuitFamilies,
   defaultManufacturerForDevice,
   electricalMetadataFromCatalog,
   inferCircuitType,
@@ -282,7 +283,7 @@ export const analyzeCircuits = (
         specification: suggestedSpecification(components, profile, explicitSpecification)
       }
     })
-    .sort((left, right) => left.family.localeCompare(right.family) || (left.number ?? 0) - (right.number ?? 0))
+    .sort((left, right) => compareCircuitFamilies(left.family, right.family) || (left.number ?? 0) - (right.number ?? 0))
 
   for (const group of groups) {
     const hasDistributionBoard = group.components.some(

@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 97
+export const ONE_WIRE_LAYOUT_VERSION = 98
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
@@ -176,16 +176,16 @@ export const planOneWireLayout = (
   const placements: OneWireFamilyPlacement[] = []
   const occupiedWidths: number[] = []
   const occupiedSlots: number[] = []
-  const railStartPages = new Map<string, number>()
+  const railPages = new Map<string, number>()
   let nextRailPage = 0
 
   for (const demand of families) {
     const circuitTotal = Math.max(0, Math.floor(demand.circuitCount))
     const destinationKey = `${demand.boardId?.trim() || 'main'}::${demand.railId?.trim() || '__unassigned__'}`
-    let railStartPage = railStartPages.get(destinationKey)
+    let railStartPage = railPages.get(destinationKey)
     if (railStartPage === undefined) {
       railStartPage = nextRailPage
-      railStartPages.set(destinationKey, railStartPage)
+      railPages.set(destinationKey, railStartPage)
     }
     let previousChunkPage = railStartPage - 1
     for (let circuitStart = 0; circuitStart < circuitTotal; circuitStart += maxCircuitsPerPage) {
@@ -223,6 +223,7 @@ export const planOneWireLayout = (
       occupiedWidths[pageIndex] =
         (occupiedWidths[pageIndex] ?? 0) + (slotIndex ? ONE_WIRE_FAMILY_GAP : 0) + requiredWidth
       occupiedSlots[pageIndex] = slotIndex + 1
+      railPages.set(destinationKey, pageIndex)
       previousChunkPage = pageIndex
       nextRailPage = Math.max(nextRailPage, pageIndex + 1)
     }

@@ -45,6 +45,17 @@ test('groups floor-plan devices and ignores generated one-wire geometry', () => 
   assert.equal(analysis.groups[1].specification.cableSectionMm2, 2.5)
 })
 
+test('orders circuit families from A to Z before AA and sorts their point numbers numerically', () => {
+  const bindings = ['AB1', 'V1', 'AA10', 'W1', 'U1', 'AA2', 'Z1', 'ALSB', 'X1', 'Y1', 'AA1']
+  const analysis = analyzeCircuits(bindings.map((bindingId) =>
+    symbol(bindingId, bindingId, 'Lighting', 'symbols/Consumption appliances/Lighting.svg')
+  ))
+
+  assert.deepEqual(analysis.families, ['ALSB', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'])
+  assert.deepEqual(analysis.groups.map((group) => group.bindingId),
+    ['ALSB', 'U1', 'V1', 'W1', 'X1', 'Y1', 'Z1', 'AA1', 'AA2', 'AA10', 'AB1'])
+})
+
 test('counts shapes in one group as one electrical component', () => {
   const left = symbol('socket-left', 'C1', 'Socket', 'symbols/Socket outlets/Electrical wall outlet.svg')
   const right = symbol('socket-right', 'C2', 'Socket', 'symbols/Socket outlets/Electrical wall outlet.svg')

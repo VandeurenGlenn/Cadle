@@ -59,7 +59,7 @@ test('previews and places catalog symbols at the page-specific size without resi
   }
 })
 
-test('repairs equipment feeds at their SVG outlines or filled dots and preserves them on reload', async ({ page }) => {
+test('repairs equipment feeds at their SVG outlines, rings or filled dots and preserves them on reload', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
@@ -74,11 +74,13 @@ test('repairs equipment feeds at their SVG outlines or filled dots and preserves
     groupId: 'onewire-kamrail-equipment', strokeWidth: 4 }
   const names = ['Heat pump', 'Heat pump indoor unit air-air', 'Heat pump indoor unit air-water',
     'Heat pump water-water', 'Jacuzzi', 'Washing machine', 'Dryer', 'Electric oven']
-  const shapes = [rail, ...[names, ['Heat pump'], ['Jacuzzi'], ['Washing machine'], ['Dryer'], ['Electric oven']]
+  const deviceGroups = [names, ['Heat pump'], ['Jacuzzi'], ['Washing machine'], ['Dryer'], ['Electric oven'],
+    ['Dishwasher', 'Refrigerator'], ['Dishwasher'], ['Refrigerator']]
+  const shapes = [rail, ...deviceGroups
     .flatMap((devices, index) => {
     const family = String.fromCharCode(65 + index)
     return buildKamrailCircuitBundle({
-      rail, anchorX: 400 + index * 300, options: { family, amps: 20, autoIncludeFamily: true },
+      rail, anchorX: 400 + index * 200, options: { family, amps: 20, autoIncludeFamily: true },
       familyComponents: devices.map((name, row) => ({ bindingId: `${family}${row + 1}`, kind: 'load',
         sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name, sourceShapeId: `${family}-${row}` })),
       nextShapeId: () => `equipment-${++sequence}`,
@@ -89,12 +91,16 @@ test('repairs equipment feeds at their SVG outlines or filled dots and preserves
   })]
   const contacts = shapes.flatMap((shape) => {
     if (shape.kind !== 'symbol' || shape.sourceLink?.kind !== 'device') return []
-    const bottom = !shape.bindingId?.startsWith('A')
+    const bottom = deviceGroups[shape.bindingId!.charCodeAt(0) - 65].length === 1
     const feed = shapes.find((candidate) => candidate.kind === 'line' && (bottom
       ? candidate.sourceLink?.role === 'trunk' && candidate.bindingId === shape.bindingId?.replace(/\d+$/, '')
       : candidate.sourceLink?.role === 'row-wire' && candidate.bindingId === shape.bindingId))
     if (!feed) throw new Error(`Missing equipment feed for ${shape.name}`)
-    return [{ device: shape.id, feed: feed.id, bottom, dot: /^(?:Washing machine|Dryer|Electric oven)$/.test(shape.name) }]
+    return [{
+      device: shape.id, feed: feed.id, bottom,
+      mark: shape.name === 'Dishwasher' ? 'ring' : /^(?:Washing machine|Dryer|Electric oven)$/.test(shape.name) ? 'dot' : 'rect',
+      width: /^(?:Heat pump|Jacuzzi)/.test(shape.name) ? 72 : 48
+    }]
   })
   const legacy = shapes.map((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
     ? { ...shape, scale: 2, position: { x: shape.position.x + 10, y: shape.position.y + 10 } } : shape)
@@ -105,26 +111,59 @@ test('repairs equipment feeds at their SVG outlines or filled dots and preserves
   })
   const inspectContacts = () => app.evaluate((element: any, contacts) => {
     const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
-    return contacts.map(({ device, feed, bottom, dot }) => {
-      const svg = element.shadowRoot.querySelector(`g.shape-symbol[data-shape-id="${device}"] > svg`) as SVGSVGElement
+    const exportRoot = document.importNode(exported.documentElement, true)
+    if (!(exportRoot instanceof SVGSVGElement)) throw new Error('Export did not contain an SVG root')
+    exportRoot.style.cssText = 'position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none'
+    document.body.appendChild(exportRoot)
+    const measureGap = (svg: SVGSVGElement, wire: SVGLineElement, bottom: boolean, type: string) => {
+      const wireContact = new DOMPoint(wire.x2.baseVal.value, wire.y2.baseVal.value).matrixTransform(wire.getScreenCTM()!)
+      if (type === 'ring') {
+        const ring = svg.querySelector<SVGPathElement>('path[d*="A2.83465"]')!
+        const matrix = ring.getScreenCTM()!
+        const length = ring.getTotalLength()
+        const distance = (offset: number) => {
+          const point = ring.getPointAtLength(offset).matrixTransform(matrix)
+          return Math.hypot(point.x - wireContact.x, point.y - wireContact.y)
+        }
+        let closest = 0
+        for (let index = 1; index <= 256; index++) {
+          if (distance(length * index / 256) < distance(length * closest / 256)) closest = index
+        }
+        let start = length * Math.max(0, closest - 1) / 256
+        let end = length * Math.min(256, closest + 1) / 256
+        for (let iteration = 0; iteration < 40; iteration++) {
+          const third = (end - start) / 3
+          if (distance(start + third) < distance(end - third)) end -= third
+          else start += third
+        }
+        return distance((start + end) / 2)
+      }
+      const dot = type === 'dot'
       const mark = svg.querySelector<SVGGraphicsElement>(dot ? 'ellipse[style*="--symbol-fill"]' : 'rect')!
-      const wire = element.shadowRoot.querySelector(`line[data-shape-id="${feed}"]`) as SVGLineElement
       const bodyContact = new DOMPoint(
         Number(mark.getAttribute(dot ? 'cx' : 'x')) + (!dot && bottom ? Number(mark.getAttribute('width')) / 2 : 0),
         Number(mark.getAttribute(dot ? 'cy' : 'y')) + (dot ? 0 : Number(mark.getAttribute('height')) * (bottom ? 1 : 0.5))
       ).matrixTransform(mark.getScreenCTM()!)
-      const wireContact = new DOMPoint(wire.x2.baseVal.value, wire.y2.baseVal.value).matrixTransform(wire.getScreenCTM()!)
-      const exportedWire = exported.querySelector(`line[data-shape-id="${feed}"]`)!
-      return {
-        gap: Math.hypot(bodyContact.x - wireContact.x, bodyContact.y - wireContact.y),
-        width: Number(svg.getAttribute('width')),
-        exportWidth: Number(exported.querySelector(`g[data-shape-id="${device}"] svg`)!.getAttribute('width')),
-        exportGap: Math.hypot(Number(exportedWire.getAttribute('x2')) - wire.x2.baseVal.value,
-          Number(exportedWire.getAttribute('y2')) - wire.y2.baseVal.value)
-      }
-    })
+      return Math.hypot(bodyContact.x - wireContact.x, bodyContact.y - wireContact.y)
+    }
+    try {
+      return contacts.map(({ device, feed, bottom, mark }) => {
+        const svg = element.shadowRoot.querySelector(`g.shape-symbol[data-shape-id="${device}"] > svg`) as SVGSVGElement
+        const wire = element.shadowRoot.querySelector(`line[data-shape-id="${feed}"]`) as SVGLineElement
+        const exportedSvg = exportRoot.querySelector<SVGSVGElement>(`g[data-shape-id="${device}"] svg`)!
+        const exportedWire = exportRoot.querySelector<SVGLineElement>(`line[data-shape-id="${feed}"]`)!
+        return {
+          gap: measureGap(svg, wire, bottom, mark),
+          width: Number(svg.getAttribute('width')),
+          exportWidth: Number(exportedSvg.getAttribute('width')),
+          exportGap: measureGap(exportedSvg, exportedWire, bottom, mark)
+        }
+      })
+    } finally {
+      exportRoot.remove()
+    }
   }, contacts)
-  const expected = contacts.map(({ dot }) => ({ gap: 0, width: dot ? 48 : 72, exportWidth: dot ? 48 : 72, exportGap: 0 }))
+  const expected = contacts.map(({ width }) => ({ gap: 0, width, exportWidth: width, exportGap: 0 }))
   await expect.poll(async () => (await inspectContacts()).map((contact) =>
     ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
     .toEqual(expected)

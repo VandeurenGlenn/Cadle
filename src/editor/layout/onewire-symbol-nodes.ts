@@ -401,6 +401,30 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
+    match: /consumption appliances\/dishwasher\.svg$/i,
+    spec: {
+      viewBox: { width: 17.2479, height: 17.2479 },
+      node: { x: 8.625, y: 8.625 },
+      // Rounded SVG arc endpoints make the ring slightly wider than its nominal radius.
+      cutRadius: 2.83586,
+      connectionPorts: { bottom: { x: 8.625, y: 11.46086 } },
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /consumption appliances\/refrigerator\.svg$/i,
+    spec: {
+      viewBox: { width: 17.2579, height: 21.2873 },
+      node: { x: 8.62895, y: 8.62895 },
+      cutRadius: 8.50395,
+      connectionPorts: {
+        left: { x: 0.125, y: 8.62895 }, right: { x: 17.1329, y: 8.62895 },
+        top: { x: 8.62895, y: 0.125 }, bottom: { x: 8.62895, y: 17.1329 }
+      },
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     match: /consumption appliances\/washing machine\.svg$/i,
     spec: {
       viewBox: { width: 17.2579, height: 17.2579 },

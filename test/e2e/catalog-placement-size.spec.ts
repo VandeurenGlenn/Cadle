@@ -7,11 +7,17 @@ test('previews and places catalog symbols at the page-specific size without resi
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
   const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
   const items = [
     { name: 'Switch general symbol', path: 'symbols/Switches/Switch general symbol.svg', ground: 1.3 * 1.05 },
     { name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg', ground: 1.5 * 1.15 },
     { name: 'Spot', path: 'symbols/Consumption appliances/Spot.svg', ground: 1.15 },
-    { name: 'Wall outlet with grounding for floorplan', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', ground: 1.05 }
+    { name: 'Wall outlet with grounding for floorplan', path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', ground: 1.05 },
+    { name: 'Heat pump', path: 'symbols/Consumption appliances/Heat pump.svg', ground: 2.5 },
+    { name: 'Heat pump indoor unit air-air', path: 'symbols/Consumption appliances/Heat pump indoor unit air-air.svg', ground: 3 },
+    { name: 'Heat pump indoor unit air-water', path: 'symbols/Consumption appliances/Heat pump indoor unit air-water.svg', ground: 2.5 },
+    { name: 'Heat pump water-water', path: 'symbols/Consumption appliances/Heat pump water-water.svg', ground: 2.5 }
   ]
   for (const [key, context] of [
     ['00000000-0000-4000-8000-000000000102', 'groundplan'],
@@ -28,7 +34,8 @@ test('previews and places catalog symbols at the page-specific size without resi
       await expect(page.locator('catalog-element .search-status')).toContainText(item.name)
       await page.locator('catalog-element').getByRole('button', { name: new RegExp(`^Place ${item.name}$`, 'i') }).first().click()
       const point = await app.locator('.world').evaluate((world: SVGGElement, index) => {
-        const point = new DOMPoint(1000 + index * 150, 280).matrixTransform(world.getScreenCTM()!)
+        const point = new DOMPoint(1000 + (index % 4) * 150, 280 + Math.floor(index / 4) * 200)
+          .matrixTransform(world.getScreenCTM()!)
         return { x: point.x, y: point.y }
       }, index)
       await page.mouse.move(point.x, point.y)

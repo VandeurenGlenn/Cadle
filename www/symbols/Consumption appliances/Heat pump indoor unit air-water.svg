@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-cadle-symbol="1">
+  <title>Heat pump indoor unit air-water</title>
+  <g fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="20" y="8" width="60" height="78" rx="4"/>
+    <rect x="32" y="20" width="36" height="12" rx="2"/>
+    <path d="M30 50 Q50 42 70 50 V71 Q50 79 30 71 Z M30 50 Q50 58 70 50"/>
+    <path d="M35 86 V95 M65 86 V95 M42 62 H58"/>
+  </g>
+</svg>

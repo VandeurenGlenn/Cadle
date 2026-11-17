@@ -311,6 +311,39 @@ test('matches refrigerators and meters to comparable appliance sizes and upgrade
 })
 
 
+test('gives heat pumps readable paper sizes and repairs only the former floor-plan defaults', () => {
+  for (const [name, scale] of [
+    ['Heat pump', 2.5],
+    ['Heat pump indoor unit air-air', 3],
+    ['Heat pump indoor unit air-water', 2.5],
+    ['Heat pump water-water', 2.5]
+  ] as const) {
+    const symbol = { name, path: `symbols/Consumption appliances/${name}.svg` }
+    const shape = createSymbolShape(name, { x: 20, y: 30 }, symbol)
+    assert.equal(shape.scale, scale)
+    assert.equal(shape.electrical?.role, 'load')
+    assert.equal(shape.electrical?.oneWireEligible, true)
+    assert.equal(resolveCatalogSymbolScale(symbol, 'onewire'), 2)
+
+    for (const oldScale of [1, 1.15]) {
+      const old = { ...shape, scale: oldScale, strokeWidth: 0.5 }
+      const upgraded = sanitizeShapes([old], 'groundplan')[0]
+      assert.equal(upgraded.kind, 'symbol')
+      if (upgraded.kind !== 'symbol') continue
+      assert.equal(upgraded.scale, scale)
+      assert.ok(Math.abs(upgraded.strokeWidth! * scale - old.strokeWidth * oldScale) < 1e-9)
+      assert.deepEqual(sanitizeShapes([upgraded], 'groundplan'), [upgraded])
+      assert.deepEqual(sanitizeShapes([old], 'onewire'), [old])
+      const grouped = { ...old, groupId: 'onewire-heat-pump' }
+      assert.deepEqual(sanitizeShapes([grouped], 'groundplan'), [grouped])
+    }
+    const custom = { ...shape, scale: 4 }
+    assert.deepEqual(sanitizeShapes([custom], 'groundplan'), [custom])
+    assert.equal(createSymbolShape('custom', shape.position,
+      { ...symbol, metadata: { symbolDefaults: { scale: 4 } } }).scale, 4)
+  }
+})
+
 test('reduces saved floor-plan defaults once and retains one-wire sizes and visible pen width', () => {
   for (const [name, oldScale] of [['Refrigerator', 3], ['kWh meter', 8 / 3], ['Switch general symbol', 1.3 * 1.5 * 1.15], ['Push button', .8 * 1.5 * 1.15], ['Double push button', 1.25 * 1.5 * 1.15], ['Single pole change over switch', 1.7 * 1.5 * 1.15], ['Dual switch, single casing', 1.15 * 1.5 * 1.15], ['Impulse relay', 1.5 * 1.15]] as const) {
     const path = `symbols/${name === 'Refrigerator' || name === 'kWh meter' ? 'Consumption appliances' : 'Switches'}/${name}.svg`

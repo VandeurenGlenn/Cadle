@@ -45,3 +45,16 @@ Use `npm run symbols:audit` to list any remaining legacy exports.
 The current catalog still contains Visio-export SVGs. A symbol is not converted
 until its artwork has been made Cadle-native and passes the required asset
 checks; removing Visio metadata alone does not count as conversion.
+
+## Heat pump equipment symbols
+
+The consumption-appliance catalog includes the existing outdoor-unit pictogram
+(`Heat pump`), two indoor units (`Heat pump indoor unit air-air` and
+`Heat pump indoor unit air-water`), and `Heat pump water-water`. These equipment
+pictograms distinguish the thermal configurations; they are not additional
+normative AREI symbols.
+
+On floor plans, heat pumps use a 7.5 mm paper box, or 9 mm for the wide air-air
+indoor unit. Existing floor-plan symbols at the former default scales of 1 or
+1.15 are upgraded when loaded, while custom sizes and one-wire sizes are kept.
+All four use the center as their one-wire connection point.

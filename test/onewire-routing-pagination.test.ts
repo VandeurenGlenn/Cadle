@@ -60,8 +60,9 @@ test('marks a near miss but accepts real T junctions and intentional incoming en
   assert.equal(findConnectionIssues([bus, { ...loose, start: { x: 200, y: 200 } }]).length, 0)
 })
 
-test('recognizes washer and dryer center contacts and keeps their wires attached when moved', () => {
-  for (const name of ['Washing machine', 'Dryer']) {
+test('recognizes appliance center contacts and keeps their wires attached when moved', () => {
+  for (const name of ['Washing machine', 'Dryer', 'Heat pump', 'Heat pump indoor unit air-air',
+    'Heat pump indoor unit air-water', 'Heat pump water-water']) {
     const appliance: SymbolShape = {
       id: 'appliance', kind: 'symbol', name, path: `symbols/Consumption appliances/${name}.svg`,
       position: { x: 200, y: 100 }, scale: 2, rotation: 90, flipX: true

@@ -8,11 +8,13 @@ export const floorPlanSpotPaperScale = (path: string): number | null =>
 export const floorPlanSocketPaperScale = (path: string): number | null =>
   FLOOR_PLAN_SOCKET_PATH.test(path) ? 1.05 : null
 
-/** Paper sizes for appliances that previously had oversized floor-plan defaults. */
+/** Paper sizes for appliances that need a different floor-plan default. */
 export const appliancePaperScale = (path: string): number | null => {
   // Their view boxes match appliances such as the dishwasher, so use the same scale.
   if (/\/consumption appliances\/refrigerator\.svg$/i.test(path)) return 1.15
   if (/\/consumption appliances\/kwh meter\.svg$/i.test(path)) return 1.15
+  if (/\/consumption appliances\/heat pump indoor unit air-air\.svg$/i.test(path)) return 3
+  if (/\/consumption appliances\/heat pump(?: indoor unit air-water| water-water)?\.svg$/i.test(path)) return 2.5
   return null
 }
 

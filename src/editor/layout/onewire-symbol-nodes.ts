@@ -401,6 +401,19 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
+    match: /consumption appliances\/videofoon touchscreen\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 50, y: 50 },
+      cutRadius: 32,
+      connectionPorts: {
+        left: { x: 18, y: 50 }, right: { x: 82, y: 50 },
+        top: { x: 50, y: 8 }, bottom: { x: 50, y: 92 }
+      },
+      oneWireScale: 3
+    }
+  },
+  {
     match: /consumption appliances\/dishwasher\.svg$/i,
     spec: {
       viewBox: { width: 17.2479, height: 17.2479 },

@@ -803,7 +803,8 @@ test('enlarges boxed appliances and terminates single and numbered feeds on thei
     ['Heat pump indoor unit air-air', 5, 28, 90, 36],
     ['Heat pump indoor unit air-water', 20, 8, 60, 78],
     ['Heat pump water-water', 10, 8, 80, 78],
-    ['Jacuzzi', 8, 8, 84, 84]
+    ['Jacuzzi', 8, 8, 84, 84],
+    ['Videofoon touchscreen', 18, 8, 64, 84]
   ] as const) {
     for (const rowCount of [1, 2]) {
       const rail = { id: 'rail', kind: 'line' as const, start: { x: 80, y: 900 }, end: { x: 900, y: 900 },

@@ -202,6 +202,86 @@ test('repairs equipment feeds at their SVG outlines, rings or filled dots and pr
   await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
 })
 
+test('repairs multiple socket rows without shifting them again after reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const app = page.locator('cadle-app:not([read-only])')
+  const shell = page.locator('app-shell')
+  const root = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+  let sequence = 0
+  const rail: LineShape = { id: 'socket-rail', kind: 'line', start: { x: 200, y: 1200 }, end: { x: 1800, y: 1200 },
+    strokeWidth: 4, groupId: 'onewire-kamrail-sockets' }
+  const counts = [3, 1, 1, 3, 1, 4]
+  const result = buildKamrailCircuitBundle({
+    rail, anchorX: 800, options: { family: 'ZZ', amps: 20, autoIncludeFamily: true },
+    familyComponents: counts.map((socketCount, index) => ({
+      bindingId: `ZZ${index + 1}`, kind: 'load', socketCount, sourceShapeId: `outlet-${index}`,
+      sourcePath: 'symbols/Socket outlets/Wall outlet with grounding.svg', sourceName: 'Wall outlet with grounding'
+    })),
+    nextShapeId: () => `socket-reload-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  })!
+  const contacts = result.shapes.flatMap((shape) => {
+    if (shape.kind !== 'symbol' || shape.sourceLink?.kind !== 'device') return []
+    const wire = result.shapes.find((candidate) =>
+      candidate.kind === 'line' && candidate.sourceLink?.role === 'row-wire' && candidate.bindingId === shape.bindingId)!
+    return [{ device: shape.id, wire: wire.id, count: shape.electrical!.socketCount! }]
+  })
+  const legacy = result.shapes.map((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
+    ? { ...shape, position: { x: shape.position.x - 50, y: shape.position.y } } : shape)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'socket-rows-before-repair.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1,
+      shapes: [rail, ...legacy], selectedId: null, paperPreset: 'a4-landscape', printMargin: 10,
+      worldWidth: 2376, worldHeight: 1680
+    }))
+  })
+  const inspect = () => app.evaluate((element: any, contacts) => {
+    const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    return contacts.map(({ device, wire }) => {
+      const group = element.shadowRoot.querySelector(`g.shape-symbol[data-shape-id="${device}"]`)!
+      const copies = [...group.querySelectorAll(':scope > svg')] as SVGSVGElement[]
+      const line = element.shadowRoot.querySelector(`line[data-shape-id="${wire}"]`) as SVGLineElement
+      const start = new DOMPoint(line.x1.baseVal.value, line.y1.baseVal.value).matrixTransform(line.getScreenCTM()!)
+      const ports = copies.map((svg) => new DOMPoint(0.12, 5.79).matrixTransform(svg.getScreenCTM()!))
+      const exportGroup = exported.querySelector(`g[data-shape-id="${device}"]`)!
+      return {
+        count: copies.length,
+        firstX: ports[0].x,
+        clearance: ports[0].x - start.x,
+        axisGap: Math.max(...ports.map((port) => Math.abs(port.y - start.y))),
+        exportCopies: exportGroup.querySelectorAll('svg').length,
+        geometry: [...exportGroup.querySelectorAll('svg')].map((svg) =>
+          ['x', 'y', 'width', 'height'].map((key) => svg.getAttribute(key))),
+        wire: ['x1', 'x2', 'y1', 'y2'].map((key) => exported.querySelector(`line[data-shape-id="${wire}"]`)!.getAttribute(key))
+      }
+    })
+  }, contacts)
+  await expect.poll(async () => (await inspect()).map(({ count }) => count)).toEqual(counts)
+  const before = await inspect()
+  for (const [index, row] of before.entries()) {
+    expect(row.exportCopies).toBe(counts[index])
+    expect(row.clearance).toBeGreaterThan(5)
+    expect(row.axisGap).toBeLessThan(0.001)
+    expect(row.firstX).toBeCloseTo(before[0].firstX, 5)
+  }
+  await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
+  await page.screenshot({ path: '/private/tmp/cadle-socket-reload.png' })
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  for (let reload = 0; reload < 2; reload++) {
+    await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
+    await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+    await expect.poll(inspect).toEqual(before)
+  }
+})
+
 test('renders separated, connected multiple sockets in the one-wire diagram and export', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

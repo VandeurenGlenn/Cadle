@@ -95,7 +95,8 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
         kind: shape.sourceLink?.role === 'switch' ? ('switch' as const) : ('load' as const),
         sourceShapeId: shape.sourceLink?.kind === 'device' ? shape.sourceLink.id : undefined,
         sourcePath: shape.path,
-        sourceName: shape.name
+        sourceName: shape.name,
+        socketCount: shape.electrical?.socketCount
       }))
     })
     if (!familyComponents.length) familyComponents.push({ bindingId: `${family}1`, kind: 'empty' })

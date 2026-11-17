@@ -11,6 +11,7 @@ import { createOneWireSourceResolver } from '../src/editor/layout/onewire-source
 import { sanitizeShapes } from '../src/editor/model/model.ts'
 import { buildKamrailCircuitBundle, type BuildKamrailCircuitBundleInput } from '../src/editor/layout/onewire-helpers.ts'
 import {
+  oneWireSymbolBounds,
   oneWireSymbolNodeInfo,
   oneWireSymbolScaleFor,
   oneWireSymbolTerminalInfo
@@ -244,6 +245,40 @@ test('migrates generated circuits without deleting manual lines or losing cable 
     migrated.find((shape) => shape.generationKey === 'device:lamp1')?.id,
     bundle.shapes.find((shape) => shape.generationKey === 'device:lamp1')?.id
   )
+})
+
+test('preserves multiple socket row alignment when rebuilding saved circuits', () => {
+  let sequence = 0
+  const input: BuildKamrailCircuitBundleInput = {
+    rail: { id: 'rail', kind: 'line', groupId: 'onewire-kamrail-main', start: { x: 80, y: 1200 }, end: { x: 900, y: 1200 } },
+    anchorX: 400, options: { family: 'A', amps: 20, autoIncludeFamily: true },
+    familyComponents: [3, 1, 1, 3, 1, 4].map((socketCount, index) => ({
+      bindingId: `A${index + 1}`, kind: 'load', sourceShapeId: `socket-${index}`, socketCount,
+      sourcePath: 'symbols/Socket outlets/Wall outlet with grounding.svg', sourceName: 'Wall outlet with grounding'
+    })),
+    nextShapeId: () => `socket-migration-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  }
+  const original = [input.rail, ...buildKamrailCircuitBundle(input)!.shapes]
+  let restored = original
+  for (let reload = 0; reload < 2; reload++) {
+    restored = migrateOneWireCircuitGeometry(sanitizeShapes(restored, 'onewire'), input)
+    for (const shape of original.filter((shape) => shape.sourceLink?.kind === 'device' || shape.sourceLink?.role === 'row-wire')) {
+      const actual = restored.find((candidate) => candidate.id === shape.id)!
+      assert.equal(actual.kind, shape.kind)
+      if (shape.kind === 'symbol' && actual.kind === 'symbol') {
+        assert.equal(actual.position.x, shape.position.x, shape.bindingId)
+        assert.equal(actual.electrical?.socketCount, shape.electrical?.socketCount)
+      }
+      if (shape.kind === 'line' && actual.kind === 'line') {
+        assert.equal(actual.start.x, shape.start.x)
+        assert.equal(actual.end.x, shape.end.x)
+        assert.equal(actual.end.y - actual.start.y, 0)
+      }
+    }
+  }
 })
 
 test('recomputes node-connected topology geometry instead of preserving disconnected positions', () => {

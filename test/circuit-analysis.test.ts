@@ -102,6 +102,27 @@ test('recovers legacy custom sockets that were stored with the neutral role', ()
   assert.equal(analysis.groups[0]?.specification.cableSectionMm2, 2.5)
 })
 
+test('recognizes imported breakers and junction boxes instead of treating them as loads', () => {
+  const analysis = analyzeCircuits([
+    {
+      id: 'breaker-image', kind: 'image', name: 'Auto breaker',
+      path: 'symbols/Protection devices/Auto breaker.svg',
+      position: { x: 0, y: 0 }, width: 24, height: 24, bindingId: 'C1'
+    },
+    {
+      id: 'junction-image', kind: 'image', name: 'Junction box',
+      path: 'symbols/Electrical devices/Junction box.svg',
+      position: { x: 50, y: 0 }, width: 24, height: 24, bindingId: 'C1'
+    }
+  ])
+
+  assert.equal(analysis.valid, true)
+  assert.equal(analysis.groups[0].protection, 1)
+  assert.equal(analysis.groups[0].junctions, 1)
+  assert.equal(analysis.groups[0].loads, 0)
+  assert.deepEqual(analysis.groups[0].components.map(({ role }) => role), ['protection', 'junction'])
+})
+
 test('accepts a deliberately unloaded breaker circuit', () => {
   const analysis = analyzeCircuits([symbol('breaker', 'R1', 'Automaat', 'symbols/Protection devices/Automaat.svg')])
   assert.equal(analysis.valid, true)

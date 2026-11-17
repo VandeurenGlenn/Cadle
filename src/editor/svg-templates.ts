@@ -6,7 +6,7 @@ import { lineMetrics, shapeBounds, slidingDoorGeometry, slidingWindowGeometry } 
 import { renderedSymbolScale } from './model/symbol-scale.js'
 import { heatingMarkup, type HeatingObstacle } from './heating-plan.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from './constants.js'
-import { PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
+import { PAPER_BINDING_LABEL_FONT_SIZE, PAPER_LABEL_FONT_SIZE } from './layout/page-layout.js'
 import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache.js'
 import { symbolTextPresentation } from './symbol-metadata.js'
 import { electricalConnectionMarkup } from './electrical-connection-markup.js'
@@ -450,7 +450,7 @@ export const bindingLabelsTemplate = (shapes: Shape[]) => {
   return placements.map(
     (placement) => svg`
     <g class="binding-label" data-shape-id=${placement.shapeId}>
-      <text class="binding-label-text" style=${`font-size:${PAPER_LABEL_FONT_SIZE}px`} x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
+      <text class="binding-label-text" style=${`font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px`} x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
     </g>
   `
   )
@@ -561,8 +561,8 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     const bindingId = 'bindingId' in base ? normalizeBindingId(base.bindingId) : undefined
     if (!bindingId) continue
 
-    const labelWidth = Math.max(PAPER_LABEL_FONT_SIZE, bindingId.length * PAPER_LABEL_FONT_SIZE * 0.68)
-    const labelHeight = PAPER_LABEL_FONT_SIZE * 1.1
+    const labelWidth = Math.max(PAPER_BINDING_LABEL_FONT_SIZE, bindingId.length * PAPER_BINDING_LABEL_FONT_SIZE * 0.68)
+    const labelHeight = PAPER_BINDING_LABEL_FONT_SIZE * 1.1
     const margin = 5
     const anchorShape =
       groupedShapes.find((shape) => shape.kind === 'symbol') ??
@@ -678,7 +678,7 @@ export const bindingLabelsMarkup = (shapes: Shape[]): string =>
   resolveBindingLabelPlacements(shapes)
     .map(
       (placement) =>
-        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="font-size:${PAPER_LABEL_FONT_SIZE}px" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
+        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
     )
     .join('')
 

@@ -1,5 +1,42 @@
 import { expect, test, type Page } from '@playwright/test'
 
+test('generates imported circuit breakers without junction boxes or obsolete breaker assets', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element: any) => element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'legacy-breaker.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, paperPreset: 'a4-landscape', printMargin: 10,
+      worldWidth: 2376, worldHeight: 1680, selectedId: null,
+      shapes: [
+        { id: 'legacy-breaker', kind: 'image', name: 'Auto breaker',
+          path: 'symbols/Protection devices/Auto breaker.svg', bindingId: 'R1',
+          position: { x: 400, y: 400 }, width: 24, height: 24 },
+        { id: 'legacy-junction', kind: 'image', name: 'Junction box',
+          path: 'symbols/Electrical devices/Junction box.svg', bindingId: 'R1',
+          position: { x: 500, y: 400 }, width: 24, height: 24 }
+      ]
+    }))
+  })
+  await expect.poll(async () => {
+    const analysis = await app.evaluate((element: any) => element.analyzeBindings())
+    return analysis.groups.find((group: { bindingId: string }) => group.bindingId === 'R1')?.protection
+  }).toBe(1)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
+  await expect.poll(() => page.locator('app-shell').evaluate((element: any) =>
+    element.project?.pages?.[element.loadedPage]?.pageType)).toBe('onewire')
+  const generated = await app.evaluate((element: any) => element.generateAutoOneWire())
+  expect(generated.generated, generated.message).toBe(true)
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const markup = await app.evaluate((element: any) => element.toSVG())
+  expect(markup).not.toContain('Junction box')
+  expect(markup).not.toContain('Auto breaker.svg')
+  await expect(app.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Automaat$/ }) }).first()).toBeVisible()
+})
+
 // Selection now opens an overlay. Close it before coordinate-based drawing
 // steps so those clicks reach the intended part of the sheet.
 const closePropertiesForDrawing = async (page: Page) => {

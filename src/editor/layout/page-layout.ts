@@ -4,6 +4,7 @@ import { DEFAULT_PRINT_MARGIN_MM, PAPER_WORLD_UNITS_PER_MM } from '../constants.
 export const PAGE_DETAILS_HEIGHT_MM = 14
 export const PAGE_DETAILS_GAP_MM = 3
 export const PAPER_LABEL_FONT_SIZE = 2.75 * PAPER_WORLD_UNITS_PER_MM
+export const PAPER_BINDING_LABEL_FONT_SIZE = 2 * PAPER_WORLD_UNITS_PER_MM
 export const paperTextScale = (heightMm: number) => heightMm * PAPER_WORLD_UNITS_PER_MM / 18
 
 export const pageLayout = (

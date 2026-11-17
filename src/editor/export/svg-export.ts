@@ -13,7 +13,7 @@ import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import type { Project } from '../../types.js'
 import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
 import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
-import { pageLayout, PAPER_LABEL_FONT_SIZE } from '../layout/page-layout.js'
+import { pageLayout, PAPER_BINDING_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
@@ -56,7 +56,7 @@ const EXPORT_STYLE_BLOCK = `
 
   .binding-label-text {
     fill: #2f241a;
-    font: 700 ${PAPER_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font: 700 ${PAPER_BINDING_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
     letter-spacing: 0.03em;
     dominant-baseline: middle;
     stroke: rgba(255, 255, 255, 0.88);
@@ -102,7 +102,7 @@ const EXPORT_STYLE_BLOCK_MONO = `
 
   .binding-label-text {
     fill: #151515;
-    font: 700 ${PAPER_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font: 700 ${PAPER_BINDING_LABEL_FONT_SIZE}px 'IBM Plex Sans', 'Segoe UI', sans-serif;
     letter-spacing: 0.03em;
     dominant-baseline: middle;
     stroke: rgba(255, 255, 255, 0.92);

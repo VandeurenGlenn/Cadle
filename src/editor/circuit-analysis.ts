@@ -112,7 +112,10 @@ const bindingParts = (value: string): { bindingId: string; family: string; numbe
 
 export const inferCircuitRole = (shape: Shape): CircuitComponentRole => {
   if (shape.kind === 'door' || shape.kind === 'gate') return 'switch'
-  if (shape.kind === 'image') return 'load'
+  if (shape.kind === 'image') {
+    const role = inferElectricalRole(shape.name, shape.path)
+    return role === 'neutral' ? 'load' : role
+  }
   if (shape.kind !== 'symbol') return 'neutral'
   if (isEarthingDevice(shape.name, shape.path)) return 'neutral'
   if (isDistributionBoardDevice(shape.name, shape.path)) return 'junction'

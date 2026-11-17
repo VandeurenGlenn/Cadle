@@ -42,6 +42,27 @@ test('rotates and flips conductor terminal anchors with the symbol', () => {
   assert.notDeepEqual(anchors[0].point, anchors[1].point)
 })
 
+test('anchors appliance feeds to their actual filled SVG connection dots', () => {
+  for (const [name, cx, cy] of [
+    ['Washing machine', 8.62894, 8.62898],
+    ['Dryer', 8.62894, 10.8967],
+    ['Electric oven', 8.62894, 10.8967]
+  ] as const) {
+    for (const scale of [1, 2, 2.5]) {
+      const shape = symbol(`symbols/Consumption appliances/${name}.svg`, { scale })
+      const sourceScale = 24 * scale / 17.2579
+      const expected = {
+        x: shape.position.x + (cx - 17.2579 / 2) * sourceScale,
+        y: shape.position.y + (cy - 17.2579 / 2) * sourceScale
+      }
+      assert.ok(oneWireSymbolNodeInfo(shape.path, scale), name)
+      for (const { point } of oneWireSymbolConnectionAnchors(shape)) {
+        assert.ok(Math.hypot(point.x - expected.x, point.y - expected.y) < 1e-8, name)
+      }
+    }
+  }
+})
+
 test('placed devices connect exactly in every direction and at different scales', () => {
   for (const path of [
     'symbols/Protection devices/Automaat.svg',
@@ -49,7 +70,8 @@ test('placed devices connect exactly in every direction and at different scales'
     'symbols/Switches/Switch general symbol.svg',
     'symbols/Socket outlets/Wall outlet with grounding.svg',
     'symbols/Consumption appliances/Washing machine.svg',
-    'symbols/Consumption appliances/Dryer.svg'
+    'symbols/Consumption appliances/Dryer.svg',
+    'symbols/Consumption appliances/Electric oven.svg'
   ]) {
     for (const scale of [0.5, 1, 2.5]) {
       for (const side of ['top', 'bottom', 'left', 'right'] as const) {

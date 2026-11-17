@@ -401,10 +401,19 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    match: /consumption appliances\/(?:washing machine|dryer)\.svg$/i,
+    match: /consumption appliances\/washing machine\.svg$/i,
     spec: {
       viewBox: { width: 17.2579, height: 17.2579 },
-      node: { x: 8.62895, y: 8.62895 },
+      node: { x: 8.62894, y: 8.62898 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /consumption appliances\/(?:dryer|electric oven)\.svg$/i,
+    spec: {
+      viewBox: { width: 17.2579, height: 17.2579 },
+      node: { x: 8.62894, y: 10.8967 },
       cutRadius: null,
       oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }

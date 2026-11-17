@@ -59,7 +59,7 @@ test('previews and places catalog symbols at the page-specific size without resi
   }
 })
 
-test('repairs enlarged equipment feeds at the visible cabinet outline and preserves them on reload', async ({ page }) => {
+test('repairs equipment feeds at their SVG outlines or filled dots and preserves them on reload', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
@@ -73,11 +73,12 @@ test('repairs enlarged equipment feeds at the visible cabinet outline and preser
   const rail: LineShape = { id: 'equipment-rail', kind: 'line', start: { x: 80, y: 1200 }, end: { x: 2200, y: 1200 },
     groupId: 'onewire-kamrail-equipment', strokeWidth: 4 }
   const names = ['Heat pump', 'Heat pump indoor unit air-air', 'Heat pump indoor unit air-water',
-    'Heat pump water-water', 'Jacuzzi']
-  const shapes = [rail, ...[names, ['Heat pump'], ['Jacuzzi']].flatMap((devices, index) => {
+    'Heat pump water-water', 'Jacuzzi', 'Washing machine', 'Dryer', 'Electric oven']
+  const shapes = [rail, ...[names, ['Heat pump'], ['Jacuzzi'], ['Washing machine'], ['Dryer'], ['Electric oven']]
+    .flatMap((devices, index) => {
     const family = String.fromCharCode(65 + index)
     return buildKamrailCircuitBundle({
-      rail, anchorX: 500 + index * 400, options: { family, amps: 20, autoIncludeFamily: true },
+      rail, anchorX: 400 + index * 300, options: { family, amps: 20, autoIncludeFamily: true },
       familyComponents: devices.map((name, row) => ({ bindingId: `${family}${row + 1}`, kind: 'load',
         sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name, sourceShapeId: `${family}-${row}` })),
       nextShapeId: () => `equipment-${++sequence}`,
@@ -93,7 +94,7 @@ test('repairs enlarged equipment feeds at the visible cabinet outline and preser
       ? candidate.sourceLink?.role === 'trunk' && candidate.bindingId === shape.bindingId?.replace(/\d+$/, '')
       : candidate.sourceLink?.role === 'row-wire' && candidate.bindingId === shape.bindingId))
     if (!feed) throw new Error(`Missing equipment feed for ${shape.name}`)
-    return [{ device: shape.id, feed: feed.id, bottom }]
+    return [{ device: shape.id, feed: feed.id, bottom, dot: /^(?:Washing machine|Dryer|Electric oven)$/.test(shape.name) }]
   })
   const legacy = shapes.map((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
     ? { ...shape, scale: 2, position: { x: shape.position.x + 10, y: shape.position.y + 10 } } : shape)
@@ -104,14 +105,14 @@ test('repairs enlarged equipment feeds at the visible cabinet outline and preser
   })
   const inspectContacts = () => app.evaluate((element: any, contacts) => {
     const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
-    return contacts.map(({ device, feed, bottom }) => {
+    return contacts.map(({ device, feed, bottom, dot }) => {
       const svg = element.shadowRoot.querySelector(`g.shape-symbol[data-shape-id="${device}"] > svg`) as SVGSVGElement
-      const rect = svg.querySelector('rect')!
+      const mark = svg.querySelector<SVGGraphicsElement>(dot ? 'ellipse[style*="--symbol-fill"]' : 'rect')!
       const wire = element.shadowRoot.querySelector(`line[data-shape-id="${feed}"]`) as SVGLineElement
       const bodyContact = new DOMPoint(
-        rect.x.baseVal.value + (bottom ? rect.width.baseVal.value / 2 : 0),
-        rect.y.baseVal.value + rect.height.baseVal.value * (bottom ? 1 : 0.5)
-      ).matrixTransform(rect.getScreenCTM()!)
+        Number(mark.getAttribute(dot ? 'cx' : 'x')) + (!dot && bottom ? Number(mark.getAttribute('width')) / 2 : 0),
+        Number(mark.getAttribute(dot ? 'cy' : 'y')) + (dot ? 0 : Number(mark.getAttribute('height')) * (bottom ? 1 : 0.5))
+      ).matrixTransform(mark.getScreenCTM()!)
       const wireContact = new DOMPoint(wire.x2.baseVal.value, wire.y2.baseVal.value).matrixTransform(wire.getScreenCTM()!)
       const exportedWire = exported.querySelector(`line[data-shape-id="${feed}"]`)!
       return {
@@ -123,10 +124,11 @@ test('repairs enlarged equipment feeds at the visible cabinet outline and preser
       }
     })
   }, contacts)
-  const expected = contacts.map(() => ({ gap: 0, width: 72, exportWidth: 72, exportGap: 0 }))
+  const expected = contacts.map(({ dot }) => ({ gap: 0, width: dot ? 48 : 72, exportWidth: dot ? 48 : 72, exportGap: 0 }))
   await expect.poll(async () => (await inspectContacts()).map((contact) =>
     ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
     .toEqual(expected)
+  await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
   await page.screenshot({ path: '/private/tmp/cadle-equipment-connections.png' })
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
@@ -134,6 +136,7 @@ test('repairs enlarged equipment feeds at the visible cabinet outline and preser
   await expect.poll(async () => (await inspectContacts()).map((contact) =>
     ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
     .toEqual(expected)
+  await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
 })
 
 test('renders separated, connected multiple sockets in the one-wire diagram and export', async ({ page }) => {

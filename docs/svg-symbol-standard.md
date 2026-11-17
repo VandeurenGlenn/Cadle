@@ -46,6 +46,14 @@ The current catalog still contains Visio-export SVGs. A symbol is not converted
 until its artwork has been made Cadle-native and passes the required asset
 checks; removing Visio metadata alone does not count as conversion.
 
+## Household appliance connection dots
+
+Washing machines, dryers and electric ovens connect at the filled black dot in
+their artwork, including the SVG group translations. The dryer and oven dots
+are below the viewBox center. Their wires must end on these dots rather than
+the center of the cabinet or its bounding box. Existing generated circuits
+are rebuilt on load when these connection coordinates change.
+
 ## Heat pump equipment symbols
 
 The consumption-appliance catalog includes the existing outdoor-unit pictogram

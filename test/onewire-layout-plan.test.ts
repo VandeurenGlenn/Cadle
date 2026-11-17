@@ -247,11 +247,16 @@ test('packs circuits by actual rows without reserving empty space above breaker 
     ] }
   ]
   const compact = packOneWireFamilyBounds(families, 1000)
+  const roomy = packOneWireFamilyBounds(families, 1000, 40)
   const rectangular = packOneWireFamilyBounds(families.map(({ ink, ...bounds }) => bounds), 1000)
   assert.ok(compact.endX - compact.startX < rectangular.endX - rectangular.startX)
   const a = compact.familyXs.get('A')!, b = compact.familyXs.get('B')!
+  const clearances: number[] = []
   for (const left of families[0].ink) for (const right of families[1].ink) {
     if (left.y + left.height + 8 < right.y || right.y + right.height + 8 < left.y) continue
-    assert.ok(b + right.x - 400 - (a + left.x + left.width) >= 10 - 1e-8)
+    clearances.push(b + right.x - 400 - (a + left.x + left.width))
   }
+  assert.ok(clearances.every((clearance) => clearance >= 24 - 1e-8))
+  assert.equal(Math.min(...clearances), 24)
+  assert.equal((roomy.endX - roomy.startX) - (compact.endX - compact.startX), 16)
 })

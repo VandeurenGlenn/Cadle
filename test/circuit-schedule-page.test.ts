@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildCircuitScheduleSvgs, circuitScheduleRows } from '../src/editor/circuit-schedule-page.ts'
+import { analyzeCircuitSchedule, buildCircuitScheduleSvgs, circuitScheduleRows } from '../src/editor/circuit-schedule-page.ts'
 import type { CircuitAnalysis, CircuitGroup } from '../src/editor/circuit-analysis.ts'
+import { analyzeCircuits } from '../src/editor/circuit-analysis.ts'
+import { buildKamrailCircuitBundle } from '../src/editor/layout/onewire-helpers.ts'
+import { oneWireSymbolBounds, oneWireSymbolScaleFor } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import type { Shape } from '../src/editor/model/types.ts'
+import { sanitizeShapes } from '../src/editor/model/model.ts'
 
 const group = (bindingId: string, name: string, boardId = 'main'): CircuitGroup => ({
   bindingId,
@@ -63,6 +68,61 @@ test('groups point bindings into one breaker schedule cell', () => {
     category: 'Stopcontacten',
     modules: 2
   })
+})
+
+const schematicCircuit = (family: string, empty = false): Shape[] => {
+  let id = 0
+  return sanitizeShapes(buildKamrailCircuitBundle({
+    rail: { id: 'rail', kind: 'line', start: { x: 100, y: 1200 }, end: { x: 2000, y: 1200 } },
+    anchorX: 400,
+    options: { family, amps: 32, poles: 4, cableConductors: 5, cableSectionMm2: 6, cableType: 'XGB',
+      cableFireClass: 'LSOH', autoIncludeFamily: true },
+    familyComponents: [{ bindingId: `${family}1`, kind: empty ? 'empty' : 'load',
+      sourceShapeId: `${family}-device`, sourceName: 'Lighting',
+      sourcePath: 'symbols/Consumption appliances/Lighting.svg' }],
+    nextShapeId: () => `${family}-${++id}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!.shapes, 'onewire')
+}
+
+test('includes schematic-only A through D without doubling floor-plan families or continuation copies', () => {
+  const floorPlan: Shape[] = [{
+    id: 'physical-E', kind: 'symbol', position: { x: 100, y: 100 }, name: 'Floor-plan socket',
+    path: 'symbols/Socket outlets/Wall outlet with grounding.svg', scale: 1, bindingId: 'E1',
+    roomName: 'Keuken', electrical: { role: 'load', oneWireEligible: true, circuitType: 'sockets' }
+  }]
+  const schematic = ['A', 'B', 'C', 'D', 'E'].flatMap((family) => schematicCircuit(family, family === 'A'))
+  const continuation = schematic.map((shape) => ({ ...shape, id: `${shape.id}-continuation` }))
+  const result = analyzeCircuitSchedule(floorPlan, [...schematic, ...continuation])
+  const rows = circuitScheduleRows(result)
+  assert.deepEqual(rows.map((row) => row.id), ['A', 'B', 'C', 'D', 'E'])
+  assert.deepEqual(rows[0].consumers, [])
+  assert.equal(rows[0].protection, 'C32A')
+  assert.equal(rows[0].poles, '4P')
+  assert.equal(rows[0].cable, '5G6 mm² XGB LSOH')
+  assert.deepEqual(rows[1].consumers, ['Lighting'])
+  assert.deepEqual(rows[4].consumers, ['Floor plan socket'])
+  assert.deepEqual(rows[4].rooms, ['Keuken'])
+  assert.deepEqual(analyzeCircuits(floorPlan).families, ['E'])
+  const svg = buildCircuitScheduleSvgs(null, result).join('')
+  for (const family of ['A', 'B', 'C', 'D', 'E']) assert.match(svg, new RegExp(`>${family}</text>`))
+})
+
+test('stored circuit specifications override schematic metadata without inventing unused circuits', () => {
+  const result = analyzeCircuitSchedule([], schematicCircuit('A'), undefined, {
+    A: { breakerCurrentA: 40, poles: 2, cableSectionMm2: 10, boardId: 'garage', notes: 'Bestaande kring' },
+    Z: { breakerCurrentA: 16 }
+  })
+  const rows = circuitScheduleRows(result)
+  assert.deepEqual(rows.map((row) => row.id), ['A'])
+  assert.equal(rows[0].protection, 'C40A')
+  assert.equal(rows[0].poles, '2P')
+  assert.equal(rows[0].cable, '5G10 mm² XGB LSOH')
+  assert.equal(rows[0].boardId, 'garage')
+  assert.equal(rows[0].note, 'Bestaande kring')
 })
 
 test('paginates a readable portrait schedule at 30 rows per page', () => {

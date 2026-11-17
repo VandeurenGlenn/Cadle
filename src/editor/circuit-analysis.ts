@@ -101,7 +101,7 @@ export type CircuitAnalysis = {
   valid: boolean
 }
 
-const bindingParts = (value: string): { bindingId: string; family: string; number: number | null } | null => {
+export const bindingParts = (value: string): { bindingId: string; family: string; number: number | null } | null => {
   const bindingId = value.trim().toUpperCase()
   // Belgian plans commonly identify a circuit with a short letter code (A, O,
   // ALSB) while point-level bindings may append a number (A1, O3). Both carry
@@ -249,7 +249,7 @@ export const analyzeCircuits = (
       component.socketCount = metadata.socketCount
     }
     const anchor = shapeAnchorPoint(shape)
-    const roomName = anchor ? roomNameAtPoint(roomRegions, anchor) : undefined
+    const roomName = shape.roomName?.trim() || (anchor ? roomNameAtPoint(roomRegions, anchor) : undefined)
     if (roomName) component.roomName = roomName
     if (shape.kind === 'symbol' || shape.kind === 'image') component.path = shape.path
     const entries = grouped.get(binding.bindingId)

@@ -10,13 +10,25 @@ import {
   planOneWireLayout
 } from '../src/editor/layout/onewire-layout-plan.ts'
 
-test('keeps a single-breaker rail readable and never shrinks an existing rail while adding', () => {
+test('keeps a single-breaker rail readable and preserves the existing length when requested', () => {
   assert.deepEqual(oneWireRailSpanForAnchors([500]), { startX: 380, endX: 620 })
   assert.deepEqual(oneWireRailSpanForAnchors([500], { startX: 100, endX: 900 }, true), {
     startX: 100,
     endX: 900
   })
   assert.deepEqual(oneWireRailSpanForAnchors([500, 820]), { startX: 480, endX: 840 })
+})
+
+test('balances rail ends around the outer breakers without retaining an off-centre tail', () => {
+  for (const existingSpan of [{ startX: 100, endX: 900 }, { startX: 900, endX: 100 }]) {
+    const span = oneWireRailSpanForAnchors([820, 500], existingSpan, true)!
+    assert.equal(span.endX - span.startX, 800)
+    assert.equal(500 - span.startX, span.endX - 820)
+    assert.deepEqual(span, { startX: 260, endX: 1060 })
+  }
+  assert.deepEqual(oneWireRailSpanForAnchors([500, 820], { startX: 100, endX: 900 }), {
+    startX: 480, endX: 840
+  })
 })
 
 test('keeps hidden breaker identities unique while normalizing circuit bindings', () => {
@@ -247,7 +259,7 @@ test('packs circuits by actual rows without reserving empty space above breaker 
     ] }
   ]
   const compact = packOneWireFamilyBounds(families, 1000)
-  const roomy = packOneWireFamilyBounds(families, 1000, 40)
+  const roomy = packOneWireFamilyBounds(families, 1000, 24)
   const rectangular = packOneWireFamilyBounds(families.map(({ ink, ...bounds }) => bounds), 1000)
   assert.ok(compact.endX - compact.startX < rectangular.endX - rectangular.startX)
   const a = compact.familyXs.get('A')!, b = compact.familyXs.get('B')!
@@ -256,7 +268,7 @@ test('packs circuits by actual rows without reserving empty space above breaker 
     if (left.y + left.height + 8 < right.y || right.y + right.height + 8 < left.y) continue
     clearances.push(b + right.x - 400 - (a + left.x + left.width))
   }
-  assert.ok(clearances.every((clearance) => clearance >= 24 - 1e-8))
-  assert.equal(Math.min(...clearances), 24)
-  assert.equal((roomy.endX - roomy.startX) - (compact.endX - compact.startX), 16)
+  assert.ok(clearances.every((clearance) => clearance >= 16 - 1e-8))
+  assert.equal(Math.min(...clearances), 16)
+  assert.equal((roomy.endX - roomy.startX) - (compact.endX - compact.startX), 8)
 })

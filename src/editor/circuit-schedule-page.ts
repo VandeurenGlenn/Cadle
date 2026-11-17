@@ -1,6 +1,78 @@
 import { cableLabelText } from './model/cable-designation.js'
-import type { CircuitScheduleLayout, Project } from '../types.js'
-import type { CircuitAnalysis, CircuitGroup } from './circuit-analysis.js'
+import type { CircuitScheduleLayout, ElectricalProjectProfile, Project, ProjectCircuitSpecification } from '../types.js'
+import { analyzeCircuits, bindingParts, inferCircuitRole, type CircuitAnalysis, type CircuitGroup } from './circuit-analysis.js'
+import type { Shape } from './model/types.js'
+import { sanitizeConnection } from './model/electrical-connection.js'
+
+/** Floor-plan devices stay authoritative; schematic-only families fill the gaps. */
+export const analyzeCircuitSchedule = (
+  floorPlanShapes: readonly Shape[],
+  oneWireShapes: readonly Shape[],
+  profile?: ElectricalProjectProfile,
+  circuitSpecifications: Record<string, ProjectCircuitSpecification> = {}
+): CircuitAnalysis => {
+  const floorPlan = analyzeCircuits(floorPlanShapes, profile, circuitSpecifications)
+  const knownFamilies = new Set(floorPlan.families)
+  const inferred: Record<string, ProjectCircuitSpecification> = {}
+  const additional: Shape[] = []
+  const seen = new Set<string>()
+  for (const shape of oneWireShapes) {
+    if (shape.hidden || !shape.bindingId) continue
+    const binding = bindingParts(shape.bindingId)
+    if (!binding || knownFamilies.has(binding.family)) continue
+    const key = `${binding.bindingId}:${shape.generationKey ??
+      (shape.sourceLink?.kind === 'device' ? shape.sourceLink.id : shape.id)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const previous = inferred[binding.family] ?? {}
+    if (shape.kind === 'text' && shape.sourceLink?.role === 'cable-section') {
+      // Older empty circuits have a cable caption but no cable conductor object.
+      const match = /^(\d+)([GX])(\d+(?:[.,]\d+)?)\s*mm(?:²|2)(?:\s+(VOB|XVB|XGB|EXVB|other)(?:[\s-]+(.+))?)?$/i
+        .exec(shape.text.split(' · ')[0].trim())
+      if (match) {
+        const cable = sanitizeConnection({ kind: 'cable', conductors: Number(match[1]),
+          sectionMm2: Number(match[3].replace(',', '.')), hasProtectiveConductor: match[2].toUpperCase() === 'G',
+          cableType: match[4] ?? 'none', fireClass: match[5] })
+        if (cable?.conductors && cable.sectionMm2) inferred[binding.family] = {
+          cableConductors: cable.conductors, cableSectionMm2: cable.sectionMm2,
+          hasProtectiveConductor: cable.hasProtectiveConductor, cableType: cable.cableType,
+          cableFireClass: cable.fireClass, ...previous
+        }
+      }
+    }
+    if (shape.kind === 'line' && shape.connection?.kind === 'cable') {
+      const cable = shape.connection
+      inferred[binding.family] = {
+        ...previous,
+        cableConductors: cable.conductors ?? previous.cableConductors,
+        cableSectionMm2: cable.sectionMm2 ?? previous.cableSectionMm2,
+        cableType: cable.cableType ?? previous.cableType,
+        cableFireClass: cable.fireClass ?? previous.cableFireClass,
+        hasProtectiveConductor: cable.hasProtectiveConductor ?? previous.hasProtectiveConductor
+      }
+    }
+    if (shape.kind !== 'symbol' && shape.kind !== 'image') continue
+    if (shape.kind === 'symbol' && shape.electrical?.oneWireEligible === false) continue
+    const role = inferCircuitRole(shape)
+    if (role === 'neutral' || role === 'junction') continue
+    if (shape.kind === 'symbol' && role === 'protection' && shape.electrical) {
+      const { role: _role, oneWireEligible: _eligible, ratedCurrentA, circuitType, ...electrical } = shape.electrical
+      inferred[binding.family] = {
+        ...previous,
+        ...Object.fromEntries(Object.entries(electrical).filter(([, value]) => value !== undefined)),
+        breakerCurrentA: electrical.breakerCurrentA ?? ratedCurrentA ?? previous.breakerCurrentA,
+        ...(circuitType && circuitType !== 'other' ? { circuitType } : {})
+      }
+    }
+    // Generated group IDs describe rows, not logical devices on a floor plan.
+    additional.push({ ...shape, groupId: shape.groupId?.startsWith('onewire-') ? undefined : shape.groupId })
+  }
+  if (!additional.length) return floorPlan
+  for (const family of Object.keys(inferred)) {
+    inferred[family] = { ...inferred[family], ...circuitSpecifications[family] }
+  }
+  return analyzeCircuits([...floorPlanShapes, ...additional], profile, { ...circuitSpecifications, ...inferred })
+}
 
 const escapeXml = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -75,7 +147,8 @@ const countedNames = (groups: readonly CircuitGroup[]): string[] => {
   const counts = new Map<string, number>()
   for (const group of groups) {
     const loads = group.components.filter((component) => component.role === 'load' || component.role === 'junction')
-    const components = loads.length ? loads : group.components.filter((component) => component.role !== 'switch')
+    const components = loads.length ? loads : group.components.filter((component) =>
+      component.role !== 'switch' && component.role !== 'protection')
     for (const component of components) {
       const name = cleanName(component.name)
       if (!name) continue

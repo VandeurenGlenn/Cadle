@@ -40,11 +40,13 @@ export type OneWireSourceLink = {
 }
 
 type GeneratedShapeMetadata = {
+  roomName?: string
   heatingObstacle?: boolean
   heating?: import('../heating-plan.js').HeatingData
   generationKey?: string
   sourceLink?: OneWireSourceLink
   oneWireRailId?: string
+  oneWireSourceSignature?: string
   hidden?: boolean
   locked?: boolean
 }
@@ -59,7 +61,6 @@ export type LineShape = GeneratedShapeMetadata & {
   flipX?: boolean
   flipY?: boolean
   wallId?: string
-  roomName?: string
   flipSide?: boolean
   doorStyle?: 'sliding'
   windowStyle?: 'sliding'
@@ -165,6 +166,7 @@ export type NativeCatalogPick = {
 }
 
 export type Snapshot = {
+  circuitSpecifications?: import('../../types.js').Project['circuitSpecifications']
   heatingSchedulePages?: import('../../types.js').Project['pages']
   drawingScale?: import('../layout/drawing-scale.js').DrawingScale | null
   shapes: Shape[]

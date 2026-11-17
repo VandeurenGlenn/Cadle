@@ -13,6 +13,20 @@ const fraction = (point: Point, start: Point, end: Point): number | null => {
   return t >= 0 && t <= 1 && same(point, { x: start.x + t * dx, y: start.y + t * dy }) ? t : null
 }
 
+export const removeRedundantRailAttachments = (shapes: readonly Shape[]): Shape[] => {
+  const rails = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && isOneWireRailShape(shape))
+  return shapes.filter((shape) => {
+    if (shape.kind !== 'line' || shape.locked || shape.connection?.kind !== 'wire') return true
+    const rail = rails.find((candidate) =>
+      (shape.oneWireRailId === candidate.id && shape.sourceLink?.role === 'rail-attachment') ||
+      shape.id.startsWith(`${candidate.id}-attachment-`))
+    if (!rail) return true
+    return !connectionSegments(shape).every(({ start, end }) =>
+      connectionSegments(rail).some((segment) =>
+        fraction(start, segment.start, segment.end) !== null && fraction(end, segment.start, segment.end) !== null))
+  })
+}
+
 /** Only move established connections. Nearby graphics and crossings stay independent. */
 export const followConnectedConductors = (
   before: readonly Shape[], after: readonly Shape[], movedIds: ReadonlySet<string>
@@ -86,7 +100,9 @@ export const followConnectedConductors = (
       const id = `${rail.id}-attachment-${key(point)}`
       const owner = before.find((shape) => movedIds.has(shape.id) && shape.kind === 'symbol' &&
         oneWireSymbolConnectionAnchors(shape).some((anchor) => same(anchor.point, point)))
-      railAttachments.set(id, next && !same(point, next) ? {
+      const staysOnRail = next && connectionSegments(rail).some((segment) =>
+        fraction(next, segment.start, segment.end) !== null)
+      railAttachments.set(id, next && !same(point, next) && !staysOnRail ? {
         id, kind: 'line', start: { ...point }, end: { ...next }, stroke: rail.stroke ?? '#000000', strokeWidth: 2,
         ...(owner?.bindingId ? { bindingId: owner.bindingId } : {}),
         ...(owner?.sourceLink?.kind === 'board' ? { sourceLink: { ...owner.sourceLink, role: 'rail-attachment' } } : {}),
@@ -137,5 +153,7 @@ export const followConnectedConductors = (
     }
     return { ...shape, start: { ...start }, end: { ...end }, connection }
   })
-  return [...connected, ...[...railAttachments.values()].filter((shape): shape is LineShape => shape !== null)]
+  return removeRedundantRailAttachments([
+    ...connected, ...[...railAttachments.values()].filter((shape): shape is LineShape => shape !== null)
+  ])
 }

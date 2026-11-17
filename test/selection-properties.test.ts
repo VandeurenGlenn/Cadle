@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { updateSelectionProperties } from '../src/editor/interaction/selection-properties.ts'
+import { createNativeSelectionChangedPayload } from '../src/editor/interaction/selection-payload.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 
 const symbol = (id: string): Shape => ({
@@ -10,6 +11,31 @@ const symbol = (id: string): Shape => ({
   name: 'Socket',
   path: 'socket.svg',
   scale: 1
+})
+
+test('bulk symbol properties expose shared values without copying mixed values from the primary object', () => {
+  const shapes: Shape[] = [
+    { ...symbol('one'), bindingId: 'AC', electrical: {
+      role: 'protection', oneWireEligible: true, breakerCurrentA: 16, poles: 2, cableSectionMm2: 2.5
+    } },
+    { ...symbol('two'), bindingId: 'AD', electrical: {
+      role: 'protection', oneWireEligible: true, breakerCurrentA: 20, poles: 2, cableSectionMm2: 4
+    } }
+  ]
+  const payload = createNativeSelectionChangedPayload(shapes[0], 2, {
+    selectedShapes: shapes, circuitPropertiesEditable: true
+  })
+  assert.equal(payload.shape?.kind, 'symbol')
+  assert.equal(payload.shape?.bindingId, undefined)
+  assert.equal(payload.shape?.electrical?.poles, 2)
+  assert.equal(payload.shape?.electrical?.breakerCurrentA, undefined)
+  assert.equal(payload.shape?.electrical?.cableSectionMm2, undefined)
+  const updated = updateSelectionProperties(shapes, { electrical: { poles: 4 } }, {
+    selectedIds: new Set(['one', 'two']), selectedId: 'one', groupedSelection: false
+  })!
+  assert.deepEqual(updated.map((shape) => shape.bindingId), ['AC', 'AD'])
+  assert.deepEqual(updated.map((shape) => shape.kind === 'symbol' && shape.electrical?.breakerCurrentA), [16, 20])
+  assert.deepEqual(updated.map((shape) => shape.kind === 'symbol' && shape.electrical?.poles), [4, 4])
 })
 
 test('normalizes binding ids without mutating input shapes', () => {
@@ -26,6 +52,21 @@ test('normalizes binding ids without mutating input shapes', () => {
 
   assert.equal(updated?.[0].bindingId, 'A1')
   assert.equal(source[0].bindingId, undefined)
+})
+
+test('assigns and clears open-plan zones for all selected devices without changing bindings', () => {
+  const source = [symbol('one'), symbol('two'), symbol('unselected')]
+  source[0].bindingId = 'A1'
+  source[1].bindingId = 'A2'
+  for (const groupedSelection of [false, true]) {
+    const context = { selectedIds: new Set(['one', 'two']), selectedId: 'one', groupedSelection }
+    const assigned = updateSelectionProperties(source, { roomName: ' Keuken ' }, context)!
+    assert.deepEqual(assigned.map((shape) => shape.roomName), ['Keuken', 'Keuken', undefined])
+    assert.deepEqual(assigned.map((shape) => shape.bindingId), ['A1', 'A2', undefined])
+    assert.equal(source[0].roomName, undefined)
+    const cleared = updateSelectionProperties(assigned, { roomName: '' }, context)!
+    assert.ok(cleared.every((shape) => !shape.roomName))
+  }
 })
 
 test('keeps a grouped binding id only on the primary shape', () => {

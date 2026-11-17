@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LineShape, Shape, SymbolShape } from '../src/editor/model/types.ts'
-import { followConnectedConductors } from '../src/editor/interaction/connected-conductors.ts'
+import { followConnectedConductors, removeRedundantRailAttachments } from '../src/editor/interaction/connected-conductors.ts'
 import { connectionPoints, connectionSegments } from '../src/editor/model/electrical-connection.ts'
 import { findConnectionIssues } from '../src/editor/layout/connection-issues.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
@@ -159,6 +159,33 @@ test('moving a breaker off a busbar keeps the bar rigid and adds an orthogonal f
   const feeder = result.find((shape) => shape.kind === 'line' && shape.id !== 'bus') as LineShape
   assert.ok(feeder)
   assert.ok(connectionSegments(feeder).every(({ start, end }) => start.x === end.x || start.y === end.y))
+})
+
+test('moving along a busbar adds no wire and returning to it removes the generated feeder', () => {
+  const breaker: SymbolShape = { id: 'breaker', kind: 'symbol', name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', scale: oneWireSymbolScaleFor('symbols/Protection devices/Automaat.svg')!,
+    position: { x: 200, y: 200 } }
+  const bottom = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')!.point
+  const bus: LineShape = { ...rail, id: 'bus',
+    start: { x: bottom.x - 100, y: bottom.y }, end: { x: bottom.x + 200, y: bottom.y } }
+  const along = translateShape(breaker, 40, 0)
+  let shapes = followConnectedConductors([breaker, bus], [along, bus], new Set([breaker.id]))
+  assert.equal(shapes.length, 2)
+  const off = translateShape(along, 40, -60)
+  shapes = followConnectedConductors(shapes, [off, bus], new Set([breaker.id]))
+  assert.equal(shapes.length, 3)
+  const back = translateShape(off, 40, 60)
+  const returned = followConnectedConductors(shapes,
+    shapes.map((shape) => shape.id === breaker.id ? back : shape), new Set([breaker.id]))
+  assert.deepEqual(returned, [back, bus])
+})
+
+test('cleans only identified attachments coincident with a rail, not manual wires or off-rail feeders', () => {
+  const bus: LineShape = { ...rail, id: 'bus' }
+  const redundant = { ...wire('bus-attachment-legacy', bus.start, { x: 150, y: bus.start.y }), oneWireRailId: bus.id }
+  const manual = { ...redundant, id: 'manual-wire' }
+  const feeder = { ...redundant, id: 'bus-attachment-feeder', end: { x: 150, y: bus.start.y - 60 } }
+  assert.deepEqual(removeRedundantRailAttachments([bus, redundant, manual, feeder]), [bus, manual, feeder])
 })
 
 test('pagination retains empty manually placed busbars', () => {

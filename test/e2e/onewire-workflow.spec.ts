@@ -397,7 +397,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(restoredGeometry.rails).toEqual(multiRailGeometry.rails)
 })
 
-test('inserts a breaker before the selected component without shrinking the rail', async ({ page }) => {
+test('inserts a breaker with balanced rail ends without shrinking the rail', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
   await page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000104"]').click()
@@ -503,6 +503,8 @@ test('inserts a breaker before the selected component without shrinking the rail
     x2: Number(line.getAttribute('x2'))
   }))
   expect(railAfter.x2 - railAfter.x1).toBeGreaterThanOrEqual(railBefore.x2 - railBefore.x1)
+  const breakerAxis = verticalLines.find((line) => line.y1 === railBefore.y || line.y2 === railBefore.y)!.x1
+  expect(breakerAxis - railAfter.x1).toBeCloseTo(railAfter.x2 - breakerAxis)
 
   const existingSwitch = stage.locator('g[data-selected="true"]')
   const switchBounds = await existingSwitch.boundingBox()
@@ -541,7 +543,8 @@ test('inserts a breaker before the selected component without shrinking the rail
   await page.mouse.click(secondBreakerPoint.x, secondBreakerPoint.y)
   await page.getByRole('textbox', { name: 'Circuit family' }).fill('D')
   await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
-  const existingBreaker = stage.getByRole('img', { name: 'Automaat' }).last()
+  const existingBreaker = stage.locator('g.shape-symbol')
+    .filter({ has: page.locator('title', { hasText: /^Automaat$/ }) }).last()
   await page.getByRole('button', { name: 'Fit page', exact: true }).click()
   const beforeSwitchCount = await stage
     .locator('[data-shape-id]')

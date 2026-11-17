@@ -121,17 +121,20 @@ export const isPoint = (value: unknown): value is Point => {
 
 const copyGeneratedMetadata = (
   source: {
+    roomName?: unknown
     roomLabel?: unknown
     heating?: unknown
     heatingObstacle?: unknown
     generationKey?: unknown
     sourceLink?: unknown
     oneWireRailId?: unknown
+    oneWireSourceSignature?: unknown
     hidden?: unknown
     locked?: unknown
   },
   target: Shape
 ): void => {
+  if (typeof source.roomName === 'string' && source.roomName.trim()) target.roomName = source.roomName.trim().slice(0, 100)
   if (target.kind === 'text') {
     const label = sanitizeRoomLabel(source.roomLabel)
     if (label) { target.roomLabel = label; target.text = `${label.id}\n${label.name}` }
@@ -146,6 +149,9 @@ const copyGeneratedMetadata = (
   }
   if (typeof source.oneWireRailId === 'string' && source.oneWireRailId.trim()) {
     target.oneWireRailId = source.oneWireRailId.trim()
+  }
+  if (typeof source.oneWireSourceSignature === 'string') {
+    target.oneWireSourceSignature = source.oneWireSourceSignature
   }
   if (source.sourceLink && typeof source.sourceLink === 'object') {
     const link = source.sourceLink as { kind?: unknown; id?: unknown; role?: unknown }
@@ -269,7 +275,6 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       if (raw.flipX === true) line.flipX = true
       if (raw.flipY === true) line.flipY = true
       if (typeof raw.wallId === 'string' && raw.wallId.trim()) line.wallId = raw.wallId.trim()
-      if (typeof raw.roomName === 'string' && raw.roomName.trim()) line.roomName = raw.roomName.trim()
       if (raw.kind === 'door' && raw.doorStyle === 'sliding') line.doorStyle = 'sliding'
       if (raw.kind === 'window' && raw.windowStyle === 'sliding') line.windowStyle = 'sliding'
       if ((raw as { flipSide?: unknown }).flipSide === true) line.flipSide = true
@@ -484,7 +489,6 @@ export const cloneShape = (shape: Shape): Shape => {
       if (shape.flipX) cloned.flipX = true
       if (shape.flipY) cloned.flipY = true
       if (shape.wallId) cloned.wallId = shape.wallId
-      if (shape.roomName) cloned.roomName = shape.roomName
       if (shape.flipSide) cloned.flipSide = true
       if (shape.doorStyle) cloned.doorStyle = shape.doorStyle
       if (shape.windowStyle) cloned.windowStyle = shape.windowStyle

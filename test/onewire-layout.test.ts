@@ -840,6 +840,45 @@ test('enlarges boxed appliances and terminates single and numbered feeds on thei
   }
 })
 
+test('connects dishwasher feeds to the contact ring and refrigerator feeds to the actual cabinet outline', () => {
+  for (const [name, viewWidth, viewHeight, left, bottom] of [
+    ['Dishwasher', 17.2479, 17.2479, { x: 5.78913655, y: 8.625 }, { x: 8.625, y: 11.46086345 }],
+    ['Refrigerator', 17.2579, 21.2873, { x: 0.125, y: 8.62895 }, { x: 8.62895, y: 17.1329 }]
+  ] as const) {
+    for (const rowCount of [1, 2]) {
+      const rail = { id: 'rail', kind: 'line' as const, start: { x: 80, y: 900 }, end: { x: 900, y: 900 },
+        groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+      const result = buildKamrailCircuitBundle({
+        rail, anchorX: 400, options: { amps: 20, family: 'A', autoIncludeFamily: true },
+        familyComponents: Array.from({ length: rowCount }, (_, index) => ({
+          bindingId: `A${index + 1}`, kind: 'load' as const, sourceShapeId: `load-${index}`,
+          sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name
+        })),
+        nextShapeId: idSequence(),
+        oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+        oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+        symbolContentBounds: (shape) => oneWireSymbolBounds(shape) ?? {
+          x: shape.position.x - 24, y: shape.position.y - 24, width: 48, height: 48
+        },
+        branchStroke: '#000000'
+      })!
+      const device = result.shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'load-0')
+      const feed = result.shapes.find((shape) => shape.kind === 'line' && (rowCount === 1
+        ? shape.sourceLink?.role === 'trunk'
+        : shape.sourceLink?.role === 'row-wire' && shape.bindingId === 'A1'))
+      assert.ok(device?.kind === 'symbol' && feed?.kind === 'line')
+      const port = rowCount === 1 ? bottom : left
+      const factor = 24 * device.scale / Math.max(viewWidth, viewHeight)
+      const expected = {
+        x: device.position.x + (port.x - viewWidth / 2) * factor,
+        y: device.position.y + (port.y - viewHeight / 2) * factor
+      }
+      assert.ok(Math.hypot(feed.end.x - expected.x, feed.end.y - expected.y) < 0.0001, `${name}: ${rowCount} rows`)
+      assert.deepEqual(findConnectionIssues([rail, ...result.shapes]), [], name)
+    }
+  }
+})
+
 test('keeps numbered row symbols close to the vertical circuit trunk', () => {
   const result = buildKamrailCircuitBundle({
     rail: {

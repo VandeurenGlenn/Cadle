@@ -42,12 +42,15 @@ test('drops the redo branch after a new edit', () => {
 test('clones snapshots at the controller boundary', () => {
   const history = new DocumentHistory()
   const input = snapshot('shape')
+  input.circuitSpecifications = { A: { breakerCurrentA: 16 } }
   history.push(input)
   input.shapes[0].id = 'mutated-input'
+  input.circuitSpecifications.A.breakerCurrentA = 32
 
   history.push(snapshot('later'))
   const restored = history.undo()
   assert.equal(restored?.shapes[0].id, 'shape')
+  assert.equal(restored?.circuitSpecifications?.A.breakerCurrentA, 16)
 
   if (restored) restored.shapes[0].id = 'mutated-output'
   assert.equal(history.redo()?.selectedId, 'later')

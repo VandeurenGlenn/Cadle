@@ -154,36 +154,40 @@ export const applyOneWireCircuitPresentation = ({
   groupSpecification,
   profile
 }: OneWireCircuitPresentationOptions): OneWireCircuitPresentationResult => {
-  const defaults = circuitDefaults(stored.circuitType ?? groupSpecification?.circuitType)
-  const cableConductors = stored.cableConductors ?? groupSpecification?.cableConductors ?? defaults.cableConductors
+  const breaker = shapes.find((shape): shape is SymbolShape =>
+    shape.kind === 'symbol' && circuitKeyForShape(shape) === circuitKey &&
+    /automaat|breaker|protection devices/i.test(`${shape.name} ${shape.path}`))
+  const baseline = groupSpecification ?? (breaker ? effectiveStandaloneCircuitElectrical(breaker, {}, profile) : undefined)
+  const defaults = circuitDefaults(stored.circuitType ?? baseline?.circuitType)
+  const cableConductors = stored.cableConductors ?? baseline?.cableConductors ?? defaults.cableConductors
   const specification = {
-    breakerCurrentA: stored.breakerCurrentA ?? groupSpecification?.breakerCurrentA ?? defaults.breakerCurrentA,
-    cableSectionMm2: stored.cableSectionMm2 ?? groupSpecification?.cableSectionMm2 ?? defaults.cableSectionMm2,
+    breakerCurrentA: stored.breakerCurrentA ?? baseline?.breakerCurrentA ?? defaults.breakerCurrentA,
+    cableSectionMm2: stored.cableSectionMm2 ?? baseline?.cableSectionMm2 ?? defaults.cableSectionMm2,
     cableConductors,
     hasProtectiveConductor:
       stored.hasProtectiveConductor ??
-      groupSpecification?.hasProtectiveConductor ??
+      baseline?.hasProtectiveConductor ??
       defaultHasProtectiveConductor(cableConductors),
-    cableFireClass: stored.cableFireClass ?? groupSpecification?.cableFireClass,
-    cableType: stored.cableType ?? groupSpecification?.cableType ?? defaults.cableType,
-    cableInstallation: stored.cableInstallation ?? groupSpecification?.cableInstallation ?? defaults.cableInstallation,
-    showCableInstallation: stored.showCableInstallation ?? groupSpecification?.showCableInstallation ?? true,
-    poles: stored.poles ?? groupSpecification?.poles ?? profile?.defaultPoles ?? defaults.poles,
+    cableFireClass: stored.cableFireClass ?? baseline?.cableFireClass,
+    cableType: stored.cableType ?? baseline?.cableType ?? defaults.cableType,
+    cableInstallation: stored.cableInstallation ?? baseline?.cableInstallation ?? defaults.cableInstallation,
+    showCableInstallation: stored.showCableInstallation ?? baseline?.showCableInstallation ?? true,
+    poles: stored.poles ?? baseline?.poles ?? profile?.defaultPoles ?? defaults.poles,
     phaseConfiguration:
       stored.phaseConfiguration ??
-      groupSpecification?.phaseConfiguration ??
+      baseline?.phaseConfiguration ??
       profile?.phaseConfiguration ??
       defaults.phaseConfiguration,
-    manufacturer: stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric',
+    manufacturer: stored.manufacturer ?? baseline?.manufacturer ?? 'Schneider Electric',
     neutralPosition:
       stored.neutralPosition ??
-      groupSpecification?.neutralPosition ??
-      neutralPositionForManufacturer(stored.manufacturer ?? groupSpecification?.manufacturer ?? 'Schneider Electric') ??
+      baseline?.neutralPosition ??
+      neutralPositionForManufacturer(stored.manufacturer ?? baseline?.manufacturer ?? 'Schneider Electric') ??
       'right',
-    showPhaseLabel: stored.showPhaseLabel ?? groupSpecification?.showPhaseLabel ?? true,
-    breakerCurve: stored.breakerCurve ?? groupSpecification?.breakerCurve ?? defaults.breakerCurve,
-    rcdSensitivityMa: stored.rcdSensitivityMa ?? groupSpecification?.rcdSensitivityMa,
-    rcdType: stored.rcdType ?? groupSpecification?.rcdType
+    showPhaseLabel: stored.showPhaseLabel ?? baseline?.showPhaseLabel ?? true,
+    breakerCurve: stored.breakerCurve ?? baseline?.breakerCurve ?? defaults.breakerCurve,
+    rcdSensitivityMa: stored.rcdSensitivityMa ?? baseline?.rcdSensitivityMa,
+    rcdType: stored.rcdType ?? baseline?.rcdType
   }
   const cableInstallation = specification.cableInstallation ?? 'conduit-recessed'
   const cableConnection = shapes.find((shape): shape is LineShape =>
@@ -211,22 +215,21 @@ export const applyOneWireCircuitPresentation = ({
     if (
       shape.kind === 'symbol' &&
       circuitKeyForShape(shape) === circuitKey &&
-      link?.role !== 'breaker' &&
       /automaat|breaker|protection devices/i.test(`${shape.name} ${shape.path}`)
     ) {
+      const electrical = { ...(shape.electrical ?? { role: 'protection' as const, oneWireEligible: true }), ...specification }
+      if (link?.role === 'breaker') {
+        if (JSON.stringify(shape.electrical) === JSON.stringify(electrical)) return shape
+        changed = true
+        return { ...shape, electrical }
+      }
       const isResidualBreaker = /residual-current|differential|differentieel|\brcd\b/i.test(
         `${shape.name} ${shape.path}`
       )
       changed = true
       return {
         ...shape,
-        electrical: {
-          ...(shape.electrical ?? { role: 'protection', oneWireEligible: true }),
-          breakerCurrentA: specification.breakerCurrentA,
-          ...(!isResidualBreaker ? { breakerCurve: specification.breakerCurve } : {}),
-          manufacturer: specification.manufacturer,
-          neutralPosition: specification.neutralPosition
-        },
+        electrical,
         symbolTextOverrides: {
           ...(shape.symbolTextOverrides ?? {}),
           poles: `${specification.poles}P`,

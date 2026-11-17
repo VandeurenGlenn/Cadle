@@ -251,7 +251,7 @@ export class ObjectPane extends LiteElement {
       const electrical = shape.electrical ?? {}
       const defaults = circuitDefaults(electrical.circuitType)
       const cableConductors = electrical.cableConductors ?? defaults.cableConductors
-      this._nativeElectrical = {
+      this._nativeElectrical = this._selectionCount > 1 ? { ...electrical } : {
         ...electrical,
         breakerCurrentA: electrical.breakerCurrentA ?? defaults.breakerCurrentA,
         cableSectionMm2: electrical.cableSectionMm2 ?? defaults.cableSectionMm2,
@@ -488,7 +488,7 @@ export class ObjectPane extends LiteElement {
             : null
           : value || null
     if (typeof parsed === 'number' && (!Number.isFinite(parsed) || parsed <= 0)) return
-    if (field === 'cableConductors' && typeof parsed === 'number') {
+    if (field === 'cableConductors' && typeof parsed === 'number' && this._selectionCount === 1) {
       const hasProtectiveConductor = defaultHasProtectiveConductor(parsed)
       this._nativeElectrical = {
         ...(this._nativeElectrical ?? {}),
@@ -506,6 +506,11 @@ export class ObjectPane extends LiteElement {
 
   #updateManufacturer = (value: string) => {
     const manufacturer = value.trim() || null
+    if (this._selectionCount > 1) {
+      this._nativeElectrical = { ...(this._nativeElectrical ?? {}), manufacturer: manufacturer ?? undefined }
+      pubsub.publish('editor.object.update', { electrical: { manufacturer } })
+      return
+    }
     const neutralPosition = neutralPositionForManufacturer(manufacturer ?? undefined) ?? null
     this._nativeElectrical = {
       ...(this._nativeElectrical ?? {}),
@@ -561,6 +566,7 @@ export class ObjectPane extends LiteElement {
   }
 
   #effectiveElectrical = (): SelectionShapeElectrical => {
+    if (this._selectionCount > 1) return this._nativeElectrical ?? {}
     return effectiveSelectionElectrical(this._nativeElectrical, this._nativeName, this._nativePath)
   }
 
@@ -595,7 +601,7 @@ export class ObjectPane extends LiteElement {
             this._customCableFireClass = selected === 'custom'
             if (selected !== 'custom') onChange(selected)
           }}>
-          <option value="" ?selected=${!custom && !value}>Geen</option>
+          <option value="" ?selected=${!custom && !value}>${electrical && this._selectionCount > 1 ? 'Verschillend / niet ingesteld' : 'Geen'}</option>
           ${CABLE_FIRE_CLASS_OPTIONS.map((option) => html`<option value=${option} ?selected=${!custom && value === option}>${option}</option>`)}
           <option value="custom" ?selected=${custom}>Custom (eigen waarde)</option>
         </select>
@@ -1026,17 +1032,22 @@ export class ObjectPane extends LiteElement {
         ${!multiple && this._nativeSelectedKind === 'line' ? this.#propertySection('connection', 'Cable & wire', html`
 ${this.#renderConnectionProperties()}
 `, true) : ''}
-        ${this._nativeIsRoom ? this.#propertySection('room', 'Room', html`
+        ${this._nativeIsRoom || multiple || ['symbol', 'image', 'door', 'gate'].includes(this._nativeSelectedKind)
+          ? this.#propertySection('room', this._nativeIsRoom ? 'Room' : 'Room / zone', html`
 
               <label class="native-label">Room name</label>
               <input
                 class="native-input room-name-input"
+                aria-label="Room name"
+                maxlength="100"
                 .value=${this._nativeRoomName}
                 @input=${this.#onRoomNameInput}
                 placeholder="e.g. Living" />
+              ${!this._nativeIsRoom ? html`<p class="native-label">Optional for open-plan areas. Leave empty for automatic room detection.</p>` : ''}
 
 `, true) : ''}
-        ${!multiple && this._nativeSelectedKind === 'symbol' ? html`
+        ${this._nativeSelectedKind === 'symbol' ? html`
+          ${multiple ? html`<p class="native-label">Alleen gewijzigde velden worden toegepast. Lege velden kunnen verschillende waarden hebben.</p>` : ''}
           ${this.#propertySection('product', 'Product info', html`
               <label class="native-label">Manufacturer</label>
               <input
@@ -1185,6 +1196,7 @@ ${this.#propertySection('cable', 'Cable', html`
                           .value=${this.#effectiveElectrical().cableType ?? ''}
                           @change=${(event: Event) =>
                             this.#updateElectrical('cableType', (event.target as HTMLSelectElement).value)}>
+                          ${multiple ? html`<option value="">Verschillend / niet ingesteld</option>` : ''}
                           <option value="none">Not set</option>
                           <option value="VOB">VOB</option>
                           <option value="XVB">XVB</option>
@@ -1201,9 +1213,10 @@ ${this.#propertySection('cable', 'Cable', html`
                     <select
                       data-electrical-field="hasProtectiveConductor"
                       class="native-select"
-                      .value=${String(this.#effectiveElectrical().hasProtectiveConductor ?? true)}
+                      .value=${String(this.#effectiveElectrical().hasProtectiveConductor ?? (multiple ? '' : true))}
                       @change=${(event: Event) =>
                         this.#updateElectrical('hasProtectiveConductor', (event.target as HTMLSelectElement).value)}>
+                      ${multiple ? html`<option value="">Verschillend / niet ingesteld</option>` : ''}
                       <option value="true">With yellow/green conductor (G)</option>
                       <option value="false">Without yellow/green conductor (X)</option>
                     </select>
@@ -1263,7 +1276,8 @@ ${this.#propertySection('supply', 'Supply & neutral', html`
                     <label class="native-check-row">
                       <input
                         type="checkbox"
-                        .checked=${this.#effectiveElectrical().showPhaseLabel !== false}
+                        .indeterminate=${multiple && this.#effectiveElectrical().showPhaseLabel === undefined}
+                        .checked=${multiple ? this.#effectiveElectrical().showPhaseLabel === true : this.#effectiveElectrical().showPhaseLabel !== false}
                         @change=${(event: Event) =>
                           this.#setPhaseLabelVisibility((event.target as HTMLInputElement).checked)} />
                       <span>Show phase label</span>
@@ -1284,10 +1298,12 @@ ${this.#propertySection('supply', 'Supply & neutral', html`
                           <button
                             type="button"
                             class="native-chip"
-                            data-active=${(this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
+                            data-active=${(!multiple || this._nativeElectrical?.neutralPosition !== undefined) &&
+                            (this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
                               ? 'true'
                               : 'false'}
-                            aria-checked=${(this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
+                            aria-checked=${(!multiple || this._nativeElectrical?.neutralPosition !== undefined) &&
+                            (this._nativeElectrical?.neutralPosition ?? '') === neutralPosition
                               ? 'true'
                               : 'false'}
                             role="radio"
@@ -1636,7 +1652,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
           : ''}
 
 `, true) : ''}
-        ${!multiple && this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description') ? this.#propertySection('symbol-text', 'Symbol labels', html`
+        ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description') ? this.#propertySection('symbol-text', 'Symbol labels', html`
         ${this._nativeSelectedKind === 'symbol' && this._nativeSymbolTextFields.some((field) => field.key !== 'description')
           ? html`
               <label class="native-label">Symbol text fields</label>

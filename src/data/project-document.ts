@@ -66,14 +66,15 @@ export const nativeStateForProjectPage = (project: Project, pageKey: UUID): Nati
 export const migrateOneWireProjectPages = (
   project: Project,
   layoutVersion: number,
-  migrate: (state: NativeDocumentState, pageKey: UUID) => NativeDocumentState | null
+  migrate: (state: NativeDocumentState, pageKey: UUID) => NativeDocumentState | null,
+  needsRefresh?: (state: NativeDocumentState, pageKey: UUID) => boolean
 ): boolean => {
   let changed = false
   for (const [rawPageKey, page] of Object.entries(project.pages ?? {})) {
     if (page.pageType !== 'onewire') continue
     const pageKey = rawPageKey as UUID
     const state = nativeStateForProjectPage(project, pageKey)
-    if (!state || (state.oneWireLayoutVersion ?? 0) >= layoutVersion) continue
+    if (!state || ((state.oneWireLayoutVersion ?? 0) >= layoutVersion && !needsRefresh?.(state, pageKey))) continue
     const migrated = migrate(state, pageKey)
     if (!migrated) continue
     page.schema = {

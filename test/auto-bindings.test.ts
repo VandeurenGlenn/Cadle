@@ -42,6 +42,18 @@ test('spatially distributes lights and binds switches to the nearest light point
   assert.notEqual(firstLight?.replace(/\d+$/, ''), distantLight?.replace(/\d+$/, ''))
 })
 
+test('keeps explicitly assigned open-plan zones together when ordering socket points', () => {
+  const shapes = [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      ...symbol(`kitchen-${index}`, index * 100, 0, 'load', 'sockets'), roomName: 'Keuken'
+    })),
+    { ...symbol('living', 1, 0, 'load', 'sockets'), roomName: 'Woonkamer' }
+  ]
+  const plan = planAutomaticBindings(shapes, 1)
+  for (let index = 0; index < 8; index++) assert.equal(plan.assignments.get(`kitchen-${index}`), `A${index + 1}`)
+  assert.equal(plan.assignments.get('living'), 'B1')
+})
+
 test('fills a socket circuit up to eight points regardless of distance', () => {
   const shapes = [
     symbol('socket-1', 0, 0, 'load', 'sockets'),

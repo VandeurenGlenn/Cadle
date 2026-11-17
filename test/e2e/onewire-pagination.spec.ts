@@ -43,12 +43,25 @@ test('repairs and persists alphabetical circuit placement on an existing rail', 
       .sort((left, right) => Number(left.getAttribute('x')) - Number(right.getAttribute('x')))
       .map((text) => text.textContent?.trim())
   })
+  const exportedRailPadding = () => app.evaluate((element: any) => {
+    const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    const axes = [...svg.querySelectorAll('text')]
+      .filter((text) => /^(?:[U-Z]|AA|AB)$/.test(text.textContent?.trim() ?? ''))
+      .map((text) => Number(text.getAttribute('x')))
+    const rail = svg.querySelector('line[data-shape-id="alphabetical-rail"]')!
+    return {
+      left: Math.min(...axes) - Number(rail.getAttribute('x1')),
+      right: Number(rail.getAttribute('x2')) - Math.max(...axes)
+    }
+  })
   await expect.poll(exportedOrder).toEqual(expected)
+  for (const padding of Object.values(await exportedRailPadding())) expect(padding).toBeCloseTo(20, 6)
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
   await expect.poll(() => app.evaluate((element: any, key) => element.waitForPageReady(key), root)).toBe(true)
   await expect.poll(exportedOrder).toEqual(expected)
+  for (const padding of Object.values(await exportedRailPadding())) expect(padding).toBeCloseTo(20, 6)
 })
 
 test('creates continuation sheets without shrinking, and undo restores the whole redistribution', async ({ page }) => {

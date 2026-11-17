@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 101
+export const ONE_WIRE_LAYOUT_VERSION = 103
 export const ONE_WIRE_FAMILY_GAP = 10
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
@@ -107,8 +107,10 @@ export const oneWireRailSpanForAnchors = (
     endX = centerX + ONE_WIRE_MIN_RAIL_LENGTH / 2
   }
   if (preserveExisting && existingSpan) {
-    startX = Math.min(startX, existingSpan.startX, existingSpan.endX)
-    endX = Math.max(endX, existingSpan.startX, existingSpan.endX)
+    const length = Math.max(endX - startX, Math.abs(existingSpan.endX - existingSpan.startX))
+    const centerX = (firstAnchor + lastAnchor) / 2
+    startX = centerX - length / 2
+    endX = centerX + length / 2
   }
   return { startX, endX }
 }
@@ -129,9 +131,9 @@ export const packOneWireFamilyBounds = (
     if (index && family.ink?.length && families.slice(0, index).every((previous) => previous.ink?.length)) {
       // Only reserve horizontal space where ink overlaps vertically. A wide
       // upper lighting row need not reserve room for the next breaker's poles.
-      // Keep 3 mm of visible breathing room between neighboring circuits;
+      // Keep 2 mm of visible breathing room between neighboring circuits;
       // collision clearance alone makes the row numbers look attached.
-      const rowGap = Math.max(gap, 24)
+      const rowGap = Math.max(gap, 16)
       x = provisional[index - 1].x + rowGap
       for (let prior = 0; prior < index; prior++) {
         const previous = families[prior]

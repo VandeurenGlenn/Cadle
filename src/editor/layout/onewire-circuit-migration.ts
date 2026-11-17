@@ -17,7 +17,12 @@ type MigrationDependencies = Pick<
   | 'symbolContentBounds'
   | 'branchStroke'
   | 'minimumRowY'
->
+> & {
+  resolveSource?: (breaker: SymbolShape, previous: readonly Shape[]) => {
+    familyComponents: BuildKamrailCircuitBundleInput['familyComponents']
+    signature: string
+  } | undefined
+}
 
 export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: MigrationDependencies): Shape[] => {
   const rails = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && isOneWireRailShape(shape))
@@ -59,11 +64,15 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
           ? shape.sourceLink.id === family && shape.sourceLink.role !== 'description'
           : shape.bindingId?.replace(/\d+$/, '') === family)
     )
+    const source = deps.resolveSource?.(breaker, previous)
+    if (deps.resolveSource && !source) continue
     const devices = previous.filter(
       (shape): shape is SymbolShape =>
         shape.kind === 'symbol' && (shape.sourceLink?.role === 'switch' || shape.sourceLink?.role === 'load')
     )
-    const familyComponents: BuildKamrailCircuitBundleInput['familyComponents'] = devices.flatMap((shape) => {
+    const familyComponents: BuildKamrailCircuitBundleInput['familyComponents'] = source
+      ? [...source.familyComponents]
+      : devices.flatMap((shape) => {
       const symbolIndex = devices
         .filter((candidate) => candidate.groupId === shape.groupId && candidate.bindingId === shape.bindingId)
         .indexOf(shape)
@@ -116,6 +125,7 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
     const fresh = generated.shapes.map((shape): Shape => {
       const old = previousByKey.get(shape.generationKey)
       if (shape.kind === 'text' && old?.kind === 'text') {
+        if (source && shape.sourceLink?.role === 'count-label') return { ...shape, oneWireRailId: rail.id }
         return {
           ...shape,
           oneWireRailId: rail.id,
@@ -146,6 +156,8 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
         return {
           ...shape,
           oneWireRailId: rail.id,
+          ...(shape.sourceLink?.role === 'breaker'
+            ? { oneWireSourceSignature: source?.signature ?? old.oneWireSourceSignature } : {}),
           electrical: old.electrical,
           symbolTextOverrides: old.symbolTextOverrides ?? shape.symbolTextOverrides
         }

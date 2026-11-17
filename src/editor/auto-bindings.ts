@@ -176,7 +176,7 @@ export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitC
   const devices = collapseGroupedDevices(
     shapes.flatMap((shape) => {
       const point = shapeAnchorPoint(shape)
-      const roomName = point ? roomNameAtPoint(rooms, point) : undefined
+      const roomName = shape.roomName?.trim() || (point ? roomNameAtPoint(rooms, point) : undefined)
       const device = electricalDevice(shape, roomName)
       return device ? [device] : []
     }),

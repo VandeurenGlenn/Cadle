@@ -65,6 +65,28 @@ test('manual and generated circuit protections keep the same breaker curve when 
   assert.match(symbolTextPresentation(result.shapes[0] as SymbolShape).annotations, />D25A<\/text>/)
 })
 
+test('editing poles preserves unedited native ratings and updates generated breaker metadata without duplicating its labels', () => {
+  const breaker: SymbolShape = {
+    id: 'breaker', kind: 'symbol', name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg',
+    position: { x: 300, y: 500 }, scale: 4, bindingId: 'A',
+    sourceLink: { kind: 'board', id: 'A', role: 'breaker' },
+    electrical: { role: 'protection', oneWireEligible: true, breakerCurrentA: 32, breakerCurve: 'D',
+      cableSectionMm2: 6, cableConductors: 5, hasProtectiveConductor: true, poles: 2 },
+    symbolTextOverrides: { poles: '', 'rated-current': '', phase: '' }
+  }
+  const result = applyOneWireCircuitPresentation({
+    shapes: [breaker, linkedText('current', 'breaker-current', 'D32A')],
+    circuitKey: 'A', stored: { poles: 4 }
+  })
+  const updated = result.shapes.find((shape) => shape.id === breaker.id) as SymbolShape
+  assert.equal(updated.electrical?.poles, 4)
+  assert.equal(updated.electrical?.breakerCurrentA, 32)
+  assert.equal(updated.electrical?.cableSectionMm2, 6)
+  assert.equal(updated.electrical?.cableConductors, 5)
+  assert.deepEqual(updated.symbolTextOverrides, breaker.symbolTextOverrides)
+  assert.equal((result.shapes.find((shape) => shape.id === 'current') as TextShape).text, 'D32A')
+})
+
 test('applies stored circuit values to generated labels and cable symbols', () => {
   const shapes: Shape[] = [
     linkedText('poles', 'breaker-poles', '4P'),

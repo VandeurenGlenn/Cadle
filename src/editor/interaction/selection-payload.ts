@@ -27,7 +27,7 @@ export type NativeSelectionShapePayload = {
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
-  electrical?: ElectricalDeviceMetadata
+  electrical?: Partial<ElectricalDeviceMetadata>
   circuitPropertiesEditable?: boolean
   bindingId?: string
   bindingLabelOffset?: { x: number; y: number }
@@ -96,9 +96,53 @@ export const createNativeSelectionChangedPayload = (
     drawingScale?: number | null
     symbolStrokeWidthPreference?: number
     heatingObstacles?: HeatingObstacle[]
+    selectedShapes?: readonly Shape[]
+    electricalForShape?: (shape: Shape) => ElectricalDeviceMetadata | undefined
   }
 ): NativeSelectionChangedPayload => {
   const selectionCount = selectedIdsCount > 0 ? selectedIdsCount : selectedShape ? 1 : 0
+  if (selectionCount > 1 && options?.selectedShapes?.length === selectionCount) {
+    const payloads = options.selectedShapes.flatMap((shape) => {
+      const payload = createNativeSelectionChangedPayload(shape, 1, {
+        ...options,
+        selectedShapes: undefined,
+        kindOverride: undefined,
+        bindingIdOverride: undefined,
+        electricalOverride: options.electricalForShape?.(shape) ?? (shape.kind === 'symbol' ? shape.electrical : undefined)
+      }).shape
+      return payload ? [payload] : []
+    })
+    const first = payloads[0]
+    if (first) {
+      const shared = <T extends object>(values: readonly T[]): Partial<T> =>
+        Object.fromEntries(Object.entries(values[0]).filter(([key, value]) =>
+          value !== undefined && values.every((entry) => JSON.stringify(entry[key as keyof T]) === JSON.stringify(value)))) as Partial<T>
+      const common = shared(payloads)
+      const electrical = payloads.every((payload) => payload.electrical)
+        ? shared(payloads.map((payload) => payload.electrical!)) : undefined
+      return {
+        selectionCount,
+        canConvertToRoom: options.canConvertToRoom === true,
+        shape: {
+          ...common,
+          id: '',
+          kind: common.kind ?? 'multiple',
+          electrical,
+          symbolTextFields: first.symbolTextFields?.filter((field) =>
+            payloads.every((payload) => payload.symbolTextFields?.some((candidate) => candidate.key === field.key)))
+            .map((field) => ({
+              ...field,
+              value: payloads.every((payload) =>
+                payload.symbolTextFields?.find((candidate) => candidate.key === field.key)?.value === field.value)
+                ? field.value : ''
+            })),
+          dimensions: undefined,
+          x: undefined,
+          y: undefined
+        }
+      }
+    }
+  }
   if (selectionCount !== 1 || !selectedShape) {
     return {
       selectionCount,
@@ -179,6 +223,10 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.bindingLabelOffset = { ...selectedShape.bindingLabelOffset }
   }
   if (selectedShape.kind === 'symbol' || selectedShape.kind === 'image') shapePayload.name = selectedShape.name
+  if (selectedShape.kind === 'symbol' || selectedShape.kind === 'image' ||
+    selectedShape.kind === 'door' || selectedShape.kind === 'gate') {
+    shapePayload.roomName = selectedShape.roomName ?? ''
+  }
   if (selectedShape.kind === 'wall' && selectedShape.groupId?.startsWith('room-')) {
     shapePayload.isRoom = true
     shapePayload.roomName = selectedShape.roomName ?? ''

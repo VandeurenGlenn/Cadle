@@ -7,6 +7,8 @@ import {
 } from '../src/editor/layout/onewire-regeneration.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 import { migrateOneWireCircuitGeometry } from '../src/editor/layout/onewire-circuit-migration.ts'
+import { createOneWireSourceResolver } from '../src/editor/layout/onewire-source-sync.ts'
+import { sanitizeShapes } from '../src/editor/model/model.ts'
 import { buildKamrailCircuitBundle, type BuildKamrailCircuitBundleInput } from '../src/editor/layout/onewire-helpers.ts'
 import {
   oneWireSymbolNodeInfo,
@@ -257,4 +259,83 @@ test('recomputes node-connected topology geometry instead of preserving disconne
   const result = reconcileGeneratedOneWire([previous], [fresh])
   assert.equal(result.shapes[0].id, 'old-topology')
   assert.deepEqual(result.shapes[0].kind === 'symbol' ? result.shapes[0].position : null, { x: 120, y: 160 })
+})
+
+test('synchronizes changed source devices and lamp counts while retaining standalone circuits and stable identities', () => {
+  let sequence = 0
+  const input: BuildKamrailCircuitBundleInput = {
+    rail: { id: 'rail', kind: 'line', groupId: 'onewire-kamrail-main', start: { x: 0, y: 1200 }, end: { x: 900, y: 1200 } },
+    anchorX: 400, options: { family: 'A', amps: 16, autoIncludeFamily: true, cableType: 'XGB', cableSectionMm2: 4 },
+    familyComponents: ['lamp-1', 'lamp-2'].map((sourceShapeId) => ({
+      bindingId: 'A1', kind: 'load', sourceShapeId, sourcePath: 'symbols/Consumption appliances/Lighting.svg'
+    })),
+    nextShapeId: () => `sync-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path) ?? 1.35,
+    symbolContentBounds: (shape) => ({
+      x: shape.position.x - 12 * shape.scale, y: shape.position.y - 12 * shape.scale,
+      width: 24 * shape.scale, height: 24 * shape.scale
+    }), branchStroke: '#000000'
+  }
+  const manual = buildKamrailCircuitBundle({ ...input, options: { ...input.options, family: 'B' },
+    familyComponents: [{ bindingId: 'B1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Jacuzzi.svg' }] })!.shapes
+  const shapes = [input.rail, ...buildKamrailCircuitBundle(input)!.shapes, ...manual]
+  const families = new Map([['A', [...input.familyComponents, {
+    ...input.familyComponents[0], sourceShapeId: 'lamp-3'
+  }, {
+    bindingId: 'A2', kind: 'load' as const, sourceShapeId: 'heat-pump',
+    sourcePath: 'symbols/Consumption appliances/Heat pump.svg'
+  }]]])
+  const synced = migrateOneWireCircuitGeometry(shapes, { ...input,
+    resolveSource: createOneWireSourceResolver(families, [{ key: 'page', shapes }], 'page') })
+  assert.ok(synced.some((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'count-label' && shape.text === 'x3'))
+  assert.ok(synced.some((shape) => shape.sourceLink?.id === 'heat-pump'))
+  for (const shape of manual) assert.strictEqual(synced.find((candidate) => candidate.id === shape.id), shape)
+  const breaker = synced.find((shape) => shape.sourceLink?.id === 'A' && shape.sourceLink.role === 'breaker')!
+  assert.equal(breaker.id, shapes.find((shape) => shape.sourceLink?.id === 'A' && shape.sourceLink.role === 'breaker')!.id)
+  assert.ok(breaker.oneWireSourceSignature)
+  const saved = sanitizeShapes(synced)
+  const unchanged = migrateOneWireCircuitGeometry(saved, { ...input,
+    resolveSource: createOneWireSourceResolver(families, [{ key: 'page', shapes: saved }], 'page') })
+  assert.ok(unchanged.every((shape, index) => shape === saved[index]))
+  const cleared = migrateOneWireCircuitGeometry(saved, { ...input,
+    resolveSource: createOneWireSourceResolver(new Map(), [{ key: 'page', shapes: saved }], 'page') })
+  assert.ok(!cleared.some((shape) => shape.sourceLink?.kind === 'device' && /^lamp-|heat-pump/.test(shape.sourceLink.id)))
+  assert.ok(cleared.some((shape) => shape.id === breaker.id))
+  assert.ok(cleared.some((shape) => shape.sourceLink?.id === 'B' && shape.sourceLink.role === 'breaker'))
+})
+
+test('source synchronization assigns new numbered points to one continuation chunk only', () => {
+  const page = (key: string, bindingId: string) => ({
+    key, shapes: [
+      { ...generatedSymbol(`${key}-breaker`, `${key}-breaker`, 100),
+        bindingId: 'A', oneWireRailId: key, sourceLink: { kind: 'board' as const, id: 'A', role: 'breaker' } },
+      { ...generatedSymbol(`${key}-load`, `${key}-load`, 100), bindingId, oneWireRailId: key }
+    ]
+  })
+  const pages = [page('first', 'A1'), page('second', 'A2')]
+  const families = new Map([['A', ['A1', 'A2', 'A3'].map((bindingId) => ({
+    bindingId, kind: 'load' as const, sourceShapeId: 'floor-device-1'
+  }))]])
+  const first = createOneWireSourceResolver(families, pages, 'first')(pages[0].shapes[0])
+  const second = createOneWireSourceResolver(families, pages, 'second')(pages[1].shapes[0])
+  assert.deepEqual(first?.familyComponents.map((component) => component.bindingId), ['A1', 'A3'])
+  assert.deepEqual(second?.familyComponents.map((component) => component.bindingId), ['A2'])
+})
+
+test('a matching circuit letter alone does not link a hand-drawn circuit or claim linked source points', () => {
+  const breaker = {
+    ...generatedSymbol('breaker', 'board:A:breaker', 100),
+    bindingId: 'A', sourceLink: { kind: 'board' as const, id: 'A', role: 'breaker' }
+  }
+  const pages = [
+    { key: 'manual', shapes: [breaker, { ...generatedSymbol('manual-load', 'manual-load', 100), bindingId: 'A1' }] },
+    { key: 'linked', shapes: [breaker, { ...generatedSymbol('linked-load', 'linked-load', 100), bindingId: 'A1',
+      sourceLink: { kind: 'device' as const, id: 'actual-floor-device', role: 'load' } }] }
+  ]
+  const families = new Map([['A', [{
+    bindingId: 'A1', kind: 'load' as const, sourceShapeId: 'actual-floor-device'
+  }]]])
+  assert.equal(createOneWireSourceResolver(families, pages, 'manual')(breaker), undefined)
+  assert.equal(createOneWireSourceResolver(families, pages, 'linked')(breaker)?.familyComponents.length, 1)
 })

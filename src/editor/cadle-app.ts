@@ -86,6 +86,7 @@ import {
 } from './layout/project-title-block.js'
 import { buildIntroPageSvg } from './intro-page.js'
 import {
+  analyzeCircuitSchedule,
   buildCircuitScheduleSvgs,
   circuitScheduleEditorItems,
   type CircuitScheduleEditorItem
@@ -104,7 +105,8 @@ import {
   wallMaskTemplate
 } from './svg-templates.js'
 import { translateShape } from './interaction/shape-transforms.js'
-import { followConnectedConductors } from './interaction/connected-conductors.js'
+import { followConnectedConductors, removeRedundantRailAttachments } from './interaction/connected-conductors.js'
+import { createOneWireSourceResolver, oneWireSourceSignature } from './layout/onewire-source-sync.js'
 import { findConnectionIssues, type ConnectionIssue } from './layout/connection-issues.js'
 import { paginateOneWireCircuits } from './layout/onewire-overflow.js'
 import {
@@ -725,6 +727,18 @@ export class CadleApp extends LiteElement {
       isProtectionSymbol && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
     )
     const standaloneCircuitKey = selectedShape ? circuitKeyForShape(selectedShape) : null
+    const multipleSelection = !this.#selectedGroupId() && this.#document.selectedIds.size > 1
+    if (payload.electrical && multipleSelection && currentPageType === 'onewire') {
+      const selected = this.#document.shapes.filter((shape) => this.#document.selectedIds.has(shape.id))
+      if (selected.every((shape) => shape.kind === 'symbol' &&
+        /automaat|breaker|protection devices/i.test(`${shape.name} ${shape.path}`) &&
+        !/^board:main:topology:v\d+:/.test(shape.generationKey ?? '') && circuitKeyForShape(shape))) {
+        this.#circuitUpdatePromise = this.#updateCircuitProperties(
+          [...new Set(selected.map((shape) => circuitKeyForShape(shape)!))], payload.electrical
+        ).catch((error) => { console.error('Failed to update selected circuit properties', error) })
+        return
+      }
+    }
     if (payload.electrical && isTopologyProtection) {
       const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
         selectedIds: this.#document.selectedIds,
@@ -847,6 +861,7 @@ export class CadleApp extends LiteElement {
     }
     if (
       payload.electrical &&
+      !multipleSelection &&
       (circuitGroup || (currentPageType === 'onewire' && isProtectionSymbol && standaloneCircuitKey))
     ) {
       const { role, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
@@ -1097,6 +1112,8 @@ export class CadleApp extends LiteElement {
   }
 
   async #restore() {
+    await this.flushPendingCircuitUpdates()
+    await this.flushPendingSave()
     const loaded = await loadNativeState({
       ...(this.projectKeyOverride ? { projectKey: this.projectKeyOverride as UUID } : {}),
       ...(this.pageKeyOverride ? { pageKey: this.pageKeyOverride as UUID } : {})
@@ -1135,13 +1152,46 @@ export class CadleApp extends LiteElement {
     if (!this.#projectKey || !this.#project) return
     const requestedPageKey = this.#pageKey
     let changed = false
+    const analysis = this.#oneWireController.analyze(
+      this.#groundplanShapePool(false), this.#project.electricalProfile, this.#project.circuitSpecifications
+    )
+    const families = new Map(analysis.groups.map((group) => [
+      group.family, this.#groundplanComponentsForFamily(group.family, analysis)
+    ]))
 
     try {
       changed = migrateOneWireProjectPages(this.#project, this.#oneWireController.layoutVersion, (state, pageKey) => {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
-        return this.#applyPersistedState(state) ? this.#nativeDocumentState() : null
-      })
+        if (!this.#applyPersistedState(state)) return null
+        const synced = migrateOneWireCircuitGeometry(this.#document.shapes, {
+          nextShapeId,
+          oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
+          oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
+          symbolContentBounds,
+          branchStroke: '#000000',
+          minimumRowY: this.#safeAreaRect().y,
+          resolveSource: this.#oneWireSourceResolver(analysis, families)
+        })
+        const sourceChanged = synced.length !== this.#document.shapes.length ||
+          synced.some((shape, index) => shape !== this.#document.shapes[index])
+        if (sourceChanged) {
+          this.#document.shapes = synced
+          for (const family of families.keys()) {
+            this.#document.shapes = applyOneWireCircuitPresentation({
+              shapes: this.#document.shapes,
+              circuitKey: family,
+              stored: this.#project.circuitSpecifications?.[family],
+              groupSpecification: analysis.groups.find((group) => group.family === family)?.specification,
+              profile: this.#project.electricalProfile
+            }).shapes
+          }
+          this.#compactExistingOneWireRail()
+          this.#layoutOneWireLabels(true)
+          this.#redistributeOverflow()
+        }
+        return sourceChanged || this.#documentSizeMigrated ? this.#nativeDocumentState() : null
+      }, () => true)
     } finally {
       this.#pageKey = requestedPageKey
       this.#documentSizeMigrated = false
@@ -1158,6 +1208,21 @@ export class CadleApp extends LiteElement {
     const { route } = parseHash(window.location.hash)
     if (route !== 'editor/model') return
     this.#startInitialize()
+  }
+
+  #oneWireSourceResolver(
+    analysis = this.analyzeBindings(),
+    families = new Map(analysis.families.map((family) => [
+      family, this.#groundplanComponentsForFamily(family, analysis)
+    ]))
+  ) {
+    const pages = Object.entries(this.#project.pages).flatMap(([key, page]) => {
+      if (page.pageType !== 'onewire') return []
+      const shapes = key === this.#pageKey
+        ? this.#document.shapes : nativeStateForProjectPage(this.#project, key as UUID)?.shapes
+      return shapes ? [{ key, shapes }] : []
+    })
+    return createOneWireSourceResolver(families, pages, this.#pageKey)
   }
 
   #applyPersistedState(parsed: Partial<NativeDocumentState>): boolean {
@@ -1354,6 +1419,7 @@ export class CadleApp extends LiteElement {
           heatingSchedulePages: Object.fromEntries(Object.entries(this.#project.pages).filter(([, page]) => page.heatingScheduleOf === this.#pageKey))
         } : {}),
         ...(this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire' ? {
+          circuitSpecifications: this.#project.circuitSpecifications ?? {},
           overflowPages: Object.fromEntries(Object.entries(this.#project.pages).filter(([, page]) => page.oneWireOverflowOf === this.#pageKey))
         } : {})
       },
@@ -1369,6 +1435,11 @@ export class CadleApp extends LiteElement {
     this.#document.selectedId = snapshot.selectedId
     this.#worldWidth = snapshot.worldWidth
     this.#worldHeight = snapshot.worldHeight
+    if (snapshot.circuitSpecifications && this.#project) {
+      this.#project.circuitSpecifications = structuredClone(snapshot.circuitSpecifications)
+      cadleShell.project = this.#project
+      void this.#persistProjectMetadata()
+    }
     if (snapshot.overflowPages && this.#project) {
       for (const [key, page] of Object.entries(this.#project.pages)) {
         if (page.oneWireOverflowOf === this.#pageKey) delete this.#project.pages[key]
@@ -2974,8 +3045,13 @@ export class CadleApp extends LiteElement {
     if (repack) this.#compactExistingOneWireRail()
   }
 
-  #compactExistingOneWireRail(): boolean {
+  #compactExistingOneWireRail(preserveSingleRailLength = false): boolean {
     let changed = false
+    const cleaned = removeRedundantRailAttachments(this.#document.shapes)
+    if (cleaned.length !== this.#document.shapes.length) {
+      this.#document.shapes = cleaned
+      changed = true
+    }
     // Keep the saved circuit names, but omit the duplicate headings from
     // the diagram and from the width reserved for each circuit.
     this.#document.shapes = this.#document.shapes.map((shape) => {
@@ -3071,10 +3147,14 @@ export class CadleApp extends LiteElement {
         const targetX = geometry.familyXs.get(anchor.id)
         if (typeof targetX === 'number') anchorOffsets.set(anchor.id, targetX - anchor.x)
       })
+      const span = this.#oneWireController.railSpanForAnchors(
+        [...geometry.familyXs.values()], { startX: rail.start.x, endX: rail.end.x },
+        preserveSingleRailLength && railAnchors.length === 1
+      )
       railUpdates.set(rail.id, {
         ...rail,
-        start: { ...rail.start, x: geometry.startX },
-        end: { ...rail.end, x: geometry.endX }
+        start: { ...rail.start, x: span?.startX ?? geometry.startX },
+        end: { ...rail.end, x: span?.endX ?? geometry.endX }
       })
     }
     if (!anchorOffsets.size) return changed
@@ -3315,7 +3395,7 @@ export class CadleApp extends LiteElement {
     return lower.includes('switch') || lower.includes('schakel') || lower.includes('knop') ? 'switch' : 'load'
   }
 
-  #groundplanShapePool(): Shape[] {
+  #groundplanShapePool(includeCurrentDocument = true): Shape[] {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     // Separate page coordinate spaces before room inference. Ground plans often
     // reuse the same A4 coordinates, so flattening them directly could assign a
@@ -3325,11 +3405,11 @@ export class CadleApp extends LiteElement {
     const pageKeys = Object.keys(this.#project?.pages ?? {}) as UUID[]
     const currentPageIndex = this.#pageKey ? Math.max(0, pageKeys.indexOf(this.#pageKey)) : 0
     const pageMetadata = this.#project?.pages?.[this.#pageKey]
-    const pool: Shape[] = currentPageType === 'onewire' || pageMetadata?.heatingPlanOf || pageMetadata?.heatingScheduleOf ? [] : pageOffset(this.#document.shapes, currentPageIndex)
+    const pool: Shape[] = !includeCurrentDocument || currentPageType === 'onewire' || pageMetadata?.heatingPlanOf || pageMetadata?.heatingScheduleOf ? [] : pageOffset(this.#document.shapes, currentPageIndex)
     if (!this.#project?.pages) return pool
 
     for (const [pageIndex, pageKey] of pageKeys.entries()) {
-      if (pageKey === this.#pageKey) continue
+      if (includeCurrentDocument && pageKey === this.#pageKey) continue
       const page = this.#project.pages[pageKey]
       if (page?.pageType === 'onewire' || page.heatingPlanOf || page.heatingScheduleOf) continue
       const state = this.#nativeStateForPage(pageKey)
@@ -3377,7 +3457,21 @@ export class CadleApp extends LiteElement {
   }
 
   getCircuitScheduleEditorItems(): CircuitScheduleEditorItem[] {
-    return circuitScheduleEditorItems(this.#project, this.analyzeBindings())
+    return circuitScheduleEditorItems(this.#project, this.#circuitScheduleAnalysis())
+  }
+
+  #circuitScheduleAnalysis(): CircuitAnalysis {
+    const shapes: Shape[] = []
+    for (const [pageKey, page] of Object.entries(this.#project?.pages ?? {})) {
+      if (page.pageType !== 'onewire') continue
+      if (pageKey === this.#pageKey) shapes.push(...this.#document.shapes)
+      else {
+        const state = this.#nativeStateForPage(pageKey as UUID)
+        if (state) shapes.push(...sanitizeShapes(state.shapes, 'onewire'))
+      }
+    }
+    return analyzeCircuitSchedule(this.#groundplanShapePool(), shapes,
+      this.#project?.electricalProfile, this.#project?.circuitSpecifications)
   }
 
   generateAutoOneWire(pageIndex = 0): {
@@ -3659,7 +3753,7 @@ export class CadleApp extends LiteElement {
     }
   }
 
-  #groundplanComponentsForFamily(family: string): Array<{
+  #groundplanComponentsForFamily(family: string, analysis = this.analyzeBindings()): Array<{
     bindingId: string
     kind: 'switch' | 'load' | 'empty'
     sourceShapeId?: string
@@ -3683,7 +3777,7 @@ export class CadleApp extends LiteElement {
       poles: number
       breakerCurve?: string
     }> = []
-    for (const group of this.analyzeBindings().groups.filter((candidate) => candidate.family === family)) {
+    for (const group of analysis.groups.filter((candidate) => candidate.family === family)) {
       const drawable = group.components.filter(
         (
           component
@@ -3696,6 +3790,7 @@ export class CadleApp extends LiteElement {
       )
       if (drawable.length === 0) {
         entries.push({
+          ...group.specification,
           bindingId: group.bindingId,
           kind: 'empty',
           breakerCurrentA: group.specification.breakerCurrentA,
@@ -3709,6 +3804,7 @@ export class CadleApp extends LiteElement {
         const sourcePath =
           component.role === 'protection' ? oneWireProtectionSymbolPath(component.name, component.path) : component.path
         entries.push({
+          ...group.specification,
           bindingId: group.bindingId,
           kind: component.role === 'switch' ? 'switch' : 'load',
           sourceShapeId: component.shapeId,
@@ -3788,7 +3884,12 @@ export class CadleApp extends LiteElement {
         const bounds = oneWireLayoutBounds(shape)
         return [bounds.x, bounds.x + bounds.width]
       })
-    const bundledShapes = result.shapes.map((shape): Shape => ({ ...shape, oneWireRailId: rail.id }))
+    const sourceSignature = options.autoIncludeFamily && familyComponents.some((component) => component.sourceShapeId)
+      ? oneWireSourceSignature(familyComponents) : undefined
+    const bundledShapes = result.shapes.map((shape): Shape => ({
+      ...shape, oneWireRailId: rail.id,
+      ...(shape.sourceLink?.role === 'breaker' && sourceSignature ? { oneWireSourceSignature: sourceSignature } : {})
+    }))
     const newPoints = horizontalPoints(bundledShapes)
     const railFamilies = new Set(
       this.#document.shapes.flatMap((shape) => {
@@ -4174,30 +4275,49 @@ export class CadleApp extends LiteElement {
   }
 
   async #updateCircuitProperties(
-    bindingId: string,
+    bindingId: string | readonly string[],
     update: CircuitPropertyUpdate,
     updateOneWirePresentation = true
   ): Promise<void> {
     if (!this.#projectKey || !this.#project) return
-    const result = updateCircuitSpecifications(this.#project.circuitSpecifications, bindingId, update)
-    if (!result) return
-    const { circuitKey, circuitSpecifications } = result
-    this.#project.circuitSpecifications = circuitSpecifications
+    const circuitKeys: string[] = []
+    for (const binding of typeof bindingId === 'string' ? [bindingId] : bindingId) {
+      const result = updateCircuitSpecifications(this.#project.circuitSpecifications, binding, update)
+      if (!result) continue
+      this.#project.circuitSpecifications = result.circuitSpecifications
+      circuitKeys.push(result.circuitKey)
+    }
+    if (!circuitKeys.length) return
     cadleShell.project = this.#project
     const currentPageType = this.#pageKey ? this.#project.pages[this.#pageKey]?.pageType : undefined
     // Update the visible drawing synchronously. Storage can finish afterward;
     // object-pane input must never wait on IndexedDB before repainting labels.
     const presentationChanged =
       currentPageType === 'onewire' && updateOneWirePresentation
-        ? this.#updateOneWireCircuitPresentation(circuitKey, false)
+        ? circuitKeys.map((key) => this.#updateOneWireCircuitPresentation(key, false, false)).some(Boolean)
         : false
+    if (currentPageType === 'onewire' && updateOneWirePresentation) {
+      const resolveSource = this.#oneWireSourceResolver()
+      this.#document.shapes = this.#document.shapes.map((shape) => {
+        if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker' ||
+          !circuitKeys.includes(shape.sourceLink.id)) return shape
+        const source = resolveSource(shape)
+        return source ? { ...shape, oneWireSourceSignature: source.signature } : shape
+      })
+    }
+    if (presentationChanged) {
+      this.#layoutOneWireLabels(this.#document.shapes.some((shape) => shape.kind === 'text' && !shape.hidden &&
+        shape.sourceLink?.role === 'cable-section' && paperTextLinesForShape(shape).length > 1))
+      this.#pushHistory(false)
+      this.#render()
+    }
     const projectKey = this.#projectKey
     const project = structuredClone(this.#project)
     await this.#persistence.enqueue(() => setProjectData(projectKey, project))
     if (presentationChanged) this.#persist()
   }
 
-  #updateOneWireCircuitPresentation(circuitKey: string, persist = true): boolean {
+  #updateOneWireCircuitPresentation(circuitKey: string, persist = true, recordHistory = true): boolean {
     const groups = this.analyzeBindings().groups.filter((group) => group.family === circuitKey)
     const result = applyOneWireCircuitPresentation({
       shapes: this.#document.shapes,
@@ -4208,6 +4328,7 @@ export class CadleApp extends LiteElement {
     })
     if (!result.changed) return false
     this.#document.shapes = result.shapes
+    if (!recordHistory) return true
     this.#layoutOneWireLabels(result.shapes.some((shape) => shape.kind === 'text' && !shape.hidden &&
       shape.sourceLink?.role === 'cable-section' && paperTextLinesForShape(shape).length > 1))
     this.#pushHistory(persist)
@@ -4269,7 +4390,10 @@ export class CadleApp extends LiteElement {
       isProtectionText && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
     )
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
-    const circuitPropertiesEditable = currentPageType === 'onewire' && Boolean(isProtectionText)
+    const circuitPropertiesEditable = currentPageType === 'onewire' && Boolean(isProtectionText) &&
+      (Boolean(groupedSelection) || selectedShapes.every((shape) => shape.kind === 'symbol' &&
+        /automaat|breaker|protection devices/i.test(`${shape.name} ${shape.path}`) &&
+        !/^board:main:topology:v\d+:/.test(shape.generationKey ?? '')) || selectedShapes.length === 1)
     const effectiveElectrical =
       selectedShape?.kind === 'symbol' && circuitPropertiesEditable
         ? isTopologyProtection
@@ -4290,6 +4414,14 @@ export class CadleApp extends LiteElement {
           ? this.#selectedGroupBindingId()
           : (circuitGroup?.bindingId ?? (selectedShape ? (circuitKeyForShape(selectedShape) ?? undefined) : undefined)),
         electricalOverride: effectiveElectrical,
+        selectedShapes: groupedSelection ? undefined : selectedShapes,
+        electricalForShape: (shape) => {
+          if (shape.kind !== 'symbol' || !circuitPropertiesEditable) return undefined
+          const group = this.#circuitGroupForShape(shape)
+          return group ? effectiveCircuitElectrical(shape, group) : effectiveStandaloneCircuitElectrical(
+            shape, this.#project?.circuitSpecifications, this.#project?.electricalProfile
+          )
+        },
         circuitPropertiesEditable,
         hideSymbolTextFields: Boolean(isProtectionText),
         symbolStrokeWidthPreference: this.#symbolStrokeWidth,
@@ -4437,6 +4569,8 @@ export class CadleApp extends LiteElement {
   }
 
   async exportProjectPdf(filename = `cadle-${this.#paperPreset}.pdf`) {
+    await this.flushPendingCircuitUpdates()
+    await this.flushPendingSave()
     await this.#ensureSymbolMarkupReady()
     const { default: jsPDF } = await import('jspdf')
     const originalPageKey = this.#pageKey
@@ -4460,16 +4594,18 @@ export class CadleApp extends LiteElement {
     const originalWorldWidth = this.#worldWidth
     const originalWorldHeight = this.#worldHeight
     const originalSizeMigrated = this.#documentSizeMigrated
-    const projectPages = Object.entries(this.#project?.pages ?? {}).sort(([, a], [, b]) => {
-      const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
-      const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
-      return orderA - orderB || a.creationTime - b.creationTime
-    })
-
     let pdf: jsPDFType | null = null
     let pageIndex = 0
 
     try {
+      if (!this.readOnly) await this.#migrateOneWirePagesOnProjectLoad()
+      this.#pageKey = originalPageKey
+      this.#applyPersistedState(originalState)
+      const projectPages = Object.entries(this.#project?.pages ?? {}).sort(([, a], [, b]) => {
+        const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
+        const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
+        return orderA - orderB || a.creationTime - b.creationTime
+      })
       // ── Cover / intro page (AREI) ──────────────────────────────────────
       const introSvg = buildIntroPageSvg(this.#project)
       const introDataUrl = await this.#svgToPagePng(introSvg)
@@ -4482,7 +4618,7 @@ export class CadleApp extends LiteElement {
       pageIndex = 1
 
       // ── Distribution-board circuit schedule ───────────────────────────
-      const scheduleSvgs = buildCircuitScheduleSvgs(this.#project, this.analyzeBindings())
+      const scheduleSvgs = buildCircuitScheduleSvgs(this.#project, this.#circuitScheduleAnalysis())
       for (const [scheduleIndex, scheduleSvg] of scheduleSvgs.entries()) {
         const scheduleDataUrl = await this.#svgToPagePng(scheduleSvg, 'portrait')
         pdf.addPage('a4', 'portrait')
@@ -5969,6 +6105,7 @@ export class CadleApp extends LiteElement {
           for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
             this.#updateOneWireCircuitPresentation(circuitKey, false)
           }
+          this.#compactExistingOneWireRail(true)
           this.#pushHistory()
           this.#render()
         }

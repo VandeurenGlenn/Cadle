@@ -256,8 +256,10 @@ const applyProperties = (
     if (bindingId && (!context.groupedSelection || shape.id === context.selectedId)) updated.bindingId = bindingId
     else delete updated.bindingId
   }
-  if ('roomName' in payload && updated.kind === 'wall' && updated.groupId?.startsWith('room-')) {
-    const roomName = typeof payload.roomName === 'string' ? payload.roomName.trim() : ''
+  if ('roomName' in payload && (updated.kind === 'symbol' || updated.kind === 'image' ||
+    updated.kind === 'door' || updated.kind === 'gate' ||
+    (updated.kind === 'wall' && updated.groupId?.startsWith('room-')))) {
+    const roomName = typeof payload.roomName === 'string' ? payload.roomName.trim().slice(0, 100) : ''
     if (roomName) updated.roomName = roomName
     else delete updated.roomName
   }

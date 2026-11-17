@@ -29,6 +29,7 @@ import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 
 const CABLE_FIRE_CLASS_OPTIONS = ['Aca', 'B1ca', 'B2ca', 'Cca', 'Dca', 'Eca', 'Fca', 'CCS', 'LSOH', 'LSZH']
+const CABLE_SECTION_OPTIONS = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240]
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
@@ -39,6 +40,7 @@ export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeHeatingLayout: HeatingLayout | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
   @property({ type: Boolean, attribute: false }) private accessor _customCableFireClass = false
+  @property({ type: Boolean, attribute: false }) private accessor _customCableSection = false
   @property()
   private accessor _activeObjectLabel = 'No selection'
 
@@ -166,7 +168,10 @@ export class ObjectPane extends LiteElement {
   #onNativeSelectionChanged = (payload: SelectionPayload) => {
     this.#cancelBindingSave()
     const selection = normalizeSelection(payload)
-    if (selection.shape?.id !== this._nativeSelectedId) this._customCableFireClass = false
+    if (selection.shape?.id !== this._nativeSelectedId) {
+      this._customCableFireClass = false
+      this._customCableSection = false
+    }
     this._highlightedHeatingCircuit = typeof payload?.highlightedHeatingCircuit === 'string' ? payload.highlightedHeatingCircuit : null
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
@@ -591,6 +596,37 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.update', { connection: update })
   }
 
+  #renderCableSection(value: number | undefined, onChange: (value: string) => void, electrical = false) {
+    const custom = this._customCableSection || (value !== undefined && !CABLE_SECTION_OPTIONS.includes(value))
+    const label = electrical ? 'Cable (mm²)' : 'Doorsnede (mm²)'
+    return html`
+      <label><span class="native-label">${label}</span>
+        <select class="native-select" aria-label=${label} data-electrical-field=${electrical ? 'cableSectionMm2' : ''}
+          @change=${(event: Event) => {
+            const selected = (event.target as HTMLSelectElement).value
+            this._customCableSection = selected === 'custom'
+            if (selected !== 'custom') onChange(selected)
+          }}>
+          ${electrical ? html`<option value="" ?selected=${!custom && value === undefined}>${this._selectionCount > 1 ? 'Verschillend / niet ingesteld' : 'Not set'}</option>` : ''}
+          ${CABLE_SECTION_OPTIONS.map((section) => html`
+            <option value=${String(section)} ?selected=${!custom && value === section}>${String(section).replace('.', ',')} mm²</option>
+          `)}
+          <option value="custom" ?selected=${custom}>Custom (eigen waarde)</option>
+        </select>
+      </label>
+      ${custom ? html`
+        <label><span class="native-label">Eigen doorsnede (mm²)</span>
+          <input class="native-input" type="number" min="0.1" step="0.01" ?required=${!electrical} .value=${value === undefined ? '' : String(value)}
+            @change=${(event: Event) => {
+              const input = event.target as HTMLInputElement
+              if (!input.reportValidity()) return
+              onChange(input.value)
+            }} />
+        </label>
+      ` : ''}
+    `
+  }
+
   #renderCableFireClass(value: string, onChange: (value: string) => void, electrical = false) {
     const custom = this._customCableFireClass || (value !== '' && !CABLE_FIRE_CLASS_OPTIONS.includes(value))
     return html`
@@ -636,10 +672,8 @@ export class ObjectPane extends LiteElement {
         </label>
         ${conductor ? html`
           <div class="native-row">
-            <label><span class="native-label">Doorsnede (mm²)</span>
-              <input class="native-input" type="number" min="0.1" step="0.5" .value=${String(connection.sectionMm2 ?? 2.5)}
-                @change=${(event: Event) => { const value = Number((event.target as HTMLInputElement).value); if (value > 0) this.#updateConnection({ sectionMm2: value }) }} />
-            </label>
+            ${this.#renderCableSection(connection.sectionMm2 ?? 2.5,
+              (value) => this.#updateConnection({ sectionMm2: value ? Number(value) : undefined }))}
             <label><span class="native-label">Aantal geleiders</span>
               <input class="native-input" type="number" min="1" max="1000" step="1" .value=${String(connection.conductors ?? 1)}
                 @change=${(event: Event) => { const value = Number((event.target as HTMLInputElement).value); if (Number.isInteger(value) && value > 0) this.#updateConnection({ conductors: value }) }} />
@@ -1165,18 +1199,10 @@ ${this.#propertySection('protection', 'Protection', html`
 
 `, true)}
 ${this.#propertySection('cable', 'Cable', html`
-<div class="native-row"><label
-                        ><span class="native-label">Cable (mm²)</span
-                        ><input
-                          data-electrical-field="cableSectionMm2"
-                          class="native-input"
-                          type="number"
-                          min="0.1"
-                          step="0.1"
-                          .value=${String(this.#effectiveElectrical().cableSectionMm2 ?? '')}
-                          @input=${(event: Event) =>
-                            this.#updateElectrical('cableSectionMm2', (event.target as HTMLInputElement).value)}
-                      /></label><label
+<div class="native-row">
+                      ${this.#renderCableSection(this.#effectiveElectrical().cableSectionMm2,
+                        (value) => this.#updateElectrical('cableSectionMm2', value), true)}
+                      <label
                         ><span class="native-label">Conductors</span
                         ><input
                           data-electrical-field="cableConductors"

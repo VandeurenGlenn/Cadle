@@ -230,7 +230,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   const objectPane = page.locator('object-pane')
   await objectPane.locator('[data-electrical-field="breakerCurrentA"]').fill('25')
   await objectPane.locator('[data-electrical-field="breakerCurve"]').selectOption('D')
-  await objectPane.locator('[data-electrical-field="cableSectionMm2"]').fill('4')
+  await objectPane.locator('[data-electrical-field="cableSectionMm2"]').selectOption('4')
   await objectPane.locator('[data-electrical-field="cableConductors"]').fill('4')
   await expect(objectPane.locator('[data-electrical-field="hasProtectiveConductor"]')).toHaveValue('false')
   await objectPane.locator('[data-electrical-field="hasProtectiveConductor"]').selectOption('true')

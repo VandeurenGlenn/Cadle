@@ -7,6 +7,87 @@ import type { LineShape } from '../../src/editor/model/types.ts'
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
 
+test('keeps adjacent busbars independently positioned when inserting breakers and reopening the page', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+  const rails: LineShape[] = [
+    { id: 'left-rail', kind: 'line', start: { x: 200, y: 1100 }, end: { x: 840, y: 1100 },
+      strokeWidth: 4, groupId: 'onewire-kamrail-left' },
+    { id: 'right-rail', kind: 'line', start: { x: 1320, y: 1100 }, end: { x: 1960, y: 1100 },
+      strokeWidth: 4, groupId: 'onewire-kamrail-right' },
+    { id: 'lower-rail', kind: 'line', start: { x: 800, y: 1450 }, end: { x: 1800, y: 1450 },
+      strokeWidth: 4, groupId: 'onewire-kamrail-lower' }
+  ]
+  const feeder: LineShape = {
+    id: 'manual-feeder', kind: 'line', start: { x: 520, y: 1100 }, end: { x: 800, y: 1450 },
+    connection: { kind: 'wire', showLabel: false, via: [{ x: 520, y: 1300 }, { x: 800, y: 1300 }] }
+  }
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'adjacent-busbars.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state([...rails, feeder])))
+  })
+  const geometry = () => app.evaluate((element: any) => {
+    const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    // Reload normalizes the cached symbol stroke; it must not change any geometry.
+    for (const symbol of svg.querySelectorAll<SVGSVGElement>('svg')) symbol.style.removeProperty('--symbol-stroke-width')
+    return Object.fromEntries([...svg.querySelectorAll('[data-shape-id]')]
+      .map((shape) => [shape.getAttribute('data-shape-id')!, shape.outerHTML]))
+  })
+  const assertRailCenters = async () => {
+    for (const rail of rails) {
+      const line = app.locator(`line[data-shape-id="${rail.id}"]`)
+      const actual = await line.evaluate((node) => ({
+        center: (Number(node.getAttribute('x1')) + Number(node.getAttribute('x2'))) / 2,
+        y1: Number(node.getAttribute('y1')), y2: Number(node.getAttribute('y2'))
+      }))
+      expect(actual).toEqual({ center: (rail.start.x + rail.end.x) / 2, y1: rail.start.y, y2: rail.end.y })
+    }
+  }
+  const addBreaker = async (railId: string, family: string, untouchedIds: string[]) => {
+    const before = await geometry()
+    const inspector = shell.locator('#object-inspector')
+    if (await inspector.getAttribute('data-open') === 'true') {
+      await inspector.getByRole('button', { name: 'Close properties' }).click()
+    }
+    await page.getByRole('button', { name: 'Add breaker', exact: true }).first().click()
+    const point = await app.locator(`line[data-shape-id="${railId}"]`).evaluate((node: SVGLineElement) => {
+      const point = new DOMPoint(node.x1.baseVal.value + (node.x2.baseVal.value - node.x1.baseVal.value) * 0.8,
+        node.y1.baseVal.value).matrixTransform(node.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+    await page.mouse.click(point.x, point.y)
+    await page.getByRole('textbox', { name: 'Circuit family' }).fill(family)
+    await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
+    await expect.poll(async () => Object.keys(await geometry()).length).toBeGreaterThan(Object.keys(before).length)
+    await assertRailCenters()
+    const after = await geometry()
+    for (const id of untouchedIds) expect(after[id], `Unchanged ${id} after adding ${family}`).toBe(before[id])
+    return [railId, ...Object.keys(after).filter((id) => !before[id])]
+  }
+  const fixedIds = ['lower-rail', feeder.id]
+  const leftIds = await addBreaker('left-rail', 'XA', ['right-rail', ...fixedIds])
+  const rightIds = await addBreaker('right-rail', 'XC', [...leftIds, ...fixedIds])
+  leftIds.push(...await addBreaker('left-rail', 'XB', [...rightIds, ...fixedIds]))
+  const beforeLast = await geometry()
+  await addBreaker('right-rail', 'XD', [...leftIds, ...fixedIds])
+  const completed = await geometry()
+  await app.evaluate((element: any) => element.undo())
+  await expect.poll(geometry).toEqual(beforeLast)
+  await app.evaluate((element: any) => element.redo())
+  await expect.poll(geometry).toEqual(completed)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+  await expect.poll(geometry).toEqual(completed)
+  await assertRailCenters()
+})
+
 test('repairs and persists alphabetical circuit placement on an existing rail', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

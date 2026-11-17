@@ -3045,7 +3045,7 @@ export class CadleApp extends LiteElement {
     if (repack) this.#compactExistingOneWireRail()
   }
 
-  #compactExistingOneWireRail(preserveSingleRailLength = false): boolean {
+  #compactExistingOneWireRail(preserveSingleRailLength = false, targetRailId?: string): boolean {
     let changed = false
     const cleaned = removeRedundantRailAttachments(this.#document.shapes)
     if (cleaned.length !== this.#document.shapes.length) {
@@ -3120,6 +3120,7 @@ export class CadleApp extends LiteElement {
     )
     const railUpdates = new Map<string, LineShape>()
     for (const rail of rails) {
+      if (targetRailId && rail.id !== targetRailId) continue
       const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id)
         .sort((a, b) => compareCircuitFamilies(a.family, b.family) || a.x - b.x)
       if (!railAnchors.length) continue
@@ -3138,23 +3139,22 @@ export class CadleApp extends LiteElement {
           ink: boxes
         }
       })
-      const safeArea = this.#safeAreaRect()
-      const geometry = this.#oneWireController.packFamilies(
-        familyBounds,
-        Math.round((safeArea.x + safeArea.width / 2) / GRID_SIZE) * GRID_SIZE
-      )
+      const centerX = (rail.start.x + rail.end.x) / 2
+      const geometry = this.#oneWireController.packFamilies(familyBounds, centerX)
+      // Keep the terminal span centered on its own rail, not on asymmetric annotations or the page.
+      const offsetX = centerX - (geometry.startX + geometry.endX) / 2
       railAnchors.forEach((anchor) => {
         const targetX = geometry.familyXs.get(anchor.id)
-        if (typeof targetX === 'number') anchorOffsets.set(anchor.id, targetX - anchor.x)
+        if (typeof targetX === 'number') anchorOffsets.set(anchor.id, targetX + offsetX - anchor.x)
       })
       const span = this.#oneWireController.railSpanForAnchors(
-        [...geometry.familyXs.values()], { startX: rail.start.x, endX: rail.end.x },
+        [...geometry.familyXs.values()].map((x) => x + offsetX), { startX: rail.start.x, endX: rail.end.x },
         preserveSingleRailLength && railAnchors.length === 1
       )
       railUpdates.set(rail.id, {
         ...rail,
-        start: { ...rail.start, x: span?.startX ?? geometry.startX },
-        end: { ...rail.end, x: span?.endX ?? geometry.endX }
+        start: { ...rail.start, x: span?.startX ?? geometry.startX + offsetX },
+        end: { ...rail.end, x: span?.endX ?? geometry.endX + offsetX }
       })
     }
     if (!anchorOffsets.size) return changed
@@ -3916,7 +3916,6 @@ export class CadleApp extends LiteElement {
         : 0
     const placedShapes = dx ? bundledShapes.map((shape) => translateShape(shape, dx, 0)) : bundledShapes
     this.#document.shapes.push(...placedShapes)
-    this.#resizeOneWireRailsToBreakers(rail.id)
     this.#document.selectedId = result.selectedId
     this.#document.selectedIds = new Set(result.createdIds)
     this.#oneWireBindingId = this.#nextOneWireBindingId()
@@ -6103,9 +6102,10 @@ export class CadleApp extends LiteElement {
             }
           }
           for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
-            this.#updateOneWireCircuitPresentation(circuitKey, false)
+            this.#updateOneWireCircuitPresentation(circuitKey, false, false)
           }
-          this.#compactExistingOneWireRail(true)
+          this.#layoutOneWireLabels()
+          this.#compactExistingOneWireRail(true, clickedKamrail.id)
           this.#pushHistory()
           this.#render()
         }

@@ -191,6 +191,40 @@ test('includes schematic-only circuits in the overview and saves explicit open-p
     .filter((item: any) => /^[A-E]$/.test(item.id)).map((item: any) => item.id))).toEqual(['A', 'B', 'C', 'D', 'E'])
 })
 
+test('keeps all 55 circuits reachable and editable in the overview', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element: any, key) => element.waitForPageReady(key), schematic)).toBe(true)
+  const families = Array.from({ length: 55 }, (_, index) =>
+    index < 26 ? String.fromCharCode(65 + index) : `${String.fromCharCode(64 + Math.floor(index / 26))}${String.fromCharCode(65 + index % 26)}`)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: '55-circuits.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: families.map((family) => ({ id: `overview-${family}`, kind: 'symbol', position: { x: 700, y: 900 },
+        scale: 3, name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg', bindingId: family,
+        electrical: { role: 'protection', oneWireEligible: true } })),
+      selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
+  })
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any) => { await element.openCircuitScheduleDialog() })
+  const overview = page.locator('circuit-schedule-field')
+  await expect(overview.locator('.device[data-kind="circuit"] .circuit-id').filter({ hasText: /^[A-Z]{1,2}$/ })).toHaveCount(55)
+  const last = overview.getByLabel('Vrije modules voor BC', { exact: true })
+  await overview.locator('main').evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await expect(last).toBeInViewport()
+  await last.fill('3')
+  await last.press('Tab')
+  await expect.poll(() => shell.evaluate((element: any) =>
+    element.project.circuitScheduleLayout.items.find((item: any) => item.id === 'BC')?.gapBefore)).toBe(3)
+})
+
 test('refreshes linked devices, inserts Q alphabetically and edits selected breakers together without losing mixed values', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/?fixture=priority-suite#!/projects')

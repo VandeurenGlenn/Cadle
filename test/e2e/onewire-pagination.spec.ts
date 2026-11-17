@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpers.ts'
-import { oneWireSymbolBounds, oneWireSymbolScaleFor } from '../../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
-import type { LineShape } from '../../src/editor/model/types.ts'
+import type { LineShape, SymbolShape } from '../../src/editor/model/types.ts'
 
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
@@ -88,7 +89,7 @@ test('keeps adjacent busbars independently positioned when inserting breakers an
   await assertRailCenters()
 })
 
-test('repairs and persists alphabetical circuit placement on an existing rail', async ({ page }) => {
+test('repairs and persists alphabetical circuit placement with manual and generated protections on an existing rail', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
   const root = '00000000-0000-4000-8000-000000000104'
@@ -110,24 +111,40 @@ test('repairs and persists alphabetical circuit placement on an existing rail', 
       oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
       oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
       symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
-    })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id }))
+    })!.shapes.map((shape) => {
+      if (family !== 'U' && family !== 'W') return { ...shape, oneWireRailId: rail.id }
+      const { generationKey, sourceLink, bindingId, ...manual } = shape
+      return { ...manual, groupId: `manual-${family}`,
+        ...(sourceLink?.role === 'breaker' ? { bindingId: family } : {}) }
+    })
   )]
+  const manualBreaker = shapes.find((shape) => shape.kind === 'symbol' && shape.bindingId === 'U')
+  if (manualBreaker?.kind !== 'symbol') throw new Error('Missing manual circuit U.')
+  const top = oneWireSymbolConnectionAnchors(manualBreaker).find((anchor) => anchor.side === 'top')!.point
+  const feeder: LineShape = { id: 'manual-top-feeder', kind: 'line', start: top,
+    end: { x: top.x, y: top.y - 100 }, connection: { kind: 'wire', showLabel: false } }
+  const rcdPath = 'symbols/Protection devices/Residual-current circuit breaker.svg'
+  const rcdScale = oneWireSymbolScaleFor(rcdPath)!
+  const rcdBottom = oneWireSymbolTerminalInfo(rcdPath, rcdScale)!.bottom
+  const unlabelled: SymbolShape = { id: 'manual-unlabelled-rcd', kind: 'symbol', name: 'Differentieel',
+    path: rcdPath, scale: rcdScale, position: { x: 2100 - rcdBottom.x, y: rail.start.y - rcdBottom.y },
+    electrical: { role: 'protection', poles: 4, rcdSensitivityMa: 30 } }
   await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
     name: 'alphabetical-circuits.json', mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ ...state(shapes), oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1 }))
+    buffer: Buffer.from(JSON.stringify({ ...state([...shapes, feeder, unlabelled]), oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1 }))
   })
   const expected = ['U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB']
   const exportedOrder = () => app.evaluate((element: any) => {
     const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
-    return [...svg.querySelectorAll('text')]
-      .filter((text) => /^(?:[U-Z]|AA|AB)$/.test(text.textContent?.trim() ?? ''))
+    return [...svg.querySelectorAll('text.shape-text')]
+      .filter((text) => /^(?:[T-Z]|AA|AB)$/.test(text.textContent?.trim() ?? ''))
       .sort((left, right) => Number(left.getAttribute('x')) - Number(right.getAttribute('x')))
       .map((text) => text.textContent?.trim())
   })
   const exportedRailPadding = () => app.evaluate((element: any) => {
     const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
-    const axes = [...svg.querySelectorAll('text')]
-      .filter((text) => /^(?:[U-Z]|AA|AB)$/.test(text.textContent?.trim() ?? ''))
+    const axes = [...svg.querySelectorAll('text.shape-text')]
+      .filter((text) => /^(?:[T-Z]|AA|AB)$/.test(text.textContent?.trim() ?? ''))
       .map((text) => Number(text.getAttribute('x')))
     const rail = svg.querySelector('line[data-shape-id="alphabetical-rail"]')!
     return {
@@ -136,13 +153,54 @@ test('repairs and persists alphabetical circuit placement on an existing rail', 
     }
   })
   await expect.poll(exportedOrder).toEqual(expected)
-  for (const padding of Object.values(await exportedRailPadding())) expect(padding).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).left).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).right).toBeGreaterThan(20)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  const saved = await shell.evaluate((element: any, key) =>
+    element.project.pages[key].schema.objects.find((object: any) => object.kind === 'cadle-native-svg-document').payload.shapes, root)
+  const updatedBreaker = saved.find((shape: any) => shape.id === manualBreaker.id)
+  const updatedFeeder = saved.find((shape: any) => shape.id === feeder.id)
+  expect(updatedFeeder.start).toEqual(oneWireSymbolConnectionAnchors(updatedBreaker).find((anchor) => anchor.side === 'top')!.point)
+  const updatedRcd = saved.find((shape: any) => shape.id === unlabelled.id)
+  const updatedRail = saved.find((shape: any) => shape.id === rail.id)
+  expect(updatedRail.end.x - updatedRcd.position.x - rcdBottom.x).toBeCloseTo(20, 6)
+  expect(updatedRcd.position.y + rcdBottom.y).toBeCloseTo(updatedRail.start.y, 6)
+  for (const family of ['U', 'W']) {
+    const original = shapes.find((shape) => shape.kind === 'symbol' && shape.bindingId === family)
+    if (original?.kind !== 'symbol') throw new Error(`Missing manual circuit ${family}.`)
+    const updated = saved.find((shape: any) => shape.id === original.id)
+    const dx = updated.position.x - original.position.x, dy = updated.position.y - original.position.y
+    for (const shape of shapes.filter((shape) => shape.groupId === `manual-${family}`)) {
+      const current = saved.find((candidate: any) => candidate.id === shape.id)
+      const before = shape.kind === 'line' ? [shape.start, shape.end] : [shape.position]
+      const after = shape.kind === 'line' ? [current.start, current.end] : [current.position]
+      before.forEach((point, index) => {
+        expect(after[index].x).toBeCloseTo(point.x + dx, 6)
+        expect(after[index].y).toBeCloseTo(point.y + dy, 6)
+      })
+    }
+  }
+  await page.getByRole('button', { name: 'Add breaker', exact: true }).first().click()
+  const railPoint = await app.locator('line[data-shape-id="alphabetical-rail"]').evaluate((line: SVGLineElement) => {
+    const point = new DOMPoint(line.x2.baseVal.value - 2, line.y2.baseVal.value).matrixTransform(line.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(railPoint.x, railPoint.y)
+  await page.getByRole('textbox', { name: 'Circuit family' }).fill('T')
+  await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
+  expected.unshift('T')
+  await expect.poll(exportedOrder).toEqual(expected)
+  await app.evaluate((element: any) => element.undo())
+  await expect.poll(exportedOrder).toEqual(expected.slice(1))
+  await app.evaluate((element: any) => element.redo())
+  await expect.poll(exportedOrder).toEqual(expected)
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
   await expect.poll(() => app.evaluate((element: any, key) => element.waitForPageReady(key), root)).toBe(true)
   await expect.poll(exportedOrder).toEqual(expected)
-  for (const padding of Object.values(await exportedRailPadding())) expect(padding).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).left).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).right).toBeGreaterThan(20)
 })
 
 test('creates continuation sheets without shrinking, and undo restores the whole redistribution', async ({ page }) => {

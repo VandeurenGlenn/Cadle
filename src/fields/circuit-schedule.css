@@ -67,8 +67,10 @@ button:disabled {
 }
 main {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 20px;
   padding: 24px;

@@ -190,6 +190,7 @@ import {
 import { getCatalogSymbolStyleDefaults, setStoredCatalogSymbolStyleDefaults } from '../catalog/symbol-overrides.js'
 import {
   circuitBomRows,
+  inferCircuitRole,
   type CircuitAnalysis,
   type CircuitComponent,
   type CircuitGroup,
@@ -2996,26 +2997,38 @@ export class CadleApp extends LiteElement {
     return true
   }
 
+  #oneWireRailAnchors(rails: LineShape[]) {
+    return this.#document.shapes.flatMap((shape) => {
+      if (shape.kind !== 'symbol' || shape.hidden) return []
+      const generated = shape.sourceLink?.role === 'breaker' && Boolean(shape.generationKey)
+      if (!generated && (shape.generationKey || inferCircuitRole(shape) !== 'protection')) return []
+      const family = this.#normalizeBindingFamily(shape.bindingId ??
+        (shape.sourceLink?.role === 'breaker' ? shape.sourceLink.id : ''))
+      const persistedRail = rails.find((rail) => rail.id === shape.oneWireRailId)
+      const ports = oneWireSymbolConnectionAnchors(shape)
+      const candidates = (persistedRail ? [persistedRail] : rails).flatMap((rail) =>
+        ports.map(({ point }) => {
+          const closest = this.#closestPointOnSegment(point, rail.start, rail.end)
+          return { rail, point, distance: Math.hypot(point.x - closest.x, point.y - closest.y) }
+        }))
+      const nearest = candidates.reduce<typeof candidates[number] | undefined>((best, candidate) =>
+        !best || candidate.distance < best.distance ? candidate : best, undefined)
+      if (!nearest || (!generated && nearest.distance > 72)) return []
+      return [{ id: shape.id, groupId: shape.groupId, railId: nearest.rail.id,
+        family: family ?? `@${shape.id}`, named: Boolean(family) && !/^BRK\d+$/.test(family ?? ''),
+        x: nearest.point.x, y: nearest.point.y }]
+    })
+  }
+
   #resizeOneWireRailsToBreakers(targetRailId?: string, preserveExisting = Boolean(targetRailId)): boolean {
     let changed = false
+    const anchors = this.#oneWireRailAnchors(this.#document.shapes.filter(
+      (shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape)
+    ))
     this.#document.shapes = this.#document.shapes.map((shape) => {
       if (shape.kind !== 'line' || !this.#isKamrailShape(shape)) return shape
       if (targetRailId && shape.id !== targetRailId) return shape
-      const anchorXs = this.#document.shapes.flatMap((candidate) => {
-        if (candidate.kind !== 'symbol' || candidate.sourceLink?.role !== 'breaker') return []
-        if (candidate.oneWireRailId) {
-          if (candidate.oneWireRailId !== shape.id) return []
-        }
-        const terminal = oneWireSymbolTerminalInfo(candidate.path, candidate.scale)?.bottom
-        const y = candidate.position.y + (terminal?.y ?? 0)
-        if (
-          !candidate.oneWireRailId &&
-          Math.abs(y - shape.start.y) > KAMRAIL_ATTACH_OFFSET + (shape.strokeWidth ?? KAMRAIL_STROKE_WIDTH)
-        ) {
-          return []
-        }
-        return [candidate.position.x + (terminal?.x ?? 0)]
-      })
+      const anchorXs = anchors.filter((anchor) => anchor.railId === shape.id).map((anchor) => anchor.x)
       if (!anchorXs.length) return shape
       const span = this.#oneWireController.railSpanForAnchors(
         anchorXs,
@@ -3066,29 +3079,7 @@ export class CadleApp extends LiteElement {
     )
     if (!rails.length) return changed
 
-    const nearestRail = (y: number): LineShape =>
-      rails.reduce((nearest, candidate) =>
-        Math.abs(candidate.start.y - y) < Math.abs(nearest.start.y - y) ? candidate : nearest
-      )
-    const anchors = this.#document.shapes.flatMap((shape) => {
-      if (shape.kind !== 'symbol' || shape.sourceLink?.role !== 'breaker' || !shape.generationKey) return []
-      const family = this.#normalizeBindingFamily(shape.bindingId ?? '')
-      if (!family) return []
-      const bottom = oneWireSymbolTerminalInfo(shape.path, shape.scale)?.bottom
-      const y = shape.position.y + (bottom?.y ?? 0)
-      const persistedRail = shape.oneWireRailId ? rails.find((rail) => rail.id === shape.oneWireRailId) : undefined
-      const rail = persistedRail ?? nearestRail(y)
-      return [
-        {
-          id: shape.id,
-          groupId: shape.groupId,
-          railId: rail.id,
-          family,
-          x: shape.position.x + (bottom?.x ?? 0),
-          y
-        }
-      ]
-    })
+    const anchors = this.#oneWireRailAnchors(rails)
     if (!anchors.length) return changed
 
     const shapePoint = (shape: Shape): Point => {
@@ -3116,14 +3107,22 @@ export class CadleApp extends LiteElement {
     }
 
     const anchorOffsets = new Map<string, number>()
-    const familyForShape = (shape: Shape) => this.#normalizeBindingFamily(
-      shape.bindingId ?? (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : '')
-    )
+    const familyForShape = (shape: Shape) => {
+      const ownAnchor = anchors.find((anchor) => anchor.id === shape.id)
+      if (ownAnchor) return ownAnchor.family
+      const family = this.#normalizeBindingFamily(
+        shape.bindingId ?? (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : '')
+      )
+      if (family || !shape.groupId) return family
+      const grouped = anchors.filter((anchor) => anchor.groupId === shape.groupId)
+      return grouped.length === 1 ? grouped[0].family : null
+    }
     const railUpdates = new Map<string, LineShape>()
     for (const rail of rails) {
       if (targetRailId && rail.id !== targetRailId) continue
       const railAnchors = anchors.filter((anchor) => anchor.railId === rail.id)
-        .sort((a, b) => compareCircuitFamilies(a.family, b.family) || a.x - b.x)
+        .sort((a, b) => Number(b.named) - Number(a.named) ||
+          (a.named && b.named ? compareCircuitFamilies(a.family, b.family) : 0) || a.x - b.x)
       if (!railAnchors.length) continue
       const familyShapes = (anchor: typeof railAnchors[number]) => this.#document.shapes.filter((shape) =>
         !shape.hidden && !this.#isKamrailShape(shape) &&
@@ -3160,6 +3159,8 @@ export class CadleApp extends LiteElement {
     }
     if (!anchorOffsets.size) return changed
 
+    const before = this.#document.shapes
+    const movedIds = new Set<string>()
     this.#document.shapes = this.#document.shapes.map((shape) => {
       const rail = railUpdates.get(shape.id)
       if (rail) {
@@ -3171,10 +3172,23 @@ export class CadleApp extends LiteElement {
       const dx = anchor ? anchorOffsets.get(anchor.id) : undefined
       if (!anchor || typeof dx !== 'number') return shape
       const translated = Math.abs(dx) < 0.01 ? shape : translateShape(shape, dx, 0)
+      if (translated !== shape) movedIds.add(shape.id)
       if (translated.oneWireRailId === anchor.railId && translated === shape) return shape
       changed = true
       return { ...translated, oneWireRailId: anchor.railId }
     })
+    if (movedIds.size) {
+      const onRail = (point: Point) => rails.some((rail) => {
+        const closest = this.#closestPointOnSegment(point, rail.start, rail.end)
+        return Math.hypot(point.x - closest.x, point.y - closest.y) < 0.01
+      })
+      // Rail-to-rail feeders belong to the stationary bars, not a circuit that shares their contact point.
+      this.#document.shapes = followConnectedConductors(
+        before.filter((shape) => !this.#oneWireController.isRail(shape) &&
+          !(shape.kind === 'line' && onRail(shape.start) && onRail(shape.end))),
+        this.#document.shapes, movedIds
+      )
+    }
     return changed
   }
 

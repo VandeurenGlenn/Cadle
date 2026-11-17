@@ -26,6 +26,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   it does not render, mutate editor state, or persist data.
 - Breaker ratings share `breakerCurrentLabel` for curve/current text (for example `C20A`), including manual devices,
   generated labels, and annotation bounds. Curve-only edits retain the existing current; RCD ratings have no curve.
+- One-wire rail packing orders manual and generated circuit protections together using their actual terminal contacts.
+  Unlabelled protections retain their relative order after named circuits; each rail keeps its own center, and manual
+  circuit groups and attached conductors follow their protection without moving independent rail-to-rail feeders.
 - The automatic heating planner reserves a complete, disjoint supply/return approach bundle before packing leg fields.
   Measured feeder detours contribute to circuit length budgets. Additional fields trigger renewed pair reservations;
   final rounded routes still require geometry and continuity checks before any result replaces the existing plan.

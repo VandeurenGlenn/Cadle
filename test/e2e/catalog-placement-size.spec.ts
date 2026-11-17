@@ -17,7 +17,8 @@ test('previews and places catalog symbols at the page-specific size without resi
     { name: 'Heat pump', path: 'symbols/Consumption appliances/Heat pump.svg', ground: 2.5 },
     { name: 'Heat pump indoor unit air-air', path: 'symbols/Consumption appliances/Heat pump indoor unit air-air.svg', ground: 3 },
     { name: 'Heat pump indoor unit air-water', path: 'symbols/Consumption appliances/Heat pump indoor unit air-water.svg', ground: 2.5 },
-    { name: 'Heat pump water-water', path: 'symbols/Consumption appliances/Heat pump water-water.svg', ground: 2.5 }
+    { name: 'Heat pump water-water', path: 'symbols/Consumption appliances/Heat pump water-water.svg', ground: 2.5 },
+    { name: 'Jacuzzi', path: 'symbols/Consumption appliances/Jacuzzi.svg', ground: 2.5 }
   ]
   for (const [key, context] of [
     ['00000000-0000-4000-8000-000000000102', 'groundplan'],

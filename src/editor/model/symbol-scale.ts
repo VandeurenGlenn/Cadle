@@ -15,6 +15,7 @@ export const appliancePaperScale = (path: string): number | null => {
   if (/\/consumption appliances\/kwh meter\.svg$/i.test(path)) return 1.15
   if (/\/consumption appliances\/heat pump indoor unit air-air\.svg$/i.test(path)) return 3
   if (/\/consumption appliances\/heat pump(?: indoor unit air-water| water-water)?\.svg$/i.test(path)) return 2.5
+  if (/\/consumption appliances\/jacuzzi\.svg$/i.test(path)) return 2.5
   return null
 }
 

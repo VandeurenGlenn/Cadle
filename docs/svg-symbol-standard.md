@@ -58,3 +58,10 @@ On floor plans, heat pumps use a 7.5 mm paper box, or 9 mm for the wide air-air
 indoor unit. Existing floor-plan symbols at the former default scales of 1 or
 1.15 are upgraded when loaded, while custom sizes and one-wire sizes are kept.
 All four use the center as their one-wire connection point.
+
+## Jacuzzi equipment symbol
+
+The consumption-appliance catalog includes `Jacuzzi`, a top-view equipment
+pictogram with water jets and waves, not an additional normative AREI symbol.
+It uses a 7.5 mm paper box on floor plans and a center connection point in
+one-wire diagrams.

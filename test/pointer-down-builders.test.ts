@@ -311,12 +311,13 @@ test('matches refrigerators and meters to comparable appliance sizes and upgrade
 })
 
 
-test('gives heat pumps readable paper sizes and repairs only the former floor-plan defaults', () => {
+test('gives equipment pictograms readable paper sizes and repairs only the former floor-plan defaults', () => {
   for (const [name, scale] of [
     ['Heat pump', 2.5],
     ['Heat pump indoor unit air-air', 3],
     ['Heat pump indoor unit air-water', 2.5],
-    ['Heat pump water-water', 2.5]
+    ['Heat pump water-water', 2.5],
+    ['Jacuzzi', 2.5]
   ] as const) {
     const symbol = { name, path: `symbols/Consumption appliances/${name}.svg` }
     const shape = createSymbolShape(name, { x: 20, y: 30 }, symbol)

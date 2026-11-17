@@ -336,7 +336,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    match: /consumption appliances\/heat pump(?: indoor unit air-(?:air|water)| water-water)?\.svg$/i,
+    match: /consumption appliances\/(?:heat pump(?: indoor unit air-(?:air|water)| water-water)?|jacuzzi)\.svg$/i,
     spec: {
       viewBox: { width: 100, height: 100 },
       node: { x: 50, y: 50 },

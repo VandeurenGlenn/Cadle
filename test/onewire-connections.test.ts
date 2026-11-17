@@ -73,6 +73,7 @@ test('placed devices connect exactly in every direction and at different scales'
     'symbols/Consumption appliances/Dishwasher.svg',
     'symbols/Consumption appliances/Refrigerator.svg',
     'symbols/Consumption appliances/Videofoon touchscreen.svg',
+    'symbols/Consumption appliances/Alarm klavier.svg',
     'symbols/Consumption appliances/Dryer.svg',
     'symbols/Consumption appliances/Electric oven.svg'
   ]) {

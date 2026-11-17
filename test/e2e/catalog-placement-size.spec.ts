@@ -21,7 +21,8 @@ test('previews and places catalog symbols at the page-specific size without resi
     { name: 'Heat pump indoor unit air-water', path: 'symbols/Consumption appliances/Heat pump indoor unit air-water.svg', ground: 2.5 },
     { name: 'Heat pump water-water', path: 'symbols/Consumption appliances/Heat pump water-water.svg', ground: 2.5 },
     { name: 'Jacuzzi', path: 'symbols/Consumption appliances/Jacuzzi.svg', ground: 2.5 },
-    { name: 'Videofoon touchscreen', path: 'symbols/Consumption appliances/Videofoon touchscreen.svg', ground: 1.15 }
+    { name: 'Videofoon touchscreen', path: 'symbols/Consumption appliances/Videofoon touchscreen.svg', ground: 1.15 },
+    { name: 'Alarm klavier', path: 'symbols/Consumption appliances/Alarm klavier.svg', ground: 1.15 }
   ]
   for (const [key, context] of [
     ['00000000-0000-4000-8000-000000000102', 'groundplan'],
@@ -76,12 +77,13 @@ test('repairs equipment feeds at their SVG outlines, rings or filled dots and pr
   const names = ['Heat pump', 'Heat pump indoor unit air-air', 'Heat pump indoor unit air-water',
     'Heat pump water-water', 'Jacuzzi', 'Washing machine', 'Dryer', 'Electric oven']
   const deviceGroups = [names, ['Heat pump'], ['Jacuzzi'], ['Washing machine'], ['Dryer'], ['Electric oven'],
-    ['Dishwasher', 'Refrigerator', 'Videofoon touchscreen'], ['Dishwasher'], ['Refrigerator'], ['Videofoon touchscreen']]
+    ['Dishwasher', 'Refrigerator', 'Videofoon touchscreen', 'Alarm klavier'],
+    ['Dishwasher'], ['Refrigerator'], ['Videofoon touchscreen'], ['Alarm klavier']]
   const shapes = [rail, ...deviceGroups
     .flatMap((devices, index) => {
     const family = String.fromCharCode(65 + index)
     return buildKamrailCircuitBundle({
-      rail, anchorX: 400 + index * 200, options: { family, amps: 20, autoIncludeFamily: true },
+      rail, anchorX: 400 + index * 180, options: { family, amps: 20, autoIncludeFamily: true },
       familyComponents: devices.map((name, row) => ({ bindingId: `${family}${row + 1}`, kind: 'load',
         sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name, sourceShapeId: `${family}-${row}` })),
       nextShapeId: () => `equipment-${++sequence}`,
@@ -100,7 +102,7 @@ test('repairs equipment feeds at their SVG outlines, rings or filled dots and pr
     return [{
       device: shape.id, feed: feed.id, bottom,
       mark: shape.name === 'Dishwasher' ? 'ring' : /^(?:Washing machine|Dryer|Electric oven)$/.test(shape.name) ? 'dot' : 'rect',
-      width: /^(?:Heat pump|Jacuzzi|Videofoon touchscreen)/.test(shape.name) ? 72 : 48
+      width: /^(?:Heat pump|Jacuzzi|Videofoon touchscreen|Alarm klavier)/.test(shape.name) ? 72 : 48
     }]
   })
   const legacy = shapes.map((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'

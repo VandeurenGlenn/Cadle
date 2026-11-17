@@ -401,7 +401,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    match: /consumption appliances\/videofoon touchscreen\.svg$/i,
+    match: /consumption appliances\/(?:videofoon touchscreen|alarm klavier)\.svg$/i,
     spec: {
       viewBox: { width: 100, height: 100 },
       node: { x: 50, y: 50 },

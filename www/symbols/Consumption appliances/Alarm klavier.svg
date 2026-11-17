@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-cadle-symbol="1">
+  <title>Alarm klavier</title>
+  <g fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="18" y="8" width="64" height="84" rx="4"/>
+    <rect x="26" y="19" width="48" height="16" rx="2"/>
+    <path d="M32 25 H48 M32 30 H62"/>
+    <rect x="30" y="43" width="8" height="7" rx="1"/>
+    <rect x="46" y="43" width="8" height="7" rx="1"/>
+    <rect x="62" y="43" width="8" height="7" rx="1"/>
+    <rect x="30" y="54" width="8" height="7" rx="1"/>
+    <rect x="46" y="54" width="8" height="7" rx="1"/>
+    <rect x="62" y="54" width="8" height="7" rx="1"/>
+    <rect x="30" y="65" width="8" height="7" rx="1"/>
+    <rect x="46" y="65" width="8" height="7" rx="1"/>
+    <rect x="62" y="65" width="8" height="7" rx="1"/>
+    <rect x="30" y="76" width="8" height="7" rx="1"/>
+    <rect x="46" y="76" width="8" height="7" rx="1"/>
+    <rect x="62" y="76" width="8" height="7" rx="1"/>
+  </g>
+</svg>

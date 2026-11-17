@@ -85,3 +85,70 @@ test('renders separated, connected multiple sockets in the one-wire diagram and 
   }, exported)
   expect(exportShape).toEqual({ copies: 3, connectors: 1 })
 })
+
+test('keeps projector arrowheads the same size when the editor thickens the beam strokes', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  await page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000104"]').click()
+  const app = page.locator('cadle-app:not([read-only])')
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+  const shapes = ['Projector with divergent beam', 'Projector with little divergent beam'].flatMap((name, index) =>
+    [false, true].map((grouped) => ({
+      id: `projector-${index}-${grouped}`, kind: 'symbol', name,
+      path: `symbols/Consumption appliances/${name}.svg`, scale: 2,
+      position: { x: 600 + index * 200, y: grouped ? 700 : 500 },
+      ...(grouped ? { groupId: 'onewire-test' } : {})
+    })))
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'projectors.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
+  })
+  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
+
+  for (const shape of shapes) {
+    const symbol = app.locator(`g.shape-symbol[data-shape-id="${shape.id}"] > svg`)
+    await expect(symbol.locator('marker')).toHaveAttribute('markerUnits', 'userSpaceOnUse')
+    const inkCounts = await symbol.evaluate(async (svg) => {
+      const counts: number[] = []
+      for (const strokeWidth of [0.24, 2]) {
+        const clone = svg.cloneNode(true) as SVGSVGElement
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+        clone.setAttribute('width', '192')
+        clone.setAttribute('height', '192')
+        clone.removeAttribute('x')
+        clone.removeAttribute('y')
+        clone.querySelectorAll('ellipse, path:not([marker-end])').forEach((node) => {
+          if (!node.closest('defs')) node.remove()
+        })
+        clone.querySelectorAll<SVGPathElement>('path[marker-end]').forEach((beam) => {
+          beam.style.stroke = 'transparent'
+          beam.style.strokeWidth = String(strokeWidth)
+        })
+        const image = new Image()
+        image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(clone))}`
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 192
+        const context = canvas.getContext('2d')!
+        context.drawImage(image, 0, 0)
+        const pixels = context.getImageData(0, 0, 192, 192).data
+        let ink = 0
+        for (let index = 3; index < pixels.length; index += 4) {
+          if (pixels[index] > 127) ink += 1
+        }
+        counts.push(ink)
+      }
+      return counts
+    })
+    expect(inkCounts[0]).toBeGreaterThan(0)
+    expect(inkCounts[1]).toBe(inkCounts[0])
+  }
+
+  const exported = await app.evaluate((element: any) => element.toSVG())
+  const markerUnits = await page.evaluate((markup) => {
+    const doc = new DOMParser().parseFromString(markup, 'image/svg+xml')
+    return [...doc.querySelectorAll('g[data-shape-id^="projector-"] marker')].map((marker) => marker.getAttribute('markerUnits'))
+  }, exported)
+  expect(markerUnits).toEqual(shapes.map(() => 'userSpaceOnUse'))
+})

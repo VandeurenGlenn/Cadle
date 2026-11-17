@@ -22,7 +22,7 @@ export const protectionLabelLayout = (shape: SymbolShape) => {
     centerY: shape.position.y + (terminals.top.y + terminals.bottom.y) / 2,
     bottomY: shape.position.y + terminals.bottom.y,
     rightX: body.rightX + 10,
-    leftX: body.leftX - 8
+    leftX: body.leftX - 2
   }
 }
 

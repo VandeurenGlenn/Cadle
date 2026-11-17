@@ -55,7 +55,7 @@ const checkClearance = (shapes: Shape[]) => {
   for (const role of ['breaker-poles', 'breaker-current']) {
     const label = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === role)!)
     const gap = role === 'breaker-poles' ? bodyLeft - label.x - label.width : label.x - axisX
-    assert.ok(Math.abs(gap - (role === 'breaker-poles' ? 8 : 10)) < 1e-8)
+    assert.ok(Math.abs(gap - (role === 'breaker-poles' ? 2 : 10)) < 1e-8)
   }
   for (const row of shapes.filter((shape) => shape.sourceLink?.kind !== 'board')) {
     const box = oneWireLayoutBounds(row)

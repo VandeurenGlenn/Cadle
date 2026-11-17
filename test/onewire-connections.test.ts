@@ -47,7 +47,9 @@ test('placed devices connect exactly in every direction and at different scales'
     'symbols/Protection devices/Automaat.svg',
     'symbols/Photovoltaic devices (≠AREI)/Solar panel.svg',
     'symbols/Switches/Switch general symbol.svg',
-    'symbols/Socket outlets/Wall outlet with grounding.svg'
+    'symbols/Socket outlets/Wall outlet with grounding.svg',
+    'symbols/Consumption appliances/Washing machine.svg',
+    'symbols/Consumption appliances/Dryer.svg'
   ]) {
     for (const scale of [0.5, 1, 2.5]) {
       for (const side of ['top', 'bottom', 'left', 'right'] as const) {

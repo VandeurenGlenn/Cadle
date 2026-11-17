@@ -60,6 +60,31 @@ test('marks a near miss but accepts real T junctions and intentional incoming en
   assert.equal(findConnectionIssues([bus, { ...loose, start: { x: 200, y: 200 } }]).length, 0)
 })
 
+test('recognizes washer and dryer center contacts and keeps their wires attached when moved', () => {
+  for (const name of ['Washing machine', 'Dryer']) {
+    const appliance: SymbolShape = {
+      id: 'appliance', kind: 'symbol', name, path: `symbols/Consumption appliances/${name}.svg`,
+      position: { x: 200, y: 100 }, scale: 2, rotation: 90, flipX: true
+    }
+    const feed = { ...wire('feed', appliance.position, { x: 200, y: 400 }),
+      sourceLink: { kind: 'board' as const, id: 'main', role: 'grid-incoming' } }
+    assert.deepEqual(findConnectionIssues([appliance, feed]), [], name)
+
+    const nearMiss = { ...feed, start: { x: 200, y: 108 } }
+    const issues = findConnectionIssues([appliance, nearMiss])
+    assert.equal(issues.length, 1)
+    assert.deepEqual(issues[0].nearby, appliance.position)
+
+    const moved = { ...appliance, position: { x: 240, y: 120 } }
+    const result = followConnectedConductors([appliance, feed], [moved, feed], new Set([appliance.id]))
+    assert.equal(result[1].kind, 'line')
+    if (result[1].kind !== 'line') throw new Error('Expected the appliance feed')
+    assert.deepEqual(result[1].start, moved.position)
+    assert.deepEqual(result[1].end, feed.end)
+    assert.deepEqual(findConnectionIssues(result), [], name)
+  }
+})
+
 let sequence = 0
 const nextId = () => `overflow-${++sequence}`
 const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 80, y: 1200 }, end: { x: 2300, y: 1200 },

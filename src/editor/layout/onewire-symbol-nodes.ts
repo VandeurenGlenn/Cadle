@@ -17,7 +17,6 @@ const COMPACT_ROW_SYMBOL = /(?:switches\/impulse relay|consumption appliances\/f
 const PUSH_BUTTON_SYMBOL_FACTOR = 4.25 / 3
 const PUSH_BUTTON_SYMBOL = /switches\/(?:illuminated |double )?push button\.svg$/i
 const ONE_WIRE_PROJECTOR_BEAM_PATH = /consumption appliances\/projector with (little )?divergent beam\.svg$/i
-const PROJECTOR_BEAM_SOURCE_STROKE_WIDTH = 0.24
 export const ONE_WIRE_DEFAULT_SCALE = (6 * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_BREAKER_SCALE = (PROTECTION_HEIGHT_MM * PAPER_WORLD_UNITS_PER_MM) / 24
 export const ONE_WIRE_METER_SCALE = (8 * PAPER_WORLD_UNITS_PER_MM) / 24
@@ -337,6 +336,15 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
+    match: /consumption appliances\/(?:washing machine|dryer)\.svg$/i,
+    spec: {
+      viewBox: { width: 17.2579, height: 17.2579 },
+      node: { x: 8.62895, y: 8.62895 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     // Circle with M — interrupt at the circle edge.
     match: /consumption appliances\/motor\.svg$/i,
     spec: {
@@ -434,20 +442,6 @@ const TARGET_NODE_RADIUS = PAPER_WORLD_UNITS_PER_MM * ROW_SYMBOL_SCALE_FACTOR
 const MAX_NODE_NORMALIZED_SCALE = 3 * ROW_SYMBOL_SCALE_FACTOR
 
 const findSpec = (path: string): NodeSpec | null => NODE_SPECS.find(({ match }) => match.test(path))?.spec ?? null
-
-export const normalizeOneWireProjectorBeamMarkers = (path: string, groupId: string | undefined, inner: string): string => {
-  if (!groupId?.startsWith('onewire-') || !ONE_WIRE_PROJECTOR_BEAM_PATH.test(path)) {
-    return inner
-  }
-  // Keep marker geometry at its original size when the one-wire stroke is normalized.
-  return inner
-    .replace(/markerUnits="strokeWidth"/g, 'markerUnits="userSpaceOnUse"')
-    .replace(/refX="-12\.25"/g, `refX="${-12.25 * PROJECTOR_BEAM_SOURCE_STROKE_WIDTH}"`)
-    .replace(
-      /scale\(-7,-7\)/g,
-      `scale(${-7 * PROJECTOR_BEAM_SOURCE_STROKE_WIDTH},${-7 * PROJECTOR_BEAM_SOURCE_STROKE_WIDTH})`
-    )
-}
 
 export const oneWireSymbolBounds = (shape: { path: string; scale: number; position: Point; rotation?: number; name?: string; electrical?: SymbolShape['electrical'] }) => {
   const spec = findSpec(shape.path)

@@ -22,6 +22,7 @@ import {
   oneWireSymbolTerminalInfo
 } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { sanitizeShapes } from '../src/editor/model/model.ts'
+import { findConnectionIssues } from '../src/editor/layout/connection-issues.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 
 const idSequence = () => {
@@ -794,6 +795,49 @@ test('turns a lone socket onto the vertical circuit trunk', () => {
   assert.ok(Math.abs(outlet.position.x + outletNode.offset.x - trunk.end.x) < 0.0001)
   assert.ok(Math.abs(outlet.position.y + outletNode.offset.y - trunk.end.y) < 0.0001)
   assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'number-label'))
+})
+
+test('enlarges boxed appliances and terminates single and numbered feeds on their cabinet outlines', () => {
+  for (const [name, left, top, width, height] of [
+    ['Heat pump', 7, 16, 84, 64],
+    ['Heat pump indoor unit air-air', 5, 28, 90, 36],
+    ['Heat pump indoor unit air-water', 20, 8, 60, 78],
+    ['Heat pump water-water', 10, 8, 80, 78],
+    ['Jacuzzi', 8, 8, 84, 84]
+  ] as const) {
+    for (const rowCount of [1, 2]) {
+      const rail = { id: 'rail', kind: 'line' as const, start: { x: 80, y: 900 }, end: { x: 900, y: 900 },
+        groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+      const result = buildKamrailCircuitBundle({
+        rail, anchorX: 400, options: { amps: 20, family: 'A', autoIncludeFamily: true },
+        familyComponents: Array.from({ length: rowCount }, (_, index) => ({
+          bindingId: `A${index + 1}`, kind: 'load' as const, sourceShapeId: `load-${index}`,
+          sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name
+        })),
+        nextShapeId: idSequence(),
+        oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+        oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+        symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+        branchStroke: '#000000'
+      })
+      assert.ok(result)
+      const device = result.shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'load-0')
+      assert.ok(device?.kind === 'symbol')
+      assert.equal(device.scale * 24 / 8, 9)
+      const sourceScale = device.scale * 24 / 100
+      const contact = rowCount === 1
+        ? { x: device.position.x + (left + width / 2 - 50) * sourceScale,
+            y: device.position.y + (top + height - 50) * sourceScale }
+        : { x: device.position.x + (left - 50) * sourceScale,
+            y: device.position.y + (top + height / 2 - 50) * sourceScale }
+      const feed = result.shapes.find((shape) => shape.kind === 'line' && (rowCount === 1
+        ? shape.sourceLink?.role === 'trunk'
+        : shape.sourceLink?.role === 'row-wire' && shape.bindingId === 'A1'))
+      assert.ok(feed?.kind === 'line')
+      assert.ok(Math.hypot(feed.end.x - contact.x, feed.end.y - contact.y) < 1e-8, `${name}: ${rowCount} rows`)
+      assert.deepEqual(findConnectionIssues([rail, ...result.shapes]), [], name)
+    }
+  }
 })
 
 test('keeps numbered row symbols close to the vertical circuit trunk', () => {

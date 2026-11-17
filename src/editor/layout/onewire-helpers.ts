@@ -15,6 +15,7 @@ import { phaseConfigurationLabel, neutralPositionForManufacturer, shouldShowPhas
 import {
   oneWireSymbolBounds,
   oneWireSymbolNodeInfo,
+  oneWireSymbolPortInfo,
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
   oneWireSymbolStrokeWidthFor,
@@ -529,7 +530,10 @@ export const buildOneWireRowSection = (
     const inlineRotation = oneWireSymbolRotationFor(component.path)
     const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
     const rotation = placeDirectlyOnTrunk && isSocket ? (inlineRotation ?? 0) - 90 : inlineRotation
-    const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
+    const centerNode = oneWireSymbolNodeInfo(component.path, scale, rotation)
+    const bottomPort = placeDirectlyOnTrunk && entry.kind === 'load' && !isSocket
+      ? oneWireSymbolPortInfo(component.path, scale)?.bottom : undefined
+    const node = centerNode && bottomPort ? { ...centerNode, offset: bottomPort } : centerNode
     const probeSlotX = 0
     const probe: SymbolShape = {
       id: deps.nextShapeId(),

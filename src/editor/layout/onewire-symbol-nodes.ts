@@ -336,12 +336,68 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     }
   },
   {
-    match: /consumption appliances\/(?:heat pump(?: indoor unit air-(?:air|water)| water-water)?|jacuzzi)\.svg$/i,
+    match: /consumption appliances\/heat pump\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 49, y: 48 },
+      cutRadius: 42,
+      connectionPorts: {
+        left: { x: 7, y: 48 }, right: { x: 91, y: 48 },
+        top: { x: 49, y: 16 }, bottom: { x: 49, y: 80 }
+      },
+      oneWireScale: 3
+    }
+  },
+  {
+    match: /consumption appliances\/heat pump indoor unit air-air\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 50, y: 46 },
+      cutRadius: 45,
+      connectionPorts: {
+        left: { x: 5, y: 46 }, right: { x: 95, y: 46 },
+        top: { x: 50, y: 28 }, bottom: { x: 50, y: 64 }
+      },
+      oneWireScale: 3
+    }
+  },
+  {
+    match: /consumption appliances\/heat pump indoor unit air-water\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 50, y: 47 },
+      cutRadius: 30,
+      connectionPorts: {
+        left: { x: 20, y: 47 }, right: { x: 80, y: 47 },
+        top: { x: 50, y: 8 }, bottom: { x: 50, y: 86 }
+      },
+      oneWireScale: 3
+    }
+  },
+  {
+    match: /consumption appliances\/heat pump water-water\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 50, y: 47 },
+      cutRadius: 40,
+      connectionPorts: {
+        left: { x: 10, y: 47 }, right: { x: 90, y: 47 },
+        top: { x: 50, y: 8 }, bottom: { x: 50, y: 86 }
+      },
+      oneWireScale: 3
+    }
+  },
+  {
+    match: /consumption appliances\/jacuzzi\.svg$/i,
     spec: {
       viewBox: { width: 100, height: 100 },
       node: { x: 50, y: 50 },
-      cutRadius: null,
-      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+      cutRadius: 42,
+      connectionPorts: {
+        left: { x: 8, y: 50 }, right: { x: 92, y: 50 },
+        top: { x: 50, y: 8 }, bottom: { x: 50, y: 92 }
+      },
+      oneWireScale: 3
     }
   },
   {

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { oneWireSymbolScaleFor } from '../../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireSymbolBounds, oneWireSymbolScaleFor } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpers.ts'
+import type { LineShape } from '../../src/editor/model/types.ts'
 
 test('previews and places catalog symbols at the page-specific size without resizing existing objects', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
@@ -55,6 +57,83 @@ test('previews and places catalog symbols at the page-specific size without resi
     }
     await page.screenshot({ path: `/private/tmp/cadle-catalog-placement-${context}.png` })
   }
+})
+
+test('repairs enlarged equipment feeds at the visible cabinet outline and preserves them on reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const app = page.locator('cadle-app:not([read-only])')
+  const shell = page.locator('app-shell')
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  const root = '00000000-0000-4000-8000-000000000104'
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+  let sequence = 0
+  const rail: LineShape = { id: 'equipment-rail', kind: 'line', start: { x: 80, y: 1200 }, end: { x: 2200, y: 1200 },
+    groupId: 'onewire-kamrail-equipment', strokeWidth: 4 }
+  const names = ['Heat pump', 'Heat pump indoor unit air-air', 'Heat pump indoor unit air-water',
+    'Heat pump water-water', 'Jacuzzi']
+  const shapes = [rail, ...[names, ['Heat pump'], ['Jacuzzi']].flatMap((devices, index) => {
+    const family = String.fromCharCode(65 + index)
+    return buildKamrailCircuitBundle({
+      rail, anchorX: 500 + index * 400, options: { family, amps: 20, autoIncludeFamily: true },
+      familyComponents: devices.map((name, row) => ({ bindingId: `${family}${row + 1}`, kind: 'load',
+        sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name, sourceShapeId: `${family}-${row}` })),
+      nextShapeId: () => `equipment-${++sequence}`,
+      oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+    })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id }))
+  })]
+  const contacts = shapes.flatMap((shape) => {
+    if (shape.kind !== 'symbol' || shape.sourceLink?.kind !== 'device') return []
+    const bottom = !shape.bindingId?.startsWith('A')
+    const feed = shapes.find((candidate) => candidate.kind === 'line' && (bottom
+      ? candidate.sourceLink?.role === 'trunk' && candidate.bindingId === shape.bindingId?.replace(/\d+$/, '')
+      : candidate.sourceLink?.role === 'row-wire' && candidate.bindingId === shape.bindingId))
+    if (!feed) throw new Error(`Missing equipment feed for ${shape.name}`)
+    return [{ device: shape.id, feed: feed.id, bottom }]
+  })
+  const legacy = shapes.map((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'
+    ? { ...shape, scale: 2, position: { x: shape.position.x + 10, y: shape.position.y + 10 } } : shape)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'equipment-old-connections.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1,
+      shapes: legacy, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
+  })
+  const inspectContacts = () => app.evaluate((element: any, contacts) => {
+    const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+    return contacts.map(({ device, feed, bottom }) => {
+      const svg = element.shadowRoot.querySelector(`g.shape-symbol[data-shape-id="${device}"] > svg`) as SVGSVGElement
+      const rect = svg.querySelector('rect')!
+      const wire = element.shadowRoot.querySelector(`line[data-shape-id="${feed}"]`) as SVGLineElement
+      const bodyContact = new DOMPoint(
+        rect.x.baseVal.value + (bottom ? rect.width.baseVal.value / 2 : 0),
+        rect.y.baseVal.value + rect.height.baseVal.value * (bottom ? 1 : 0.5)
+      ).matrixTransform(rect.getScreenCTM()!)
+      const wireContact = new DOMPoint(wire.x2.baseVal.value, wire.y2.baseVal.value).matrixTransform(wire.getScreenCTM()!)
+      const exportedWire = exported.querySelector(`line[data-shape-id="${feed}"]`)!
+      return {
+        gap: Math.hypot(bodyContact.x - wireContact.x, bodyContact.y - wireContact.y),
+        width: Number(svg.getAttribute('width')),
+        exportWidth: Number(exported.querySelector(`g[data-shape-id="${device}"] svg`)!.getAttribute('width')),
+        exportGap: Math.hypot(Number(exportedWire.getAttribute('x2')) - wire.x2.baseVal.value,
+          Number(exportedWire.getAttribute('y2')) - wire.y2.baseVal.value)
+      }
+    })
+  }, contacts)
+  const expected = contacts.map(() => ({ gap: 0, width: 72, exportWidth: 72, exportGap: 0 }))
+  await expect.poll(async () => (await inspectContacts()).map((contact) =>
+    ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
+    .toEqual(expected)
+  await page.screenshot({ path: '/private/tmp/cadle-equipment-connections.png' })
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
+  await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
+  await expect.poll(async () => (await inspectContacts()).map((contact) =>
+    ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
+    .toEqual(expected)
 })
 
 test('renders separated, connected multiple sockets in the one-wire diagram and export', async ({ page }) => {

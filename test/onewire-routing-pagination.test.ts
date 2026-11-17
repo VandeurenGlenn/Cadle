@@ -60,27 +60,28 @@ test('marks a near miss but accepts real T junctions and intentional incoming en
   assert.equal(findConnectionIssues([bus, { ...loose, start: { x: 200, y: 200 } }]).length, 0)
 })
 
-test('recognizes appliance center contacts and keeps their wires attached when moved', () => {
+test('recognizes appliance contacts and keeps their wires attached when moved', () => {
   for (const name of ['Washing machine', 'Dryer', 'Heat pump', 'Heat pump indoor unit air-air',
     'Heat pump indoor unit air-water', 'Heat pump water-water', 'Jacuzzi']) {
     const appliance: SymbolShape = {
       id: 'appliance', kind: 'symbol', name, path: `symbols/Consumption appliances/${name}.svg`,
       position: { x: 200, y: 100 }, scale: 2, rotation: 90, flipX: true
     }
-    const feed = { ...wire('feed', appliance.position, { x: 200, y: 400 }),
+    const contact = oneWireSymbolConnectionAnchors(appliance).find((anchor) => anchor.side === 'bottom')!.point
+    const feed = { ...wire('feed', contact, { x: contact.x, y: 400 }),
       sourceLink: { kind: 'board' as const, id: 'main', role: 'grid-incoming' } }
     assert.deepEqual(findConnectionIssues([appliance, feed]), [], name)
 
-    const nearMiss = { ...feed, start: { x: 200, y: 108 } }
+    const nearMiss = { ...feed, start: { x: contact.x + 8, y: contact.y } }
     const issues = findConnectionIssues([appliance, nearMiss])
     assert.equal(issues.length, 1)
-    assert.deepEqual(issues[0].nearby, appliance.position)
+    assert.deepEqual(issues[0].nearby, contact)
 
     const moved = { ...appliance, position: { x: 240, y: 120 } }
     const result = followConnectedConductors([appliance, feed], [moved, feed], new Set([appliance.id]))
     assert.equal(result[1].kind, 'line')
     if (result[1].kind !== 'line') throw new Error('Expected the appliance feed')
-    assert.deepEqual(result[1].start, moved.position)
+    assert.deepEqual(result[1].start, oneWireSymbolConnectionAnchors(moved).find((anchor) => anchor.side === 'bottom')!.point)
     assert.deepEqual(result[1].end, feed.end)
     assert.deepEqual(findConnectionIssues(result), [], name)
   }

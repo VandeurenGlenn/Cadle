@@ -324,7 +324,7 @@ test('gives equipment pictograms readable paper sizes and repairs only the forme
     assert.equal(shape.scale, scale)
     assert.equal(shape.electrical?.role, 'load')
     assert.equal(shape.electrical?.oneWireEligible, true)
-    assert.equal(resolveCatalogSymbolScale(symbol, 'onewire'), 2)
+    assert.equal(resolveCatalogSymbolScale(symbol, 'onewire'), 3)
 
     for (const oldScale of [1, 1.15]) {
       const old = { ...shape, scale: oldScale, strokeWidth: 0.5 }

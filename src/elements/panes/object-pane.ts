@@ -28,6 +28,8 @@ import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
 import '@vandeurenglenn/lite-elements/icon.js'
 
+const CABLE_FIRE_CLASS_OPTIONS = ['Aca', 'B1ca', 'B2ca', 'Cca', 'Dca', 'Eca', 'Fca', 'CCS', 'LSOH', 'LSZH']
+
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale?: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
@@ -36,6 +38,7 @@ export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeHeating: HeatingData | null = null
   @property({ attribute: false }) private accessor _nativeHeatingLayout: HeatingLayout | null = null
   @property({ attribute: false }) private accessor _nativeConnection: ElectricalConnection | null = null
+  @property({ type: Boolean, attribute: false }) private accessor _customCableFireClass = false
   @property()
   private accessor _activeObjectLabel = 'No selection'
 
@@ -163,6 +166,7 @@ export class ObjectPane extends LiteElement {
   #onNativeSelectionChanged = (payload: SelectionPayload) => {
     this.#cancelBindingSave()
     const selection = normalizeSelection(payload)
+    if (selection.shape?.id !== this._nativeSelectedId) this._customCableFireClass = false
     this._highlightedHeatingCircuit = typeof payload?.highlightedHeatingCircuit === 'string' ? payload.highlightedHeatingCircuit : null
     this._selectionCount = selection.selectionCount
     this._canConvertToRoom = selection.canConvertToRoom === true
@@ -581,6 +585,30 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.update', { connection: update })
   }
 
+  #renderCableFireClass(value: string, onChange: (value: string) => void, electrical = false) {
+    const custom = this._customCableFireClass || (value !== '' && !CABLE_FIRE_CLASS_OPTIONS.includes(value))
+    return html`
+      <label><span class="native-label">Brandklasse (optioneel)</span>
+        <select class="native-select" data-electrical-field=${electrical ? 'cableFireClass' : ''}
+          @change=${(event: Event) => {
+            const selected = (event.target as HTMLSelectElement).value
+            this._customCableFireClass = selected === 'custom'
+            if (selected !== 'custom') onChange(selected)
+          }}>
+          <option value="" ?selected=${!custom && !value}>Geen</option>
+          ${CABLE_FIRE_CLASS_OPTIONS.map((option) => html`<option value=${option} ?selected=${!custom && value === option}>${option}</option>`)}
+          <option value="custom" ?selected=${custom}>Custom (eigen waarde)</option>
+        </select>
+      </label>
+      ${custom ? html`
+        <label><span class="native-label">Eigen brandklasse</span>
+          <input class="native-input" type="text" maxlength="80" placeholder="Bijv. Cca-s1,d2,a1" .value=${value}
+            @change=${(event: Event) => onChange((event.target as HTMLInputElement).value.trim())} />
+        </label>
+      ` : ''}
+    `
+  }
+
   #renderConnectionProperties() {
     const connection = this._nativeConnection
     const conductor = connection?.kind === 'wire' || connection?.kind === 'cable'
@@ -617,10 +645,7 @@ export class ObjectPane extends LiteElement {
               ${['none', 'VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].map((type) => html`<option value=${type} ?selected=${(connection.cableType ?? 'none') === type}>${type === 'none' ? 'Geen' : type === 'other' ? 'Ander' : type.replace('-', ' ')}</option>`)}
             </select>
           </label>
-          <label><span class="native-label">Brandklasse (optioneel)</span>
-            <input class="native-input" type="text" maxlength="80" placeholder="Bijv. Cca" .value=${connection.fireClass ?? ''}
-              @change=${(event: Event) => this.#updateConnection({ fireClass: (event.target as HTMLInputElement).value.trim() })} />
-          </label>
+          ${this.#renderCableFireClass(connection.fireClass ?? '', (fireClass) => this.#updateConnection({ fireClass }))}
           <label class="native-check"><input type="checkbox" .checked=${connection.hasProtectiveConductor ?? false}
             @change=${(event: Event) => this.#updateConnection({ hasProtectiveConductor: (event.target as HTMLInputElement).checked })} /> Met beschermingsgeleider (G)</label>
         ` : ''}
@@ -1169,11 +1194,9 @@ ${this.#propertySection('cable', 'Cable', html`
                           <option value="EXVB">EXVB</option>
                           <option value="other">Other</option>
                         </select></label
-                      ><label><span class="native-label">Brandklasse (optioneel)</span>
-                      <input data-electrical-field="cableFireClass" class="native-input" type="text" maxlength="80"
-                        placeholder="Bijv. Cca" .value=${this.#effectiveElectrical().cableFireClass ?? ''}
-                        @change=${(event: Event) => this.#updateElectrical('cableFireClass', (event.target as HTMLInputElement).value.trim())} />
-                    </label></div>
+                      ></div>
+                    ${this.#renderCableFireClass(this.#effectiveElectrical().cableFireClass ?? '',
+                      (value) => this.#updateElectrical('cableFireClass', value), true)}
                     <label class="native-label">Protective conductor</label>
                     <select
                       data-electrical-field="hasProtectiveConductor"

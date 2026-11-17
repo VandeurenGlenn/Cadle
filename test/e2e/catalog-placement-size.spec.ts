@@ -22,7 +22,8 @@ test('previews and places catalog symbols at the page-specific size without resi
     { name: 'Heat pump water-water', path: 'symbols/Consumption appliances/Heat pump water-water.svg', ground: 2.5 },
     { name: 'Jacuzzi', path: 'symbols/Consumption appliances/Jacuzzi.svg', ground: 2.5 },
     { name: 'Videofoon touchscreen', path: 'symbols/Consumption appliances/Videofoon touchscreen.svg', ground: 1.15 },
-    { name: 'Alarm klavier', path: 'symbols/Consumption appliances/Alarm klavier.svg', ground: 1.15 }
+    { name: 'Alarm klavier', path: 'symbols/Consumption appliances/Alarm klavier.svg', ground: 1.15 },
+    { name: 'UTP RJ45', path: 'symbols/Data and communication/UTP RJ45.svg', ground: 1.15 }
   ]
   for (const [key, context] of [
     ['00000000-0000-4000-8000-000000000102', 'groundplan'],
@@ -53,6 +54,26 @@ test('previews and places catalog symbols at the page-specific size without resi
       const placed = app.locator('g.shape-symbol[data-selected="true"]:not(.symbol-preview) > svg')
       await expect(placed).toBeVisible()
       expect(Number(await placed.getAttribute('width'))).toBeCloseTo(expectedWidth, 5)
+      if (item.name === 'UTP RJ45') {
+        const id = await placed.evaluate((svg) => svg.parentElement!.getAttribute('data-shape-id')!)
+        await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+        const shell = page.locator('app-shell')
+        const electrical = await shell.evaluate((element: any, { key, id }) =>
+          element.project.pages[key].schema.objects[0].payload.shapes.find((shape: any) => shape.id === id).electrical,
+        { key, id })
+        expect(electrical).toMatchObject({ role: 'neutral', circuitType: 'other', oneWireEligible: false })
+        const exported = await app.evaluate((element: any, id) => {
+          const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+            .querySelector(`g[data-shape-id="${id}"] svg`)!
+          return { width: Number(svg.getAttribute('width')), faceplate: Number(svg.querySelector('rect')!.getAttribute('width')) }
+        }, id)
+        expect(exported).toEqual({ width: expectedWidth, faceplate: 72 })
+        await shell.evaluate(async (element: any, key) => {
+          await element.loadPage(key.endsWith('102') ? '00000000-0000-4000-8000-000000000104' : '00000000-0000-4000-8000-000000000102')
+          await element.loadPage(key)
+        }, key)
+        await expect(app.locator(`g.shape-symbol[data-shape-id="${id}"] > svg`)).toHaveAttribute('width', String(expectedWidth))
+      }
     }
     for (const shape of existing) {
       await expect(app.locator(`g.shape-symbol[data-shape-id="${shape.id}"] > svg`)).toHaveAttribute('width', shape.width!)

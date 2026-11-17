@@ -62,6 +62,19 @@ const SWITCH_NODE_RADIUS = 2.83465
 
 const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   {
+    match: /data and communication\/utp rj45\.svg$/i,
+    spec: {
+      viewBox: { width: 100, height: 100 },
+      node: { x: 50, y: 50 },
+      cutRadius: 36,
+      connectionPorts: {
+        left: { x: 14, y: 50 }, right: { x: 86, y: 50 },
+        top: { x: 50, y: 14 }, bottom: { x: 50, y: 86 }
+      },
+      oneWireScale: 2.5
+    }
+  },
+  {
     match: /wires\/underground cable\.svg$/i,
     spec: {
       viewBox: { width: 24, height: 54 },

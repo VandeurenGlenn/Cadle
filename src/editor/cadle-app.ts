@@ -2721,6 +2721,7 @@ export class CadleApp extends LiteElement {
       lower.includes('/consumption appliances/') ||
       lower.includes('/photovoltaic devices') ||
       lower.includes('/socket outlets/') ||
+      lower.includes('/data and communication/') ||
       lower.includes('/one-wire/')
     )
   }

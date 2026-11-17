@@ -63,8 +63,22 @@ test('anchors appliance feeds to their actual filled SVG connection dots', () =>
   }
 })
 
+test('anchors UTP connections at the actual RJ45 faceplate outline', () => {
+  for (const scale of [1.15, 2.5, 3]) {
+    const shape = symbol('symbols/Data and communication/UTP RJ45.svg', { scale })
+    const contacts = [{ x: 50, y: 14 }, { x: 50, y: 86 }, { x: 14, y: 50 }, { x: 86, y: 50 }]
+    const anchors = oneWireSymbolConnectionAnchors(shape)
+    for (const [index, contact] of contacts.entries()) {
+      const factor = 24 * scale / 100
+      assert.ok(Math.abs(anchors[index].point.x - (shape.position.x + (contact.x - 50) * factor)) < 1e-8)
+      assert.ok(Math.abs(anchors[index].point.y - (shape.position.y + (contact.y - 50) * factor)) < 1e-8)
+    }
+  }
+})
+
 test('placed devices connect exactly in every direction and at different scales', () => {
   for (const path of [
+    'symbols/Data and communication/UTP RJ45.svg',
     'symbols/Protection devices/Automaat.svg',
     'symbols/Photovoltaic devices (≠AREI)/Solar panel.svg',
     'symbols/Switches/Switch general symbol.svg',

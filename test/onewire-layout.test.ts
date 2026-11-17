@@ -19,7 +19,8 @@ import {
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
   oneWireSymbolStrokeWidthFor,
-  oneWireSymbolTerminalInfo
+  oneWireSymbolTerminalInfo,
+  normalizeOneWireProjectorBeamMarkers
 } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { sanitizeShapes } from '../src/editor/model/model.ts'
 import type { Shape } from '../src/editor/model/types.ts'
@@ -141,6 +142,19 @@ test('connects row wires directly to symbol node edges', () => {
   assert.deepEqual(lamp, { offset: { x: 0, y: 0 }, cutHalfWidth: null })
   const fluorescent = oneWireSymbolNodeInfo('symbols/Consumption appliances/Fluorescent lamp.svg', 1.35, 90)
   assert.ok(fluorescent?.cutHalfWidth !== null && fluorescent.cutHalfWidth < 0.2)
+})
+
+test('keeps projector beam arrowheads proportional in one-wire diagrams only', () => {
+  const source = '<marker markerUnits="strokeWidth" refX="-12.25"><use transform="scale(-7,-7)"></use></marker>'
+  for (const name of ['Projector with divergent beam.svg', 'Projector with little divergent beam.svg']) {
+    const path = `symbols/Consumption appliances/${name}`
+    assert.equal(
+      normalizeOneWireProjectorBeamMarkers(path, 'onewire-row-1', source),
+      '<marker markerUnits="userSpaceOnUse" refX="-2.94"><use transform="scale(-1.68,-1.68)"></use></marker>'
+    )
+    assert.equal(normalizeOneWireProjectorBeamMarkers(path, undefined, source), source)
+  }
+  assert.equal(normalizeOneWireProjectorBeamMarkers('symbols/other.svg', 'onewire-row-1', source), source)
 })
 
 test('aligns incoming row conductors and leaves space between switches and the rotated wall light', () => {

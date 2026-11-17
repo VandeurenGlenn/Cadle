@@ -23,7 +23,7 @@ import { namedRoomRegions } from './room-regions.js'
 import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
-import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
+import { normalizeOneWireProjectorBeamMarkers, oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
 import { isStairVariant, stairGeometry } from './model/stair-geometry.js'
 
@@ -386,7 +386,11 @@ export const shapeTemplate = (
       const y = shape.position.y - size / 2
       const symbolSvg = getCachedSymbolSvg(shape.path)
       const symbolInner = symbolSvg
-        ? applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
+        ? normalizeOneWireProjectorBeamMarkers(
+          shape.path,
+          shape.groupId,
+          applySymbolTextOverrides(shape.path, symbolSvg.inner, shape.symbolTextOverrides)
+        )
         : ''
       const metadataText = symbolTextPresentation(shape)
       const normalizedStrokeWidth = symbolSvg

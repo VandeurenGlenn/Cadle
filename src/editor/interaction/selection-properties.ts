@@ -179,7 +179,6 @@ const normalizedBindingId = (payload: SelectionPropertyUpdate): string | undefin
 }
 
 const isSharedLightingPointSelection = (shapes: readonly Shape[], targetIds: ReadonlySet<string>): boolean => {
-  let hasSwitch = false
   let hasLightingLoad = false
   for (const shape of shapes) {
     if (!targetIds.has(shape.id)) continue
@@ -193,11 +192,10 @@ const isSharedLightingPointSelection = (shapes: readonly Shape[], targetIds: Rea
       shape.kind === 'symbol'
         ? (shape.electrical?.circuitType ?? inferCircuitType(shape.name, shape.path))
         : inferCircuitType(shape.name, shape.path)
-    if (role === 'switch') hasSwitch = true
-    else if (role === 'load' && circuitType === 'lighting') hasLightingLoad = true
-    else return false
+    if (role === 'load' && circuitType === 'lighting') hasLightingLoad = true
+    else if (role !== 'switch') return false
   }
-  return hasSwitch && hasLightingLoad
+  return hasLightingLoad
 }
 
 const sequentialBindingIds = (

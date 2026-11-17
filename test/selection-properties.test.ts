@@ -107,6 +107,39 @@ test('keeps a selected switch and lighting load on the same binding point', () =
   )
 })
 
+test('assigns one shared binding point to multiple selected lights without a switch', () => {
+  const lights: Shape[] = [
+    { ...symbol('lamp'), name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' },
+    { ...symbol('spot'), name: 'Spot', path: 'symbols/Consumption appliances/Spot.svg' },
+    { id: 'wall-light', kind: 'image', name: 'Wall light', path: 'symbols/Consumption appliances/Wall light.svg',
+      position: { x: 50, y: 20 }, width: 24, height: 24 }
+  ]
+  const unselected = symbol('unselected')
+  const source = [...lights, unselected]
+  const updated = updateSelectionProperties(
+    source,
+    { bindingId: ' n1 ' },
+    { selectedIds: new Set(lights.map((shape) => shape.id)), selectedId: 'lamp', groupedSelection: false }
+  )
+
+  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['N1', 'N1', 'N1', undefined])
+  assert.ok(source.every((shape) => shape.bindingId === undefined))
+  assert.equal(updated?.[3], unselected)
+})
+
+test('keeps sequential numbering for a mixed selection of lighting and sockets', () => {
+  const updated = updateSelectionProperties(
+    [
+      { ...symbol('lamp'), name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' },
+      symbol('socket')
+    ],
+    { bindingId: 'N1' },
+    { selectedIds: new Set(['lamp', 'socket']), selectedId: 'lamp', groupedSelection: false }
+  )
+
+  assert.deepEqual(updated?.map((shape) => shape.bindingId), ['N1', 'N2'])
+})
+
 test('moves a selected shape by its visual center', () => {
   const updated = updateSelectionProperties(
     [symbol('one')],

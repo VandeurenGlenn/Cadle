@@ -7,13 +7,13 @@ import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 
-const circuit = () => {
+const circuit = (empty = false) => {
   let id = 0
   return buildKamrailCircuitBundle({
     rail: { id: 'rail', kind: 'line', start: { x: 100, y: 1100 }, end: { x: 1000, y: 1100 } },
     anchorX: 400,
     options: { amps: 16, family: 'C', autoIncludeFamily: true, cableType: 'VOB', cableSectionMm2: 1.5 },
-    familyComponents: [1, 2].flatMap((number) => [
+    familyComponents: empty ? [{ bindingId: 'C1', kind: 'empty' }] : [1, 2].flatMap((number) => [
       { bindingId: `C${number}`, kind: 'switch' as const, sourcePath: 'symbols/Switches/Dimmer switch.svg' },
       { bindingId: `C${number}`, kind: 'load' as const, sourcePath: 'symbols/Consumption appliances/Spot.svg' }
     ]),
@@ -85,4 +85,59 @@ test('longer cable specifications extend the trunk while retaining row connectio
   const oldTrunk = original.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
   const newTrunk = updated.shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
   assert.ok(oldTrunk.kind === 'line' && newTrunk.kind === 'line' && newTrunk.end.y < oldTrunk.end.y)
+})
+
+const checkEmptyClearance = (shapes: Shape[]) => {
+  const breaker = shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')!
+  const trunk = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
+  const cable = shapes.find((shape) => shape.sourceLink?.role === 'cable-section')!
+  assert.ok(breaker.kind === 'symbol' && trunk.kind === 'line' && cable.kind === 'text')
+  const top = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!.top!
+  assert.deepEqual(trunk.start, { x: breaker.position.x + top.x, y: breaker.position.y + top.y })
+  const bounds = oneWireLayoutBounds(cable)
+  assert.ok(bounds.y >= trunk.end.y + 24 - 1e-8)
+  assert.ok(bounds.y + bounds.height <= trunk.start.y - 24 + 1e-8)
+  assert.equal(cable.position.y, (trunk.start.y + trunk.end.y) / 2)
+  assert.equal(cable.textAnchor, 'middle')
+  assert.equal(trunk.connection?.labelOwner, 'circuit')
+  assert.ok(!shapes.some((shape) => ['load', 'switch', 'number-label'].includes(shape.sourceLink?.role ?? '')))
+}
+
+test('empty circuits reserve a real cable section for their complete caption and longer specifications', () => {
+  const original = circuit(true)
+  const snapshot = structuredClone(original)
+  checkEmptyClearance(original)
+  const updated = applyOneWireCircuitPresentation({ shapes: original, circuitKey: 'C', stored: {
+    cableConductors: 12, cableSectionMm2: 240, cableType: 'XVB-Cca'
+  } })
+  checkEmptyClearance(updated.shapes)
+  const originalTrunk = original.find((shape) => shape.sourceLink?.role === 'trunk')!
+  const updatedTrunk = updated.shapes.find((shape) => shape.sourceLink?.role === 'trunk')!
+  assert.ok(originalTrunk.kind === 'line' && updatedTrunk.kind === 'line' && updatedTrunk.end.y < originalTrunk.end.y)
+  for (const role of ['breaker', 'breaker-feed', 'label', 'cable-installation']) {
+    const before = original.find((shape) => shape.sourceLink?.role === role)!
+    const after = updated.shapes.find((shape) => shape.id === before.id)!
+    assert.deepEqual('position' in after ? after.position : after, 'position' in before ? before.position : before)
+  }
+  assert.deepEqual(original, snapshot)
+  assert.deepEqual(updated.shapes.map(({ id }) => id), original.map(({ id }) => id))
+  assert.equal(spaceOneWireCircuitAnnotations(updated.shapes, 'C').changed, false)
+})
+
+test('repairs missing empty-circuit cables locally without repositioning populated circuits or manual connections', () => {
+  const legacy = circuit(true).filter((shape) => shape.sourceLink?.role !== 'trunk')
+  const snapshot = structuredClone(legacy)
+  const repaired = spaceOneWireCircuitAnnotations(legacy, 'C', { emptyOnly: true, nextId: () => 'restored-trunk' })
+  checkEmptyClearance(repaired.shapes)
+  assert.equal(repaired.shapes.at(-1)?.id, 'restored-trunk')
+  assert.deepEqual(legacy, snapshot)
+  assert.equal(spaceOneWireCircuitAnnotations(repaired.shapes, 'C', { emptyOnly: true }).changed, false)
+  const populated = circuit().map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'cable-section'
+    ? { ...shape, position: { x: 900, y: 900 } } : shape)
+  assert.deepEqual(spaceOneWireCircuitAnnotations(populated, 'C', { emptyOnly: true }), { shapes: populated, changed: false })
+  const trunk = circuit(true).find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
+  const manual = { ...trunk, id: 'manual', generationKey: undefined, sourceLink: undefined }
+  const manualShapes = [...legacy, manual]
+  assert.ok(!spaceOneWireCircuitAnnotations(manualShapes, 'C', { emptyOnly: true }).shapes
+    .some((shape) => shape.sourceLink?.role === 'trunk'))
 })

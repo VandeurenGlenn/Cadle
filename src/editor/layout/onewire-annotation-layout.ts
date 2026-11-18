@@ -5,6 +5,8 @@ import { protectionAnnotationLayout } from './protection-label-layout.js'
 import { connectionSegments } from '../model/electrical-connection.js'
 import { paperTextBounds } from './paper-text-layout.js'
 import type { BindingLabelSide } from './symbol-layout.js'
+import { nextShapeId } from '../model/model.js'
+import { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 
 export const isOneWireFamilyLabel = (shape: Shape): shape is TextShape =>
   shape.kind === 'text' && shape.sourceLink?.role === 'label' &&
@@ -63,7 +65,11 @@ export const placeOneWireFamilyLabels = (
 }
 
 // Compact protection values beside the drawn body; 3 mm around cable text.
-export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuitKey: string) => {
+export const spaceOneWireCircuitAnnotations = (
+  shapes: readonly Shape[],
+  circuitKey: string,
+  { emptyOnly = false, nextId = nextShapeId }: { emptyOnly?: boolean; nextId?: () => string } = {}
+) => {
   let next = [...shapes]
   let changed = false
   for (const breaker of shapes.filter((shape): shape is SymbolShape =>
@@ -74,6 +80,9 @@ export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuit
     if (!bounds || !terminals?.top || !terminals.bottom || breaker.rotation || breaker.flipX || breaker.flipY) continue
     const belongs = (shape: Shape) => Boolean(shape.generationKey) && shape.oneWireRailId === breaker.oneWireRailId &&
       (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id === circuitKey : shape.bindingId?.replace(/\d+$/, '') === circuitKey)
+    const allRows = next.filter((shape) => belongs(shape) && shape.sourceLink?.kind !== 'board')
+    const rows = allRows.filter((shape) => !shape.hidden)
+    if (emptyOnly && allRows.length) continue
     const cableCenterY = (items: readonly Shape[], trunk: LineShape): number => {
       const junctionYs = items.flatMap((candidate) => {
         if (candidate.kind !== 'line' || !belongs(candidate) || candidate.sourceLink?.role !== 'row-wire') return []
@@ -86,6 +95,28 @@ export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuit
     }
     const axisX = breaker.position.x + terminals.bottom.x
     const topY = breaker.position.y + terminals.top.y
+    let trunk = next.find((shape): shape is LineShape =>
+      shape.kind === 'line' && belongs(shape) && shape.sourceLink?.role === 'trunk')
+    if (!allRows.length && !trunk && breaker.generationKey && !breaker.locked && !breaker.hidden &&
+      next.some((shape) => belongs(shape) && shape.sourceLink?.role === 'cable-section') &&
+      !next.some((shape) => shape.kind === 'line' && !shape.hidden && connectionSegments(shape).some(({ start, end }) =>
+        [start, end].some((point) => Math.hypot(point.x - axisX, point.y - topY) < 1e-8)))) {
+      const electrical = breaker.electrical
+      trunk = {
+        id: nextId(), kind: 'line', start: { x: axisX, y: topY }, end: { x: axisX, y: topY - 48 },
+        stroke: breaker.stroke ?? '#000000', strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+        bindingId: circuitKey, groupId: breaker.groupId, oneWireRailId: breaker.oneWireRailId,
+        sourceLink: { kind: 'board', id: circuitKey, role: 'trunk' }, generationKey: `board:${circuitKey}:trunk`,
+        connection: { kind: 'cable',
+          showLabel: !next.find((shape) => belongs(shape) && shape.sourceLink?.role === 'cable-section')?.hidden,
+          labelOwner: 'circuit',
+          conductors: electrical?.cableConductors ?? 3, sectionMm2: electrical?.cableSectionMm2 ?? 2.5,
+          hasProtectiveConductor: electrical?.hasProtectiveConductor ?? electrical?.cableConductors !== 4,
+          cableType: electrical?.cableType ?? 'VOB', fireClass: electrical?.cableFireClass }
+      }
+      next.push(trunk)
+      changed = true
+    }
     const labels = protectionAnnotationLayout(breaker)!
     const positionLabel = (shape: TextShape, x: number, y: number): TextShape => {
       if (Math.abs(shape.position.x - x) < 1e-8 && Math.abs(shape.position.y - y) < 1e-8) return shape
@@ -119,12 +150,11 @@ export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuit
       }
     })
     const cable = next.find((shape) => belongs(shape) && shape.kind === 'text' && shape.sourceLink?.role === 'cable-section')
-    const rows = next.filter((shape) => belongs(shape) && !shape.hidden && shape.sourceLink?.kind !== 'board')
-    if (!cable || !rows.length) continue
-    const bottom = Math.max(...rows.map((shape) => {
+    if (!cable || (!rows.length && (!trunk || allRows.length))) continue
+    const bottom = rows.length ? Math.max(...rows.map((shape) => {
       const box = oneWireLayoutBounds(shape)
       return box.y + box.height
-    }))
+    })) : trunk!.end.y
     const delta = Math.min(0, 2 * (oneWireLayoutBounds(cable).y - 24 - bottom))
     if (delta > -1e-8) continue
     changed = true

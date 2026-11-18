@@ -36,6 +36,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Its cabinet planner reuses the saved module order, 18/24-module width and reserved gaps. Pole-count widths are
   indicative, and changing the physical module arrangement does not change electrical connections or schematic geometry.
   Toggling a connection caption updates visibility only, without invoking circuit presentation spacing or rail packing.
+  Empty circuits retain a real outgoing cable section sized for the complete cable caption, with clearance at both ends.
+  Missing empty-circuit sections are repaired locally on opening without moving breakers, rails or populated circuits.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size

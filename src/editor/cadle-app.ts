@@ -1273,7 +1273,7 @@ export class CadleApp extends LiteElement {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
         if (!this.#applyPersistedState(state, false)) return null
-        const synced = placeOneWireFamilyLabels(removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
+        let synced = placeOneWireFamilyLabels(removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
           nextShapeId,
           oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
           oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
@@ -1282,12 +1282,20 @@ export class CadleApp extends LiteElement {
           minimumRowY: this.#safeAreaRect().y,
           resolveSource: this.#oneWireSourceResolver(analysis, families)
         }))))
+        const emptyFamilies = new Set(synced.flatMap((shape) =>
+          shape.sourceLink?.role === 'breaker' && shape.generationKey ? [shape.sourceLink.id] : []))
+        const repairedEmptyFamilies = new Set<string>()
+        for (const family of emptyFamilies) {
+          const result = spaceOneWireCircuitAnnotations(synced, family, { emptyOnly: true })
+          synced = result.shapes
+          if (result.changed) repairedEmptyFamilies.add(family)
+        }
         const sourceChanged = synced.length !== this.#document.shapes.length ||
           synced.some((shape, index) => shape !== this.#document.shapes[index])
         if (sourceChanged) {
           const previousById = new Map(this.#document.shapes.map((shape) => [shape.id, shape]))
-          const changedFamilies = new Set(synced.flatMap((shape) =>
-            shape.sourceLink?.role === 'breaker' && previousById.get(shape.id) !== shape ? [shape.sourceLink.id] : []))
+          const changedFamilies = new Set([...repairedEmptyFamilies, ...synced.flatMap((shape) =>
+            shape.sourceLink?.role === 'breaker' && previousById.get(shape.id) !== shape ? [shape.sourceLink.id] : [])])
           this.#document.shapes = synced
           for (const family of changedFamilies) {
             this.#document.shapes = applyOneWireCircuitPresentation({

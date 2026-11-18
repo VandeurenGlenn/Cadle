@@ -1,4 +1,5 @@
-import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
+import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM, ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
+export { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { protectionAnnotationLayout, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './protection-label-layout.js'
 export { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
@@ -123,7 +124,6 @@ type RowSymbolSpec = {
 
 const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
 const ONE_WIRE_COLUMN_SPACING_X = 200
-export const ONE_WIRE_CONDUCTOR_STROKE_WIDTH = 2
 const ONE_WIRE_LABEL_SCALE = paperTextScale(2.75)
 const ONE_WIRE_TECHNICAL_LABEL_SCALE = PROTECTION_TEXT_SIZE / 18
 const ONE_WIRE_LABEL_WEIGHT = 500
@@ -870,8 +870,9 @@ export const buildKamrailCircuitBundle = (
   }
 
   if (!createdIds.length) return null
+  const spaced = spaceOneWireCircuitAnnotations(shapes, options.family, { nextId: deps.nextShapeId })
   return {
-    shapes: spaceOneWireCircuitAnnotations(shapes, options.family).shapes.map((shape): Shape => {
+    shapes: spaced.shapes.map((shape): Shape => {
       if (shape.kind !== 'line') return shape
       const trunk = /^trunk(?:-\d+)?$/.test(shape.sourceLink?.role ?? '')
       return { ...shape, connection: trunk ? sanitizeConnection({ kind: 'cable', showLabel: true, labelOwner: 'circuit',
@@ -879,7 +880,7 @@ export const buildKamrailCircuitBundle = (
         hasProtectiveConductor: options.hasProtectiveConductor ?? options.cableConductors !== 4,
         fireClass: options.cableFireClass, cableType: options.cableType ?? 'VOB' }) : { kind: 'wire', showLabel: false } }
     }),
-    createdIds,
+    createdIds: spaced.shapes.map((shape) => shape.id),
     // Breaker sections always put their protection symbol first. Selecting it
     // keeps the object pane editable instead of focusing a generated label.
     selectedId: createdIds[0] ?? null

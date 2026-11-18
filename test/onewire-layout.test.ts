@@ -1164,6 +1164,7 @@ test('draws a breaker row without inventing a load symbol', () => {
   })
 
   assert.ok(result)
+  assert.deepEqual(result.createdIds, result.shapes.map((shape) => shape.id))
   assert.ok(!result.shapes.some((shape) => shape.sourceLink?.role === 'number-label'))
   assert.ok(!result.shapes.some((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device'))
 })

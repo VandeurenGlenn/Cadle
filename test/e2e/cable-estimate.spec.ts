@@ -7,8 +7,8 @@ import type { LineShape, Shape, SymbolShape } from '../../src/editor/model/types
 import { normalizeElectricalProfile } from '../../src/editor/electrical-profile.ts'
 import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
 import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpers.ts'
-import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolScaleFor } from '../../src/editor/layout/onewire-symbol-nodes.ts'
-import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
+import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 
 const ground = '00000000-0000-4000-8000-000000000102' as UUID
@@ -209,6 +209,69 @@ test('hiding a cable caption preserves every device, wire and text position thro
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
   await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toHaveCount(0)
   expect(await geometry()).toEqual(original)
+})
+
+test('repairs empty circuit cable clearance on opening without shifting breakers or populated neighbours', async ({ page }) => {
+  const project = fixture()
+  project.name = 'Lege kringen met kabelruimte'
+  const rail: LineShape = { id: 'empty-rail', kind: 'line', start: { x: 300, y: 1300 }, end: { x: 2200, y: 1300 },
+    groupId: 'onewire-kamrail-empty', strokeWidth: 4 }
+  const other: LineShape = { ...rail, id: 'other-empty-rail', start: { x: 2300, y: 1500 }, end: { x: 3000, y: 1500 } }
+  let sequence = 0
+  const bundle = (family: string, anchorX: number, empty: boolean, poles: number) => buildKamrailCircuitBundle({
+    rail, anchorX, familyComponents: empty ? [{ bindingId: family, kind: 'empty' }] : [
+      { bindingId: `${family}1`, kind: 'load', sourcePath: 'symbols/Socket outlets/Wall outlet with grounding.svg' }
+    ],
+    options: { family, amps: 16, autoIncludeFamily: true, poles, cableConductors: poles === 4 ? 5 : 3,
+      cableSectionMm2: 2.5, cableType: 'XVB', cableFireClass: 'Cca' },
+    nextShapeId: () => `empty-${++sequence}`, oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id }))
+  const empty = [...bundle('BI', 600, true, 2), ...bundle('BJ', 1100, true, 4)]
+    .filter((shape) => shape.sourceLink?.role !== 'trunk')
+    .map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'cable-section'
+      ? { ...shape, textAnchor: 'start' as const, position: { ...shape.position, y: 1000 } } : shape)
+  const populated = bundle('C', 1800, false, 2)
+  for (const [family, poles] of [['BI', 2], ['BJ', 4]] as const) {
+    project.circuitSpecifications![family] = { poles, cableConductors: poles === 4 ? 5 : 3,
+      cableSectionMm2: 2.5, cableType: 'XVB', cableFireClass: 'Cca', breakerCurrentA: 16 }
+  }
+  project.pages[schematic].schema = schema([rail, other, ...empty, ...populated])
+  const app = await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const saved = await shell.evaluate((element) => (element as AppShell).project)
+  const repaired = nativeStateForProjectPage(saved, schematic)!.shapes
+  const geometry = (shape: Shape) => 'position' in shape
+    ? { id: shape.id, position: shape.position, rotation: shape.rotation }
+    : { id: shape.id, start: shape.start, end: shape.end }
+  for (const fixed of [rail, other, ...populated, ...empty.filter((shape) =>
+    shape.sourceLink?.role === 'breaker' || shape.sourceLink?.role === 'breaker-feed')]) {
+    expect(geometry(repaired.find((shape) => shape.id === fixed.id)!)).toEqual(geometry(fixed))
+  }
+  for (const family of ['BI', 'BJ']) {
+    const owned = repaired.filter((shape) => shape.sourceLink?.kind === 'board' && shape.sourceLink.id === family)
+    const breaker = owned.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')!
+    const trunk = owned.find((shape): shape is LineShape => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
+    const caption = owned.find((shape) => shape.sourceLink?.role === 'cable-section')!
+    const top = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!.top!
+    expect(trunk.start).toEqual({ x: breaker.position.x + top.x, y: breaker.position.y + top.y })
+    const box = oneWireLayoutBounds(caption)
+    expect(box.y).toBeGreaterThanOrEqual(trunk.end.y + 24 - 1e-8)
+    expect(box.y + box.height).toBeLessThanOrEqual(trunk.start.y - 24 + 1e-8)
+    expect(trunk.connection?.cableType).toBe('XVB')
+    expect(trunk.connection?.sectionMm2).toBe(2.5)
+    await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toContainText('XVB Cca')
+  }
+  expect(saved.recovery?.[0].label).toBe('Vóór synchronisatie eendraads')
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  const reopened = await shell.evaluate((element) => (element as AppShell).project)
+  expect(nativeStateForProjectPage(reopened, schematic)!.shapes.map(geometry)).toEqual(repaired.map(geometry))
 })
 
 test('repairs saved appliance feeds and orphaned busbar tails on opening without reflowing the drawing', async ({ page }) => {

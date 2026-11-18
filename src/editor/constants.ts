@@ -10,6 +10,7 @@ export const DEFAULT_PRINT_MARGIN_MM = 10
 export const ONE_WIRE_BREAKER_WIDTH = 32
 export const ONE_WIRE_NODE_SIZE = 32
 export const ONE_WIRE_CIRCUIT_SPACING = 120
+export const ONE_WIRE_CONDUCTOR_STROKE_WIDTH = 2
 export const ONE_WIRE_SOCKET_SYMBOL_PATH = 'symbols/Socket outlets/Wall outlet with grounding.svg'
 
 export type OneWirePreset = 'lighting' | 'sockets' | 'motor'

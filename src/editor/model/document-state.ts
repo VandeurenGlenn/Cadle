@@ -1,5 +1,5 @@
 import { isDrawingScale, type DrawingScale } from '../layout/drawing-scale.js'
-import type { UUID } from '../../types.js'
+import type { Project, UUID } from '../../types.js'
 import { sanitizeShapes } from './model.js'
 import type { PaperPreset, Shape } from './types.js'
 
@@ -57,4 +57,30 @@ export const asNativeState = (value: unknown): NativeDocumentState | null => {
     worldWidth: candidate.worldWidth,
     worldHeight: candidate.worldHeight
   }
+}
+
+const parseNativeFromSchema = (schema: unknown): NativeDocumentState | null => {
+  const direct = asNativeState(schema)
+  if (direct) return direct
+  if (!schema || typeof schema !== 'object') return null
+  const candidate = schema as { payload?: unknown; objects?: unknown[] }
+  const payloadState = asNativeState(candidate.payload)
+  if (payloadState) return payloadState
+  if (!Array.isArray(candidate.objects)) return null
+  for (const object of candidate.objects) {
+    const objectState = asNativeState(object)
+    if (objectState) return objectState
+    if (!object || typeof object !== 'object') continue
+    const wrapper = object as { kind?: unknown; payload?: unknown }
+    if (wrapper.kind === 'cadle-native-svg-document') {
+      const state = asNativeState(wrapper.payload)
+      if (state) return state
+    }
+  }
+  return null
+}
+
+export const nativeStateForProjectPage = (project: Project, pageKey: string): NativeDocumentState | null => {
+  const page = project.pages?.[pageKey]
+  return page ? parseNativeFromSchema(page.schema) : null
 }

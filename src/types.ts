@@ -21,6 +21,7 @@ export type ElectricalBoard = {
   id: string
   name: string
   parentBoardId?: string
+  floorPlanLocation?: { pageKey: string; shapeId: string }
   rails: Array<{ id: string; name: string }>
   mainDifferential?: DifferentialProtection
   additionalDifferentials?: DifferentialProtection[]

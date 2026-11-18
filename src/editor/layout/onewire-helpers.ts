@@ -4,7 +4,7 @@ import { protectionAnnotationLayout, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGH
 export { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
 import { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
 import { sanitizeConnection } from '../model/electrical-connection.js'
-import { oneWireLayoutBounds } from './onewire-connections.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from './onewire-connections.js'
 import { PAPER_LABEL_FONT_SIZE, paperTextScale } from './page-layout.js'
 import {
   ONE_WIRE_COLUMN_GAP_X,
@@ -15,7 +15,6 @@ import { phaseConfigurationLabel, neutralPositionForManufacturer, shouldShowPhas
 import {
   oneWireSymbolBounds,
   oneWireSymbolNodeInfo,
-  oneWireSymbolPortInfo,
   oneWireSymbolRotationFor,
   oneWireSymbolScaleFor,
   oneWireSymbolStrokeWidthFor,
@@ -531,9 +530,11 @@ export const buildOneWireRowSection = (
     const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
     const rotation = placeDirectlyOnTrunk && isSocket ? (inlineRotation ?? 0) - 90 : inlineRotation
     const centerNode = oneWireSymbolNodeInfo(component.path, scale, rotation)
-    const bottomPort = placeDirectlyOnTrunk && entry.kind === 'load' && !isSocket
-      ? oneWireSymbolPortInfo(component.path, scale)?.bottom : undefined
-    const node = centerNode && bottomPort ? { ...centerNode, offset: bottomPort } : centerNode
+    const bottomPort = placeDirectlyOnTrunk ? oneWireSymbolConnectionAnchors({
+      id: 'probe', kind: 'symbol', name: component.name, path: component.path,
+      scale, rotation, position: { x: 0, y: 0 }
+    }).find((anchor) => anchor.side === 'bottom')?.point : undefined
+    const node = bottomPort ? { offset: bottomPort, cutHalfWidth: centerNode?.cutHalfWidth ?? null } : centerNode
     const probeSlotX = 0
     const probe: SymbolShape = {
       id: deps.nextShapeId(),
@@ -622,8 +623,9 @@ export const buildOneWireRowSection = (
         wireEndX = Math.max(wireEndX, slotX)
         continue
       }
-      const from = slotX - node.cutHalfWidth
-      const to = slotX + node.cutHalfWidth
+      const anchors = oneWireSymbolConnectionAnchors(symbol)
+      const from = anchors.find((anchor) => anchor.side === 'left')?.point.x ?? slotX - node.cutHalfWidth
+      const to = anchors.find((anchor) => anchor.side === 'right')?.point.x ?? slotX + node.cutHalfWidth
       if (from > cursor + 0.5) wireSegments.push({ from: cursor, to: from })
       cursor = Math.max(cursor, to)
       wireEndX = Math.max(wireEndX, cursor)

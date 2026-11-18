@@ -1,9 +1,9 @@
 import type { Project, UUID } from '../types.js'
 import { getProjectData, projectDataStore, projectStore, setProjectData } from '../api/project.js'
 import { parseHash } from '../shell/routing.js'
-import { asNativeState, type NativeDocumentState } from '../editor/model/document-state.js'
+import { nativeStateForProjectPage, type NativeDocumentState } from '../editor/model/document-state.js'
 
-export { asNativeState, type NativeDocumentState } from '../editor/model/document-state.js'
+export { asNativeState, nativeStateForProjectPage, type NativeDocumentState } from '../editor/model/document-state.js'
 
 type NativeSchemaObject = {
   kind: 'cadle-native-svg-document'
@@ -30,38 +30,6 @@ const createDefaultPage = (name = 'Page 1', order = 0) => ({
   },
   order
 })
-
-const parseNativeFromSchema = (schema: unknown): NativeDocumentState | null => {
-  const direct = asNativeState(schema)
-  if (direct) return direct
-  if (!schema || typeof schema !== 'object') return null
-
-  const candidate = schema as { payload?: unknown; objects?: unknown[] }
-  const payloadState = asNativeState(candidate.payload)
-  if (payloadState) return payloadState
-
-  if (!Array.isArray(candidate.objects)) return null
-  for (const object of candidate.objects) {
-    if (!object || typeof object !== 'object') continue
-
-    const objectState = asNativeState(object)
-    if (objectState) return objectState
-
-    const schemaObject = object as Partial<NativeSchemaObject>
-    if (schemaObject.kind === 'cadle-native-svg-document') {
-      const parsed = asNativeState(schemaObject.payload)
-      if (parsed) return parsed
-    }
-  }
-
-  return null
-}
-
-export const nativeStateForProjectPage = (project: Project, pageKey: UUID): NativeDocumentState | null => {
-  const page = project.pages?.[pageKey]
-  if (!page || typeof page !== 'object') return null
-  return parseNativeFromSchema((page as { schema?: unknown }).schema)
-}
 
 export const migrateOneWireProjectPages = (
   project: Project,

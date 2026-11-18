@@ -19,7 +19,15 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Ordinary opening and PDF export preserve saved page geometry, including older layouts. Layout migration is explicit
   through drawing import or one-wire regeneration, both protected by a recovery point.
   Source synchronization updates affected linked circuits without globally repacking rails or redistributing pages.
+  Known generated legacy contacts are repaired against actual symbol ports without moving devices; orphaned
+  automatic rail feeders are removed. These load-time repairs share the synchronization recovery point.
   Overflow pagination belongs to explicit import/generation, never generic history recording or a single-rail insertion.
+- `src/editor/cable-estimate.ts` estimates cable route metres per circuit, board and cable designation for the circuit overview.
+  It uses a rectilinear minimum spanning tree of labelled floor-plan devices and the selected board symbol at the page scale.
+  Board locations are stable page/shape references, so moving a symbol or reassigning a circuit recalculates the estimate.
+  Schematic geometry, heating-plan copies and arbitrary inter-page offsets never contribute physical metres.
+  Missing positions/scales and unmeasured pages are explicit; partial totals exclude unknown lengths.
+  The estimate excludes vertical runs, wall-routing detours, spare cable and inter-board feeds; VOB totals are route metres, not conductor metres.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size

@@ -598,6 +598,22 @@ export class AppShell extends LiteElement {
     await setProjectData(this.projectKey, this.project)
   }
 
+  async #setScheduleBoardLocation(boardId: string, location?: { pageKey: string; shapeId: string }) {
+    if (!this.projectKey || !this.project) return
+    const previous = this.project
+    const profile = normalizeElectricalProfile(this.project.electricalProfile)
+    profile.boards = profile.boards?.map((board) => ({ ...board,
+      floorPlanLocation: board.id === boardId ? location : board.floorPlanLocation }))
+    this.project = { ...this.project, electricalProfile: profile }
+    try {
+      await setProjectData(this.projectKey, this.project)
+    } catch (error) {
+      this.project = previous
+      console.error('Kastpositie opslaan mislukt.', error)
+      globalThis.alert('De kastpositie kon niet worden opgeslagen. Probeer opnieuw.')
+    }
+  }
+
   openProjectShareDialog() {
     if (!this.projectKey || !this.project) return
     this.projectShareDialogOpen = true
@@ -1783,6 +1799,7 @@ export class AppShell extends LiteElement {
                 ${circuitSchedulePage
                   ? html`
                       <circuit-schedule-field
+                        .project=${this.project}
                         .items=${this.circuitScheduleItems}
                         .boards=${normalizeElectricalProfile(this.project?.electricalProfile).boards}
                         .layout=${this.project?.circuitScheduleLayout ?? {}}
@@ -1793,6 +1810,8 @@ export class AppShell extends LiteElement {
                         }}
                         @schedule-board-added=${(event: CustomEvent<{ name: string }>) =>
                           this.#addScheduleBoard(event.detail.name)}
+                        @schedule-board-location-changed=${(event: CustomEvent<{ boardId: string; location?: { pageKey: string; shapeId: string } }>) =>
+                          this.#setScheduleBoardLocation(event.detail.boardId, event.detail.location)}
                         @circuit-board-changed=${(event: CustomEvent<{ circuitId: string; boardId: string }>) =>
                           this.#assignCircuitBoard(event.detail.circuitId, event.detail.boardId)}>
                       </circuit-schedule-field>

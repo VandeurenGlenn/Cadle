@@ -23,6 +23,7 @@ import {
 } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { sanitizeShapes } from '../src/editor/model/model.ts'
 import { findConnectionIssues } from '../src/editor/layout/connection-issues.ts'
+import { oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 
 const idSequence = () => {
@@ -839,6 +840,34 @@ test('enlarges boxed appliances and terminates single and numbered feeds on thei
       assert.ok(Math.hypot(feed.end.x - contact.x, feed.end.y - contact.y) < 1e-8, `${name}: ${rowCount} rows`)
       assert.deepEqual(findConnectionIssues([rail, ...result.shapes]), [], name)
     }
+  }
+})
+
+test('connects single motors and horizontal multi-appliance rows at their real contact edges', () => {
+  for (const names of [['Motor'], ['Heat pump', 'Heat pump indoor unit air-water']]) {
+    const rail = { id: 'rail', kind: 'line' as const, start: { x: 80, y: 1200 }, end: { x: 1400, y: 1200 },
+      groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+    const result = buildKamrailCircuitBundle({
+      rail, anchorX: 400, options: { amps: 20, family: 'A', autoIncludeFamily: true },
+      familyComponents: [...names, ...(names.length > 1 ? ['Motor'] : [])].map((name, index) => ({
+        bindingId: index < names.length ? 'A1' : 'A2', kind: 'load' as const, sourceShapeId: `load-${index}`,
+        sourcePath: `symbols/Consumption appliances/${name}.svg`, sourceName: name
+      })),
+      nextShapeId: idSequence(),
+      oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+      branchStroke: '#000000'
+    })!
+    const devices = result.shapes.filter((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device')
+    assert.equal(devices.length, names.length > 1 ? names.length + 1 : names.length)
+    const wires = result.shapes.filter((shape) => shape.kind === 'line')
+    for (const device of devices) {
+      const anchors = oneWireSymbolConnectionAnchors(device)
+      assert.ok(wires.some((wire) => anchors.some(({ point }) =>
+        Math.hypot(wire.end.x - point.x, wire.end.y - point.y) < 1e-8)), device.name)
+    }
+    assert.deepEqual(findConnectionIssues([rail, ...result.shapes]), [])
   }
 })
 

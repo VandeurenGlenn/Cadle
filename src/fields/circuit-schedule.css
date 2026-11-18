@@ -105,12 +105,12 @@ main {
   font-size: 12px;
 }
 .circuit-table {
-  min-width: 760px;
+  min-width: 960px;
 }
 .table-head,
 .device {
   display: grid;
-  grid-template-columns: 72px minmax(150px, 1fr) minmax(120px, 0.7fr) minmax(150px, 0.8fr) 72px;
+  grid-template-columns: 60px minmax(130px, 1fr) minmax(110px, 0.7fr) minmax(190px, 1fr) minmax(140px, 0.8fr) 72px;
   align-items: center;
   gap: 14px;
   padding: 9px 16px;
@@ -151,6 +151,33 @@ main {
 }
 .device .gap {
   width: 64px;
+}
+.estimate-help {
+  max-width: 1000px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.cable-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 16px 32px;
+  padding: 14px 18px;
+}
+.cable-summary p {
+  font-size: 12px;
+}
+.cable-total,
+.cable-estimate {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.cable-estimate small,
+.cable-total span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
 }
 .empty {
   padding: 24px 18px;

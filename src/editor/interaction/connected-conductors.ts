@@ -21,9 +21,17 @@ export const removeRedundantRailAttachments = (shapes: readonly Shape[]): Shape[
       (shape.oneWireRailId === candidate.id && shape.sourceLink?.role === 'rail-attachment') ||
       shape.id.startsWith(`${candidate.id}-attachment-`))
     if (!rail) return true
-    return !connectionSegments(shape).every(({ start, end }) =>
+    const contained = connectionSegments(shape).every(({ start, end }) =>
       connectionSegments(rail).some((segment) =>
         fraction(start, segment.start, segment.end) !== null && fraction(end, segment.start, segment.end) !== null))
+    if (contained) return false
+    // Generated feeders with a detached end are stale movement artifacts, not reserved circuits.
+    return [shape.start, shape.end].every((point) => shapes.some((other) => {
+      if (other.id === shape.id || other.hidden) return false
+      return other.kind === 'line'
+        ? connectionSegments(other).some((segment) => fraction(point, segment.start, segment.end) !== null)
+        : other.kind === 'symbol' && oneWireSymbolConnectionAnchors(other).some((anchor) => same(point, anchor.point))
+    }))
   })
 }
 

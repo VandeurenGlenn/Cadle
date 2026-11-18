@@ -4,6 +4,7 @@ import { symbolContentBounds } from './symbol-layout.js'
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolPortInfo, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { paperTextBounds } from './paper-text-layout.js'
 import { protectionAnnotationBounds } from './protection-label-layout.js'
+import { connectionSegments } from '../model/electrical-connection.js'
 
 export type ConnectionSide = 'top' | 'bottom' | 'left' | 'right'
 export type SymbolConnectionAnchor = { side: ConnectionSide; point: Point }
@@ -72,6 +73,56 @@ export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnec
 
 export const oppositeConnectionSide = (side: ConnectionSide): ConnectionSide =>
   ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' })[side] as ConnectionSide
+
+/** Repair only known generated legacy contacts; never snap nearby manual wires or move devices. */
+export const repairGeneratedOneWireContacts = (shapes: readonly Shape[]): Shape[] => {
+  const symbols = shapes.filter((shape): shape is SymbolShape =>
+    shape.kind === 'symbol' && !shape.hidden && Boolean(shape.generationKey))
+  const family = (shape: Shape) => (shape.bindingId ?? shape.sourceLink?.id ?? '').replace(/\d+$/, '').toUpperCase()
+  return shapes.map((shape) => {
+    if (shape.kind !== 'line' || shape.hidden || shape.locked || !shape.generationKey ||
+      !/^(?:row-wire|trunk(?:-\d+)?)$/.test(shape.sourceLink?.role ?? '')) return shape
+    let next = shape
+    for (const endpoint of ['start', 'end'] as const) {
+      const point = shape[endpoint]
+      const candidates = symbols.filter((symbol) => family(symbol) === family(shape) &&
+        (!shape.oneWireRailId || !symbol.oneWireRailId || shape.oneWireRailId === symbol.oneWireRailId))
+      if (candidates.some((symbol) => oneWireSymbolConnectionAnchors(symbol).some(({ point: port }) =>
+        Math.hypot(port.x - point.x, port.y - point.y) < 0.01))) continue
+      const segments = connectionSegments(shape)
+      const other = endpoint === 'start' ? segments[0].end : segments.at(-1)!.start
+      const side: ConnectionSide = Math.abs(other.x - point.x) > Math.abs(other.y - point.y)
+        ? other.x < point.x ? 'left' : 'right' : other.y < point.y ? 'top' : 'bottom'
+      const matches = candidates.flatMap((symbol) => {
+        const bounds = oneWireSymbolBounds(symbol) ?? symbolContentBounds(symbol)
+        const node = oneWireSymbolNodeInfo(symbol.path, symbol.scale, symbol.rotation, symbol.flipX, symbol.flipY)
+        const legacy = [symbol.position,
+          ...(node ? [
+            { x: symbol.position.x + node.offset.x, y: symbol.position.y + node.offset.y },
+            { x: bounds.x, y: symbol.position.y + node.offset.y },
+            { x: bounds.x + bounds.width, y: symbol.position.y + node.offset.y },
+            ...Object.values(directions).map((direction) => ({
+              x: symbol.position.x + node.offset.x + direction.x * (node.cutHalfWidth ?? 0),
+              y: symbol.position.y + node.offset.y + direction.y * (node.cutHalfWidth ?? 0)
+            }))
+          ] : []),
+          { x: bounds.x, y: bounds.y + bounds.height / 2 },
+          { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 },
+          { x: bounds.x + bounds.width / 2, y: bounds.y },
+          { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }]
+        if (!legacy.some((old) => Math.hypot(old.x - point.x, old.y - point.y) < 0.01)) return []
+        const port = oneWireSymbolConnectionAnchors(symbol).find((anchor) => anchor.side === side)
+        return port ? [port.point] : []
+      })
+      if (matches.length === 1) {
+        next = { ...next, [endpoint]: matches[0] }
+        if (Math.abs(next.start.x - next.end.x) > 0.01 && Math.abs(next.start.y - next.end.y) > 0.01)
+          next = { ...next, connection: { ...(next.connection ?? { kind: 'wire' }), routing: 'orthogonal' } }
+      }
+    }
+    return next
+  })
+}
 
 export const positionOneWireSymbolForConnection = (
   target: SymbolShape,

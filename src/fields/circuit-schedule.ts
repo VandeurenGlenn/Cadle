@@ -1,6 +1,7 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
-import type { CircuitScheduleLayout, ElectricalBoard } from '../types.js'
+import type { CircuitScheduleLayout, ElectricalBoard, Project } from '../types.js'
 import type { CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { cableEstimateBoardLocation, estimateCircuitCables, floorPlanBoardLocations, formatCableMetres } from '../editor/cable-estimate.js'
 import styles from './circuit-schedule.css' with { type: 'css' }
 
 type EditableItem = CircuitScheduleEditorItem & { gapBefore: number }
@@ -10,6 +11,7 @@ export class CircuitScheduleField extends LiteElement {
   @property({ attribute: false }) accessor items: CircuitScheduleEditorItem[] = []
   @property({ attribute: false }) accessor boards: ElectricalBoard[] = []
   @property({ attribute: false }) accessor layout: CircuitScheduleLayout = {}
+  @property({ attribute: false }) accessor project: Project | null = null
   @property({ attribute: false }) private accessor rows: EditableItem[] = []
   @property({ type: Number }) private accessor modulesPerRow: 18 | 24 = 24
   @property() private accessor newBoardName = ''
@@ -103,6 +105,8 @@ export class CircuitScheduleField extends LiteElement {
     const boards = this.boards.length
       ? this.boards
       : [{ id: 'main', name: 'Hoofdverdeelbord', rails: [{ id: 'rail-1', name: 'Rail 1' }] }]
+    const estimates = this.project ? estimateCircuitCables(this.project, this.rows) : []
+    const locations = this.project ? floorPlanBoardLocations(this.project) : []
     return html`
       <header class="toolbar">
         <div>
@@ -140,8 +144,18 @@ export class CircuitScheduleField extends LiteElement {
         </div>
       </header>
       <main>
+        <p class="estimate-help">Kabelraming op basis van de tekenschaal en een kort haaks netwerk vanaf de kast
+          langs de gelabelde punten. Geen wandroute, stijg- en daallengtes, reserve of voedingskabels tussen kasten.
+          VOB toont trajectmeters, niet de som van de afzonderlijke aders. Controleer de schaal en route voor bestelling.</p>
         ${boards.map((board) => {
           const boardRows = this.rows.filter((row) => row.boardId === board.id)
+          const boardEstimates = estimates.filter((estimate) => estimate.boardId === board.id)
+          const measured = boardEstimates.filter((estimate) => estimate.metres !== null)
+          const partial = boardEstimates.some((estimate) => !estimate.complete)
+          const total = measured.reduce((sum, estimate) => sum + estimate.metres!, 0)
+          const byCable = new Map<string, number>()
+          for (const estimate of measured) byCable.set(estimate.cable, (byCable.get(estimate.cable) ?? 0) + estimate.metres!)
+          const location = this.project ? cableEstimateBoardLocation(this.project, board.id, locations) : undefined
           return html`
             <section class="board-section">
               <div class="board-heading">
@@ -151,9 +165,32 @@ export class CircuitScheduleField extends LiteElement {
                 </div>
                 <strong>${boardRows.filter((row) => row.kind === 'circuit').length} kringen</strong>
               </div>
+              <div class="cable-summary">
+                <label><span>Kastpositie op situatieplan</span>
+                  <select
+                    aria-label=${`Kastpositie voor ${board.name}`}
+                    @change=${(event: Event) => {
+                      const location = locations.find((item) => item.key === (event.target as HTMLSelectElement).value)
+                      this.dispatchEvent(new CustomEvent('schedule-board-location-changed', {
+                        bubbles: true, composed: true,
+                        detail: { boardId: board.id, location: location
+                          ? { pageKey: location.pageKey, shapeId: location.shapeId } : undefined }
+                      }))
+                    }}>
+                    <option value="" .selected=${!location}>Kies een verdeelbord op het situatieplan</option>
+                    ${locations.map((item) => html`<option value=${item.key} .selected=${item.key === location?.key}>${item.label}</option>`)}
+                  </select>
+                </label>
+                <div class="cable-total" role="status">
+                  <strong>${measured.length ? `Geschat totaal: ${formatCableMetres(total)}${partial ? ' (gedeeltelijk)' : ''}` : 'Nog geen kabelraming'}</strong>
+                  <span>${measured.length} van ${boardEstimates.length} kringen ${partial ? '(deels) ' : ''}geraamd</span>
+                  ${[...byCable].map(([cable, metres]) => html`<span>${cable}: ${formatCableMetres(metres)}</span>`)}
+                </div>
+                ${!locations.length ? html`<p>Plaats een verdeelbordsymbool op het situatieplan om vanaf de kast te ramen.</p>` : ''}
+              </div>
               <div class="circuit-table">
                 <div class="table-head">
-                  <span>Kring</span><span>Omschrijving</span><span>Beveiliging</span><span>Kast</span><span>Vrij</span>
+                  <span>Kring</span><span>Omschrijving</span><span>Beveiliging</span><span>Kabelraming</span><span>Kast</span><span>Vrij</span>
                 </div>
                 ${boardRows.length
                   ? boardRows.map(
@@ -171,13 +208,18 @@ export class CircuitScheduleField extends LiteElement {
                           <strong class="circuit-id">${item.id.startsWith('DIFF:') ? 'DIFF' : item.id}</strong>
                           <span class="description">${item.title}</span>
                           <span class="protection">${item.subtitle.replace(`${item.id} · `, '')}</span>
+                          <span class="cable-estimate">${item.kind === 'circuit' ? (() => {
+                            const estimate = estimates.find((estimate) => estimate.id === item.id)
+                            return html`<strong>${estimate?.metres != null ? `ca. ${formatCableMetres(estimate.metres)}${estimate.complete ? '' : ' (deel)'}` : 'Niet geraamd'}</strong>
+                              <small>${item.cable ?? ''}</small>
+                              ${estimate?.notes.map((note) => html`<small>${note}</small>`)}`
+                          })() : '-'}</span>
                           ${item.kind === 'circuit'
                             ? html`<select
                                 aria-label=${`Verdeelbord voor kring ${item.id}`}
-                                .value=${item.boardId}
                                 @change=${(event: Event) =>
                                   this.#setBoard(item.id, (event.target as HTMLSelectElement).value)}>
-                                ${boards.map((option) => html`<option value=${option.id}>${option.name}</option>`)}
+                                ${boards.map((option) => html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
                               </select>`
                             : html`<span class="fixed-board">${board.name}</span>`}
                           <input

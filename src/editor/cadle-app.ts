@@ -137,7 +137,7 @@ import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
 import { resizedSymbolStrokeWidth } from './model/symbol-scale.js'
-import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './layout/onewire-connections.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection, repairGeneratedOneWireContacts } from './layout/onewire-connections.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
 import {
   ONE_WIRE_BUS_STROKE_WIDTH,
@@ -1266,7 +1266,7 @@ export class CadleApp extends LiteElement {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
         if (!this.#applyPersistedState(state, false)) return null
-        const synced = migrateOneWireCircuitGeometry(this.#document.shapes, {
+        const synced = removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
           nextShapeId,
           oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
           oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
@@ -1274,14 +1274,14 @@ export class CadleApp extends LiteElement {
           branchStroke: '#000000',
           minimumRowY: this.#safeAreaRect().y,
           resolveSource: this.#oneWireSourceResolver(analysis, families)
-        })
+        })))
         const sourceChanged = synced.length !== this.#document.shapes.length ||
           synced.some((shape, index) => shape !== this.#document.shapes[index])
         if (sourceChanged) {
           const previousById = new Map(this.#document.shapes.map((shape) => [shape.id, shape]))
           const changedFamilies = new Set(synced.flatMap((shape) =>
             shape.sourceLink?.role === 'breaker' && previousById.get(shape.id) !== shape ? [shape.sourceLink.id] : []))
-          this.#document.shapes = removeRedundantRailAttachments(synced)
+          this.#document.shapes = synced
           for (const family of changedFamilies) {
             this.#document.shapes = applyOneWireCircuitPresentation({
               shapes: this.#document.shapes,

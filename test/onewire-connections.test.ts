@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { SymbolShape } from '../src/editor/model/types.js'
-import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from '../src/editor/layout/onewire-connections.js'
+import type { LineShape, Shape, SymbolShape } from '../src/editor/model/types.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection, repairGeneratedOneWireContacts } from '../src/editor/layout/onewire-connections.js'
+import { findConnectionIssues } from '../src/editor/layout/connection-issues.js'
+import { removeRedundantRailAttachments } from '../src/editor/interaction/connected-conductors.js'
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.js'
 import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.js'
 import { ONE_WIRE_PRESETS } from '../src/editor/constants.js'
@@ -14,6 +16,43 @@ const symbol = (path: string, overrides: Partial<SymbolShape> = {}): SymbolShape
   scale: 1,
   position: { x: 100, y: 200 },
   ...overrides
+})
+
+test('repairs legacy generated appliance contacts without moving symbols, rails, manual wires or intentional gaps', () => {
+  const pump = symbol('symbols/Consumption appliances/Heat pump.svg', {
+    bindingId: 'R1', generationKey: 'circuit:R1:device:0'
+  })
+  const node = oneWireSymbolNodeInfo(pump.path, pump.scale)!
+  const end = { x: pump.position.x + node.offset.x, y: pump.position.y + node.offset.y }
+  const wire: LineShape = { id: 'trunk', kind: 'line', start: { x: end.x, y: 400 }, end,
+    bindingId: 'R', generationKey: 'board:R:trunk', sourceLink: { kind: 'board', id: 'R', role: 'trunk' } }
+  const gap = { ...wire, id: 'gap', end: { ...end, y: end.y + 2 } }
+  const manual = { ...wire, id: 'manual', generationKey: undefined }
+  const locked = { ...wire, id: 'locked', locked: true }
+  const before = [pump, wire, gap, manual, locked]
+  const repaired = repairGeneratedOneWireContacts(before)
+  const bottom = oneWireSymbolConnectionAnchors(pump).find((anchor) => anchor.side === 'bottom')!.point
+  assert.deepEqual((repaired[1] as LineShape).end, bottom)
+  assert.deepEqual(before[1].end, end)
+  for (const index of [0, 2, 3, 4]) assert.equal(repaired[index], before[index])
+  assert.deepEqual(repairGeneratedOneWireContacts(repaired), repaired)
+})
+
+test('recognizes generated fallback appliance contacts and removes only stale automatic rail feeders', () => {
+  const appliance = symbol('symbols/custom-appliance.svg')
+  const left = oneWireSymbolConnectionAnchors(appliance).find((anchor) => anchor.side === 'left')!.point
+  const line: LineShape = { id: 'feed', kind: 'line', start: { x: 20, y: left.y }, end: left, connection: { kind: 'wire' } }
+  assert.ok(!findConnectionIssues([appliance, line]).some((issue) => issue.endpoint === 'end'))
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 0, y: 400 }, end: { x: 200, y: 400 },
+    strokeWidth: 4, groupId: 'onewire-kamrail-test' }
+  const tail: LineShape = { id: 'rail-attachment-tail', kind: 'line', start: { x: 210, y: 400 },
+    end: { x: 240, y: 400 }, oneWireRailId: rail.id, connection: { kind: 'wire' } }
+  const linked: LineShape = { ...tail, id: 'rail-attachment-linked', start: { x: left.x, y: 400 }, end: left }
+  const manual = { ...tail, id: 'manual-tail', oneWireRailId: undefined,
+    start: { x: 300, y: 400 }, end: { x: 340, y: 400 } }
+  const shapes: Shape[] = [rail, appliance, tail, linked, manual]
+  assert.deepEqual(removeRedundantRailAttachments(shapes).map((shape) => shape.id),
+    ['rail', appliance.id, linked.id, manual.id])
 })
 
 test('uses only the real conductor terminals as anchors', () => {

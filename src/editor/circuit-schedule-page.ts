@@ -126,6 +126,7 @@ export type CircuitScheduleEditorItem = {
   subtitle: string
   kind: 'differential' | 'circuit'
   modules: number
+  cable?: string
 }
 
 const circuitCategory = (type: CircuitGroup['specification']['circuitType']): string => {
@@ -245,7 +246,8 @@ export const circuitScheduleEditorItems = (
     title: row.category || row.id,
     subtitle: `${row.id} · ${row.protection}`,
     kind: row.id.startsWith('DIFF:') ? 'differential' : 'circuit',
-    modules: row.modules
+    modules: row.modules,
+    ...(row.id.startsWith('DIFF:') ? {} : { cable: row.cable })
   }))
 
 const ROWS_PER_PAGE = 30

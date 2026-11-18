@@ -38,6 +38,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Toggling a connection caption updates visibility only, without invoking circuit presentation spacing or rail packing.
   Empty circuits retain a real outgoing cable section sized for the complete cable caption, with clearance at both ends.
   Missing empty-circuit sections are repaired locally on opening without moving breakers, rails or populated circuits.
+  Inspector cable edits never repack rails; circuit annotation spacing is restricted to the edited circuit.
+  Manual breaker insertion places only the new circuit and extends its rail outward if necessary, without shrinking
+  or recentering it or reapplying presentation to unrelated circuits. Global packing belongs to explicit layout generation.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size

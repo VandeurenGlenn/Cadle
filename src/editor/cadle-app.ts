@@ -133,7 +133,6 @@ import {
 import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
 import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
-import { paperTextLinesForShape } from './layout/paper-text-layout.js'
 import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -936,7 +935,15 @@ export class CadleApp extends LiteElement {
         void this.#persistProjectMetadata()
       }
     }
-    if (currentPageType === 'onewire' && (payload.connection || payload.symbolTextOverrides)) this.#layoutOneWireLabels(true)
+    if (currentPageType === 'onewire' && (payload.connection || payload.symbolTextOverrides)) {
+      this.#document.shapes = presentConnectionLabels(this.#document.shapes)
+      if (selectedShape?.generationKey?.startsWith('board:main:topology:')) {
+        this.#document.shapes = spaceOneWireTopologyAnnotations(this.#document.shapes)
+      } else if (selectedShape && payload.symbolTextOverrides) {
+        const family = circuitKeyForShape(selectedShape)
+        if (family) this.#document.shapes = spaceOneWireCircuitAnnotations(this.#document.shapes, family).shapes
+      }
+    }
     this.#pushHistory()
     this.#render()
   }
@@ -3151,13 +3158,10 @@ export class CadleApp extends LiteElement {
       if (targetRailId && shape.id !== targetRailId) return shape
       const anchorXs = anchors.filter((anchor) => anchor.railId === shape.id).map((anchor) => anchor.x)
       if (!anchorXs.length) return shape
-      const span = this.#oneWireController.railSpanForAnchors(
-        anchorXs,
-        { startX: shape.start.x, endX: shape.end.x },
-        preserveExisting
-      )
+      const span = this.#oneWireController.railSpanForAnchors(anchorXs)
       if (!span) return shape
-      const { startX, endX } = span
+      const startX = preserveExisting ? Math.min(span.startX, shape.start.x, shape.end.x) : span.startX
+      const endX = preserveExisting ? Math.max(span.endX, shape.start.x, shape.end.x) : span.endX
       if (Math.abs(shape.start.x - startX) < 0.01 && Math.abs(shape.end.x - endX) < 0.01) return shape
       changed = true
       return { ...shape, start: { ...shape.start, x: startX }, end: { ...shape.end, x: endX } }
@@ -4074,7 +4078,7 @@ export class CadleApp extends LiteElement {
     )
     const dx =
       occupiedPoints.length && newPoints.length
-        ? this.#oneWireController.appendFamilyOffset(Math.min(...newPoints), Math.max(...occupiedPoints))
+        ? Math.max(0, this.#oneWireController.appendFamilyOffset(Math.min(...newPoints), Math.max(...occupiedPoints)))
         : 0
     const placedShapes = dx ? bundledShapes.map((shape) => translateShape(shape, dx, 0)) : bundledShapes
     this.#document.shapes.push(...placedShapes)
@@ -4467,8 +4471,7 @@ export class CadleApp extends LiteElement {
       })
     }
     if (presentationChanged) {
-      this.#layoutOneWireLabels(this.#document.shapes.some((shape) => shape.kind === 'text' && !shape.hidden &&
-        shape.sourceLink?.role === 'cable-section' && paperTextLinesForShape(shape).length > 1))
+      this.#document.shapes = presentConnectionLabels(this.#document.shapes)
       this.#pushHistory(false)
       this.#render()
     }
@@ -4490,8 +4493,7 @@ export class CadleApp extends LiteElement {
     if (!result.changed) return false
     this.#document.shapes = result.shapes
     if (!recordHistory) return true
-    this.#layoutOneWireLabels(result.shapes.some((shape) => shape.kind === 'text' && !shape.hidden &&
-      shape.sourceLink?.role === 'cable-section' && paperTextLinesForShape(shape).length > 1))
+    this.#document.shapes = presentConnectionLabels(this.#document.shapes)
     this.#pushHistory(persist)
     this.#render()
     return true
@@ -6270,11 +6272,9 @@ export class CadleApp extends LiteElement {
               if (topAnchor) this.#composeOneWireAt({ x: topAnchor.point.x, y: topAnchor.point.y - 1 }, true)
             }
           }
-          for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
-            this.#updateOneWireCircuitPresentation(circuitKey, false, false)
-          }
-          this.#layoutOneWireLabels()
-          this.#compactExistingOneWireRail(true, clickedKamrail.id)
+          if (this.#project?.circuitSpecifications?.[family]) this.#updateOneWireCircuitPresentation(family, false, false)
+          this.#document.shapes = presentConnectionLabels(this.#document.shapes)
+          this.#resizeOneWireRailsToBreakers(clickedKamrail.id)
           this.#pushHistory()
           this.#render()
         }
@@ -6288,9 +6288,6 @@ export class CadleApp extends LiteElement {
         return
       }
       if (this.#oneWireComposeKind === 'kamrail' && this.#createKamrailAt(electricalPoint)) {
-        for (const circuitKey of Object.keys(this.#project?.circuitSpecifications ?? {})) {
-          this.#updateOneWireCircuitPresentation(circuitKey, false)
-        }
         this.#pushHistory()
         this.#render()
         return

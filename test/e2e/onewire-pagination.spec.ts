@@ -205,14 +205,17 @@ test('keeps adjacent busbars independently positioned when inserting breakers an
     return Object.fromEntries([...svg.querySelectorAll('[data-shape-id]')]
       .map((shape) => [shape.getAttribute('data-shape-id')!, shape.outerHTML]))
   })
-  const assertRailCenters = async () => {
+  const assertRailCoverage = async () => {
     for (const rail of rails) {
       const line = app.locator(`line[data-shape-id="${rail.id}"]`)
       const actual = await line.evaluate((node) => ({
-        center: (Number(node.getAttribute('x1')) + Number(node.getAttribute('x2'))) / 2,
+        start: Number(node.getAttribute('x1')), end: Number(node.getAttribute('x2')),
         y1: Number(node.getAttribute('y1')), y2: Number(node.getAttribute('y2'))
       }))
-      expect(actual).toEqual({ center: (rail.start.x + rail.end.x) / 2, y1: rail.start.y, y2: rail.end.y })
+      expect(actual.start).toBeLessThanOrEqual(rail.start.x)
+      expect(actual.end).toBeGreaterThanOrEqual(rail.end.x)
+      expect(actual.y1).toBe(rail.start.y)
+      expect(actual.y2).toBe(rail.end.y)
     }
   }
   const addBreaker = async (railId: string, family: string, untouchedIds: string[]) => {
@@ -231,7 +234,7 @@ test('keeps adjacent busbars independently positioned when inserting breakers an
     await page.getByRole('textbox', { name: 'Circuit family' }).fill(family)
     await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
     await expect.poll(async () => Object.keys(await geometry()).length).toBeGreaterThan(Object.keys(before).length)
-    await assertRailCenters()
+    await assertRailCoverage()
     const after = await geometry()
     for (const id of untouchedIds) expect(after[id], `Unchanged ${id} after adding ${family}`).toBe(before[id])
     return [railId, ...Object.keys(after).filter((id) => !before[id])]
@@ -251,7 +254,7 @@ test('keeps adjacent busbars independently positioned when inserting breakers an
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
   await expect.poll(geometry).toEqual(completed)
-  await assertRailCenters()
+  await assertRailCoverage()
 })
 
 test('repairs and persists alphabetical circuit placement with manual and generated protections on an existing rail', async ({ page }) => {

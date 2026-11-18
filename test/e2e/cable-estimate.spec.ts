@@ -10,6 +10,7 @@ import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpe
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { applyOneWireCircuitPresentation } from '../../src/editor/layout/onewire-circuit-presentation.ts'
 
 const ground = '00000000-0000-4000-8000-000000000102' as UUID
 const schematic = '00000000-0000-4000-8000-000000000104' as UUID
@@ -272,6 +273,102 @@ test('repairs empty circuit cable clearance on opening without shifting breakers
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
   const reopened = await shell.evaluate((element) => (element as AppShell).project)
   expect(nativeStateForProjectPage(reopened, schematic)!.shapes.map(geometry)).toEqual(repaired.map(geometry))
+})
+
+test('keeps existing geometry fixed when changing manual and circuit cable sections or inserting breakers', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  const project = fixture()
+  project.name = 'Vaste kringen bij kabelwijzigingen'
+  const rail: LineShape = { id: 'stable-rail', kind: 'line', start: { x: 300, y: 1300 }, end: { x: 1400, y: 1300 },
+    groupId: 'onewire-kamrail-stable', strokeWidth: 4 }
+  const lower: LineShape = { ...rail, id: 'stable-lower-rail', start: { x: 300, y: 1800 }, end: { x: 2300, y: 1800 },
+    groupId: 'onewire-kamrail-stable-lower' }
+  let sequence = 0
+  const bundle = (family: string, anchorX: number) => buildKamrailCircuitBundle({
+    rail, anchorX, familyComponents: [{ bindingId: family, kind: 'empty' }],
+    options: { family, amps: 16, autoIncludeFamily: true, cableConductors: 3, cableSectionMm2: 2.5, cableType: 'VOB' },
+    nextShapeId: () => `stable-${++sequence}`, oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id }))
+  const shapes = [...bundle('BI', 600), ...bundle('BJ', 1000)]
+  const named = shapes.find((shape): shape is LineShape =>
+    shape.kind === 'line' && shape.bindingId === 'BJ' && shape.sourceLink?.role === 'trunk')!
+  named.connection!.name = 'Voeding voor de volledige technische installatie en de toestellen in de achterliggende berging'
+  const spaced = applyOneWireCircuitPresentation({ shapes, circuitKey: 'BJ' }).shapes
+  const breaker = spaced.find((shape): shape is SymbolShape =>
+    shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker' && shape.bindingId === 'BI')!
+  const bottom = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')!.point
+  const differential: SymbolShape = { id: 'stable-diff', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg', scale: 3, position: { x: 1700, y: 1600 } }
+  const top = oneWireSymbolConnectionAnchors(differential).find((anchor) => anchor.side === 'top')!.point
+  const manual: LineShape = { id: 'stable-manual-feed', kind: 'line', start: bottom, end: top,
+    connection: { kind: 'wire', sectionMm2: 2.5, conductors: 1, cableType: 'VOB', showLabel: true,
+      routing: 'orthogonal', via: [{ x: 1450, y: bottom.y }, { x: 1450, y: top.y }] } }
+  project.pages[schematic].schema = schema([rail, lower, ...spaced, differential, manual])
+  const app = await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  const savedShapes = async () => {
+    await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+    return nativeStateForProjectPage(await shell.evaluate((element) => (element as AppShell).project), schematic)!.shapes
+  }
+  const geometry = (shape: Shape) => 'position' in shape
+    ? { id: shape.id, position: shape.position, rotation: shape.rotation }
+    : { id: shape.id, start: shape.start, end: shape.end, via: shape.kind === 'line' ? shape.connection?.via : undefined }
+  const original = await savedShapes()
+  const expectUnmoved = async (before: Shape[], allowRailGrowth = false) => {
+    const current = await savedShapes()
+    for (const shape of before) {
+      const actual = current.find((candidate) => candidate.id === shape.id)!
+      if (allowRailGrowth && shape.id === rail.id && actual.kind === 'line' && shape.kind === 'line') {
+        expect(actual.start).toEqual(shape.start)
+        expect(actual.end.y).toBe(shape.end.y)
+        expect(actual.end.x).toBeGreaterThanOrEqual(shape.end.x)
+      } else expect(geometry(actual), shape.id).toEqual(geometry(shape))
+    }
+  }
+  const selectConductor = async (id: string) => {
+    await page.getByRole('button', { name: 'Select', exact: true }).first().click()
+    const point = await app.locator(`.connection-conductor[data-shape-id="${id}"]`).evaluate((node: SVGGeometryElement) => {
+      const point = node.getPointAtLength(node.getTotalLength() - 40).matrixTransform(node.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+    await page.mouse.click(point.x, point.y)
+  }
+  await selectConductor(manual.id)
+  await page.locator('object-pane').getByLabel('Doorsnede (mm²)', { exact: true }).selectOption('6')
+  expect((await savedShapes()).find((shape): shape is LineShape => shape.id === manual.id && shape.kind === 'line')?.connection?.sectionMm2).toBe(6)
+  await expectUnmoved(original)
+  const circuitCable = spaced.find((shape) => shape.kind === 'line' && shape.bindingId === 'BI' && shape.sourceLink?.role === 'trunk')!
+  await selectConductor(circuitCable.id)
+  await page.locator('object-pane').getByLabel('Doorsnede (mm²)', { exact: true }).selectOption('6')
+  await expectUnmoved(original)
+  for (const family of ['BK', 'BL']) {
+    const before = await savedShapes()
+    const inspector = shell.locator('#object-inspector')
+    if (await inspector.getAttribute('data-open') === 'true') await inspector.getByRole('button', { name: 'Close properties' }).click()
+    await page.getByRole('button', { name: 'Add breaker', exact: true }).first().click()
+    const point = await app.locator(`line[data-shape-id="${rail.id}"]`).evaluate((node: SVGLineElement, offset) => {
+      const point = new DOMPoint(node.x2.baseVal.value - offset, node.y1.baseVal.value).matrixTransform(node.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    }, family === 'BK' ? 20 : 60)
+    await page.mouse.click(point.x, point.y)
+    await page.getByRole('textbox', { name: 'Circuit family' }).fill(family)
+    await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
+    await expect(app.locator('text.shape-text').filter({ hasText: new RegExp(`^${family}$`) })).toHaveCount(1)
+    await expectUnmoved(before, true)
+  }
+  const inserted = await savedShapes()
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expectUnmoved(original, true)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
 })
 
 test('repairs saved appliance feeds and orphaned busbar tails on opening without reflowing the drawing', async ({ page }) => {

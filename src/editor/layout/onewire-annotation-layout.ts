@@ -1,7 +1,66 @@
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
-import { oneWireLayoutBounds } from './onewire-connections.js'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from './onewire-connections.js'
 import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
 import { protectionAnnotationLayout } from './protection-label-layout.js'
+import { connectionSegments } from '../model/electrical-connection.js'
+import { paperTextBounds } from './paper-text-layout.js'
+import type { BindingLabelSide } from './symbol-layout.js'
+
+export const isOneWireFamilyLabel = (shape: Shape): shape is TextShape =>
+  shape.kind === 'text' && shape.sourceLink?.role === 'label' &&
+  (shape.sourceLink.kind === 'board' || shape.sourceLink.kind === 'circuit')
+
+export const placeOneWireFamilyLabels = (
+  shapes: readonly Shape[],
+  manual?: { selectedIds: ReadonlySet<string>; side: BindingLabelSide | 'auto' }
+): Shape[] => {
+  const segments = shapes.flatMap((shape) => shape.kind === 'line' && !shape.hidden
+    ? connectionSegments(shape).filter(({ start, end }) => Math.abs(start.x - end.x) < 1e-8 && Math.abs(start.y - end.y) > 1e-8)
+      .map((segment) => ({ ...segment, radius: (shape.strokeWidth ?? 2) / 2 })) : [])
+  return shapes.map((shape) => {
+    if (!isOneWireFamilyLabel(shape) || shape.hidden || shape.locked || shape.rotation || shape.flipX || shape.flipY) return shape
+    let label = shape
+    if (manual) {
+      const breaker = shapes.find((candidate): candidate is SymbolShape =>
+        candidate.kind === 'symbol' && candidate.sourceLink?.role === 'breaker' &&
+        candidate.sourceLink.id === shape.sourceLink!.id &&
+        (shape.groupId ? candidate.groupId === shape.groupId
+          : candidate.oneWireRailId === shape.oneWireRailId))
+      if (!manual.selectedIds.has(shape.id) && (!breaker || !manual.selectedIds.has(breaker.id))) return shape
+      const bottom = breaker && oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')
+      const axisX = bottom?.point.x ?? breaker?.position.x ?? shape.position.x - (shape.bindingLabelOffset?.x ?? 0)
+      const origin = { x: axisX, y: shape.position.y - (shape.bindingLabelOffset?.y ?? 0) }
+      const bounds = paperTextBounds(shape)
+      const offset = manual.side === 'left' ? { x: -8 - (bounds.x + bounds.width - shape.position.x), y: 0 }
+        : manual.side === 'right' ? { x: 8 - (bounds.x - shape.position.x), y: 0 }
+          : manual.side === 'top' ? { x: 0, y: -bounds.height - 8 }
+            : manual.side === 'bottom' ? { x: 0, y: bounds.height + 8 } : { x: 0, y: 0 }
+      label = { ...shape, position: { x: origin.x + offset.x, y: origin.y + offset.y } }
+      if (manual.side === 'auto') delete label.bindingLabelOffset
+      else label.bindingLabelOffset = offset
+    }
+    if (label.bindingLabelOffset) return label
+    const bounds = paperTextBounds(label)
+    const crossings = (x: number) => segments.filter(({ start, end, radius }) =>
+      start.x + radius > x && start.x - radius < x + bounds.width &&
+      Math.max(start.y, end.y) + radius > bounds.y &&
+      Math.min(start.y, end.y) - radius < bounds.y + bounds.height)
+    if (!crossings(bounds.x).length) return label
+    const candidates = [-1, 1].map((direction) => {
+      let x = bounds.x
+      let blockers = crossings(x)
+      while (blockers.length) {
+        x = direction < 0
+          ? Math.min(...blockers.map(({ start, radius }) => start.x - radius - 8 - bounds.width))
+          : Math.max(...blockers.map(({ start, radius }) => start.x + radius + 8))
+        blockers = crossings(x)
+      }
+      return x - bounds.x
+    })
+    const dx = Math.abs(candidates[0]) <= Math.abs(candidates[1]) ? candidates[0] : candidates[1]
+    return { ...label, position: { ...label.position, x: label.position.x + dx } }
+  })
+}
 
 // Compact protection values beside the drawn body; 3 mm around cable text.
 export const spaceOneWireCircuitAnnotations = (shapes: readonly Shape[], circuitKey: string) => {

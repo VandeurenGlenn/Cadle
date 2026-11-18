@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { DragState, LineShape, Shape, SymbolShape } from '../src/editor/model/types.ts'
+import type { DragState, LineShape, Shape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
 import { applyDragMove } from '../src/editor/interaction/pointer-move.ts'
 import { connectedOneWireBranchOwners, followConnectedConductors } from '../src/editor/interaction/connected-conductors.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
@@ -14,10 +14,77 @@ import { paperTextContentMarkup, paperTextLinesForShape } from '../src/editor/la
 import { protectionAnnotationBounds, protectionDescriptionLayout, protectionPhaseLabelLayout } from '../src/editor/layout/protection-label-layout.ts'
 import { symbolTextPresentation } from '../src/editor/symbol-metadata.ts'
 import { sanitizeShapes } from '../src/editor/model/model.ts'
+import { placeOneWireFamilyLabels } from '../src/editor/layout/onewire-annotation-layout.ts'
+import { updateSelectionProperties } from '../src/editor/interaction/selection-properties.ts'
+import { reconcileGeneratedOneWire } from '../src/editor/layout/onewire-regeneration.ts'
+import { bindingLabelsMarkup } from '../src/editor/svg-templates.ts'
 
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`)
 const wire = (id: string, start: { x: number; y: number }, end: { x: number; y: number }): LineShape =>
   ({ id, kind: 'line', start, end, connection: { kind: 'wire', showLabel: false }, strokeWidth: 2 })
+
+const familyLabelFixture = () => {
+  const breaker: SymbolShape = { id: 'breaker', kind: 'symbol', name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', scale: 3, position: { x: 400, y: 600 },
+    bindingId: 'BP', groupId: 'onewire-BP', sourceLink: { kind: 'board', id: 'BP', role: 'breaker' } }
+  const bottom = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')!.point
+  const label: TextShape = { id: 'label', kind: 'text', text: 'BP', textAnchor: 'middle', scale: 22 / 18,
+    position: { x: bottom.x, y: bottom.y + 64 }, groupId: breaker.groupId, bindingId: 'BP',
+    generationKey: 'board:BP:label', sourceLink: { kind: 'board', id: 'BP', role: 'label' } }
+  const feed = { ...wire('supply', bottom, { x: bottom.x, y: bottom.y + 240 }), bindingId: 'BP' }
+  return { breaker, label, feed, shapes: [breaker, label, feed] }
+}
+
+test('places circuit headings beside continuous feeds without moving devices or already clear labels', () => {
+  const { breaker, label, feed, shapes } = familyLabelFixture()
+  const original = structuredClone(shapes)
+  const placed = placeOneWireFamilyLabels(shapes)
+  const heading = placed.find((shape) => shape.id === label.id)!
+  const bounds = oneWireLayoutBounds(heading)
+  assert.ok(bounds.x + bounds.width <= feed.start.x - 9)
+  assert.equal(heading.kind === 'text' && heading.position.y, label.position.y)
+  assert.equal(placed.find((shape) => shape.id === breaker.id), breaker)
+  assert.equal(placed.find((shape) => shape.id === feed.id), feed)
+  assert.deepEqual(shapes, original)
+  assert.deepEqual(placeOneWireFamilyLabels(placed), placed)
+  assert.deepEqual(placeOneWireFamilyLabels([breaker, label]), [breaker, label])
+  assert.deepEqual(placeOneWireFamilyLabels([{ ...label, locked: true }, feed]), [{ ...label, locked: true }, feed])
+  const neighbour = wire('neighbour', { x: feed.start.x - 28, y: feed.start.y }, { x: feed.end.x - 28, y: feed.end.y })
+  const alternative = placeOneWireFamilyLabels([...shapes, neighbour]).find((shape) => shape.id === label.id)!
+  assert.ok(oneWireLayoutBounds(alternative).x >= feed.start.x + 9)
+})
+
+test('circuit label position choices are stable, reset to automatic and survive regeneration', () => {
+  const { breaker, label, feed, shapes } = familyLabelFixture()
+  const context = { selectedIds: new Set([breaker.id]), selectedId: breaker.id, groupedSelection: false }
+  const groupedNeighbour: SymbolShape = { ...breaker, id: 'neighbour', position: { x: 900, y: 600 },
+    bindingId: 'BQ', sourceLink: { kind: 'board', id: 'BQ', role: 'breaker' } }
+  const automatic = placeOneWireFamilyLabels([groupedNeighbour, ...shapes])
+  const right = updateSelectionProperties(automatic, { bindingLabelSide: 'right' }, context)!
+  const heading = right.find((shape): shape is TextShape => shape.id === label.id)!
+  close(oneWireLayoutBounds(heading).x, feed.start.x + 8)
+  assert.deepEqual(updateSelectionProperties(right, { bindingLabelSide: 'right' }, context), right)
+  assert.deepEqual(placeOneWireFamilyLabels(right), right)
+  const restored = sanitizeShapes(right)
+  assert.deepEqual(restored.find((shape) => shape.id === label.id)?.bindingLabelOffset, heading.bindingLabelOffset)
+  const fresh = { ...label, id: 'fresh-label', position: { x: label.position.x + 200, y: label.position.y + 100 } }
+  const regenerated = reconcileGeneratedOneWire(restored, [fresh]).shapes[0] as TextShape
+  assert.deepEqual(regenerated.bindingLabelOffset, heading.bindingLabelOffset)
+  assert.deepEqual(regenerated.position, { x: heading.position.x + 200, y: heading.position.y + 100 })
+  const reset = updateSelectionProperties(right, { bindingLabelSide: 'auto' }, context)!
+  assert.deepEqual(reset, automatic)
+  assert.equal(reset.find((shape) => shape.id === feed.id), feed)
+})
+
+test('renders one circuit heading without a duplicate binding label while retaining point identifiers', () => {
+  const { label, feed } = familyLabelFixture()
+  const point: SymbolShape = { id: 'point', kind: 'symbol', name: 'Motor', path: 'motor.svg',
+    position: { x: 800, y: 800 }, scale: 1, bindingId: 'BP1' }
+  const markup = bindingLabelsMarkup([label, feed, point])
+  assert.doesNotMatch(markup, />BP<\/text>/)
+  assert.match(markup, />BP1<\/text>/)
+  assert.match(bindingLabelsMarkup([{ ...label, hidden: true }, feed]), />BP<\/text>/)
+})
 
 test('rail packing owns complete ungrouped branches without claiming crossings, neighbours or rail feeders', () => {
   const path = 'symbols/Protection devices/Automaat.svg'

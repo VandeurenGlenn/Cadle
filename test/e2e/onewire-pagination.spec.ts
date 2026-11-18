@@ -10,6 +10,82 @@ import type { AppShell } from '../../src/shell/app-shell.ts'
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
 
+test('places BP beside a continuous feed and persists the inspector label position in the drawing and export', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 200, y: 1000 }, end: { x: 1800, y: 1000 },
+    groupId: 'onewire-kamrail-BP', strokeWidth: 4 }
+  let sequence = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail, anchorX: 600, options: { family: 'BP', amps: 16, autoIncludeFamily: true },
+    familyComponents: [{ bindingId: 'BP1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Motor.svg' }],
+    nextShapeId: () => `bp-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  const feed: LineShape = { id: 'supply-BP', kind: 'line', start: { x: 600, y: 1000 }, end: { x: 600, y: 1250 },
+    bindingId: 'BP', connection: { kind: 'wire', showLabel: false } }
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'continuous-feed-BP.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(state([rail, feed, ...bundle.shapes])))
+  })
+  const heading = app.locator('text.shape-text').filter({ hasText: /^BP$/ })
+  await expect(heading).toHaveCount(1)
+  const bounds = () => heading.evaluate((node: SVGTextElement) => {
+    const box = node.getBBox()
+    return { x: box.x, right: box.x + box.width, y: Number(node.getAttribute('y')) }
+  })
+  const automatic = await bounds()
+  expect(automatic.right).toBeLessThan(feed.start.x - 4)
+  await expect(app.locator('.binding-label-text').filter({ hasText: /^BP$/ })).toHaveCount(0)
+  const breakerId = bundle.shapes.find((shape) => shape.sourceLink?.role === 'breaker')!.id
+  const point = await app.locator(`g.shape-symbol[data-shape-id="${breakerId}"] svg path`).first()
+    .evaluate((node: SVGPathElement) => {
+      const point = node.getPointAtLength(2).matrixTransform(node.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+  await page.mouse.click(point.x, point.y)
+  const layout = page.locator('object-pane [data-property-section="layout"]')
+  await layout.locator('summary').click()
+  await layout.getByRole('button', { name: 'Right', exact: true }).click()
+  const right = await bounds()
+  expect(right.x).toBeGreaterThan(feed.start.x + 4)
+  await layout.getByRole('button', { name: 'Right', exact: true }).click()
+  expect(await bounds()).toEqual(right)
+  await layout.getByRole('button', { name: 'Left', exact: true }).click()
+  expect((await bounds()).right).toBeLessThan(feed.start.x - 4)
+  await app.evaluate((element) => (element as CadleApp).undo())
+  expect(await bounds()).toEqual(right)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  expect((await bounds()).right).toBeLessThan(feed.start.x - 4)
+  await layout.getByRole('button', { name: 'Auto', exact: true }).click()
+  expect(await bounds()).toEqual(automatic)
+  await layout.getByRole('button', { name: 'Right', exact: true }).click()
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  await shell.evaluate((element) => (element as AppShell).loadPage('00000000-0000-4000-8000-000000000102'))
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  expect(await bounds()).toEqual(right)
+  const exported = await app.evaluate((element) => {
+    const svg = new DOMParser().parseFromString((element as CadleApp).toSVG(), 'image/svg+xml')
+    return [...svg.querySelectorAll('text')].filter((node) => node.textContent === 'BP').map((node) => Number(node.getAttribute('x')))
+  })
+  expect(exported).toHaveLength(1)
+  expect(exported[0]).toBeGreaterThan(feed.start.x + 4)
+  const savedFeed = await app.locator('.connection-conductor[data-shape-id="supply-BP"]').evaluate((node: SVGGeometryElement) => {
+    const start = node.getPointAtLength(0), end = node.getPointAtLength(node.getTotalLength())
+    return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } }
+  })
+  expect(savedFeed).toEqual({ start: feed.start, end: feed.end })
+})
+
 test('keeps an upstream differential and its feeders fixed when adding breakers or editing cable properties', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/?fixture=priority-suite#!/projects')

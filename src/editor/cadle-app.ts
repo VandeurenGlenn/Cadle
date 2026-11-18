@@ -131,7 +131,7 @@ import {
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
 import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
-import { spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
+import { placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
 import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { paperTextLinesForShape } from './layout/paper-text-layout.js'
 import { paperTextScale } from './layout/page-layout.js'
@@ -1267,7 +1267,7 @@ export class CadleApp extends LiteElement {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
         if (!this.#applyPersistedState(state, false)) return null
-        const synced = removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
+        const synced = placeOneWireFamilyLabels(removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
           nextShapeId,
           oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
           oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
@@ -1275,7 +1275,7 @@ export class CadleApp extends LiteElement {
           branchStroke: '#000000',
           minimumRowY: this.#safeAreaRect().y,
           resolveSource: this.#oneWireSourceResolver(analysis, families)
-        })))
+        }))))
         const sourceChanged = synced.length !== this.#document.shapes.length ||
           synced.some((shape, index) => shape !== this.#document.shapes[index])
         if (sourceChanged) {
@@ -1513,6 +1513,9 @@ export class CadleApp extends LiteElement {
   }
 
   #pushHistory(persist = true, replaceCurrent = false) {
+    if (this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire') {
+      this.#document.shapes = placeOneWireFamilyLabels(this.#document.shapes)
+    }
     this.#document.history.push(
       {
         shapes: this.#document.shapes,

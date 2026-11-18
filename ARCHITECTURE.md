@@ -45,6 +45,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   it does not render, mutate editor state, or persist data.
 - Breaker ratings share `breakerCurrentLabel` for curve/current text (for example `C20A`), including manual devices,
   generated labels, and annotation bounds. Curve-only edits retain the existing current; RCD ratings have no curve.
+- Generated circuit headings move beside a continuous vertical feed instead of printing across it. The existing
+  label-position controls also place these headings; explicit offsets survive regeneration, and duplicate automatic
+  binding labels for the same circuit heading are suppressed.
 - One-wire rail packing orders manual and generated circuit protections together using their actual terminal contacts.
   Unlabelled protections retain their relative order after named circuits; each rail keeps its own center, and manual
   circuit groups and attached conductors follow their protection without moving independent rail-to-rail feeders.

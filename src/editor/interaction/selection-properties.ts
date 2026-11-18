@@ -1,6 +1,7 @@
 import { cloneShape, shapeBounds } from '../../editor/model/model.js'
 import type { LineShape, Point, RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
+import { isOneWireFamilyLabel, placeOneWireFamilyLabels } from '../layout/onewire-annotation-layout.js'
 import { translateShape } from './shape-transforms.js'
 import { GRID_SIZE } from '../constants.js'
 import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
@@ -264,8 +265,10 @@ const applyProperties = (
     else delete updated.roomName
   }
 
-  if (payload.bindingLabelSide === 'auto') delete updated.bindingLabelOffset
-  else if (payload.bindingLabelSide) updated.bindingLabelOffset = bindingLabelOffset(updated, payload.bindingLabelSide)
+  if (!isOneWireFamilyLabel(updated)) {
+    if (payload.bindingLabelSide === 'auto') delete updated.bindingLabelOffset
+    else if (payload.bindingLabelSide) updated.bindingLabelOffset = bindingLabelOffset(updated, payload.bindingLabelSide)
+  }
 
   if (typeof payload.rotation === 'number' && (!context.groupedSelection || center === null)) {
     const angle = ((payload.rotation % 360) + 360) % 360
@@ -496,11 +499,13 @@ export const updateSelectionProperties = (
     return updated
   })
   if (!changed) return null
-  if (!center) return next
+  const positioned = payload.bindingLabelSide
+    ? placeOneWireFamilyLabels(next, { selectedIds: targetIds, side: payload.bindingLabelSide }) : next
+  if (!center) return positioned
   let transformed =
     groupedRotation === null
-      ? next
-      : next.map((shape) => (targetIds.has(shape.id) ? rotateShapeAround(shape, center, groupedRotation) : shape))
+      ? positioned
+      : positioned.map((shape) => (targetIds.has(shape.id) ? rotateShapeAround(shape, center, groupedRotation) : shape))
   for (const axis of groupedMirrorAxes) {
     transformed = transformed.map((shape) => (targetIds.has(shape.id) ? mirrorShapeAround(shape, center, axis) : shape))
   }

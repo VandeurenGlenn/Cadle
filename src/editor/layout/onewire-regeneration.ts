@@ -2,6 +2,13 @@ import type { Shape } from '../../editor/model/types.js'
 
 const preserveGeneratedIdentity = (fresh: Shape, previous: Shape): Shape => {
   if (fresh.kind !== previous.kind) return fresh
+  if (previous.bindingLabelOffset) {
+    fresh = { ...fresh, bindingLabelOffset: { ...previous.bindingLabelOffset } }
+    if (fresh.kind === 'text' && fresh.sourceLink?.role === 'label') {
+      fresh.position = { x: fresh.position.x + previous.bindingLabelOffset.x,
+        y: fresh.position.y + previous.bindingLabelOffset.y }
+    }
+  }
   if (fresh.kind === 'line' && previous.kind === 'line' && fresh.connection && previous.connection) {
     const { via: _oldVia, ...previousConnection } = previous.connection
     return { ...fresh, id: previous.id, connection: {

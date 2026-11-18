@@ -536,12 +536,17 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     return bounds
   }
 
+  const circuitHeadings = new Set(shapes.flatMap((shape) =>
+    shape.kind === 'text' && !shape.hidden && shape.sourceLink?.role === 'label' &&
+    (shape.sourceLink.kind === 'board' || shape.sourceLink.kind === 'circuit')
+      ? [normalizeBindingId(shape.bindingId)].filter((id): id is string => Boolean(id)) : []))
   const labeledShapes = new Map<string, Shape[]>()
   for (const shape of shapes) {
     const bindingId = 'bindingId' in shape ? normalizeBindingId(shape.bindingId) : undefined
     if (!bindingId) continue
     // One-wire circuits render their own text labels — skip them here.
     if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')) continue
+    if (circuitHeadings.has(bindingId)) continue
     const key = shape.groupId ?? shape.id
     const grouped = labeledShapes.get(key)
     if (grouped) grouped.push(shape)

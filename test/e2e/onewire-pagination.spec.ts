@@ -4,9 +4,97 @@ import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo }
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 import type { LineShape, SymbolShape } from '../../src/editor/model/types.ts'
+import type { CadleApp } from '../../src/editor/cadle-app.ts'
+import type { AppShell } from '../../src/shell/app-shell.ts'
 
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
+
+test('keeps an upstream differential and its feeders fixed when adding breakers or editing cable properties', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  const rail: LineShape = { id: 'consumer-rail', kind: 'line', start: { x: 200, y: 1000 }, end: { x: 1800, y: 1000 },
+    groupId: 'onewire-kamrail-consumers', strokeWidth: 4 }
+  const path = 'symbols/Protection devices/Residual-current circuit breaker.svg'
+  const scale = oneWireSymbolScaleFor(path)!
+  const top = oneWireSymbolTerminalInfo(path, scale)!.top!
+  const differential: SymbolShape = { id: 'fixed-differential', kind: 'symbol', name: 'Differentieel',
+    path, scale, position: { x: 680 - top.x, y: 1040 - top.y },
+    electrical: { role: 'protection', poles: 4, rcdSensitivityMa: 30 } }
+  const bottom = oneWireSymbolConnectionAnchors(differential).find((anchor) => anchor.side === 'bottom')!.point
+  const feeder: LineShape = { id: 'fixed-feeder', kind: 'line', start: { x: 680, y: 1000 }, end: { x: 680, y: 1040 },
+    connection: { kind: 'wire', showLabel: false } }
+  const supply: LineShape = { id: 'fixed-supply', kind: 'line', start: { x: 400, y: bottom.y }, end: { x: 2000, y: bottom.y },
+    connection: { kind: 'wire', showLabel: false } }
+  let sequence = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail, anchorX: 600, options: { family: 'BH', amps: 20, autoIncludeFamily: true },
+    familyComponents: [{ bindingId: 'BH1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Motor.svg' }],
+    nextShapeId: () => `consumer-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'fixed-upstream-differential.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(state([rail, differential, feeder, supply, ...bundle.shapes])))
+  })
+  await expect(app.locator('g.shape-symbol[data-shape-id="fixed-differential"]')).toHaveCount(1)
+  const fixed = async () => {
+    await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+    return shell.evaluate((element, key) => {
+      const objects = (element as AppShell).project.pages[key].schema.objects
+      const document = objects.find((object) => 'kind' in object && object.kind === 'cadle-native-svg-document') as
+        { payload: { shapes: Array<LineShape | SymbolShape> } }
+      return document.payload.shapes.filter((shape) => ['fixed-differential', 'fixed-feeder', 'fixed-supply'].includes(shape.id))
+    }, root)
+  }
+  const original = await fixed()
+  const expectFixed = async () => {
+    expect(await fixed()).toEqual(original)
+    const span = await app.locator('line[data-shape-id="consumer-rail"]').evaluate((node: SVGLineElement) => ({
+      start: node.x1.baseVal.value, end: node.x2.baseVal.value, y: node.y1.baseVal.value
+    }))
+    expect((span.start + span.end) / 2).toBeCloseTo(1000, 6)
+    expect(span.y).toBe(feeder.start.y)
+    expect(span.start).toBeLessThanOrEqual(feeder.start.x)
+    expect(span.end).toBeGreaterThanOrEqual(feeder.start.x)
+    await expect(app.locator('.onewire-connection-issues [data-wire-id="fixed-feeder"]')).toHaveCount(0)
+  }
+  await page.getByRole('button', { name: 'Add breaker', exact: true }).first().click()
+  const point = await app.locator('line[data-shape-id="consumer-rail"]').evaluate((node: SVGLineElement) => {
+    const point = new DOMPoint(1000, node.y1.baseVal.value).matrixTransform(node.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  await page.getByRole('textbox', { name: 'Circuit family' }).fill('BI')
+  await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
+  await expect(app.locator('text.shape-text').filter({ hasText: /^BI$/ })).toHaveCount(1)
+  await expectFixed()
+  const cableId = bundle.shapes.find((shape) => shape.kind === 'line' && shape.connection?.kind === 'cable')!.id
+  const cablePoint = await app.locator(`.connection-conductor[data-shape-id="${cableId}"]`).evaluate((node: SVGGeometryElement) => {
+    const point = node.getPointAtLength(node.getTotalLength() / 2).matrixTransform(node.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.getByRole('button', { name: 'Select', exact: true }).first().click()
+  await page.mouse.click(cablePoint.x, cablePoint.y)
+  await page.locator('object-pane').getByLabel('Benaming verbinding').fill('Voeding van de technische installatie met afzonderlijke kabel voor de motor in de garage')
+  await expectFixed()
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expectFixed()
+  await app.evaluate((element) => (element as CadleApp).redo())
+  await expectFixed()
+  await shell.evaluate((element) => (element as AppShell).loadPage('00000000-0000-4000-8000-000000000102'))
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  await expectFixed()
+})
 
 test('keeps adjacent busbars independently positioned when inserting breakers and reopening the page', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -158,7 +246,7 @@ test('repairs and persists alphabetical circuit placement with manual and genera
     }
   })
   await expect.poll(exportedOrder).toEqual(expected)
-  expect((await exportedRailPadding()).left).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).left).toBeGreaterThanOrEqual(20 - 1e-6)
   expect((await exportedRailPadding()).right).toBeGreaterThan(20)
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   const saved = await shell.evaluate((element: any, key) =>
@@ -228,8 +316,13 @@ test('repairs and persists alphabetical circuit placement with manual and genera
   await expect.poll(() => app.evaluate((element: any, key) => element.waitForPageReady(key), root)).toBe(true)
   await expect.poll(exportedOrder).toEqual(expected)
   await assertMeterBranch()
-  expect((await exportedRailPadding()).left).toBeCloseTo(20, 6)
+  expect((await exportedRailPadding()).left).toBeGreaterThanOrEqual(20 - 1e-6)
   expect((await exportedRailPadding()).right).toBeGreaterThan(20)
+  await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+  const finalRcdPosition = await shell.evaluate((element: any, key) =>
+    element.project.pages[key].schema.objects.find((object: any) => object.kind === 'cadle-native-svg-document')
+      .payload.shapes.find((shape: any) => shape.id === 'manual-unlabelled-rcd').position, root)
+  expect(finalRcdPosition).toEqual(updatedRcd.position)
 })
 
 test('creates continuation sheets without shrinking, and undo restores the whole redistribution', async ({ page }) => {

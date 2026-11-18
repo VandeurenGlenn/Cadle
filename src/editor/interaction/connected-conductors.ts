@@ -3,6 +3,11 @@ import { connectionSegments } from '../model/electrical-connection.js'
 import { oneWireSymbolConnectionAnchors } from '../layout/onewire-connections.js'
 import { oneWireSymbolNodeInfo, oneWireSymbolTerminalInfo } from '../layout/onewire-symbol-nodes.js'
 import { isOneWireRailShape } from '../layout/onewire-regeneration.js'
+import { defaultRcdTypeForDevice } from '../model/electrical.js'
+
+export const isOneWireDistributionProtection = (shape: Shape): boolean =>
+  shape.kind === 'symbol' && !(shape.generationKey && shape.sourceLink?.role === 'breaker') &&
+  Boolean(defaultRcdTypeForDevice(shape.name, shape.path))
 
 const same = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) < 0.01
 const key = (point: Point) => `${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`
@@ -43,7 +48,10 @@ export const connectedOneWireBranchOwners = (
   const onRail = (point: Point) => rails.some((rail) => connectionSegments(rail).some((segment) =>
     fraction(point, segment.start, segment.end) !== null))
   const nodes = shapes.filter((shape) => !shape.hidden && !isOneWireRailShape(shape))
-  const fixed = new Set(nodes.filter((shape) => shape.locked ||
+  const distributionGroups = new Set(nodes.flatMap((shape) =>
+    isOneWireDistributionProtection(shape) && shape.groupId ? [shape.groupId] : []))
+  const fixed = new Set(nodes.filter((shape) => shape.locked || isOneWireDistributionProtection(shape) ||
+    (shape.groupId && distributionGroups.has(shape.groupId)) ||
     (shape.kind === 'line' && !owners.has(shape.id) && onRail(shape.start) && onRail(shape.end)))
     .map((shape) => shape.id))
   const lines = nodes.filter((shape): shape is LineShape => shape.kind === 'line')

@@ -106,7 +106,7 @@ import {
   wallMaskTemplate
 } from './svg-templates.js'
 import { translateShape } from './interaction/shape-transforms.js'
-import { connectedOneWireBranchOwners, followConnectedConductors, removeRedundantRailAttachments } from './interaction/connected-conductors.js'
+import { connectedOneWireBranchOwners, followConnectedConductors, isOneWireDistributionProtection, removeRedundantRailAttachments } from './interaction/connected-conductors.js'
 import { createOneWireSourceResolver, oneWireSourceSignature } from './layout/onewire-source-sync.js'
 import { findConnectionIssues, type ConnectionIssue } from './layout/connection-issues.js'
 import { paginateOneWireCircuits } from './layout/onewire-overflow.js'
@@ -127,6 +127,7 @@ import { buildOneWireTopology, oneWireTopologyRcdTypes } from './layout/onewire-
 import { oneWireTopologyDescriptions } from './layout/protection-descriptions.js'
 import {
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
+  ONE_WIRE_RAIL_END_PADDING,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
 import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
@@ -3102,7 +3103,7 @@ export class CadleApp extends LiteElement {
 
   #oneWireRailAnchors(rails: LineShape[]) {
     return this.#document.shapes.flatMap((shape) => {
-      if (shape.kind !== 'symbol' || shape.hidden) return []
+      if (shape.kind !== 'symbol' || shape.hidden || isOneWireDistributionProtection(shape)) return []
       const generated = shape.sourceLink?.role === 'breaker' && Boolean(shape.generationKey)
       if (!generated && (shape.generationKey || inferCircuitRole(shape) !== 'protection')) return []
       const family = this.#normalizeBindingFamily(shape.bindingId ??
@@ -3210,7 +3211,10 @@ export class CadleApp extends LiteElement {
     }
 
     const anchorOffsets = new Map<string, number>()
+    const distributionGroups = new Set(this.#document.shapes.flatMap((shape) =>
+      isOneWireDistributionProtection(shape) && shape.groupId ? [shape.groupId] : []))
     const familyForShape = (shape: Shape) => {
+      if (isOneWireDistributionProtection(shape) || (shape.groupId && distributionGroups.has(shape.groupId))) return null
       const ownAnchor = anchors.find((anchor) => anchor.id === shape.id)
       if (ownAnchor) return ownAnchor.family
       const family = this.#normalizeBindingFamily(
@@ -3262,6 +3266,21 @@ export class CadleApp extends LiteElement {
         [...geometry.familyXs.values()].map((x) => x + offsetX), { startX: rail.start.x, endX: rail.end.x },
         preserveSingleRailLength && railAnchors.length === 1
       )
+      const fixedTaps = this.#document.shapes.flatMap((shape) => {
+        if (shape.hidden || this.#oneWireController.isRail(shape) || branchOwners.has(shape.id)) return []
+        const points = shape.kind === 'line' ? [shape.start, shape.end]
+          : shape.kind === 'symbol' ? oneWireSymbolConnectionAnchors(shape).map((anchor) => anchor.point) : []
+        return points.filter((point) => {
+          const closest = this.#closestPointOnSegment(point, rail.start, rail.end)
+          return Math.hypot(point.x - closest.x, point.y - closest.y) < 0.01
+        }).map((point) => point.x)
+      })
+      if (span && fixedTaps.length) {
+        const halfWidth = Math.max(centerX - span.startX, span.endX - centerX,
+          ...fixedTaps.map((x) => Math.abs(x - centerX) + ONE_WIRE_RAIL_END_PADDING))
+        span.startX = centerX - halfWidth
+        span.endX = centerX + halfWidth
+      }
       railUpdates.set(rail.id, {
         ...rail,
         start: { ...rail.start, x: span?.startX ?? geometry.startX + offsetX },

@@ -76,6 +76,21 @@ test('rail packing does not drag locked devices or independent inter-board feede
   assert.deepEqual(owners, new Map([['device', 'device']]))
 })
 
+test('rail packing stops at an upstream differential instead of owning its supply branch', () => {
+  const breaker: SymbolShape = { id: 'breaker', kind: 'symbol', name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg', scale: 3, position: { x: 400, y: 600 } }
+  const top = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'top')!.point
+  const differential: SymbolShape = { ...breaker, id: 'differential', name: 'Differentieel',
+    groupId: 'supply-group', path: 'symbols/Protection devices/Residual-current circuit breaker.svg' }
+  const offset = oneWireSymbolTerminalInfo(differential.path, differential.scale)!.bottom
+  differential.position = { x: top.x - offset.x, y: top.y - 100 - offset.y }
+  const ports = oneWireSymbolConnectionAnchors(differential)
+  const feeder = wire('feeder', top, ports.find((anchor) => anchor.side === 'bottom')!.point)
+  const supply = wire('supply', ports.find((anchor) => anchor.side === 'top')!.point, { x: top.x, y: top.y - 400 })
+  const owners = connectedOneWireBranchOwners([breaker, differential, feeder, supply], new Map([[breaker.id, breaker.id]]))
+  assert.deepEqual(owners, new Map([[breaker.id, breaker.id]]))
+})
+
 test('dragging a symbol repeatedly keeps both contacts attached and leaves remote ends fixed', () => {
   const path = 'symbols/Protection devices/Automaat.svg'
   const device: SymbolShape = { id: 'device', kind: 'symbol', name: 'Automaat', path,

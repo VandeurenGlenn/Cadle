@@ -15,6 +15,11 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Only the active application route is mounted; the editor does not instantiate hidden settings/project-list routes.
   Linked-page context is derived once per shell render. Visited sidebar views remain mounted and hidden rather than
   re-created when switching tabs, preserving search, scroll and category state without repeating initialization.
+- `src/sw.ts` — network-first SVG/OCR asset caching with offline fallback. A deterministic app-bundle fingerprint
+  added by `rollup/service-worker-version.js` makes app releases detectable without changing the asset cache name.
+  The shell checks on startup/focus and shows a persistent, route-independent reload notice when an existing
+  controller is replaced (not on first installation). Reloading is explicit and flushes circuit updates and saves;
+  failed persistence keeps the current document open and displays an error. App and Drive notices share a responsive stack.
 - `src/elements/catalog/symbol-list.ts` — shared LiteElement for category, recent and picker symbol lists, keyed by
   section and symbol identity. Catalog filtering, overrides and counts are derived once per catalog render.
   Catalog SVG previews share in-flight loading and a bounded cache of raw markup and measured full/compact previews.

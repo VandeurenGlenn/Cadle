@@ -147,6 +147,18 @@ export class AppShell extends LiteElement {
   @property({ type: Boolean, attribute: false })
   accessor googleDriveAuthRequired = false
 
+  @property({ type: Boolean, attribute: false })
+  private accessor _serviceWorkerUpdateReady = false
+
+  @property({ type: Boolean, attribute: false })
+  private accessor _reloadingForUpdate = false
+
+  @property({ type: String, attribute: false })
+  private accessor _serviceWorkerReloadError = ''
+
+  #serviceWorkerRegistration?: ServiceWorkerRegistration
+  #serviceWorkerController: ServiceWorker | null = null
+
   _currentColor: string = ''
 
   get projectLoaded(): boolean {
@@ -902,9 +914,41 @@ export class AppShell extends LiteElement {
         scope: './',
         updateViaCache: 'none'
       })
+      if (!this.isConnected) return
+      this.#serviceWorkerRegistration = registration
       await registration.update()
     } catch (error) {
       console.warn('Failed to register service worker', error)
+    }
+  }
+
+  #onServiceWorkerControllerChange = () => {
+    const controller = navigator.serviceWorker.controller
+    if (this.#serviceWorkerController && controller && controller !== this.#serviceWorkerController) {
+      this._serviceWorkerUpdateReady = true
+    }
+    this.#serviceWorkerController = controller
+  }
+
+  #checkServiceWorkerUpdate = () => {
+    void this.#serviceWorkerRegistration?.update().catch((error) => {
+      console.warn('Controleren op een app-update is mislukt.', error)
+    })
+  }
+
+  #reloadForServiceWorkerUpdate = async () => {
+    if (this._reloadingForUpdate) return
+    this._reloadingForUpdate = true
+    this._serviceWorkerReloadError = ''
+    try {
+      await this.savePage()
+      location.reload()
+    } catch (error) {
+      console.error('Herladen na app-update geannuleerd: opslaan mislukt.', error)
+      this._serviceWorkerReloadError =
+        'Opslaan mislukt. De app is niet herladen. Probeer opnieuw of download eerst een herstelbestand.'
+    } finally {
+      this._reloadingForUpdate = false
     }
   }
 
@@ -947,6 +991,11 @@ export class AppShell extends LiteElement {
   }
 
   async connectedCallback(): Promise<void> {
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      this.#serviceWorkerController = navigator.serviceWorker.controller
+      navigator.serviceWorker.addEventListener('controllerchange', this.#onServiceWorkerControllerChange)
+      window.addEventListener('focus', this.#checkServiceWorkerUpdate)
+    }
     if (super.connectedCallback) await super.connectedCallback()
     window.addEventListener('cadle-google-drive-auth-required', this.#onGoogleDriveAuthRequired)
     installGoogleDriveExitBackup()
@@ -1001,6 +1050,12 @@ export class AppShell extends LiteElement {
     this._presence.disconnect()
     window.removeEventListener('hashchange', this.#onhashchange)
     window.removeEventListener('cadle-google-drive-auth-required', this.#onGoogleDriveAuthRequired)
+    window.removeEventListener('focus', this.#checkServiceWorkerUpdate)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.removeEventListener('controllerchange', this.#onServiceWorkerControllerChange)
+    }
+    this.#serviceWorkerRegistration = undefined
+    this.#serviceWorkerController = null
     pubsub.unsubscribe('editor.selection.changed', this.#onEditorSelectionChanged)
     if (super.disconnectedCallback) super.disconnectedCallback()
   }
@@ -1022,7 +1077,7 @@ export class AppShell extends LiteElement {
     if (!this.googleDriveAuthRequired) return ''
     return html`
       <aside
-        class="drive-auth-notice"
+        class="app-notice drive-auth-notice"
         role="alert"
         aria-live="assertive">
         <custom-icon icon="cloud_off"></custom-icon>
@@ -1043,6 +1098,28 @@ export class AppShell extends LiteElement {
           ×
         </button>
       </aside>
+    `
+  }
+
+  #appNotices() {
+    return html`
+      <div class="app-notices">
+        ${this.#googleDriveAuthNotice()}
+        ${this._serviceWorkerUpdateReady ? html`
+          <aside class="app-notice update-notice" role="status" aria-label="App-update" aria-live="polite">
+            <custom-icon icon="refresh"></custom-icon>
+            <div>
+              <strong>Update klaar: herladen nodig</strong>
+              <span>Je kunt verder werken. Bij herladen slaan we eerst je tekening op.</span>
+              ${this._serviceWorkerReloadError
+                ? html`<span role="alert">${this._serviceWorkerReloadError}</span>` : ''}
+            </div>
+            <button type="button" ?disabled=${this._reloadingForUpdate} @click=${this.#reloadForServiceWorkerUpdate}>
+              ${this._reloadingForUpdate ? 'Bezig met opslaan...' : 'Opslaan en herladen'}
+            </button>
+          </aside>
+        ` : ''}
+      </div>
     `
   }
 
@@ -1541,7 +1618,7 @@ export class AppShell extends LiteElement {
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
-      ${this.#googleDriveAuthNotice()}
+      ${this.#appNotices()}
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>
       <main class="route-only">${routeContent}</main>
@@ -1554,7 +1631,7 @@ export class AppShell extends LiteElement {
     const linkedPageKey = this.linkedPageKey
 
     return html`
-      ${this.#googleDriveAuthNotice()}
+      ${this.#appNotices()}
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>
       <color-picker-dialog></color-picker-dialog>

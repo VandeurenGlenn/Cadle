@@ -9,16 +9,22 @@ export const shellStyles = css`
     --custom-top-app-bar-height: var(--cadle-header-height);
   }
 
-  .drive-auth-notice {
+  .app-notices {
     position: fixed;
     z-index: 20000;
     right: 20px;
     bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(560px, calc(100vw - 40px));
+  }
+
+  .app-notice {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 12px;
-    width: min(560px, calc(100vw - 40px));
     box-sizing: border-box;
     padding: 14px;
     border: 1px solid var(--md-sys-color-outline-variant);
@@ -29,14 +35,20 @@ export const shellStyles = css`
   }
 
   .drive-auth-notice custom-icon { color: var(--md-sys-color-error); }
-  .drive-auth-notice strong, .drive-auth-notice span { display: block; }
-  .drive-auth-notice span { margin-top: 3px; color: var(--md-sys-color-on-surface-variant); font-size: 13px; }
-  .drive-auth-notice button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); font: inherit; font-weight: 650; cursor: pointer; }
+  .update-notice { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .update-notice custom-icon { color: var(--md-sys-color-primary); }
+  .app-notice strong, .app-notice span { display: block; }
+  .app-notice span { margin-top: 3px; color: var(--md-sys-color-on-surface-variant); font-size: 13px; }
+  .app-notice [role="alert"] { color: var(--md-sys-color-error); }
+  .app-notice button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary); font: inherit; font-weight: 650; cursor: pointer; }
+  .app-notice button:disabled { opacity: 0.6; cursor: wait; }
+  .app-notice button:focus-visible { outline: none; box-shadow: var(--cadle-focus-ring); }
   .drive-auth-notice .notice-close { width: 36px; padding: 0; color: var(--md-sys-color-on-surface-variant); background: transparent; font-size: 22px; }
 
   @media (max-width: 640px) {
-    .drive-auth-notice { left: 12px; right: 12px; bottom: 12px; grid-template-columns: auto minmax(0, 1fr) auto; width: auto; }
-    .drive-auth-notice > button:not(.notice-close) { grid-column: 1 / -1; }
+    .app-notices { left: 12px; right: 12px; bottom: 12px; width: auto; }
+    .app-notice { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .app-notice > button:not(.notice-close) { grid-column: 1 / -1; }
     .drive-auth-notice .notice-close { grid-column: 3; grid-row: 1; }
   }
 

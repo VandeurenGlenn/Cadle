@@ -6,6 +6,7 @@ import materialSymbols from 'rollup-plugin-material-symbols'
 import cleanWWW from './rollup/clean-www.js'
 import copyPdfWorker from './rollup/copy-pdf-worker.js'
 import copyStatic from './rollup/copy-static.js'
+import serviceWorkerVersion from './rollup/service-worker-version.js'
 import { cssModules } from 'rollup-plugin-css-modules'
 
 const browserBuiltins = () => ({
@@ -97,7 +98,8 @@ export default [
       browserBuiltins(),
       nodeResolve({ browser: true, preferBuiltins: false }),
       commonjs(),
-      typescript()
+      typescript(),
+      serviceWorkerVersion()
     ]
   }
 ]

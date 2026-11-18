@@ -84,7 +84,8 @@ test('keeps large drawings stable and skips committed SVG work during previews, 
   }))
   await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
     name: 'render-performance.json', mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, shapes,
+    buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1,
+      shapes: [{ ...shapes[0], id: 'perf-hidden', hidden: true }, ...shapes],
       selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, drawingScale: 100,
       worldWidth: 2376, worldHeight: 1680 }))
   })

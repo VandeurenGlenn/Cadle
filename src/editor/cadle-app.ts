@@ -15,10 +15,9 @@ import { snapWallPoint } from './interaction/wall-snap.js'
 import { wallJunctionMarkup } from './layout/wall-junctions.js'
 import { assignRoomLabel, isRoomLabel, nextRoomLabelId, roomLabelInRegion } from './room-labels.js'
 import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
-import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, repeat } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
-import { repeat } from 'lit/directives/repeat.js'
 import { guard } from 'lit/directives/guard.js'
 import type jsPDFType from 'jspdf'
 import styles from './cadle-app.css' with { type: 'css' }
@@ -5389,7 +5388,7 @@ export class CadleApp extends LiteElement {
         (entry) => {
           if (entry.type === 'single') {
             const shape = entry.shape
-            return this.#shapeTemplate(shape, isIndividuallySelected(shape))
+            return svg`${this.#shapeTemplate(shape, isIndividuallySelected(shape))}`
           }
 
           return svg`
@@ -5397,7 +5396,7 @@ export class CadleApp extends LiteElement {
               ${repeat(
                 entry.shapes,
                 (shape) => shape.id,
-                (shape) => this.#shapeTemplate(shape, isIndividuallySelected(shape))
+                (shape) => svg`${this.#shapeTemplate(shape, isIndividuallySelected(shape))}`
               )}
             </g>
           `

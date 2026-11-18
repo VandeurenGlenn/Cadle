@@ -1,6 +1,5 @@
-import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
+import { LiteElement, html, customElement, property, repeat } from '@vandeurenglenn/lite'
 import styles from './styles/catalog.css' with { type: 'css' }
-import { repeat } from 'lit/directives/repeat.js'
 import './category.js'
 import './catalog-editor.js'
 import '@vandeurenglenn/lite-elements/icon.js'

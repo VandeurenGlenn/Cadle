@@ -1,5 +1,4 @@
-import { LiteElement, css, html, customElement, property } from '@vandeurenglenn/lite'
-import { repeat } from 'lit/directives/repeat.js'
+import { LiteElement, css, html, customElement, property, repeat } from '@vandeurenglenn/lite'
 import type { Catalog } from '../../types.js'
 import './item.js'
 
@@ -32,10 +31,10 @@ export class CatalogSymbolList extends LiteElement {
 
   render() {
     return html`${repeat(this.sections, (section) => `${section.folder ?? ''}::${section.category}`,
-      (section) => repeat(section.symbols, (symbol) => `${symbol.path}::${symbol.name}`, (symbol) => html`
+      (section) => html`${repeat(section.symbols, (symbol) => `${symbol.path}::${symbol.name}`, (symbol) => html`
         <catalog-item tabindex="0"
           .category=${section.category} .folder=${section.folder ?? ''}
           .symbol=${symbol} .headline=${symbol.name} .image=${symbol.path}></catalog-item>
-      `))}`
+      `)}`)}`
   }
 }

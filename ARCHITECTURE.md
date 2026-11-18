@@ -11,6 +11,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   update the viewport/overlay without repeating document layout or symbol parsing. Document/selection changes and
   completed SVG loads invalidate the scene. Both outer drawing entries and group members are keyed by stable identity
   so insertion, deletion and undo retain unrelated SVG nodes instead of replacing their contents.
+  Keyed lists use `repeat` from `@vandeurenglenn/lite`; callbacks return `html`/`svg` templates even for nested
+  lists or hidden shapes, so Lite retains keyed rendering rather than falling back to plain value mapping.
 - `src/shell/app-shell.ts` — application shell composition root and project/page orchestration.
   Only the active application route is mounted; the editor does not instantiate hidden settings/project-list routes.
   Linked-page context is derived once per shell render. Visited sidebar views remain mounted and hidden rather than

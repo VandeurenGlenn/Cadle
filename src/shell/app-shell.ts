@@ -91,6 +91,8 @@ type NativeAppElement = HTMLElement & {
   waitForPageReady?: (pageKey: string) => Promise<boolean>
   flushPendingSave?: () => Promise<void>
   flushPendingCircuitUpdates?: () => Promise<void>
+  createRecoveryPoint?: (label?: string) => Promise<void>
+  restoreRecoveryPoint?: (id: string) => Promise<UUID>
   focusBinding?: (bindingId: string) => boolean
   loadReadOnlyPage?: (projectKey: string, pageKey: string) => Promise<void>
 }
@@ -705,13 +707,6 @@ export class AppShell extends LiteElement {
     this.historyEntries = customEvent.detail?.entries ?? []
   }
 
-  @listen('canvas-history-updated')
-  onCanvasHistoryUpdated() {
-    if (!this.project || !this.projectKey || !this.loadedPage) return
-    this.projectDirty = true
-    pubsub.publish('project.modified', { projectKey: this.projectKey, pageKey: this.loadedPage })
-  }
-
   #syncRemotePresence() {
     this._presence.activeCursors(this.projectKey, this.loadedPage)
   }
@@ -729,6 +724,33 @@ export class AppShell extends LiteElement {
 
   toggleHistoryPanel = () => {
     this.historyPanelOpen = !this.historyPanelOpen
+  }
+
+  #createRecoveryPoint = async () => {
+    try {
+      const app = await this.#nativeAppForPage(this.loadedPage)
+      if (!app?.createRecoveryPoint) throw new Error('De editor is nog niet klaar.')
+      await app.createRecoveryPoint()
+    } catch (error) {
+      console.error('Herstelpunt maken mislukt.', error)
+      globalThis.alert(`Herstelpunt maken mislukt: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  #restoreRecoveryPoint = async (event: CustomEvent<{ id: string }>) => {
+    if (!globalThis.confirm('Het volledige project wordt hersteld, inclusief andere pagina’s en kringgegevens. De huidige toestand wordt eerst als herstelpunt bewaard. Doorgaan?')) return
+    try {
+      const app = await this.#nativeAppForPage(this.loadedPage)
+      if (!app?.restoreRecoveryPoint) throw new Error('De editor is nog niet klaar.')
+      const pageKey = await app.restoreRecoveryPoint(event.detail.id)
+      this.project = await getProjectData(this.projectKey)
+      this.projectName = this.project.name
+      await this.loadPage(pageKey)
+      this.historyPanelOpen = false
+    } catch (error) {
+      console.error('Project herstellen mislukt.', error)
+      globalThis.alert(`Project herstellen mislukt: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   openTemplateLibrary = () => {
@@ -1236,10 +1258,20 @@ export class AppShell extends LiteElement {
   }
 
   async savePage() {
+    const app = this.shadowRoot?.querySelector('cadle-app') as NativeAppElement | null
+    await app?.flushPendingCircuitUpdates?.()
+    await app?.flushPendingSave?.()
     this.projectDirty = false
   }
 
   async loadPage(key: string) {
+    try {
+      await this.savePage()
+    } catch (error) {
+      console.error('Pagina wisselen geannuleerd: opslaan mislukt.', error)
+      globalThis.alert('De huidige pagina kon niet worden opgeslagen. Probeer opnieuw op te slaan of download een herstelbestand voordat je wisselt.')
+      return
+    }
     this.splitViewOpen = false
     this.selectedBindingId = ''
     this.loadedPage = key
@@ -1301,6 +1333,7 @@ export class AppShell extends LiteElement {
 
     let oneWirePage: Awaited<ReturnType<typeof ensureOneWirePage>>
     try {
+      await nativeApp?.createRecoveryPoint?.('Vóór eendraads opnieuw indelen')
       oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
     } catch (error) {
       console.error('Failed to create the one-wire page.', error)
@@ -1593,10 +1626,8 @@ export class AppShell extends LiteElement {
         .open=${this.historyPanelOpen}
         .entries=${this.historyEntries}
         @close=${() => (this.historyPanelOpen = false)}
-        @restore-history=${async (event: CustomEvent<{ id: string }>) => {
-          void event.detail.id
-          location.hash = this.#nativeDrawHash()
-        }}></history-panel>
+        @create-history=${this.#createRecoveryPoint}
+        @restore-history=${this.#restoreRecoveryPoint}></history-panel>
       ${iconSetTemplate}
       <div class="shell-frame">
         <section

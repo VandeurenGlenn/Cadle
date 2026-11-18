@@ -27,19 +27,40 @@ test('persistence queue runs writes in enqueue order', async () => {
   assert.deepEqual(writes, ['first', 'second'])
 })
 
-test('persistence queue reports the latest failure and accepts later writes', async () => {
-  const queue = new PersistenceQueue()
+test('persistence queue exposes failures immediately and retries failed and later writes in order', async () => {
+  const states: string[] = []
+  const queue = new PersistenceQueue((state) => states.push(state.status))
   const failure = new Error('write failed')
+  let fails = true
+  const writes: string[] = []
 
   void queue.enqueue(async () => {
-    throw failure
+    if (fails) throw failure
+    writes.push('first')
   })
   await assert.rejects(queue.flush(), failure)
+  assert.deepEqual(states, ['saving', 'error'])
 
-  let recovered = false
   void queue.enqueue(async () => {
-    recovered = true
+    writes.push('second')
   })
+  await assert.rejects(queue.flush(), failure)
+  assert.deepEqual(writes, [])
+  fails = false
+  await queue.retry()
+  assert.deepEqual(writes, ['first', 'second'])
+  assert.deepEqual(states, ['saving', 'error', 'saving', 'saved'])
+})
+
+test('persistence queue never announces saved while a later write is pending', async () => {
+  const states: string[] = []
+  const queue = new PersistenceQueue((state) => states.push(state.status))
+  let release: () => void = () => {}
+  void queue.enqueue(async () => {})
+  void queue.enqueue(() => new Promise<void>((resolve) => { release = resolve }))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  assert.deepEqual(states, ['saving'])
+  release()
   await queue.flush()
-  assert.equal(recovered, true)
+  assert.deepEqual(states, ['saving', 'saved'])
 })

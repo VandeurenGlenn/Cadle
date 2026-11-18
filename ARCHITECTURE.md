@@ -11,6 +11,15 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
 - `src/editor/controllers/` — stateful editor controllers for history, tools, the viewport, and ordered persistence.
+- Ordered persistence reports saving/saved/error from actual writes. A failed operation and all successors remain queued
+  until an explicit retry; the status bar offers retry and an in-memory project download without requiring a successful save.
+- `src/data/project-recovery.ts` — bounded, non-recursive full-project recovery points stored atomically with the project.
+  The History panel restores all pages and circuit metadata, retains the pre-restore state, and keeps the last ten points.
+  A restored source fingerprint preserves the chosen state across reopening; subsequent source changes resume synchronization.
+  Ordinary opening and PDF export preserve saved page geometry, including older layouts. Layout migration is explicit
+  through drawing import or one-wire regeneration, both protected by a recovery point.
+  Source synchronization updates affected linked circuits without globally repacking rails or redistributing pages.
+  Overflow pagination belongs to explicit import/generation, never generic history recording or a single-rail insertion.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size
@@ -29,6 +38,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - One-wire rail packing orders manual and generated circuit protections together using their actual terminal contacts.
   Unlabelled protections retain their relative order after named circuits; each rail keeps its own center, and manual
   circuit groups and attached conductors follow their protection without moving independent rail-to-rail feeders.
+  Ungrouped devices and wires connected to exactly one circuit move rigidly with that branch. Ownership follows actual
+  terminal contacts and wire junctions, never crossings, proximity, or continuity through a busbar or a shared circuit.
 - The automatic heating planner reserves a complete, disjoint supply/return approach bundle before packing leg fields.
   Measured feeder detours contribute to circuit length budgets. Additional fields trigger renewed pair reservations;
   final rounded routes still require geometry and continuity checks before any result replaces the existing plan.

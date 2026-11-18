@@ -27,6 +27,71 @@ export const removeRedundantRailAttachments = (shapes: readonly Shape[]): Shape[
   })
 }
 
+/** Extend explicit circuit ownership through real contacts, stopping at busbars and shared branches. */
+export const connectedOneWireBranchOwners = (
+  shapes: readonly Shape[], owners: ReadonlyMap<string, string>
+): Map<string, string> => {
+  const rails = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && isOneWireRailShape(shape))
+  const onRail = (point: Point) => rails.some((rail) => connectionSegments(rail).some((segment) =>
+    fraction(point, segment.start, segment.end) !== null))
+  const nodes = shapes.filter((shape) => !shape.hidden && !isOneWireRailShape(shape))
+  const fixed = new Set(nodes.filter((shape) => shape.locked ||
+    (shape.kind === 'line' && !owners.has(shape.id) && onRail(shape.start) && onRail(shape.end)))
+    .map((shape) => shape.id))
+  const lines = nodes.filter((shape): shape is LineShape => shape.kind === 'line')
+  const ports = nodes.flatMap((shape) => {
+    const points = shape.kind === 'line' ? [shape.start, shape.end]
+      : shape.kind === 'symbol' && (oneWireSymbolNodeInfo(shape.path, shape.scale) || oneWireSymbolTerminalInfo(shape.path, shape.scale))
+        ? oneWireSymbolConnectionAnchors(shape).map(({ point }) => point) : []
+    return points.filter((point) => !onRail(point)).map((point) => ({ id: shape.id, point }))
+  })
+  const adjacent = new Map<string, Set<string>>()
+  const join = (left: string, right: string) => {
+    if (left === right) return
+    if (!adjacent.has(left)) adjacent.set(left, new Set())
+    if (!adjacent.has(right)) adjacent.set(right, new Set())
+    adjacent.get(left)!.add(right)
+    adjacent.get(right)!.add(left)
+  }
+  const byPoint = new Map<string, string[]>()
+  for (const { id, point } of ports) {
+    const ids = byPoint.get(key(point)) ?? []
+    for (const other of ids) join(id, other)
+    ids.push(id)
+    byPoint.set(key(point), ids)
+    for (const line of lines) {
+      if (line.id !== id && connectionSegments(line).some((segment) =>
+        fraction(point, segment.start, segment.end) !== null)) join(id, line.id)
+    }
+  }
+  const result = new Map(owners)
+  const visited = new Set([...owners.keys(), ...fixed])
+  for (const shape of nodes) {
+    if (visited.has(shape.id)) continue
+    const pending = [shape.id], component: string[] = []
+    const touchingOwners = new Set<string | null>()
+    visited.add(shape.id)
+    while (pending.length) {
+      const id = pending.pop()!
+      component.push(id)
+      for (const next of adjacent.get(id) ?? []) {
+        const owner = owners.get(next)
+        if (fixed.has(next)) touchingOwners.add(null)
+        else if (owner !== undefined) touchingOwners.add(owner)
+        else if (!visited.has(next)) {
+          visited.add(next)
+          pending.push(next)
+        }
+      }
+    }
+    if (touchingOwners.size !== 1) continue
+    const owner = [...touchingOwners][0]
+    if (owner === null) continue
+    for (const id of component) result.set(id, owner)
+  }
+  return result
+}
+
 /** Only move established connections. Nearby graphics and crossings stay independent. */
 export const followConnectedConductors = (
   before: readonly Shape[], after: readonly Shape[], movedIds: ReadonlySet<string>

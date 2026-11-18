@@ -11,6 +11,8 @@ test('keeps wires attached while moving and undoing, and makes room for long sav
   const topology = page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000103"]')
   await topology.click()
   const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element: any) =>
+    element.waitForPageReady('00000000-0000-4000-8000-000000000103'))).toBe(true)
   await app.evaluate(async (element: any) => { await element.exportA4PNG() })
   const breaker = app.locator('g.shape-symbol').filter({ has: page.locator('svg[viewBox="0 0 28.783 28.8265"]') })
   const id = (await breaker.getAttribute('data-shape-id'))!

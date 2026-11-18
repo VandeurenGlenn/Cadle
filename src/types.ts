@@ -151,6 +151,8 @@ export type ProjectInput = {
 }
 
 export interface Project extends ProjectInput {
+  recovery?: ProjectRecoveryEntry[]
+  oneWireSyncBaseline?: string
   creationTime: EpochTimeStamp
   uuid: UUID
   pages: {
@@ -165,6 +167,14 @@ export interface Project extends ProjectInput {
       heatingScheduleOf?: string
     }
   }
+}
+
+export type ProjectRecoveryEntry = {
+  id: string
+  label: string
+  timestamp: number
+  pageKey: UUID
+  project: Omit<Project, 'recovery'>
 }
 
 export type PageType = 'groundplan' | 'onewire' | 'circuit-schedule'

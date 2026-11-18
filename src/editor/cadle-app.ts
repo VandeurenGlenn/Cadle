@@ -29,6 +29,7 @@ import {
   saveNativeState,
   type NativeDocumentState
 } from '../data/project-document.js'
+import { oneWireSourceFingerprint, projectFromRecoveryPoint, projectWithRecoveryPoint } from '../data/project-recovery.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
   DEFAULT_WORLD_HEIGHT,
@@ -73,7 +74,7 @@ import type { Project, UUID } from '../types.js'
 import { compareCircuitFamilies, electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
 import { isSocketSymbol, socketCountFromKeyboardEvent, withSocketCount } from './socket-multiplicity.js'
 import { connectionDefaults, connectionPoints, connectionSegments, isConnectionKind, type ConnectionKind } from './model/electrical-connection.js'
-import { setProjectData } from '../api/project.js'
+import { projectStore, setProjectData } from '../api/project.js'
 import pubsub from '../pubsub.js'
 import { downloadTextFile } from './export/downloads.js'
 import { buildSvgDocument, safeAreaRect } from './export/svg-export.js'
@@ -105,7 +106,7 @@ import {
   wallMaskTemplate
 } from './svg-templates.js'
 import { translateShape } from './interaction/shape-transforms.js'
-import { followConnectedConductors, removeRedundantRailAttachments } from './interaction/connected-conductors.js'
+import { connectedOneWireBranchOwners, followConnectedConductors, removeRedundantRailAttachments } from './interaction/connected-conductors.js'
 import { createOneWireSourceResolver, oneWireSourceSignature } from './layout/onewire-source-sync.js'
 import { findConnectionIssues, type ConnectionIssue } from './layout/connection-issues.js'
 import { paginateOneWireCircuits } from './layout/onewire-overflow.js'
@@ -305,10 +306,15 @@ export class CadleApp extends LiteElement {
   #projectKey: UUID | null = null
   #pageKey: UUID | null = null
   #project: Project | null = null
-  #persistence = new PersistenceQueue()
+  #persistence = new PersistenceQueue((state) => {
+    if (this.readOnly || !this.#connected) return
+    if (state.status === 'error') console.error('Project opslaan mislukt.', state.error)
+    this.#publishNativeControlsState()
+  })
   #circuitUpdatePromise: Promise<void> = Promise.resolve()
   #initializePromise: Promise<void> = Promise.resolve()
   #connected = false
+  #restoringProject = false
   #documentSizeMigrated = false
   // Wall click-chain state
   #wallChain: { startPoint: Point } | null = null
@@ -373,6 +379,7 @@ export class CadleApp extends LiteElement {
       window.addEventListener('hashchange', this.#onHashChange)
       window.addEventListener('keydown', this.#onKeyDown)
       window.addEventListener('keyup', this.#onKeyUp)
+      window.addEventListener('beforeunload', this.#onBeforeUnload)
       pubsub.subscribe('shell.action', this.#onShellAction)
       pubsub.subscribe('shell.snap', this.#onShellSnap)
       pubsub.subscribe('native.catalog.pick', this.#onNativeCatalogPick)
@@ -382,6 +389,8 @@ export class CadleApp extends LiteElement {
       pubsub.subscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
       pubsub.subscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
       pubsub.subscribe('editor.controls.command', this.#onNativeControlsCommand)
+      pubsub.subscribe('editor.persistence.retry', this.#retryPendingSave)
+      pubsub.subscribe('editor.persistence.download', this.#downloadUnsavedProject)
       pubsub.subscribe('native.symbol-stroke-width.update', this.#onSymbolStrokeWidthUpdate)
     }
     this.#startInitialize()
@@ -399,6 +408,7 @@ export class CadleApp extends LiteElement {
     window.removeEventListener('hashchange', this.#onHashChange)
     window.removeEventListener('keydown', this.#onKeyDown)
     window.removeEventListener('keyup', this.#onKeyUp)
+    window.removeEventListener('beforeunload', this.#onBeforeUnload)
     pubsub.unsubscribe('shell.action', this.#onShellAction)
     pubsub.unsubscribe('shell.snap', this.#onShellSnap)
     pubsub.unsubscribe('native.catalog.pick', this.#onNativeCatalogPick)
@@ -408,6 +418,8 @@ export class CadleApp extends LiteElement {
     pubsub.unsubscribe('editor.object.convert-room', this.#onConvertSelectionToRoom)
     pubsub.unsubscribe('editor.object.flip-side', this.#onNativeObjectFlipSide)
     pubsub.unsubscribe('editor.controls.command', this.#onNativeControlsCommand)
+    pubsub.unsubscribe('editor.persistence.retry', this.#retryPendingSave)
+    pubsub.unsubscribe('editor.persistence.download', this.#downloadUnsavedProject)
   }
 
   undo() {
@@ -431,6 +443,7 @@ export class CadleApp extends LiteElement {
     widthPx: number
     heightPx: number
   }> {
+    await this.#initializePromise
     await this.#ensureSymbolMarkupReady()
     const paper = this.#paperMeta()
     const resolvedOrientation =
@@ -1010,13 +1023,13 @@ export class CadleApp extends LiteElement {
   }
 
   async #initialize() {
+    await this.#restore()
     this.#document.history.reset()
     this.#draft = null
     this.#drag = null
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
 
-    await this.#restore()
     if (this.#documentSizeMigrated) {
       this.#documentSizeMigrated = false
       await this.#persist()
@@ -1087,9 +1100,90 @@ export class CadleApp extends LiteElement {
     await this.#circuitUpdatePromise
   }
 
+  #retryPendingSave = async () => {
+    try {
+      await this.#persistence.retry()
+      const { params } = parseHash(window.location.hash)
+      if (params.page !== this.#pageKey || params.project !== this.#projectKey) this.#startInitialize()
+    } catch (error) {
+      console.error('Project opnieuw opslaan mislukt.', error)
+    }
+  }
+
+  #downloadUnsavedProject = () => {
+    if (!this.#project || !this.#pageKey || !this.#projectKey) return
+    const project = structuredClone(this.#project)
+    project.pages[this.#pageKey].schema = { version: 'native-svg-1', objects: [
+      { kind: 'cadle-native-svg-document', payload: this.#nativeDocumentState() }
+    ] }
+    this.#download(`${project.name}-herstel.json`, JSON.stringify({ ...project, projectKey: this.#projectKey }), 'application/json')
+  }
+
+  #publishRecoveryPoints(): void {
+    if (this.readOnly) return
+    this.dispatchEvent(new CustomEvent('canvas-history-updated', { bubbles: true, composed: true, detail: {
+      entries: (this.#project?.recovery ?? []).map(({ id, label, timestamp }) => ({ id, label, timestamp }))
+    } }))
+  }
+
+  async createRecoveryPoint(label = 'Handmatig herstelpunt'): Promise<void> {
+    if (this.readOnly) throw new Error('Een alleen-lezen project kan niet worden gewijzigd.')
+    await this.flushPendingCircuitUpdates()
+    this.#persist()
+    await this.flushPendingSave()
+    if (!this.#project || !this.#pageKey) throw new Error('Open eerst een project.')
+    this.#project.recovery = projectWithRecoveryPoint(this.#project, this.#pageKey, label).recovery
+    await this.#persistProjectMetadata()
+    await this.flushPendingSave()
+    this.#publishRecoveryPoints()
+  }
+
+  async restoreRecoveryPoint(id: string): Promise<UUID> {
+    if (this.readOnly) throw new Error('Een alleen-lezen project kan niet worden gewijzigd.')
+    if (!this.#project || !this.#projectKey) throw new Error('Open eerst een project.')
+    if (this.#restoringProject) throw new Error('Het project wordt al hersteld.')
+    this.#restoringProject = true
+    const wasInert = cadleShell.inert
+    cadleShell.inert = true
+    try {
+      const restored = projectFromRecoveryPoint(this.#project, id)
+      await this.createRecoveryPoint('Vóór herstel')
+      restored.project.recovery = this.#project.recovery
+      // A deliberate restore is the new baseline, not an instruction to immediately sync it away.
+      restored.project.oneWireSyncBaseline = await oneWireSourceFingerprint(restored.project)
+      const projectKey = this.#projectKey
+      await this.#persistence.enqueue(async () => {
+        await projectStore.put(projectKey, restored.project.name)
+        await setProjectData(projectKey, restored.project)
+      })
+      await this.flushPendingSave()
+      this.#project = restored.project
+      this.#pageKey = restored.pageKey
+      cadleShell.project = restored.project
+      const state = nativeStateForProjectPage(restored.project, restored.pageKey)
+      this.#document.history.reset()
+      if (state) this.#applyPersistedState(state, false)
+      else this.#resetPageState()
+      this.#pushHistory(false)
+      this.#autoCenterView()
+      this.#render()
+      this.#publishRecoveryPoints()
+      return restored.pageKey
+    } finally {
+      this.#restoringProject = false
+      cadleShell.inert = wasInert
+    }
+  }
+
+  #onBeforeUnload = (event: BeforeUnloadEvent) => {
+    if (this.#persistence.state.status !== 'saving' && this.#persistence.state.status !== 'error') return
+    event.preventDefault()
+    event.returnValue = ''
+  }
+
   #persist() {
     if (this.readOnly) return
-    const payload = this.#nativeDocumentState()
+    const payload = structuredClone(this.#nativeDocumentState())
 
     if (!this.#projectKey || !this.#pageKey) return
     const projectKey = this.#projectKey
@@ -1138,20 +1232,27 @@ export class CadleApp extends LiteElement {
     this.#project = loaded.project
     if (shell.cadleShell && !this.readOnly) shell.cadleShell.project = loaded.project
 
-    if (!this.readOnly) await this.#migrateOneWirePagesOnProjectLoad()
+    if (!this.readOnly) await this.#syncOneWirePagesOnProjectLoad()
 
     const restoredState = nativeStateForProjectPage(this.#project, this.#pageKey)
     if (restoredState) {
-      this.#applyPersistedState(restoredState)
+      this.#applyPersistedState(restoredState, false)
+      this.#publishRecoveryPoints()
       return
     }
 
     this.#resetPageState()
+    this.#publishRecoveryPoints()
   }
 
-  async #migrateOneWirePagesOnProjectLoad(): Promise<void> {
+  async #syncOneWirePagesOnProjectLoad(): Promise<void> {
     if (!this.#projectKey || !this.#project) return
+    if (this.#project.oneWireSyncBaseline) {
+      if (this.#project.oneWireSyncBaseline === await oneWireSourceFingerprint(this.#project)) return
+      delete this.#project.oneWireSyncBaseline
+    }
     const requestedPageKey = this.#pageKey
+    const before = structuredClone(this.#project)
     let changed = false
     const analysis = this.#oneWireController.analyze(
       this.#groundplanShapePool(false), this.#project.electricalProfile, this.#project.circuitSpecifications
@@ -1164,7 +1265,7 @@ export class CadleApp extends LiteElement {
       changed = migrateOneWireProjectPages(this.#project, this.#oneWireController.layoutVersion, (state, pageKey) => {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
-        if (!this.#applyPersistedState(state)) return null
+        if (!this.#applyPersistedState(state, false)) return null
         const synced = migrateOneWireCircuitGeometry(this.#document.shapes, {
           nextShapeId,
           oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
@@ -1177,8 +1278,11 @@ export class CadleApp extends LiteElement {
         const sourceChanged = synced.length !== this.#document.shapes.length ||
           synced.some((shape, index) => shape !== this.#document.shapes[index])
         if (sourceChanged) {
-          this.#document.shapes = synced
-          for (const family of families.keys()) {
+          const previousById = new Map(this.#document.shapes.map((shape) => [shape.id, shape]))
+          const changedFamilies = new Set(synced.flatMap((shape) =>
+            shape.sourceLink?.role === 'breaker' && previousById.get(shape.id) !== shape ? [shape.sourceLink.id] : []))
+          this.#document.shapes = removeRedundantRailAttachments(synced)
+          for (const family of changedFamilies) {
             this.#document.shapes = applyOneWireCircuitPresentation({
               shapes: this.#document.shapes,
               circuitKey: family,
@@ -1187,11 +1291,8 @@ export class CadleApp extends LiteElement {
               profile: this.#project.electricalProfile
             }).shapes
           }
-          this.#compactExistingOneWireRail()
-          this.#layoutOneWireLabels(true)
-          this.#redistributeOverflow()
         }
-        return sourceChanged || this.#documentSizeMigrated ? this.#nativeDocumentState() : null
+        return sourceChanged ? this.#nativeDocumentState() : null
       }, () => true)
     } finally {
       this.#pageKey = requestedPageKey
@@ -1199,8 +1300,10 @@ export class CadleApp extends LiteElement {
     }
 
     if (changed) {
+      this.#project.recovery = projectWithRecoveryPoint(before, requestedPageKey, 'Vóór synchronisatie eendraads').recovery
       const project = structuredClone(this.#project)
       await this.#persistence.enqueue(() => setProjectData(this.#projectKey!, project))
+      await this.flushPendingSave()
     }
   }
 
@@ -1226,7 +1329,7 @@ export class CadleApp extends LiteElement {
     return createOneWireSourceResolver(families, pages, this.#pageKey)
   }
 
-  #applyPersistedState(parsed: Partial<NativeDocumentState>): boolean {
+  #applyPersistedState(parsed: Partial<NativeDocumentState>, migrateLayout = true): boolean {
     let migrationComplete = true
     let dimensionsChanged = false
     this.#resetPageState()
@@ -1245,7 +1348,7 @@ export class CadleApp extends LiteElement {
       typeof parsed.worldWidth === 'number' && parsed.worldWidth > 0 ? parsed.worldWidth : target.width
     const previousHeight =
       typeof parsed.worldHeight === 'number' && parsed.worldHeight > 0 ? parsed.worldHeight : target.height
-    if (Math.abs(previousWidth - target.width) > 1 || Math.abs(previousHeight - target.height) > 1) {
+    if (migrateLayout && (Math.abs(previousWidth - target.width) > 1 || Math.abs(previousHeight - target.height) > 1)) {
       const scale = hasPlanScale ? 1 : Math.min(target.width / previousWidth, target.height / previousHeight)
       const offsetX = (target.width - previousWidth * scale) / 2
       const offsetY = (target.height - previousHeight * scale) / 2
@@ -1253,6 +1356,7 @@ export class CadleApp extends LiteElement {
       dimensionsChanged = true
       this.#documentSizeMigrated = true
     }
+    // Legacy viewport extents must not shrink the physical sheet or put its title block over the drawing.
     this.#worldWidth = target.width
     this.#worldHeight = target.height
     this.#drawingScale = pageType === 'groundplan'
@@ -1261,7 +1365,7 @@ export class CadleApp extends LiteElement {
     if (this.#drawingScale) this.#document.shapes = this.#document.shapes.map((shape) =>
       shape.heating ? { ...shape, heating: { ...shape.heating, drawingScale: this.#drawingScale! } } : shape)
     const oneWireLayoutVersion = parsed.oneWireLayoutVersion ?? 0
-    if (pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
+    if (migrateLayout && pageType === 'onewire' && (oneWireLayoutVersion < this.#oneWireController.layoutVersion || dimensionsChanged)) {
       this.#document.shapes = migrateOneWireCircuitGeometry(this.#document.shapes, {
         nextShapeId,
         oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
@@ -1302,7 +1406,7 @@ export class CadleApp extends LiteElement {
       migrationComplete = migrated || !hasOneWireShapes
       if (migrationComplete) this.#documentSizeMigrated = true
     }
-    if (!hasPlanScale && parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
+    if (migrateLayout && !hasPlanScale && parsed.version !== 2 && pageType !== 'onewire' && pageType !== 'circuit-schedule') {
       const paper = PAPER_PRESETS[this.#paperPreset]
       const fitted = fitLegacyGroundPlanToPrintArea(this.#document.shapes, {
         width: this.#worldWidth,
@@ -1316,7 +1420,7 @@ export class CadleApp extends LiteElement {
         this.#documentSizeMigrated = true
       }
     }
-    if (!hasPlanScale && parsed.paperLayoutVersion !== 1 && pageType !== 'onewire') {
+    if (migrateLayout && !hasPlanScale && parsed.paperLayoutVersion !== 1 && pageType !== 'onewire') {
       const fitted = fitShapesToContentArea(this.#document.shapes, this.#safeAreaRect())
       this.#document.shapes = fitted.shapes
       this.#documentSizeMigrated = true
@@ -1408,7 +1512,6 @@ export class CadleApp extends LiteElement {
   }
 
   #pushHistory(persist = true, replaceCurrent = false) {
-    if (!this.readOnly) this.#redistributeOverflow()
     this.#document.history.push(
       {
         shapes: this.#document.shapes,
@@ -3117,6 +3220,14 @@ export class CadleApp extends LiteElement {
       const grouped = anchors.filter((anchor) => anchor.groupId === shape.groupId)
       return grouped.length === 1 ? grouped[0].family : null
     }
+    const branchOwners = connectedOneWireBranchOwners(this.#document.shapes, new Map(
+      this.#document.shapes.flatMap((shape) => {
+        const family = familyForShape(shape)
+        const anchor = family ? anchorForShape(shape, family) : undefined
+        return anchor ? [[shape.id, anchor.id]] : []
+      })
+    ))
+    const anchorById = new Map(anchors.map((anchor) => [anchor.id, anchor]))
     const railUpdates = new Map<string, LineShape>()
     for (const rail of rails) {
       if (targetRailId && rail.id !== targetRailId) continue
@@ -3126,7 +3237,7 @@ export class CadleApp extends LiteElement {
       if (!railAnchors.length) continue
       const familyShapes = (anchor: typeof railAnchors[number]) => this.#document.shapes.filter((shape) =>
         !shape.hidden && !this.#isKamrailShape(shape) &&
-        familyForShape(shape) === anchor.family && anchorForShape(shape, anchor.family)?.id === anchor.id
+        branchOwners.get(shape.id) === anchor.id
       )
       const familyBounds = railAnchors.map((anchor) => {
         const boxes = familyShapes(anchor).map(oneWireLayoutBounds)
@@ -3167,8 +3278,7 @@ export class CadleApp extends LiteElement {
         if (shape.kind !== 'line' || rail.start.x !== shape.start.x || rail.end.x !== shape.end.x) changed = true
         return rail
       }
-      const family = familyForShape(shape)
-      const anchor = family ? anchorForShape(shape, family) : undefined
+      const anchor = anchorById.get(branchOwners.get(shape.id) ?? '')
       const dx = anchor ? anchorOffsets.get(anchor.id) : undefined
       if (!anchor || typeof dx !== 'number') return shape
       const translated = Math.abs(dx) < 0.01 ? shape : translateShape(shape, dx, 0)
@@ -3747,6 +3857,7 @@ export class CadleApp extends LiteElement {
       this.#document.selectedId = null
       this.#document.selectedIds = new Set()
 
+      this.#redistributeOverflow()
       this.#pushHistory()
       this.#render()
       return {
@@ -4612,9 +4723,9 @@ export class CadleApp extends LiteElement {
     let pageIndex = 0
 
     try {
-      if (!this.readOnly) await this.#migrateOneWirePagesOnProjectLoad()
+      if (!this.readOnly) await this.#syncOneWirePagesOnProjectLoad()
       this.#pageKey = originalPageKey
-      this.#applyPersistedState(originalState)
+      this.#applyPersistedState(originalState, false)
       const projectPages = Object.entries(this.#project?.pages ?? {}).sort(([, a], [, b]) => {
         const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER
         const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER
@@ -4665,7 +4776,7 @@ export class CadleApp extends LiteElement {
         if (!state) continue
 
         this.#pageKey = pageKey as UUID
-        this.#applyPersistedState(state)
+        this.#applyPersistedState(state, false)
         this.#document.selectedId = null
         this.#document.selectedIds = new Set()
         await this.#ensureSymbolMarkupReady()
@@ -4697,7 +4808,7 @@ export class CadleApp extends LiteElement {
       pdf.save(filename)
     } finally {
       this.#pageKey = originalPageKey
-      this.#applyPersistedState(originalState)
+      this.#applyPersistedState(originalState, false)
       this.#document.selectedId = originalState.selectedId ?? null
       this.#document.selectedIds = originalSelectedIds
       this.#draft = originalDraft
@@ -4760,25 +4871,25 @@ export class CadleApp extends LiteElement {
     printWindow.print()
   }
 
-  #importJson(file: File) {
-    file.text().then((text) => {
-      try {
-        const parsed = JSON.parse(text) as unknown
-        const nativeShapes =
-          parsed && typeof parsed === 'object' && 'shapes' in parsed ? (parsed as { shapes?: unknown }).shapes : null
+  async #importJson(file: File) {
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      const nativeShapes =
+        parsed && typeof parsed === 'object' && 'shapes' in parsed ? (parsed as { shapes?: unknown }).shapes : null
 
-        if (Array.isArray(nativeShapes)) this.#applyPersistedState(asNativeState(parsed) ?? { shapes: nativeShapes })
-        else return
-        this.#document.selectedId = null
-        this.#draft = null
-        this.#drag = null
-        this.#pushHistory()
-        this.#persist()
-        this.#render()
-      } catch {
-        window.alert('Invalid JSON file')
-      }
-    })
+      if (!Array.isArray(nativeShapes)) throw new Error('Het bestand bevat geen tekening.')
+      await this.createRecoveryPoint('Vóór tekening importeren')
+      this.#applyPersistedState(asNativeState(parsed) ?? { shapes: nativeShapes })
+      this.#document.selectedId = null
+      this.#draft = null
+      this.#drag = null
+      this.#redistributeOverflow()
+      this.#pushHistory()
+      this.#render()
+    } catch (error) {
+      console.error('Tekening importeren mislukt.', error)
+      window.alert(`Tekening importeren mislukt: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   render() {
@@ -5309,6 +5420,8 @@ export class CadleApp extends LiteElement {
       oneWireBindingId: this.#oneWireBindingId,
       oneWireComposeKind: this.#oneWireComposeKind,
       connectionKind: this.#tools.current === 'line' ? this.#connectionKind : null,
+      persistenceState: this.#persistence.state,
+      zoom: this.#viewport.state.zoom,
       activeTool: this.#tools.current,
       hasOneWireAnchor: Boolean(this.#oneWireAnchor)
     })
@@ -5371,7 +5484,12 @@ export class CadleApp extends LiteElement {
     roomKey?: string
     locked?: boolean
     drawingScale?: DrawingScale
+    zoom?: number
   }) => {
+    if (typeof payload.zoom === 'number' && Number.isFinite(payload.zoom) && payload.zoom > 0) {
+      this.#zoomFromCenter(payload.zoom / this.#viewport.state.zoom)
+      return
+    }
     if (isDrawingScale(payload.drawingScale) && this.#project?.pages?.[this.#pageKey]?.pageType === 'groundplan') {
       if (payload.drawingScale === this.#drawingScale) return
       if (this.#drawingScale) this.#document.shapes = rescaleGroundPlan(this.#document.shapes, this.#drawingScale, payload.drawingScale)
@@ -6593,6 +6711,7 @@ export class CadleApp extends LiteElement {
   }
 
   #onKeyDown = (event: KeyboardEvent) => {
+    if (this.#restoringProject) return
     if (event.key === 'Escape' && this.#automaticHeatingBusy) {
       event.preventDefault()
       this.#cancelHeatingCalculation()

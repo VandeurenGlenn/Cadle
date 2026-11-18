@@ -33,6 +33,7 @@ test('keeps adjacent busbars independently positioned when inserting breakers an
   await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
     name: 'adjacent-busbars.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state([...rails, feeder])))
   })
+  await expect(app.locator('line[data-shape-id="left-rail"]')).toHaveCount(1)
   const geometry = () => app.evaluate((element: any) => {
     const svg = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
     // Reload normalizes the cached symbol stroke; it must not change any geometry.
@@ -123,6 +124,10 @@ test('repairs and persists alphabetical circuit placement with manual and genera
   const top = oneWireSymbolConnectionAnchors(manualBreaker).find((anchor) => anchor.side === 'top')!.point
   const feeder: LineShape = { id: 'manual-top-feeder', kind: 'line', start: top,
     end: { x: top.x, y: top.y - 100 }, connection: { kind: 'wire', showLabel: false } }
+  const meter: SymbolShape = { id: 'manual-ungrouped-meter', kind: 'symbol', name: 'kWh meter',
+    path: 'symbols/Consumption appliances/kWh meter.svg', scale: 3, position: { x: 0, y: 0 } }
+  const meterBottom = oneWireSymbolConnectionAnchors(meter).find((anchor) => anchor.side === 'bottom')!.point
+  meter.position = { x: feeder.end.x - meterBottom.x, y: feeder.end.y - meterBottom.y }
   const rcdPath = 'symbols/Protection devices/Residual-current circuit breaker.svg'
   const rcdScale = oneWireSymbolScaleFor(rcdPath)!
   const rcdBottom = oneWireSymbolTerminalInfo(rcdPath, rcdScale)!.bottom
@@ -131,7 +136,7 @@ test('repairs and persists alphabetical circuit placement with manual and genera
     electrical: { role: 'protection', poles: 4, rcdSensitivityMa: 30 } }
   await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
     name: 'alphabetical-circuits.json', mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ ...state([...shapes, feeder, unlabelled]), oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1 }))
+    buffer: Buffer.from(JSON.stringify({ ...state([...shapes, feeder, meter, unlabelled]), oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1 }))
   })
   const expected = ['U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB']
   const exportedOrder = () => app.evaluate((element: any) => {
@@ -158,13 +163,33 @@ test('repairs and persists alphabetical circuit placement with manual and genera
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   const saved = await shell.evaluate((element: any, key) =>
     element.project.pages[key].schema.objects.find((object: any) => object.kind === 'cadle-native-svg-document').payload.shapes, root)
-  const updatedBreaker = saved.find((shape: any) => shape.id === manualBreaker.id)
-  const updatedFeeder = saved.find((shape: any) => shape.id === feeder.id)
-  expect(updatedFeeder.start).toEqual(oneWireSymbolConnectionAnchors(updatedBreaker).find((anchor) => anchor.side === 'top')!.point)
   const updatedRcd = saved.find((shape: any) => shape.id === unlabelled.id)
   const updatedRail = saved.find((shape: any) => shape.id === rail.id)
   expect(updatedRail.end.x - updatedRcd.position.x - rcdBottom.x).toBeCloseTo(20, 6)
   expect(updatedRcd.position.y + rcdBottom.y).toBeCloseTo(updatedRail.start.y, 6)
+  const assertMeterBranch = async () => {
+    await app.evaluate(async (element: any) => { await element.flushPendingSave() })
+    const stored = await shell.evaluate((element: any, key) =>
+      element.project.pages[key].schema.objects.find((object: any) => object.kind === 'cadle-native-svg-document').payload.shapes, root)
+    const breaker = stored.find((shape: any) => shape.id === manualBreaker.id)
+    const line = stored.find((shape: any) => shape.id === feeder.id)
+    const device = stored.find((shape: any) => shape.id === meter.id)
+    const start = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'top')!.point
+    const end = oneWireSymbolConnectionAnchors(device).find((anchor) => anchor.side === 'bottom')!.point
+    expect(line.start.x).toBeCloseTo(start.x, 6)
+    expect(line.start.y).toBeCloseTo(start.y, 6)
+    expect(line.end.x).toBeCloseTo(end.x, 6)
+    expect(line.end.y).toBeCloseTo(end.y, 6)
+    expect(line.start.x).toBeCloseTo(line.end.x, 6)
+    expect(line.connection.routing).toBe(feeder.connection?.routing)
+    expect(line.connection.via).toBeUndefined()
+    const length = await app.locator(`[data-shape-id="${feeder.id}"] .connection-conductor`)
+      .evaluate((node: SVGGeometryElement) => node.getTotalLength())
+    expect(length).toBeCloseTo(Math.abs(feeder.start.y - feeder.end.y), 3)
+    expect(device.position.x - breaker.position.x).toBeCloseTo(meter.position.x - manualBreaker.position.x, 6)
+    expect(device.position.y - breaker.position.y).toBeCloseTo(meter.position.y - manualBreaker.position.y, 6)
+  }
+  await assertMeterBranch()
   for (const family of ['U', 'W']) {
     const original = shapes.find((shape) => shape.kind === 'symbol' && shape.bindingId === family)
     if (original?.kind !== 'symbol') throw new Error(`Missing manual circuit ${family}.`)
@@ -190,15 +215,19 @@ test('repairs and persists alphabetical circuit placement with manual and genera
   await page.locator('input-form-dialog').getByRole('button', { name: 'Add breaker' }).click()
   expected.unshift('T')
   await expect.poll(exportedOrder).toEqual(expected)
+  await assertMeterBranch()
   await app.evaluate((element: any) => element.undo())
   await expect.poll(exportedOrder).toEqual(expected.slice(1))
+  await assertMeterBranch()
   await app.evaluate((element: any) => element.redo())
   await expect.poll(exportedOrder).toEqual(expected)
+  await assertMeterBranch()
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
   await expect.poll(() => app.evaluate((element: any, key) => element.waitForPageReady(key), root)).toBe(true)
   await expect.poll(exportedOrder).toEqual(expected)
+  await assertMeterBranch()
   expect((await exportedRailPadding()).left).toBeCloseTo(20, 6)
   expect((await exportedRailPadding()).right).toBeGreaterThan(20)
 })

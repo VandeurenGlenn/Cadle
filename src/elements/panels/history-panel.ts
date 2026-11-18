@@ -28,22 +28,25 @@ export class HistoryPanel extends LiteElement {
       <div class="panel">
         <div class="header">
           <div>
-            <h3>History</h3>
-            <p>${this.entries.length} saved canvas state${this.entries.length === 1 ? '' : 's'} ready to restore</p>
+            <h3>Project herstellen</h3>
+            <p>${this.entries.length} herstelpunten · laatste 10 · alle pagina’s en kringgegevens</p>
           </div>
-          <button @click=${this.#close}>Close</button>
+          <button @click=${this.#close}>Sluiten</button>
         </div>
         <div class="content">
+          <button @click=${() => this.dispatchEvent(new CustomEvent('create-history', { bubbles: true, composed: true }))}>
+            Herstelpunt maken
+          </button>
           ${this.entries.length === 0
-            ? html`<div class="empty">No history snapshots yet. Start drawing or editing to capture states.</div>`
+            ? html`<div class="empty">Nog geen herstelpunten. Maak er zelf een, of werk het eendraads bij. Herstelpunten blijven na heropenen beschikbaar.</div>`
             : this.entries.map(
                 (entry) => html`
                   <div class="entry">
                     <div class="entry-title">
                       <strong>${entry.label}</strong>
-                      <span class="timestamp">${new Date(entry.timestamp).toLocaleTimeString()}</span>
+                      <span class="timestamp">${new Date(entry.timestamp).toLocaleString('nl-BE')}</span>
                     </div>
-                    <button @click=${() => this.#restore(entry.id)}>Restore this state</button>
+                    <button @click=${() => this.#restore(entry.id)}>Dit project herstellen</button>
                   </div>
                 `
               )}

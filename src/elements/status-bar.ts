@@ -2,6 +2,7 @@ import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite
 import styles from './status-bar.css' with { type: 'css' }
 import pubsub from '../pubsub.js'
 import { CONNECTION_NAMES, type ConnectionKind } from '../editor/model/electrical-connection.js'
+import type { PersistenceState } from '../editor/controllers/persistence-queue.js'
 declare global {
   interface HTMLElementTagNameMap {
     'status-bar': StatusBar
@@ -11,7 +12,6 @@ declare global {
 type CadleShellLite = {
   action?: string
   freeDraw?: boolean
-  field?: { setZoom?: (zoom: number) => void }
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -53,11 +53,8 @@ export class StatusBar extends LiteElement {
   @property({ type: Boolean }) accessor hasCursor = false
   @property({ type: Number }) accessor zoom = 1
   @property({ type: Boolean }) accessor snap = true
-  @property({ type: Boolean }) accessor saved = false
-  @property({ type: Boolean }) accessor dirty = false
+  @property({ type: Object, attribute: false }) accessor persistenceState: PersistenceState = { status: 'idle' }
   @property({ type: Object, consumes: 'shell.pointer' }) accessor pointer!: { x: number; y: number }
-
-  #saveIndicatorTimer?: number
 
   firstRender(): void {
     const shell = (globalThis as { cadleShell?: CadleShellLite }).cadleShell
@@ -66,8 +63,6 @@ export class StatusBar extends LiteElement {
     pubsub.subscribe('shell.action', this.#onAction)
     pubsub.subscribe('editor.controls.state', this.#onControlsState)
     pubsub.subscribe('shell.snap', this.#onSnap)
-    pubsub.subscribe('project.saved', this.#onProjectSaved)
-    pubsub.subscribe('project.modified', this.#onProjectModified)
   }
 
   willChange(propertyKey: string, value) {
@@ -85,43 +80,16 @@ export class StatusBar extends LiteElement {
     pubsub.unsubscribe('shell.action', this.#onAction)
     pubsub.unsubscribe('editor.controls.state', this.#onControlsState)
     pubsub.unsubscribe('shell.snap', this.#onSnap)
-    pubsub.unsubscribe('project.saved', this.#onProjectSaved)
-    pubsub.unsubscribe('project.modified', this.#onProjectModified)
-    if (this.#saveIndicatorTimer) {
-      window.clearTimeout(this.#saveIndicatorTimer)
-      this.#saveIndicatorTimer = undefined
-    }
-  }
-
-  #onProjectSaved = () => {
-    this.dirty = false
-    this.saved = true
-    if (this.#saveIndicatorTimer) {
-      window.clearTimeout(this.#saveIndicatorTimer)
-    }
-
-    this.#saveIndicatorTimer = window.setTimeout(() => {
-      this.saved = false
-      this.#saveIndicatorTimer = undefined
-    }, 2500)
-  }
-
-  #onProjectModified = () => {
-    if (this.#saveIndicatorTimer) {
-      window.clearTimeout(this.#saveIndicatorTimer)
-      this.#saveIndicatorTimer = undefined
-    }
-
-    this.saved = false
-    this.dirty = true
   }
 
   #onAction = (value: string) => {
     this.action = value ?? ''
   }
 
-  #onControlsState = (state: { connectionKind?: ConnectionKind | null }) => {
+  #onControlsState = (state: { connectionKind?: ConnectionKind | null; zoom?: number; persistenceState?: PersistenceState }) => {
     this.connectionKind = state.connectionKind ?? null
+    if (typeof state.zoom === 'number') this.zoom = state.zoom
+    if (state.persistenceState) this.persistenceState = state.persistenceState
   }
 
   #onSnap = (value: boolean) => {
@@ -135,15 +103,13 @@ export class StatusBar extends LiteElement {
   }
 
   #cycleZoom = () => {
-    const shell = (globalThis as { cadleShell?: CadleShellLite }).cadleShell
-    const field = shell?.field
-    if (!field) return
     const current = Math.round(this.zoom * 100) / 100
     const next = ZOOM_CYCLE.find((z) => z > current + 0.001) ?? ZOOM_CYCLE[0]
-    field.setZoom?.(next)
+    pubsub.publish('editor.controls.command', { zoom: next })
   }
 
   render() {
+    const saveState = this.persistenceState ?? { status: 'idle' }
     const toolLabel = this.action === 'draw-line' && this.connectionKind
       ? CONNECTION_NAMES[this.connectionKind] : TOOL_LABELS[this.action] ?? this.action ?? 'Select'
     return html`
@@ -176,19 +142,19 @@ export class StatusBar extends LiteElement {
         @click=${this.#cycleZoom}>
         <span class="mono">${Math.round(this.zoom * 100)}%</span>
       </button>
-      ${this.dirty
-        ? html`<span
-            class="status-pill unsaved"
-            role="status"
-            aria-live="polite"
-            >Unsaved</span
-          >`
-        : html`<span
-            class="status-pill saved ${this.saved ? 'visible' : ''}"
-            role="status"
-            aria-live="polite"
-            >Saved</span
-          >`}
+      <span class="status-pill visible ${saveState.status === 'error' ? 'unsaved' : 'saved'}"
+        role="status" aria-live="polite" data-save-state=${saveState.status}
+        title=${saveState.status === 'error'
+          ? String(saveState.error instanceof Error ? saveState.error.message : saveState.error)
+          : ''}>
+        ${saveState.status === 'error' ? 'Opslaan mislukt'
+          : saveState.status === 'saving' ? 'Bezig met opslaan'
+          : saveState.status === 'saved' ? 'Opgeslagen' : 'Nog geen wijzigingen'}
+      </span>
+      ${saveState.status === 'error' ? html`
+        <button type="button" @click=${() => pubsub.publish('editor.persistence.retry', undefined, true)}>Opnieuw proberen</button>
+        <button type="button" @click=${() => pubsub.publish('editor.persistence.download', undefined, true)}>Herstelbestand downloaden</button>
+      ` : ''}
     `
   }
 }

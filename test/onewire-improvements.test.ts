@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { DragState, LineShape, Shape, SymbolShape } from '../src/editor/model/types.ts'
 import { applyDragMove } from '../src/editor/interaction/pointer-move.ts'
-import { followConnectedConductors } from '../src/editor/interaction/connected-conductors.ts'
+import { connectedOneWireBranchOwners, followConnectedConductors } from '../src/editor/interaction/connected-conductors.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
@@ -18,6 +18,63 @@ import { sanitizeShapes } from '../src/editor/model/model.ts'
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`)
 const wire = (id: string, start: { x: number; y: number }, end: { x: number; y: number }): LineShape =>
   ({ id, kind: 'line', start, end, connection: { kind: 'wire', showLabel: false }, strokeWidth: 2 })
+
+test('rail packing owns complete ungrouped branches without claiming crossings, neighbours or rail feeders', () => {
+  const path = 'symbols/Protection devices/Automaat.svg'
+  const a: SymbolShape = { id: 'a', kind: 'symbol', name: 'Automaat', path,
+    scale: oneWireSymbolScaleFor(path)!, position: { x: 400, y: 600 } }
+  const b: SymbolShape = { ...a, id: 'b', position: { x: 700, y: 600 } }
+  const [top, bottom] = oneWireSymbolConnectionAnchors(a).map(({ point }) => point)
+  const rail: LineShape = { id: 'rail', kind: 'line', groupId: 'onewire-kamrail-test',
+    start: { x: bottom.x - 100, y: bottom.y }, end: { x: bottom.x + 400, y: bottom.y } }
+  const meter: SymbolShape = { id: 'meter', kind: 'symbol', name: 'kWh meter',
+    path: 'symbols/Consumption appliances/kWh meter.svg', scale: 3, position: { x: 0, y: 0 } }
+  const offset = oneWireSymbolConnectionAnchors(meter).find(({ side }) => side === 'bottom')!.point
+  const end = { x: top.x, y: top.y - 100 }
+  meter.position = { x: end.x - offset.x, y: end.y - offset.y }
+  const shapes: Shape[] = [rail, a, b, meter, wire('trunk', top, end),
+    wire('tap', { x: top.x, y: top.y - 50 }, { x: top.x + 80, y: top.y - 50 }),
+    wire('crossing', { x: top.x - 30, y: top.y - 70 }, { x: top.x + 30, y: top.y - 70 }),
+    wire('nearby', { x: top.x + 1, y: top.y }, { x: top.x + 1, y: top.y - 40 }),
+    wire('rail-feeder', bottom, { x: bottom.x + 300, y: bottom.y })]
+  const original = structuredClone(shapes)
+  const owners = connectedOneWireBranchOwners(shapes, new Map([['a', 'a'], ['b', 'b']]))
+  for (const id of ['a', 'meter', 'trunk', 'tap']) assert.equal(owners.get(id), 'a')
+  assert.equal(owners.get('b'), 'b')
+  for (const id of ['rail', 'crossing', 'nearby', 'rail-feeder']) assert.equal(owners.has(id), false)
+  assert.deepEqual(shapes, original)
+})
+
+test('rail packing leaves ambiguous shared branches and locked or hidden objects independent', () => {
+  const path = 'symbols/Protection devices/Automaat.svg'
+  const a: SymbolShape = { id: 'a', kind: 'symbol', name: 'Automaat', path, scale: 3, position: { x: 400, y: 600 } }
+  const b: SymbolShape = { ...a, id: 'b', position: { x: 700, y: 600 } }
+  const start = oneWireSymbolConnectionAnchors(a).find(({ side }) => side === 'top')!.point
+  const end = oneWireSymbolConnectionAnchors(b).find(({ side }) => side === 'top')!.point
+  const shared = wire('shared', start, end)
+  const locked = { ...wire('locked', start, { x: start.x, y: start.y - 100 }), locked: true }
+  const hidden = { ...wire('hidden', end, { x: end.x, y: end.y - 100 }), hidden: true }
+  const tap = wire('tap', { x: (start.x + end.x) / 2, y: start.y }, { x: (start.x + end.x) / 2, y: start.y - 100 })
+  const owners = connectedOneWireBranchOwners([a, b, shared, locked, hidden, tap], new Map([['a', 'a'], ['b', 'b']]))
+  assert.deepEqual(owners, new Map([['a', 'a'], ['b', 'b']]))
+})
+
+test('rail packing does not drag locked devices or independent inter-board feeders through an attached branch', () => {
+  const path = 'symbols/Protection devices/Automaat.svg'
+  const device: SymbolShape = { id: 'device', kind: 'symbol', name: 'Automaat', path, scale: 3, position: { x: 400, y: 600 } }
+  const [top, bottom] = oneWireSymbolConnectionAnchors(device).map(({ point }) => point)
+  const locked: SymbolShape = { ...device, id: 'locked', locked: true, position: { x: 200, y: 300 } }
+  const contact = oneWireSymbolConnectionAnchors(locked).find(({ side }) => side === 'bottom')!.point
+  const toLocked = wire('to-locked', top, contact)
+  const upper: LineShape = { id: 'upper', kind: 'line', groupId: 'onewire-kamrail-upper',
+    start: { x: top.x - 100, y: 100 }, end: { x: top.x + 500, y: 100 } }
+  const lower: LineShape = { ...upper, id: 'lower', groupId: 'onewire-kamrail-lower',
+    start: { x: top.x - 100, y: bottom.y }, end: { x: top.x + 500, y: bottom.y } }
+  const feeder = wire('feeder', { x: top.x + 200, y: 100 }, { x: top.x + 200, y: bottom.y })
+  const tap = wire('tap', top, { x: feeder.start.x, y: (feeder.start.y + feeder.end.y) / 2 })
+  const owners = connectedOneWireBranchOwners([device, locked, toLocked, upper, lower, feeder, tap], new Map([['device', 'device']]))
+  assert.deepEqual(owners, new Map([['device', 'device']]))
+})
 
 test('dragging a symbol repeatedly keeps both contacts attached and leaves remote ends fixed', () => {
   const path = 'symbols/Protection devices/Automaat.svg'

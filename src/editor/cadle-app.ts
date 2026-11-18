@@ -19,6 +19,7 @@ import { LiteElement, html, customElement } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import { repeat } from 'lit/directives/repeat.js'
+import { guard } from 'lit/directives/guard.js'
 import type jsPDFType from 'jspdf'
 import styles from './cadle-app.css' with { type: 'css' }
 import {
@@ -304,6 +305,7 @@ export class CadleApp extends LiteElement {
   #worldHeight = DEFAULT_WORLD_HEIGHT
   #resizeObserver: ResizeObserver | null = null
   #panelSize: { width: number; height: number } | null = null
+  #sceneRevision = 0
   #projectKey: UUID | null = null
   #pageKey: UUID | null = null
   #project: Project | null = null
@@ -1613,9 +1615,10 @@ export class CadleApp extends LiteElement {
     if (!panel) return
     const rect = panel.getBoundingClientRect()
     const nextSize = { width: rect.width, height: rect.height }
+    if (this.#panelSize?.width === nextSize.width && this.#panelSize.height === nextSize.height) return
     if (this.#panelSize) this.#viewport.preserveCenter(this.#panelSize, nextSize)
     this.#panelSize = nextSize
-    this.#render()
+    this.#renderPreviewOnly()
   }
 
   #undo() {
@@ -1669,7 +1672,9 @@ export class CadleApp extends LiteElement {
 
   // Zoom centred on a screen-space point (px, py are relative to the panel element).
   #zoomAt(px: number, py: number, factor: number) {
-    if (this.#viewport.zoomAt({ x: px, y: py }, factor)) this.#render()
+    if (!this.#viewport.zoomAt({ x: px, y: py }, factor)) return
+    this.#publishNativeControlsState()
+    this.#renderPreviewOnly()
   }
 
   #zoomFromCenter = (factor: number) => {
@@ -1685,7 +1690,8 @@ export class CadleApp extends LiteElement {
 
   #fitViewport = () => {
     this.#fitPageView()
-    this.#render()
+    this.#publishNativeControlsState()
+    this.#renderPreviewOnly()
   }
 
   #focusSelection() {
@@ -4724,7 +4730,11 @@ export class CadleApp extends LiteElement {
 
     for (const path of symbolPaths) {
       if (getCachedSymbolSvg(path) || isSymbolSvgLoading(path)) continue
-      void preloadSymbolSvg(path).then(() => this.#renderPreviewOnly())
+      void preloadSymbolSvg(path).then(() => {
+        if (!this.#connected) return
+        this.#sceneRevision++
+        this.#renderPreviewOnly()
+      })
     }
   }
 
@@ -4994,7 +5004,7 @@ export class CadleApp extends LiteElement {
               @dblclick=${this.#onStageDoubleClick}
               @contextmenu=${this.#onStageContextMenu}>
               <defs>
-                ${this.#wallMaskTemplate()}
+                ${guard([this.#sceneRevision, this.readOnly], () => this.#wallMaskTemplate())}
                 <clipPath id="page-clip">
                   <rect
                     width=${this.#worldWidth}
@@ -5005,7 +5015,8 @@ export class CadleApp extends LiteElement {
                 class="world"
                 transform=${worldTransform}
                 clip-path="url(#page-clip)">
-                ${this.#committedTemplate(selectedShape)} ${this.#previewTemplate()}
+                ${guard([this.#sceneRevision, this.readOnly], () => this.#committedTemplate(selectedShape))}
+                ${this.#previewTemplate()}
               </g>
             </svg>
             <div
@@ -5372,22 +5383,26 @@ export class CadleApp extends LiteElement {
         entries.push({ type: 'group', groupId: shape.groupId, shapes: grouped })
       }
 
-      return entries.map((entry) => {
-        if (entry.type === 'single') {
-          const shape = entry.shape
-          return this.#shapeTemplate(shape, isIndividuallySelected(shape))
-        }
+      return repeat(
+        entries,
+        (entry) => entry.type === 'single' ? `shape:${entry.shape.id}` : `group:${entry.groupId}`,
+        (entry) => {
+          if (entry.type === 'single') {
+            const shape = entry.shape
+            return this.#shapeTemplate(shape, isIndividuallySelected(shape))
+          }
 
-        return svg`
-          <g class="shape-group" data-group-id=${entry.groupId}>
-            ${repeat(
-              entry.shapes,
-              (shape) => shape.id,
-              (shape) => this.#shapeTemplate(shape, isIndividuallySelected(shape))
-            )}
-          </g>
-        `
-      })
+          return svg`
+            <g class="shape-group" data-group-id=${entry.groupId}>
+              ${repeat(
+                entry.shapes,
+                (shape) => shape.id,
+                (shape) => this.#shapeTemplate(shape, isIndividuallySelected(shape))
+              )}
+            </g>
+          `
+        }
+      )
     }
 
     return svg`
@@ -5443,6 +5458,7 @@ export class CadleApp extends LiteElement {
   }
 
   #render() {
+    this.#sceneRevision++
     const selected = this.#shapeById(this.#document.selectedId)
     if (selected?.heating?.kind !== 'manifold' || !this.#document.shapes.some((shape) =>
       !shape.hidden && shape.heating?.kind === 'pipe' && shape.heating.circuitId === this.#highlightedHeatingCircuit)) this.#highlightedHeatingCircuit = null

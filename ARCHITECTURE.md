@@ -7,6 +7,10 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 
 - `src/editor/cadle-app.ts` — `<cadle-app>` composition root for the SVG editor. It connects controllers to rendering,
   persistence, and browser events; its public custom-element API must remain stable.
+  Committed SVG content and wall masks are revision-guarded: pointer previews, panning, zooming and panel resizing
+  update the viewport/overlay without repeating document layout or symbol parsing. Document/selection changes and
+  completed SVG loads invalidate the scene. Both outer drawing entries and group members are keyed by stable identity
+  so insertion, deletion and undo retain unrelated SVG nodes instead of replacing their contents.
 - `src/shell/app-shell.ts` — application shell composition root and project/page orchestration.
 - `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.

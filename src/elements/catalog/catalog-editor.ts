@@ -204,6 +204,7 @@ export class CatalogEditor extends LiteElement {
   }
 
   render() {
+    if (!this.open) return html``
     const filteredSymbols = this.#filteredSymbols()
     return html`
       <div

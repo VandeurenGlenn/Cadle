@@ -4,7 +4,7 @@ import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
 import type { JsonValue } from '../../types.js'
 import state from '../../state.js'
 import pubsub from '../../pubsub.js'
-import { createCatalogSvgPreview } from './svg-preview.js'
+import { loadCatalogSvgPreview } from './svg-preview.js'
 import '@vandeurenglenn/lite-elements/menu.js'
 import '@vandeurenglenn/lite-elements/dropdown.js'
 import '@vandeurenglenn/lite-elements/list-item.js'
@@ -61,7 +61,9 @@ export class CatalogItem extends LiteElement {
   private static _magnifierOwner?: CatalogItem
   #previewRequest = 0
   #previewSource = ''
+  #previewLoading = false
   set headline(value: string) {
+    if (value === this._headline) return
     this._headline = value
     this.setAttribute('aria-label', `Place ${value}`)
     this.requestRender()
@@ -247,8 +249,10 @@ export class CatalogItem extends LiteElement {
   }
 
   async #syncSvgPreview() {
-    const request = ++this.#previewRequest
     const sourcePath = this.symbol?.path ?? this.image
+    if (sourcePath === this.#previewSource && (this.#previewLoading || this._svgPreview)) return
+    const request = ++this.#previewRequest
+    this.#previewLoading = Boolean(sourcePath)
     if (sourcePath !== this.#previewSource) {
       this.#previewSource = sourcePath
       this._svgPreview = ''
@@ -267,41 +271,24 @@ export class CatalogItem extends LiteElement {
     }
 
     try {
-      const markup = await this.#loadSvgMarkup(sourcePath)
+      const preview = await loadCatalogSvgPreview(sourcePath)
       if (request !== this.#previewRequest) return
-      this._svgPreview = createCatalogSvgPreview(markup, sourcePath, false)
-      this._cardSvgPreview = createCatalogSvgPreview(markup, sourcePath, true)
-      this.requestRender()
-    } catch {
+      this._svgPreview = preview.full
+      this._cardSvgPreview = preview.compact
+    } catch (error) {
       if (request !== this.#previewRequest) return
+      console.error('Symboolvoorbeeld laden mislukt.', sourcePath, error)
       this._svgPreview = ''
       this._cardSvgPreview = ''
-      this.requestRender()
+    } finally {
+      if (request === this.#previewRequest) {
+        this.#previewLoading = false
+        this.requestRender()
+      }
     }
     if (CatalogItem._magnifierOwner === this && CatalogItem._magnifierElement) {
       this.#renderMagnifierContent(CatalogItem._magnifierElement)
     }
-  }
-
-  async #loadSvgMarkup(sourcePath: string) {
-    if (sourcePath.startsWith('data:image/svg+xml')) {
-      const [, payload = ''] = sourcePath.split(',', 2)
-      if (sourcePath.includes(';base64,')) return atob(payload)
-      return decodeURIComponent(payload)
-    }
-
-    const resolvedSourcePath = new URL(sourcePath, location.href).toString()
-    const candidates = [resolvedSourcePath, encodeURI(resolvedSourcePath), sourcePath]
-    for (const candidate of candidates) {
-      try {
-        const response = await fetch(candidate)
-        if (response.ok) return response.text()
-      } catch {
-        // Try next candidate.
-      }
-    }
-
-    throw new Error(`Failed to fetch SVG markup for ${sourcePath}`)
   }
 
   #normalizeBindingId(value) {
@@ -425,7 +412,7 @@ export class CatalogItem extends LiteElement {
     }
 
     try {
-      const markup = await this.#loadSvgMarkup(sourcePath)
+      const { markup } = await loadCatalogSvgPreview(sourcePath)
       const blob = new Blob([markup], { type: 'image/svg+xml' })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -464,7 +451,7 @@ export class CatalogItem extends LiteElement {
             aria-hidden="true"
             >${this._cardSvgPreview
               ? unsafeSVG(this._cardSvgPreview)
-              : previewSource
+              : previewSource && !this.#previewLoading
                 ? html`<img
                     class="magnifier-image"
                     src=${previewSource}

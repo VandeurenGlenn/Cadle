@@ -1551,6 +1551,7 @@ export class AppShell extends LiteElement {
   render() {
     if (this.activeRoute !== 'editor/model') return this.#lightweightRouteTemplate()
     const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
+    const linkedPageKey = this.linkedPageKey
 
     return html`
       ${this.#googleDriveAuthNotice()}
@@ -1743,14 +1744,14 @@ export class AppShell extends LiteElement {
                       <button
                         class="split-view-toggle"
                         type="button"
-                        title=${this.linkedPageKey
+                        title=${linkedPageKey
                           ? this.splitViewOpen
                             ? 'Close linked view'
                             : 'Compare with linked page'
                           : 'No linked page available'}
                         aria-label=${this.splitViewOpen ? 'Close linked view' : 'Compare with linked page'}
                         aria-pressed=${this.splitViewOpen ? 'true' : 'false'}
-                        ?disabled=${!this.linkedPageKey}
+                        ?disabled=${!linkedPageKey}
                         @click=${this.#toggleSplitView}>
                         <custom-icon icon="splitscreen"></custom-icon>
                       </button>
@@ -1770,30 +1771,29 @@ export class AppShell extends LiteElement {
                   `}
             </header>
             <custom-pages attr-for-selected="data-route">
-              <home-field data-route="home"></home-field>
               <div
                 data-route="editor/model"
                 class="editor-workspace"
-                data-split=${this.splitViewOpen && this.linkedPageKey ? 'true' : 'false'}>
+                data-split=${this.splitViewOpen && linkedPageKey ? 'true' : 'false'}>
                 <div
                   class="editor-pane primary-editor-pane"
                   style=${circuitSchedulePage ? 'display:none' : ''}>
-                  ${this.splitViewOpen && this.linkedPageKey
+                  ${this.splitViewOpen && linkedPageKey
                     ? html`<div class="editor-pane-label">${this.currentPageName}</div>`
                     : ''}
                   <cadle-app></cadle-app>
                 </div>
-                ${!circuitSchedulePage && this.splitViewOpen && this.linkedPageKey
+                ${!circuitSchedulePage && this.splitViewOpen && linkedPageKey
                   ? html`
                       <div class="editor-pane linked-editor-pane">
                         <div class="editor-pane-label">
-                          ${this.project?.pages?.[this.linkedPageKey]?.name ?? 'Linked page'}
+                          ${this.project?.pages?.[linkedPageKey]?.name ?? 'Linked page'}
                           <span>Linked view</span>
                         </div>
                         <cadle-app
                           read-only
                           project-key=${this.projectKey}
-                          page-key=${this.linkedPageKey}></cadle-app>
+                          page-key=${linkedPageKey}></cadle-app>
                       </div>
                     `
                   : ''}
@@ -1820,10 +1820,6 @@ export class AppShell extends LiteElement {
                     `
                   : ''}
               </div>
-              <projects-field data-route="projects"></projects-field>
-              <add-page-field data-route="add-page"></add-page-field>
-              <create-project-field data-route="create-project"></create-project-field>
-              <settings-field data-route="settings"></settings-field>
             </custom-pages>
             ${circuitSchedulePage
               ? ''

@@ -13,4 +13,7 @@
         min-height: 0;
         width: 100%;
       }
+      :host > [hidden] {
+        display: none !important;
+      }
     

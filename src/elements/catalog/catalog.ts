@@ -1,5 +1,6 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/catalog.css' with { type: 'css' }
+import { repeat } from 'lit/directives/repeat.js'
 import './category.js'
 import './catalog-editor.js'
 import '@vandeurenglenn/lite-elements/icon.js'
@@ -161,12 +162,12 @@ export class CatalogElement extends LiteElement {
     )
   }
 
-  get #catalogTemplate() {
-    const { rootSections, folderGroups } = this.#groupedCatalog
+  #catalogTemplate(catalog: Catalog) {
+    const { rootSections, folderGroups } = this.#groupedCatalog(catalog)
     const searchActive = Boolean(this._searchQuery)
     return [
-      ...rootSections.map((item) => this.#renderCatalogSection(item)),
-      ...folderGroups.map(
+      repeat(rootSections, (item) => this.#categoryKey(item), (item) => this.#renderCatalogSection(item)),
+      repeat(folderGroups, (group) => group.folder,
         (group) => html`
           <catalog-category
             .category=${group.folder}
@@ -179,7 +180,7 @@ export class CatalogElement extends LiteElement {
             .draggableCategory=${false}
             .acceptDrops=${false}
             .childrenOnly=${true}>
-            ${group.sections.map((section) => this.#renderCatalogSection(section, true))}
+            ${repeat(group.sections, (section) => this.#categoryKey(section), (section) => this.#renderCatalogSection(section, true))}
           </catalog-category>
         `
       )
@@ -198,11 +199,11 @@ export class CatalogElement extends LiteElement {
     `
   }
 
-  get #groupedCatalog(): { rootSections: CatalogSection[]; folderGroups: FolderGroup[] } {
+  #groupedCatalog(catalog: Catalog): { rootSections: CatalogSection[]; folderGroups: FolderGroup[] } {
     const rootSections: CatalogSection[] = []
     const folderMap = new Map<string, CatalogSection[]>()
 
-    for (const section of this.#filteredCatalog) {
+    for (const section of catalog) {
       const folder = section.folder?.trim()
       if (!folder) {
         rootSections.push(section)
@@ -227,14 +228,10 @@ export class CatalogElement extends LiteElement {
     }
   }
 
-  get #visibleCatalog() {
-    return applyCatalogSymbolOverrides(this.catalog ?? [])
-  }
-
-  get #filteredCatalog() {
+  #filterCatalog(catalog: Catalog) {
     const query = this._searchQuery.trim().toLowerCase()
-    if (!query) return this.#visibleCatalog
-    return this.#visibleCatalog
+    if (!query) return catalog
+    return catalog
       .map((item) => {
         const categoryMatch = item.category.toLowerCase().includes(query)
         const symbols = categoryMatch
@@ -252,24 +249,8 @@ export class CatalogElement extends LiteElement {
       .filter((item) => item.symbols.length > 0)
   }
 
-  get #resultCount() {
-    return this.#filteredCatalog.reduce((count, item) => count + item.symbols.length, 0)
-  }
-
-  get #catalogSymbolCount() {
-    return this.#visibleCatalog.reduce((count, item) => count + item.symbols.length, 0)
-  }
-
-  get #catalogCategoryCount() {
-    return this.browseMode ? this.#browseSections.length : this.#visibleCatalog.length
-  }
-
   #categoryKey(section: CatalogSection) {
     return `${section.folder ?? ''}::${section.category}`
-  }
-
-  get #browseSections(): CatalogSection[] {
-    return this.#visibleCatalog.filter((section) => section.symbols.length > 0)
   }
 
   #openBrowseCategory = (event: Event) => {
@@ -283,27 +264,15 @@ export class CatalogElement extends LiteElement {
   #renderSymbolGrid(sections: CatalogSection[]) {
     return html`
       <div class="browse-symbol-grid">
-        ${sections.map((section) =>
-          section.symbols.map(
-            (symbol) => html`
-              <catalog-item
-                tabindex="0"
-                .category=${section.category}
-                .folder=${section.folder ?? ''}
-                .symbol=${symbol}
-                .headline=${symbol.name}
-                .image=${symbol.path}></catalog-item>
-            `
-          )
-        )}
+        <catalog-symbol-list .sections=${sections}></catalog-symbol-list>
       </div>
     `
   }
 
-  #renderBrowseCatalog() {
-    if (this._searchQuery) return this.#renderSymbolGrid(this.#filteredCatalog)
+  #renderBrowseCatalog(browseSections: Catalog, filtered: Catalog, recent: CatalogSymbol[]) {
+    if (this._searchQuery) return this.#renderSymbolGrid(filtered)
 
-    const activeSection = this.#browseSections.find(
+    const activeSection = browseSections.find(
       (section) => this.#categoryKey(section) === this._browsedCategoryKey
     )
     if (activeSection) {
@@ -326,19 +295,19 @@ export class CatalogElement extends LiteElement {
     }
 
     return html`
-      ${this.#filteredRecentSymbols.length > 0
+      ${recent.length > 0
         ? html`
             <section class="browse-recent">
               <div class="browse-section-title">
                 <strong>Recent symbols</strong>
-                <span>${this.#filteredRecentSymbols.length}</span>
+                <span>${recent.length}</span>
               </div>
-              ${this.#renderSymbolGrid([{ category: 'Recent symbols', symbols: this.#filteredRecentSymbols }])}
+              ${this.#renderSymbolGrid([{ category: 'Recent symbols', symbols: recent }])}
             </section>
           `
         : ''}
       <div class="browse-categories">
-        ${this.#browseSections.map(
+        ${repeat(browseSections, (section) => this.#categoryKey(section),
           (section) => html`
             <button
               class="browse-category"
@@ -449,12 +418,19 @@ export class CatalogElement extends LiteElement {
   }
 
   render() {
+    const visible = applyCatalogSymbolOverrides(this.catalog ?? [])
+    const filtered = this.#filterCatalog(visible)
+    const recent = this.#filteredRecentSymbols
+    const browseSections = visible.filter((section) => section.symbols.length > 0)
+    const categoryCount = this.browseMode ? browseSections.length : visible.length
+    const symbolCount = visible.reduce((count, section) => count + section.symbols.length, 0)
+    const resultCount = filtered.reduce((count, section) => count + section.symbols.length, 0)
     return html`
       <div class="catalog-tools">
         <div class="catalog-header-row">
           <div class="catalog-meta">
-            <span>${this.#catalogCategoryCount} categories</span>
-            <span>${this.#catalogSymbolCount} symbols</span>
+            <span>${categoryCount} categories</span>
+            <span>${symbolCount} symbols</span>
           </div>
         </div>
         <search-element
@@ -463,23 +439,23 @@ export class CatalogElement extends LiteElement {
           placeholder="Search symbols"></search-element>
         ${this._searchQuery
           ? html`<div class="search-status">
-              ${this.#resultCount} result${this.#resultCount === 1 ? '' : 's'} for "${this._searchQuery}"
+              ${resultCount} result${resultCount === 1 ? '' : 's'} for "${this._searchQuery}"
             </div>`
           : ''}
       </div>
       ${this.browseMode
-        ? this.#renderBrowseCatalog()
+        ? this.#renderBrowseCatalog(browseSections, filtered, recent)
         : html`
-            ${this.#filteredRecentSymbols.length > 0
+            ${recent.length > 0
               ? html`<catalog-category
                   .category=${'Recent symbols'}
-                  .symbols=${this.#filteredRecentSymbols}
+                  .symbols=${recent}
                   .searchActive=${Boolean(this._searchQuery)}
-                  .matchCount=${this.#filteredRecentSymbols.length}
+                  .matchCount=${recent.length}
                   .open=${true}
                   .openedOnce=${true}></catalog-category>`
               : ''}
-            <flex-column>${this.catalog ? this.#catalogTemplate : ''}</flex-column>
+            <flex-column>${this.#catalogTemplate(filtered)}</flex-column>
           `}
       <catalog-editor
         .catalog=${this.catalog ?? []}

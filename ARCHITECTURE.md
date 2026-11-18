@@ -12,6 +12,14 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   completed SVG loads invalidate the scene. Both outer drawing entries and group members are keyed by stable identity
   so insertion, deletion and undo retain unrelated SVG nodes instead of replacing their contents.
 - `src/shell/app-shell.ts` — application shell composition root and project/page orchestration.
+  Only the active application route is mounted; the editor does not instantiate hidden settings/project-list routes.
+  Linked-page context is derived once per shell render. Visited sidebar views remain mounted and hidden rather than
+  re-created when switching tabs, preserving search, scroll and category state without repeating initialization.
+- `src/elements/catalog/symbol-list.ts` — shared LiteElement for category, recent and picker symbol lists, keyed by
+  section and symbol identity. Catalog filtering, overrides and counts are derived once per catalog render.
+  Catalog SVG previews share in-flight loading and a bounded cache of raw markup and measured full/compact previews.
+  Cards do not start a second image request while SVG markup is loading; failed loads are not cached and can be retried.
+  The catalog management form is only constructed while open.
 - `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
 - `src/editor/controllers/` — stateful editor controllers for history, tools, the viewport, and ordered persistence.

@@ -10,6 +10,8 @@ export class ProjectPane extends LiteElement {
   @property({ type: String }) accessor selected = 'symbols'
   @property({ attribute: false }) accessor project!: Project
   @property({ attribute: false }) accessor catalog: Catalog = []
+  #projectVisited = false
+  #catalogVisited = false
 
   select(selected: string) {
     this.selected = selected
@@ -31,10 +33,13 @@ export class ProjectPane extends LiteElement {
   }
 
   render() {
+    if (this.selected === 'project') this.#projectVisited = true
+    else this.#catalogVisited = true
     return html`
-      ${this.selected === 'project'
-        ? html`<project-element .project=${this.project}></project-element>`
-        : html`<catalog-element .catalog=${this.catalog}></catalog-element>`}
+      ${this.#projectVisited ? html`<project-element
+        ?hidden=${this.selected !== 'project'} .project=${this.project}></project-element>` : ''}
+      ${this.#catalogVisited ? html`<catalog-element
+        ?hidden=${this.selected === 'project'} .catalog=${this.catalog}></catalog-element>` : ''}
     `
   }
 }

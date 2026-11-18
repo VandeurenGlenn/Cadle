@@ -1,4 +1,41 @@
 import { symbolTextFieldsFor, symbolTextLayer } from '../../editor/symbol-metadata.js'
+import { getBoundedCache, setBoundedCache } from '../../helpers/bounded-cache.js'
+
+type CatalogSvgPreview = { markup: string; full: string; compact: string }
+const previewCache = new Map<string, CatalogSvgPreview>()
+const pendingPreviews = new Map<string, Promise<CatalogSvgPreview>>()
+
+const loadSvgMarkup = async (sourcePath: string): Promise<string> => {
+  if (sourcePath.startsWith('data:image/svg+xml')) {
+    const [, payload = ''] = sourcePath.split(',', 2)
+    return sourcePath.includes(';base64,') ? atob(payload) : decodeURIComponent(payload)
+  }
+  const resolved = new URL(sourcePath, location.href).toString()
+  for (const candidate of new Set([resolved, encodeURI(resolved), sourcePath])) {
+    try {
+      const response = await fetch(candidate)
+      if (response.ok) return await response.text()
+    } catch {
+      // Try the next existing catalog path form.
+    }
+  }
+  throw new Error(`Failed to fetch SVG markup for ${sourcePath}`)
+}
+
+export const loadCatalogSvgPreview = (sourcePath: string): Promise<CatalogSvgPreview> => {
+  const cached = getBoundedCache(previewCache, sourcePath)
+  if (cached) return Promise.resolve(cached)
+  const pending = pendingPreviews.get(sourcePath)
+  if (pending) return pending
+  const loading = loadSvgMarkup(sourcePath).then((markup) => {
+    const preview = { markup, full: createCatalogSvgPreview(markup, sourcePath, false),
+      compact: createCatalogSvgPreview(markup, sourcePath, true) }
+    setBoundedCache(previewCache, sourcePath, preview, 256)
+    return preview
+  }).finally(() => pendingPreviews.delete(sourcePath))
+  pendingPreviews.set(sourcePath, loading)
+  return loading
+}
 
 const SVG_GRAPHICS_SELECTOR = 'path, rect, circle, ellipse, line, polyline, polygon, text, use, image'
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'

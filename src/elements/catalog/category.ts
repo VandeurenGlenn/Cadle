@@ -1,7 +1,6 @@
 import { LiteElement, html, customElement, property } from '@vandeurenglenn/lite'
 import styles from './styles/category.css' with { type: 'css' }
-import { map } from '@vandeurenglenn/lite/map.js'
-import './item.js'
+import './symbol-list.js'
 import type { Catalog } from './../../types.js'
 import '@vandeurenglenn/lite-elements/toggle.js'
 declare global {
@@ -134,18 +133,9 @@ export class CatalogCategory extends LiteElement {
       ${this.open || this.searchActive
         ? html`<div class="divider"></div>
             <flex-column class=${`items ${this.childrenOnly ? 'children-only' : ''}`}>
-              ${map(
-                this.symbols,
-                (symbol) => html`
-                  <catalog-item
-                    tabindex="0"
-                    .category=${this.category}
-                    .folder=${this.folder}
-                    .symbol=${symbol}
-                    .headline=${symbol.name}
-                    .image=${symbol.path}></catalog-item>
-                `
-              )}
+              <catalog-symbol-list .sections=${[{
+                category: this.category, folder: this.folder, symbols: this.symbols
+              }]}></catalog-symbol-list>
               <slot></slot>
             </flex-column> `
         : ''}

@@ -188,17 +188,21 @@ test('repairs equipment feeds at their SVG outlines, rings or filled dots and pr
     }
   }, contacts)
   const expected = contacts.map(({ width }) => ({ gap: 0, width, exportWidth: width, exportGap: 0 }))
-  await expect.poll(async () => (await inspectContacts()).map((contact) =>
-    ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
-    .toEqual(expected)
+  await expect(async () => {
+    expect((await inspectContacts()).map((contact) =>
+      ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
+      .toEqual(expected)
+  }).toPass({ timeout: 5000 })
   await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
   await page.screenshot({ path: '/private/tmp/cadle-equipment-connections.png' })
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
-  await expect.poll(async () => (await inspectContacts()).map((contact) =>
-    ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
-    .toEqual(expected)
+  await expect(async () => {
+    expect((await inspectContacts()).map((contact) =>
+      ({ ...contact, gap: Math.round(contact.gap * 1000) / 1000, exportGap: Math.round(contact.exportGap * 1000) / 1000 })))
+      .toEqual(expected)
+  }).toPass({ timeout: 5000 })
   await expect(app.locator('.onewire-connection-issues')).toHaveAttribute('data-issue-count', '0')
 })
 
@@ -264,7 +268,9 @@ test('repairs multiple socket rows without shifting them again after reload', as
       }
     })
   }, contacts)
-  await expect.poll(async () => (await inspect()).map(({ count }) => count)).toEqual(counts)
+  await expect(async () => {
+    expect((await inspect()).map(({ count }) => count)).toEqual(counts)
+  }).toPass({ timeout: 5000 })
   const before = await inspect()
   for (const [index, row] of before.entries()) {
     expect(row.exportCopies).toBe(counts[index])
@@ -278,7 +284,9 @@ test('repairs multiple socket rows without shifting them again after reload', as
   for (let reload = 0; reload < 2; reload++) {
     await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000102') })
     await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, root)
-    await expect.poll(inspect).toEqual(before)
+    await expect(async () => {
+      expect(await inspect()).toEqual(before)
+    }).toPass({ timeout: 5000 })
   }
 })
 

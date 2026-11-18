@@ -18,6 +18,28 @@ const fraction = (point: Point, start: Point, end: Point): number | null => {
   return t >= 0 && t <= 1 && same(point, { x: start.x + t * dx, y: start.y + t * dy }) ? t : null
 }
 
+/** Follow conductor junctions to the first rails, without crossing devices or bare wire crossings. */
+export const connectedOneWireRails = (shapes: readonly Shape[], point: Point): LineShape[] => {
+  const lines = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && !shape.hidden)
+  const contains = (line: LineShape, point: Point) => connectionSegments(line).some((segment) =>
+    fraction(point, segment.start, segment.end) !== null)
+  const pending = lines.filter((line) => contains(line, point))
+  const seen = new Set(pending.map((line) => line.id))
+  const rails: LineShape[] = []
+  for (let index = 0; index < pending.length; index++) {
+    const line = pending[index]
+    if (isOneWireRailShape(line)) { rails.push(line); continue }
+    for (const other of lines) {
+      if (seen.has(other.id)) continue
+      if (![line.start, line.end].some((point) => contains(other, point)) &&
+        ![other.start, other.end].some((point) => contains(line, point))) continue
+      seen.add(other.id)
+      pending.push(other)
+    }
+  }
+  return rails
+}
+
 export const removeRedundantRailAttachments = (shapes: readonly Shape[]): Shape[] => {
   const rails = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && isOneWireRailShape(shape))
   return shapes.filter((shape) => {

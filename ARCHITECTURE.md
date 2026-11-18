@@ -30,6 +30,12 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Schematic geometry, heating-plan copies and arbitrary inter-page offsets never contribute physical metres.
   Missing positions/scales and unmeasured pages are explicit; partial totals exclude unknown lengths.
   The estimate excludes vertical runs, wall-routing detours, spare cable and inter-board feeds; VOB totals are route metres, not conductor metres.
+- The circuit overview combines configured and schematic-only differentials, shows main/row protection chains and
+  their supplied circuits, and flags missing or ambiguous assignments. Manual differentials follow actual conductor
+  contacts to their outgoing rails, scoped to each schematic page; bare crossings never establish an assignment.
+  Its cabinet planner reuses the saved module order, 18/24-module width and reserved gaps. Pole-count widths are
+  indicative, and changing the physical module arrangement does not change electrical connections or schematic geometry.
+  Toggling a connection caption updates visibility only, without invoking circuit presentation spacing or rail packing.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size

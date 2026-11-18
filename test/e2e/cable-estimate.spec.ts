@@ -59,7 +59,7 @@ const seed = async (page: Page, project: Project) => {
     }
   }, project)
   await page.reload()
-  await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click()
+  await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click({ position: { x: 12, y: 18 } })
   const app = page.locator('cadle-app:not([read-only])')
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
   return app
@@ -102,6 +102,113 @@ test('shows cable totals per board and cable type, updates assignments and remem
   await expect(overview.getByLabel('Kastpositie voor Hoofdkast')).toHaveValue(`${ground}/main-board`)
   await expect(garage.locator('.cable-total')).toContainText('Geschat totaal: 1,0 m')
   await expect(main.locator('.cable-total')).toContainText('Geschat totaal: 2,5 m')
+})
+
+test('shows differential coverage per row and opens a persistent cabinet module planner', async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 1100 })
+  const project = fixture()
+  project.name = 'Differentielen en kastlayout'
+  const main = project.electricalProfile!.boards![0]
+  main.rails.push({ id: 'rail-2', name: 'Badkamer' })
+  main.mainDifferential = { id: 'main', poles: 2, ratedCurrentA: 40, sensitivityMa: 300, type: 'A' }
+  project.electricalProfile!.boards![1].mainDifferential = { id: 'garage-main', poles: 2, ratedCurrentA: 40, sensitivityMa: 300, type: 'A' }
+  project.circuitSpecifications!.B = { ...project.circuitSpecifications!.B, boardId: 'main', railId: 'rail-2' }
+  project.oneWireTopology = { version: 1, consumers: true, solar: false, residualBreaker: false,
+    additionalDifferentials: [{ count: 1, purpose: 'consumers', boardId: 'main', railId: 'rail-2', poles: 2, sensitivityMa: 30, ratedCurrentA: 40 }] }
+  await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element) => (element as AppShell).openCircuitScheduleDialog())
+  const overview = page.locator('circuit-schedule-field')
+  const circuitA = overview.locator('.device[data-circuit-id="A"]')
+  const circuitB = overview.locator('.device[data-circuit-id="B"]')
+  await expect(circuitA.locator('.protection-assignment')).toContainText('300mA')
+  await expect(circuitA.locator('.protection-assignment')).not.toContainText('30mA')
+  await expect(circuitB.locator('.protection-assignment')).toContainText('Badkamer')
+  await expect(circuitB.locator('.protection-assignment')).toContainText('30mA')
+  const additional = overview.locator('.device[data-kind="differential"]').filter({ hasText: 'Voedt: B' })
+  await expect(additional).toHaveCount(1)
+  await expect(additional).toContainText('Badkamer')
+  const before = await shell.evaluate((element) => (element as AppShell).project)
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  const planner = page.getByRole('dialog', { name: 'Kastlayoutplanner', exact: true })
+  await expect(planner.locator('.cabinet-device[data-kind="differential"]')).toHaveCount(3)
+  const rowDiffId = 'DIFF:main:additional-differential-consumers-1'
+  await planner.locator('.item[data-kind="differential"]').filter({ hasText: '30mA' }).getByTitle('Move up').click()
+  await expect(planner.locator('.cabinet-board[data-board-id="main"] .cabinet-device').first()).toHaveAttribute('data-item-id', rowDiffId)
+  await planner.getByLabel('Kastbreedte').selectOption('18')
+  await planner.locator('.item[data-kind="circuit"]').filter({ hasText: 'B ·' }).getByLabel('Vrije modules ervoor').fill('4')
+  await planner.locator('.item[data-kind="circuit"]').filter({ hasText: 'B ·' }).getByLabel('Vrije modules ervoor').press('Tab')
+  await expect(planner.locator('.cabinet-device[data-item-id="B"]')).toHaveAttribute('style', /grid-column:11 \/ span 2/)
+  await planner.locator('.item[data-kind="circuit"]').filter({ hasText: 'B ·' }).getByTitle('Move up').click()
+  await expect(planner.locator('.cabinet-device[data-item-id="B"]')).toHaveAttribute('style', /grid-column:9 \/ span 2/)
+  await planner.getByRole('button', { name: 'Indeling opslaan', exact: true }).click()
+  await expect(planner).not.toBeVisible()
+  const saved = await shell.evaluate((element) => (element as AppShell).project)
+  expect(saved.circuitScheduleLayout?.modulesPerRow).toBe(18)
+  expect(saved.circuitScheduleLayout?.items?.find((item) => item.id === 'B')?.gapBefore).toBe(4)
+  expect(saved.pages[schematic].schema).toEqual(before.pages[schematic].schema)
+  expect(saved.circuitSpecifications).toEqual(before.circuitSpecifications)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect(overview.getByRole('combobox', { name: 'Breedte', exact: true })).toHaveValue('18')
+  await expect(overview.locator('.device[data-circuit-id="B"] .protection-assignment')).toContainText('Badkamer')
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  await expect(planner.getByLabel('Kastbreedte')).toHaveValue('18')
+  await expect(planner.locator('.cabinet-device[data-item-id="B"]')).toHaveAttribute('style', /grid-column:9 \/ span 2/)
+})
+
+test('hiding a cable caption preserves every device, wire and text position through undo and reopening', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  const project = fixture()
+  project.name = 'Aanduiding zonder verspringen'
+  const rail: LineShape = { id: 'visibility-rail', kind: 'line', start: { x: 300, y: 1300 }, end: { x: 2200, y: 1300 },
+    groupId: 'onewire-kamrail-visibility', strokeWidth: 4 }
+  let sequence = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail, anchorX: 700, familyComponents: [{ bindingId: 'A1', kind: 'load', sourceShapeId: 'a1',
+      sourcePath: 'symbols/Socket outlets/Wall outlet with grounding.svg', sourceName: 'Wall outlet with grounding' }],
+    options: { family: 'A', amps: 20, autoIncludeFamily: true },
+    nextShapeId: () => `visibility-${++sequence}`, oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  const cable = bundle.shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.connection?.kind === 'cable')!
+  cable.connection!.name = 'Voeding voor de volledige technische installatie en de toestellen in de achterliggende berging'
+  const caption = bundle.shapes.find((shape) => shape.sourceLink?.role === 'cable-section')!
+  project.pages[schematic].schema = schema([rail, ...bundle.shapes])
+  const app = await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  const geometry = async () => {
+    await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+    const saved = await shell.evaluate((element) => (element as AppShell).project)
+    return nativeStateForProjectPage(saved, schematic)!.shapes.map((shape) =>
+      'position' in shape ? { id: shape.id, position: shape.position, rotation: shape.rotation, scale: 'scale' in shape ? shape.scale : undefined }
+        : { id: shape.id, start: shape.start, end: shape.end, rotation: shape.rotation, via: shape.kind === 'line' ? shape.connection?.via : undefined })
+  }
+  const original = await geometry()
+  const point = await app.locator(`.connection-conductor[data-shape-id="${cable.id}"]`).evaluate((node: SVGGeometryElement) => {
+    const point = node.getPointAtLength(node.getTotalLength() / 2).matrixTransform(node.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  const checkbox = page.locator('object-pane').getByLabel('Toon aanduiding', { exact: true })
+  await expect(checkbox).toBeChecked()
+  await checkbox.uncheck()
+  await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toHaveCount(0)
+  expect(await geometry()).toEqual(original)
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toHaveCount(1)
+  expect(await geometry()).toEqual(original)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toHaveCount(0)
+  expect(await geometry()).toEqual(original)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await expect(app.locator(`text[data-shape-id="${caption.id}"]`)).toHaveCount(0)
+  expect(await geometry()).toEqual(original)
 })
 
 test('repairs saved appliance feeds and orphaned busbar tails on opening without reflowing the drawing', async ({ page }) => {

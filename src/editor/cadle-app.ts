@@ -903,6 +903,12 @@ export class CadleApp extends LiteElement {
     })
     if (!nextShapes) return
     this.#document.shapes = this.#followOneWireConnections(this.#document.shapes, nextShapes)
+    if (payload.connection && Object.keys(payload.connection).every((key) => key === 'showLabel')) {
+      this.#document.shapes = presentConnectionLabels(this.#document.shapes)
+      this.#pushHistory()
+      this.#render()
+      return
+    }
     if (payload.connection && selectedShape?.kind === 'line') {
       const connection = (nextShapes.find((shape) => shape.id === selectedShape.id) as LineShape | undefined)?.connection
       if (connection?.labelOwner === 'circuit' && selectedShape.sourceLink) {

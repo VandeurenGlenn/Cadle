@@ -1,6 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import type { CircuitScheduleLayout, ElectricalBoard, Project } from '../types.js'
-import type { CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { linkCircuitScheduleProtections, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
 import { cableEstimateBoardLocation, estimateCircuitCables, floorPlanBoardLocations, formatCableMetres } from '../editor/cable-estimate.js'
 import styles from './circuit-schedule.css' with { type: 'css' }
 
@@ -26,14 +26,14 @@ export class CircuitScheduleField extends LiteElement {
   #sync() {
     this.modulesPerRow = this.layout?.modulesPerRow === 18 ? 18 : 24
     const configured = new Map((this.layout?.items ?? []).map((item, index) => [item.id, { ...item, index }]))
-    this.rows = this.items
+    this.rows = linkCircuitScheduleProtections(this.items
       .map((item, index) => ({
         ...item,
         gapBefore: configured.get(item.id)?.gapBefore ?? 0,
         order: configured.get(item.id)?.index ?? 10_000 + index
       }))
       .sort((a, b) => a.order - b.order)
-      .map(({ order: _order, ...item }) => item)
+      .map(({ order: _order, ...item }) => item))
   }
 
   #save() {
@@ -64,7 +64,7 @@ export class CircuitScheduleField extends LiteElement {
   }
 
   #setBoard(id: string, boardId: string) {
-    this.rows = this.rows.map((row) => (row.id === id ? { ...row, boardId } : row))
+    this.rows = linkCircuitScheduleProtections(this.rows.map((row) => (row.id === id ? { ...row, boardId, railId: 'rail-1' } : row)))
     this.#save()
     this.dispatchEvent(
       new CustomEvent('circuit-board-changed', {
@@ -103,24 +103,29 @@ export class CircuitScheduleField extends LiteElement {
 
   render() {
     const boards = this.boards.length
-      ? this.boards
+      ? [...this.boards]
       : [{ id: 'main', name: 'Hoofdverdeelbord', rails: [{ id: 'rail-1', name: 'Rail 1' }] }]
+    for (const item of this.rows) {
+      if (!boards.some((board) => board.id === item.boardId)) {
+        boards.push({ id: item.boardId, name: item.boardId === 'unassigned' ? 'Niet gekoppeld aan een kast' : item.boardId, rails: [] })
+      }
+    }
     const estimates = this.project ? estimateCircuitCables(this.project, this.rows) : []
     const locations = this.project ? floorPlanBoardLocations(this.project) : []
     return html`
       <header class="toolbar">
         <div>
           <h2>Kringenoverzicht</h2>
-          <p>Beheer de kringen per verdeelbord en bepaal hun volgorde.</p>
+          <p>Bekijk per kast en differentieel welke kringen ze voeden.</p>
         </div>
         <div class="toolbar-actions">
+          <button type="button" @click=${() => this.dispatchEvent(new CustomEvent('open-cabinet-planner', { bubbles: true, composed: true }))}>Kastlayoutplanner</button>
           <label
             ><span>Breedte</span>
             <select
-              .value=${String(this.modulesPerRow)}
               @change=${(event: Event) => this.#setModules((event.target as HTMLSelectElement).value)}>
-              <option value="18">18 modules</option>
-              <option value="24">24 modules</option>
+              <option value="18" .selected=${this.modulesPerRow === 18}>18 modules</option>
+              <option value="24" .selected=${this.modulesPerRow === 24}>24 modules</option>
             </select>
           </label>
           <label class="new-board"
@@ -169,6 +174,7 @@ export class CircuitScheduleField extends LiteElement {
                 <label><span>Kastpositie op situatieplan</span>
                   <select
                     aria-label=${`Kastpositie voor ${board.name}`}
+                    ?disabled=${board.id === 'unassigned'}
                     @change=${(event: Event) => {
                       const location = locations.find((item) => item.key === (event.target as HTMLSelectElement).value)
                       this.dispatchEvent(new CustomEvent('schedule-board-location-changed', {
@@ -190,7 +196,7 @@ export class CircuitScheduleField extends LiteElement {
               </div>
               <div class="circuit-table">
                 <div class="table-head">
-                  <span>Kring</span><span>Omschrijving</span><span>Beveiliging</span><span>Kabelraming</span><span>Kast</span><span>Vrij</span>
+                  <span>Kring</span><span>Omschrijving</span><span>Beveiliging</span><span>Rij / differentieel / kringen</span><span>Kabelraming</span><span>Kast</span><span>Vrij</span>
                 </div>
                 ${boardRows.length
                   ? boardRows.map(
@@ -198,6 +204,7 @@ export class CircuitScheduleField extends LiteElement {
                         <article
                           class="device"
                           data-kind=${item.kind}
+                          data-circuit-id=${item.id}
                           draggable="true"
                           @dragstart=${() => (this.draggedId = item.id)}
                           @dragover=${(event: DragEvent) => event.preventDefault()}
@@ -208,6 +215,16 @@ export class CircuitScheduleField extends LiteElement {
                           <strong class="circuit-id">${item.id.startsWith('DIFF:') ? 'DIFF' : item.id}</strong>
                           <span class="description">${item.title}</span>
                           <span class="protection">${item.subtitle.replace(`${item.id} · `, '')}</span>
+                          <span class="protection-assignment">
+                            <strong>${item.railId ? board.rails.find((rail) => rail.id === item.railId)?.name ?? item.railId : item.mainDifferential ? 'Hele kast' : 'Rij niet gekoppeld'}</strong>
+                            ${item.kind === 'differential'
+                              ? html`<span>${item.circuits?.length ? `Voedt: ${item.circuits.join(', ')}` : ''}</span>`
+                              : (item.differentialIds ?? []).map((id) => {
+                                const differential = this.rows.find((row) => row.id === id)!
+                                return html`<small>${differential.title} · ${differential.subtitle.replace(`${id} · `, '')}</small>`
+                              })}
+                            ${item.assignmentWarning ? html`<small class="assignment-warning">${item.assignmentWarning}</small>` : ''}
+                          </span>
                           <span class="cable-estimate">${item.kind === 'circuit' ? (() => {
                             const estimate = estimates.find((estimate) => estimate.id === item.id)
                             return html`<strong>${estimate?.metres != null ? `ca. ${formatCableMetres(estimate.metres)}${estimate.complete ? '' : ' (deel)'}` : 'Niet geraamd'}</strong>
@@ -219,7 +236,7 @@ export class CircuitScheduleField extends LiteElement {
                                 aria-label=${`Verdeelbord voor kring ${item.id}`}
                                 @change=${(event: Event) =>
                                   this.#setBoard(item.id, (event.target as HTMLSelectElement).value)}>
-                                ${boards.map((option) => html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
+                                ${boards.filter((option) => option.id !== 'unassigned').map((option) => html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
                               </select>`
                             : html`<span class="fixed-board">${board.name}</span>`}
                           <input

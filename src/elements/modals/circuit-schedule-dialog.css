@@ -14,6 +14,14 @@ header p, .settings p { margin-top: 4px; color: var(--md-sys-color-on-surface-va
 .order { display: flex; gap: 4px; }
 .copy { display: grid; min-width: 0; }
 .copy span { color: var(--md-sys-color-on-surface-variant); font-size: 12px; }
+.cabinet-preview { display: grid; gap: 16px; margin-bottom: 12px; }
+.cabinet-board h4 { margin: 0 0 8px; }
+.cabinet-row-heading { display: flex; justify-content: space-between; margin: 8px 0 4px; font-size: 11px; color: var(--md-sys-color-on-surface-variant); }
+.cabinet-row { display: grid; grid-template-columns: repeat(var(--modules), minmax(0, 1fr)); min-height: 60px; padding: 5px 0; border: 1px solid var(--md-sys-color-outline-variant); background: repeating-linear-gradient(to right, transparent 0, transparent calc(100% / var(--modules) - 1px), var(--md-sys-color-outline-variant) calc(100% / var(--modules) - 1px), var(--md-sys-color-outline-variant) calc(100% / var(--modules))); }
+.cabinet-device { display: grid; align-content: center; justify-items: center; min-width: 0; margin: 0 1px; border: 1px solid var(--md-sys-color-outline); border-radius: 3px; background: var(--md-sys-color-surface-container-highest); font-size: 11px; overflow: hidden; }
+.cabinet-device[data-kind='differential'] { border-color: var(--md-sys-color-primary); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.cabinet-device small { font-size: 9px; }
+.overflow-warning { color: var(--md-sys-color-error); font-size: 12px; }
 label { display: grid; gap: 4px; color: var(--md-sys-color-on-surface-variant); font-size: 11px; }
 select, button { min-height: 34px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--cadle-radius-sm); color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface-container-highest); font: inherit; padding: 0 10px; }
 button { cursor: pointer; font-weight: 600; }

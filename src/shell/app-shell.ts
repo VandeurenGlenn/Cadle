@@ -593,7 +593,7 @@ export class AppShell extends LiteElement {
       }
     }
     this.circuitScheduleItems = this.circuitScheduleItems.map((item) =>
-      item.id === circuitId ? { ...item, boardId } : item
+      item.id === circuitId ? { ...item, boardId, railId: 'rail-1' } : item
     )
     await setProjectData(this.projectKey, this.project)
   }
@@ -1605,6 +1605,7 @@ export class AppShell extends LiteElement {
       <circuit-schedule-dialog
         .open=${this.circuitScheduleDialogOpen}
         .items=${this.circuitScheduleItems}
+        .boards=${this.project?.electricalProfile?.boards ?? []}
         .layout=${this.project?.circuitScheduleLayout ?? {}}
         @close=${() => (this.circuitScheduleDialogOpen = false)}
         @saved=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
@@ -1799,6 +1800,7 @@ export class AppShell extends LiteElement {
                 ${circuitSchedulePage
                   ? html`
                       <circuit-schedule-field
+                        @open-cabinet-planner=${() => (this.circuitScheduleDialogOpen = true)}
                         .project=${this.project}
                         .items=${this.circuitScheduleItems}
                         .boards=${normalizeElectricalProfile(this.project?.electricalProfile).boards}

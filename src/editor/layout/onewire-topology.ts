@@ -46,6 +46,14 @@ export type OneWireTopologyOptions = {
   }
 }
 
+export const orderedOneWireDifferentials = (plan: OneWireTopologyPlan) => {
+  const additional = (plan.additionalDifferentials ?? []).flatMap((item) => Array.from({ length: item.count }, () => item))
+  const ev = additional.filter((item) => item.purpose === 'ev')
+  const other = additional.filter((item) => item.purpose !== 'ev')
+  const middle = Math.ceil(other.length / 2)
+  return [...other.slice(0, middle), ...ev, ...other.slice(middle)]
+}
+
 export const buildOneWireTopology = (
   plan: OneWireTopologyPlan,
   rail: TopologyRail,
@@ -191,9 +199,7 @@ export const buildOneWireTopology = (
       role
     )
 
-  const additional = (plan.additionalDifferentials ?? []).flatMap((item) =>
-    Array.from({ length: item.count }, () => item)
-  )
+  const additional = orderedOneWireDifferentials(plan)
   const mainTap = busTap(0.5)
   const mainTop = { x: mainTap.x, y: mainTap.y + 40 }
   const mainDifferential = symbolAtTerminal(
@@ -416,14 +422,7 @@ export const buildOneWireTopology = (
     protectionTitle('remautomaat', breaker)
   }
 
-  const evDifferentials = additional.filter((item) => item.purpose === 'ev')
-  const otherDifferentials = additional.filter((item) => item.purpose !== 'ev')
-  const middle = Math.ceil(otherDifferentials.length / 2)
-  const orderedDifferentials = [
-    ...otherDifferentials.slice(0, middle),
-    ...evDifferentials,
-    ...otherDifferentials.slice(middle)
-  ]
+  const orderedDifferentials = additional
   const destinationFractions = (() => {
     if (orderedDifferentials.length === 1) return [plan.solar ? 0.28 : 0.5]
     if (!plan.solar) {

@@ -76,7 +76,7 @@ main {
   padding: 24px;
 }
 .board-section {
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: 8px;
   background: var(--md-sys-color-surface);
@@ -105,12 +105,12 @@ main {
   font-size: 12px;
 }
 .circuit-table {
-  min-width: 960px;
+  min-width: 1120px;
 }
 .table-head,
 .device {
   display: grid;
-  grid-template-columns: 60px minmax(130px, 1fr) minmax(110px, 0.7fr) minmax(190px, 1fr) minmax(140px, 0.8fr) 72px;
+  grid-template-columns: 60px minmax(120px, 1fr) minmax(100px, 0.7fr) minmax(180px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) 72px;
   align-items: center;
   gap: 14px;
   padding: 9px 16px;
@@ -169,15 +169,20 @@ main {
   font-size: 12px;
 }
 .cable-total,
-.cable-estimate {
+.cable-estimate,
+.protection-assignment {
   display: grid;
   gap: 4px;
   font-size: 12px;
 }
 .cable-estimate small,
-.cable-total span {
+.cable-total span,
+.protection-assignment small {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 11px;
+}
+.assignment-warning {
+  color: var(--md-sys-color-error);
 }
 .empty {
   padding: 24px 18px;

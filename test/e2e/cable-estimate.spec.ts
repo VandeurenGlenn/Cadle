@@ -11,6 +11,7 @@ import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolScaleFor, oneW
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 import { applyOneWireCircuitPresentation } from '../../src/editor/layout/onewire-circuit-presentation.ts'
+import { translateShape } from '../../src/editor/interaction/shape-transforms.ts'
 
 const ground = '00000000-0000-4000-8000-000000000102' as UUID
 const schematic = '00000000-0000-4000-8000-000000000104' as UUID
@@ -364,6 +365,111 @@ test('keeps existing geometry fixed when changing manual and circuit cable secti
   await app.evaluate((element) => (element as CadleApp).undo())
   await expectUnmoved(original, true)
   await app.evaluate((element) => (element as CadleApp).redo())
+  expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
+})
+
+test('places toolbar and catalog symbols below the first lamp row, making room only above the insertion', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  const project = fixture()
+  project.name = 'Symbool onder de eerste lampenrij'
+  const rail: LineShape = { id: 'inline-rail', kind: 'line', start: { x: 300, y: 1450 }, end: { x: 2100, y: 1450 },
+    groupId: 'onewire-kamrail-inline', strokeWidth: 4 }
+  let sequence = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail, anchorX: 900, familyComponents: [1, 2].map((number) => ({
+      bindingId: `C${number}`, kind: 'load', sourcePath: 'symbols/Consumption appliances/Lighting.svg'
+    })),
+    options: { family: 'C', amps: 16, autoIncludeFamily: true, cableConductors: 3, cableSectionMm2: 2.5, cableType: 'VOB' },
+    nextShapeId: () => `inline-${++sequence}`, oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!, symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  const trunk = bundle.shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.sourceLink?.role === 'trunk')!
+  const firstRowY = Math.max(...bundle.shapes.flatMap((shape) =>
+    shape.kind === 'line' && shape.sourceLink?.role === 'row-wire' ? [shape.start.y] : []))
+  const firstRow = bundle.shapes.find((shape): shape is LineShape =>
+    shape.kind === 'line' && shape.sourceLink?.role === 'row-wire' && shape.start.y === firstRowY)!
+  const target = { x: trunk.start.x, y: firstRowY + 4 }
+  const neighbor: LineShape = { id: 'neighbor-wire', kind: 'line', bindingId: 'D',
+    start: { x: 1900, y: 1400 }, end: { x: 1900, y: 900 }, connection: { kind: 'wire', showLabel: false } }
+  project.pages[schematic].schema = schema([rail, ...bundle.shapes, neighbor])
+  const app = await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  const savedShapes = async () => {
+    await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+    return nativeStateForProjectPage(await shell.evaluate((element) => (element as AppShell).project), schematic)!.shapes
+  }
+  const geometry = (shape: Shape) => 'position' in shape
+    ? { id: shape.id, position: shape.position, rotation: shape.rotation }
+    : { id: shape.id, start: shape.start, end: shape.end, via: shape.kind === 'line' ? shape.connection?.via : undefined }
+  const original = await savedShapes()
+  const screenPoint = () => app.locator(`.connection-conductor[data-shape-id="${trunk.id}"]`).evaluate((node, target) => {
+    const point = new DOMPoint(target.x, target.y).matrixTransform((node as SVGGraphicsElement).getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  }, target)
+  await page.getByRole('button', { name: 'Add switch', exact: true }).first().click()
+  let click = await screenPoint()
+  await page.mouse.click(click.x, click.y)
+  const checkInsertion = async () => {
+    const shapes = await savedShapes()
+    const inserted = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.sourceLink?.role === 'inline')!
+    expect(inserted).toBeDefined()
+    const node = oneWireSymbolNodeInfo(inserted.path, inserted.scale, inserted.rotation)!
+    expect(inserted.position.x + node.offset.x).toBeCloseTo(target.x, 6)
+    const scale = await app.locator(`.connection-conductor[data-shape-id="${trunk.id}"]`)
+      .evaluate((node) => Math.abs((node as SVGGraphicsElement).getScreenCTM()!.d))
+    expect(Math.abs(inserted.position.y + node.offset.y - target.y) * scale).toBeLessThanOrEqual(1.1)
+    const movedRow = shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.id === firstRow.id)!
+    const delta = movedRow.start.y - firstRow.start.y
+    expect(delta).toBeLessThan(0)
+    const rows = original.filter((shape) => /^C\d+$/.test(shape.bindingId ?? ''))
+    for (const shape of original.filter((shape) => shape.id !== trunk.id)) {
+      expect(geometry(shapes.find((candidate) => candidate.id === shape.id)!), shape.id)
+        .toEqual(geometry(rows.includes(shape) ? translateShape(shape, 0, delta) : shape))
+    }
+    const rowBottom = Math.max(...rows.map((shape) => {
+      const bounds = oneWireLayoutBounds(shapes.find((candidate) => candidate.id === shape.id)!)
+      return bounds.y + bounds.height
+    }))
+    expect(oneWireLayoutBounds(inserted).y - rowBottom).toBeCloseTo(24, 6)
+    const before = shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.id === trunk.id)!
+    const after = shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.sourceLink?.role === `inline-wire:${inserted.id}`)!
+    expect(before.start).toEqual(trunk.start)
+    expect(after.end).toEqual({ ...trunk.end, y: trunk.end.y + delta })
+    for (const point of [before.end, after.start]) {
+      expect(oneWireSymbolConnectionAnchors(inserted).some((anchor) => Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y) < 1e-6)).toBe(true)
+    }
+    return shapes
+  }
+  await checkInsertion()
+  await app.evaluate((element) => (element as CadleApp).undo())
+  expect((await savedShapes()).map(geometry)).toEqual(original.map(geometry))
+  await page.getByRole('tab', { name: 'Symbols catalog', exact: true }).click()
+  await page.locator('input[name="search_catalog"]').fill('Impulse relay')
+  await page.locator('catalog-item').filter({ hasText: 'Impulse relay' }).first().click()
+  click = await screenPoint()
+  await page.mouse.move(click.x, click.y)
+  await expect(app.locator('g.shape-symbol[data-shape-id="__symbol-preview__"]')).toHaveCount(1)
+  await page.mouse.click(click.x, click.y)
+  await expect(app.locator('g.shape-symbol[data-shape-id="__symbol-preview__"]')).toHaveCount(0)
+  const inserted = await checkInsertion()
+  await app.evaluate((element) => (element as CadleApp).undo())
+  expect((await savedShapes()).map(geometry)).toEqual(original.map(geometry))
+  await app.evaluate((element) => (element as CadleApp).redo())
+  expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
+  await page.getByRole('button', { name: 'Select', exact: true }).first().click()
+  const cablePoint = await app.locator(`.connection-conductor[data-shape-id="${trunk.id}"]`).evaluate((node: SVGGeometryElement) => {
+    const point = node.getPointAtLength(node.getTotalLength() / 2).matrixTransform(node.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(cablePoint.x, cablePoint.y)
+  await page.locator('object-pane').getByLabel('Doorsnede (mm²)', { exact: true }).selectOption('6')
   expect((await savedShapes()).map(geometry)).toEqual(inserted.map(geometry))
   await page.reload()
   await page.locator('custom-button[label="Open"]').click()

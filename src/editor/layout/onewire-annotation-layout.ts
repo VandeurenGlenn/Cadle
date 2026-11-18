@@ -80,6 +80,9 @@ export const spaceOneWireCircuitAnnotations = (
     if (!bounds || !terminals?.top || !terminals.bottom || breaker.rotation || breaker.flipX || breaker.flipY) continue
     const belongs = (shape: Shape) => Boolean(shape.generationKey) && shape.oneWireRailId === breaker.oneWireRailId &&
       (shape.sourceLink?.kind === 'board' ? shape.sourceLink.id === circuitKey : shape.bindingId?.replace(/\d+$/, '') === circuitKey)
+    if (shapes.some((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'inline' &&
+      shape.oneWireRailId === breaker.oneWireRailId &&
+      shape.sourceLink.id.replace(/\d+$/, '') === circuitKey)) continue
     const allRows = next.filter((shape) => belongs(shape) && shape.sourceLink?.kind !== 'board')
     const rows = allRows.filter((shape) => !shape.hidden)
     if (emptyOnly && allRows.length) continue

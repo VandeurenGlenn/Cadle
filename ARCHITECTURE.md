@@ -41,6 +41,14 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Inspector cable edits never repack rails; circuit annotation spacing is restricted to the edited circuit.
   Manual breaker insertion places only the new circuit and extends its rail outward if necessary, without shrinking
   or recentering it or reapplying presentation to unrelated circuits. Global packing belongs to explicit layout generation.
+  One-wire catalog and compose tools can insert a symbol into a conductor at the clicked position. Actual electrical
+  contacts determine alignment and local wire cuts. When inserting vertically, connected rows above the clicked
+  point move upward only as far as required to clear the symbol by 3 mm, including their labels and routed bends.
+  Breakers, rails, lower rows and other circuits stay fixed; the intervening conductor extends to keep contacts intact.
+  Inline-edited circuits retain their manual geometry during property updates. Locked wires/rows, occupied junctions
+  and insufficient conductor space produce an explicit message instead of repacking surrounding equipment.
+  Circuit source synchronization restores inline clearance and re-cuts regenerated conductors around existing devices,
+  retaining continuation-wire identities instead of leaving a bypass through the symbol.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size

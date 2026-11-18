@@ -7,6 +7,9 @@ import { removeRedundantRailAttachments } from '../src/editor/interaction/connec
 import { oneWireSymbolBounds, oneWireSymbolNodeInfo, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.js'
 import { buildOneWireCircuit } from '../src/editor/layout/onewire-builder.js'
 import { ONE_WIRE_PRESETS } from '../src/editor/constants.js'
+import { insertOneWireInlinePlacement, planOneWireInlinePlacement, repairOneWireInlineConnections } from '../src/editor/interaction/onewire-inline-placement.js'
+import { connectionPoints } from '../src/editor/model/electrical-connection.js'
+import { translateShape } from '../src/editor/interaction/shape-transforms.js'
 
 const symbol = (path: string, overrides: Partial<SymbolShape> = {}): SymbolShape => ({
   id: 'symbol',
@@ -16,6 +19,150 @@ const symbol = (path: string, overrides: Partial<SymbolShape> = {}): SymbolShape
   scale: 1,
   position: { x: 100, y: 200 },
   ...overrides
+})
+
+test('inserts a switch below existing lamp rows at its actual contacts without moving any other geometry', () => {
+  const trunk: LineShape = { id: 'trunk', kind: 'line', start: { x: 100, y: 600 }, end: { x: 100, y: 0 },
+    bindingId: 'A', oneWireRailId: 'rail', generationKey: 'board:A:trunk',
+    sourceLink: { kind: 'board', id: 'A', role: 'trunk' },
+    connection: { kind: 'cable', conductors: 3, sectionMm2: 2.5, cableType: 'VOB', labelOwner: 'circuit' } }
+  const rows: LineShape[] = [120, 240].map((y) => ({ id: `row-${y}`, kind: 'line',
+    start: { x: 100, y }, end: { x: 400, y }, connection: { kind: 'wire' } }))
+  const shapes = [trunk, ...rows]
+  const original = structuredClone(shapes)
+  const plan = planOneWireInlinePlacement(shapes, symbol('symbols/Switches/Switch general symbol.svg'), { x: 103, y: 350 })
+  assert.ok(plan && !('error' in plan) && plan.cut)
+  let id = 0
+  const inserted = insertOneWireInlinePlacement(shapes, plan, () => `inserted-${++id}`)
+  const node = oneWireSymbolNodeInfo(inserted.symbol.path, inserted.symbol.scale, inserted.symbol.rotation)!
+  assert.deepEqual({ x: inserted.symbol.position.x + node.offset.x, y: inserted.symbol.position.y + node.offset.y }, { x: 100, y: 350 })
+  const ports = oneWireSymbolConnectionAnchors(inserted.symbol)
+  const wires = inserted.shapes.filter((shape): shape is LineShape => shape.kind === 'line' && !rows.includes(shape))
+  assert.deepEqual(wires[0].start, trunk.start)
+  assert.deepEqual(wires[1].end, trunk.end)
+  assert.ok(ports.some(({ point }) => Math.hypot(point.x - wires[0].end.x, point.y - wires[0].end.y) < 1e-8))
+  assert.ok(ports.some(({ point }) => Math.hypot(point.x - wires[1].start.x, point.y - wires[1].start.y) < 1e-8))
+  assert.equal(wires.filter((wire) => wire.connection?.labelOwner).length, 1)
+  assert.equal(inserted.symbol.bindingId, 'A')
+  assert.equal(inserted.symbol.oneWireRailId, 'rail')
+  for (const row of rows) assert.equal(inserted.shapes.find((shape) => shape.id === row.id), row)
+  assert.deepEqual(shapes, original)
+})
+
+test('inline insertion preserves bends and asymmetric contacts on a routed conductor', () => {
+  const wire: LineShape = { id: 'bent', kind: 'line', start: { x: 0, y: 0 }, end: { x: 600, y: 400 },
+    connection: { kind: 'wire', via: [{ x: 0, y: 200 }, { x: 600, y: 200 }] } }
+  const plan = planOneWireInlinePlacement([wire], symbol('symbols/Switches/Double push button.svg'), { x: 300, y: 203 })
+  assert.ok(plan && !('error' in plan) && plan.cut)
+  let id = 0
+  const inserted = insertOneWireInlinePlacement([wire], plan, () => `${++id}`)
+  const lines = inserted.shapes.filter((shape): shape is LineShape => shape.kind === 'line')
+  assert.deepEqual(connectionPoints(lines[0]).slice(0, 2), [{ x: 0, y: 0 }, { x: 0, y: 200 }])
+  assert.deepEqual(connectionPoints(lines[1]).slice(-2), [{ x: 600, y: 200 }, { x: 600, y: 400 }])
+  assert.ok(oneWireSymbolConnectionAnchors(inserted.symbol).some(({ point }) =>
+    Math.hypot(point.x - lines[0].end.x, point.y - lines[0].end.y) < 1e-8))
+})
+
+test('vertical insertion makes only the required room above, keeping labels, routed rows and contacts together', () => {
+  for (const reversed of [false, true]) {
+    const trunk: LineShape = { id: 'trunk', kind: 'line', start: { x: 100, y: reversed ? 0 : 600 },
+      end: { x: 100, y: reversed ? 600 : 0 }, bindingId: 'A', connection: { kind: 'wire' } }
+    const lampNode = oneWireSymbolNodeInfo('symbols/Consumption appliances/Lighting.svg', 2)!
+    const rows: Shape[] = [260, 120, 430].flatMap((y, index): Shape[] => [
+      { id: `row-${index}`, kind: 'line', start: { x: 100, y }, end: { x: 400, y },
+        bindingId: `A${index + 1}`, groupId: `row-${index}`, connection: { kind: 'wire', showLabel: false,
+          via: [{ x: 200, y }, { x: 200, y: y - 10 }, { x: 300, y: y - 10 }, { x: 300, y }] } },
+      symbol('symbols/Consumption appliances/Lighting.svg', { id: `lamp-${index}`, bindingId: `A${index + 1}`,
+        groupId: `row-${index}`, scale: 2, position: { x: 400 - lampNode.offset.x, y: y - lampNode.offset.y } }),
+      { id: `label-${index}`, kind: 'text', position: { x: 120, y: y + 5 }, text: `${index + 1}`,
+        bindingId: `A${index + 1}`, groupId: `row-${index}`, sourceLink: { kind: 'circuit', id: `A${index + 1}`, role: 'number-label' } }
+    ])
+    const fixed: Shape[] = [
+      symbol('symbols/Protection devices/Automaat.svg', { id: 'breaker', bindingId: 'A', position: { x: 100, y: 640 } }),
+      { id: 'rail', kind: 'line', start: { x: 0, y: 700 }, end: { x: 900, y: 700 }, groupId: 'onewire-kamrail-main' },
+      { id: 'other', kind: 'line', start: { x: 700, y: 600 }, end: { x: 700, y: 0 }, bindingId: 'B' }
+    ]
+    const shapes = [trunk, ...rows, ...fixed], original = structuredClone(shapes)
+    const plan = planOneWireInlinePlacement(shapes, symbol('symbols/Switches/Double push button.svg', { scale: 2.5 }), { x: 100, y: 264 })
+    assert.ok(plan && !('error' in plan) && plan.cut && plan.shiftedShapes)
+    let id = 0
+    const inserted = insertOneWireInlinePlacement(shapes, plan, () => `new-${++id}`)
+    const first = inserted.shapes.find((shape): shape is LineShape => shape.id === 'row-0' && shape.kind === 'line')!
+    const delta = first.start.y - 260
+    assert.ok(delta < 0)
+    for (const shape of [...rows, ...fixed]) {
+      assert.deepEqual(inserted.shapes.find((candidate) => candidate.id === shape.id),
+        rows.slice(0, 6).includes(shape) ? translateShape(shape, 0, delta) : shape)
+    }
+    const bottom = Math.max(...rows.slice(0, 6).map((shape) => {
+      const bounds = oneWireLayoutBounds(inserted.shapes.find((candidate) => candidate.id === shape.id)!)
+      return bounds.y + bounds.height
+    }))
+    assert.ok(Math.abs(oneWireLayoutBounds(inserted.symbol).y - bottom - 24) < 1e-8)
+    const wires = inserted.shapes.filter((shape): shape is LineShape =>
+      shape.kind === 'line' && (shape.id === trunk.id || shape.sourceLink?.role === `inline-wire:${inserted.symbol.id}`))
+    for (const point of [wires[0].end, wires[1].start]) assert.ok(oneWireSymbolConnectionAnchors(inserted.symbol)
+      .some((anchor) => Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y) < 1e-8))
+    const regenerated = [...shapes, ...inserted.shapes.filter((shape) => !shapes.some((old) => old.id === shape.id))]
+    const repaired = repairOneWireInlineConnections(regenerated, () => 'unexpected-new-id')
+    const byId = (left: Shape, right: Shape) => left.id.localeCompare(right.id)
+    const normalize = (items: Shape[]) => JSON.stringify([...items].sort(byId),
+      (_key, value) => typeof value === 'number' ? Math.round(value * 1e8) / 1e8 : value)
+    assert.equal(normalize(repaired), normalize(inserted.shapes))
+    assert.deepEqual(repairOneWireInlineConnections(repaired, () => 'unused'), repaired)
+    assert.deepEqual(shapes, original)
+  }
+})
+
+test('source regeneration reconnects an inline device without duplicating its upper wire or moving the device', () => {
+  const trunk: LineShape = { id: 'trunk', kind: 'line', start: { x: 100, y: 600 }, end: { x: 100, y: 0 },
+    bindingId: 'A', sourceLink: { kind: 'board', id: 'A', role: 'trunk' }, connection: { kind: 'cable', labelOwner: 'circuit' } }
+  const plan = planOneWireInlinePlacement([trunk], symbol('symbols/Switches/Double push button.svg'), { x: 100, y: 350 })
+  assert.ok(plan && !('error' in plan))
+  let id = 0
+  const inserted = insertOneWireInlinePlacement([trunk], plan, () => `inline-${++id}`)
+  assert.deepEqual(repairOneWireInlineConnections(inserted.shapes, () => 'unused'), inserted.shapes)
+  const regenerated = inserted.shapes.map((shape) => shape.id === trunk.id ? { ...trunk, end: { x: 100, y: -100 } } : shape)
+  const restored = repairOneWireInlineConnections(regenerated, () => 'unused')
+  assert.equal(restored.length, inserted.shapes.length)
+  assert.equal(restored.find((shape) => shape.id === inserted.symbol.id), inserted.symbol)
+  const upper = restored.find((shape): shape is LineShape => shape.kind === 'line' && shape.id !== trunk.id)!
+  assert.deepEqual(upper.end, { x: 100, y: -100 })
+  const lower = restored.find((shape): shape is LineShape => shape.kind === 'line' && shape.id === trunk.id)!
+  for (const point of [lower.end, upper.start]) assert.ok(oneWireSymbolConnectionAnchors(inserted.symbol)
+    .some((anchor) => Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y) < 1e-8))
+  assert.deepEqual(repairOneWireInlineConnections(restored, () => 'unused'), restored)
+})
+
+test('passthrough lamps keep the conductor intact and fixed-terminal devices connect in either orientation', () => {
+  const wire: LineShape = { id: 'wire', kind: 'line', start: { x: 100, y: 600 }, end: { x: 100, y: 0 } }
+  const lamp = planOneWireInlinePlacement([wire], symbol('symbols/Consumption appliances/Lighting.svg'), { x: 100, y: 300 })
+  assert.ok(lamp && !('error' in lamp))
+  assert.equal(lamp.cut, null)
+  assert.equal(insertOneWireInlinePlacement([wire], lamp, () => 'lamp').shapes[0], wire)
+  for (const conductor of [wire, { ...wire, start: { x: 0, y: 300 }, end: { x: 600, y: 300 } }]) {
+    const plan = planOneWireInlinePlacement([conductor], symbol('symbols/Protection devices/Automaat.svg'),
+      conductor === wire ? { x: 100, y: 300 } : { x: 300, y: 300 })
+    assert.ok(plan && !('error' in plan) && plan.cut)
+    assert.ok(plan.cut.before.at(-1) && plan.cut.after[0])
+  }
+})
+
+test('inline insertion rejects locked wires, insufficient space and junctions rather than disconnecting them', () => {
+  const wire: LineShape = { id: 'wire', kind: 'line', start: { x: 100, y: 600 }, end: { x: 100, y: 0 } }
+  const device = symbol('symbols/Switches/Switch general symbol.svg')
+  const junction: LineShape = { ...wire, id: 'junction', start: { x: 100, y: 300 }, end: { x: 400, y: 300 } }
+  for (const [shapes, point] of [
+    [[{ ...wire, locked: true }], { x: 100, y: 300 }],
+    [[wire, { ...junction, locked: true }], { x: 100, y: 301 }],
+    [[wire], { x: 100, y: 1 }],
+    [[wire, junction], { x: 100, y: 300 }]
+  ] as const) {
+    const plan = planOneWireInlinePlacement(shapes, device, point)
+    assert.ok(plan && 'error' in plan)
+  }
+  assert.equal(planOneWireInlinePlacement([{ ...wire, hidden: true }], device, { x: 100, y: 300 }), null)
+  assert.equal(planOneWireInlinePlacement([{ ...wire, groupId: 'onewire-kamrail-test' }], device, { x: 100, y: 300 }), null)
 })
 
 test('repairs legacy generated appliance contacts without moving symbols, rails, manual wires or intentional gaps', () => {

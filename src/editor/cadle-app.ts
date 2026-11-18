@@ -136,6 +136,7 @@ import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annot
 import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
+import { insertOneWireInlinePlacement, planOneWireInlinePlacement, type OneWireInlinePlacement } from './interaction/onewire-inline-placement.js'
 import { resizedSymbolStrokeWidth } from './model/symbol-scale.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection, repairGeneratedOneWireContacts } from './layout/onewire-connections.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
@@ -326,7 +327,7 @@ export class CadleApp extends LiteElement {
   #pendingCatalogSymbol: NativeCatalogPick | null = null
   #symbolPreviewPoint: Point | null = null
   // Active symbol placement gesture: anchor stays fixed while dragging sets the rotation.
-  #symbolPlacement: { anchor: Point; rotation: number } | null = null
+  #symbolPlacement: { anchor: Point; rotation: number; inline?: OneWireInlinePlacement } | null = null
   // Zoom & pan state
   #viewport = new ViewportController()
   #isPanning = false
@@ -2969,6 +2970,10 @@ export class CadleApp extends LiteElement {
     const previewShape = this.#pendingCatalogSymbol
       ? createSymbolShape('symbol-preview', rawPoint, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
       : null
+    if (previewShape && this.#symbolPlacementContext() === 'onewire') {
+      const inline = planOneWireInlinePlacement(this.#document.shapes, previewShape, rawPoint)
+      if (inline && !('error' in inline)) return { point: inline.point, snapped: true, kind: 'electrical' }
+    }
 
     const wall = this.#snapSymbolToWallOffset(rawPoint, symbolHalfExtent, previewShape)
     if (
@@ -5412,6 +5417,10 @@ export class CadleApp extends LiteElement {
     if (this.#tools.current === 'symbol' && this.#pendingCatalogSymbol && this.#symbolPreviewPoint) {
       symbolPreviewShape = createSymbolShape('__symbol-preview__', this.#symbolPreviewPoint, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
       if (this.#symbolPlacement?.rotation) symbolPreviewShape.rotation = this.#symbolPlacement.rotation
+      if (this.#symbolPlacementContext() === 'onewire') {
+        const inline = this.#symbolPlacement?.inline ?? planOneWireInlinePlacement(this.#document.shapes, symbolPreviewShape, this.#symbolPreviewPoint)
+        if (inline && !('error' in inline)) symbolPreviewShape = { ...inline.symbol, id: '__symbol-preview__' }
+      }
     }
     return svg`
       ${
@@ -6138,13 +6147,21 @@ export class CadleApp extends LiteElement {
     }
 
     if (this.#tools.current === 'symbol' && event.button === 0 && this.#pendingCatalogSymbol) {
+      const inline = this.#symbolPlacementContext() === 'onewire'
+        ? planOneWireInlinePlacement(this.#document.shapes,
+          createSymbolShape('__inline__', rawPoint, this.#pendingCatalogSymbol, 'onewire'), rawPoint) : null
+      if (inline && 'error' in inline) {
+        globalThis.alert(inline.error)
+        return
+      }
       const snapped = this.#snapSymbolPlacementPoint(rawPoint)
       this.#symbolPreviewPoint = snapped.point
       this.#snapTarget = snapped.snapped ? snapped.point : null
       this.#snapIndicatorKind = snapped.kind
       this.#symbolPlacement = {
         anchor: snapped.point,
-        rotation: 0
+        rotation: 0,
+        ...(inline && 'symbol' in inline ? { inline } : {})
       }
       this.#stagePointerId = event.pointerId
       ;(stage as SVGSVGElement).setPointerCapture(event.pointerId)
@@ -6157,6 +6174,24 @@ export class CadleApp extends LiteElement {
 
       const clickedShape = shapeId ? this.#shapeById(shapeId) : null
       const clickedShapeIsKamrail = this.#isKamrailShape(clickedShape)
+      if (clickedShape?.kind === 'line' && !clickedShapeIsKamrail && this.#oneWireComposeKind !== 'kamrail') {
+        const component = this.#oneWireComponentSymbol(this.#oneWireComposeKind)
+        const inline = planOneWireInlinePlacement(this.#document.shapes,
+          createSymbolShape('__inline__', rawPoint, component, 'onewire'), rawPoint)
+        if (inline && 'error' in inline) {
+          globalThis.alert(inline.error)
+          return
+        }
+        if (inline && 'symbol' in inline) {
+          const inserted = insertOneWireInlinePlacement(this.#document.shapes, inline, nextShapeId)
+          this.#document.shapes = inserted.shapes
+          this.#document.selectedId = inserted.symbol.id
+          this.#document.selectedIds = new Set([inserted.symbol.id])
+          this.#pushHistory()
+          this.#render()
+          return
+        }
+      }
       if (shapeId && shouldSelectExistingOneWireShape(clickedShape, clickedShapeIsKamrail)) {
         if (
           this.#oneWireMode === 'compose' &&
@@ -6498,6 +6533,7 @@ export class CadleApp extends LiteElement {
 
     // Symbol placement gesture: anchor stays fixed, dragging sets the rotation (Shift = free angle).
     if (this.#symbolPlacement && this.#stagePointerId === event.pointerId) {
+      if (this.#symbolPlacement.inline) return
       const dx = rawPoint.x - this.#symbolPlacement.anchor.x
       const dy = rawPoint.y - this.#symbolPlacement.anchor.y
       let rotation = 0
@@ -6656,12 +6692,19 @@ export class CadleApp extends LiteElement {
       this.#stagePointerId = null
       if (stage?.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId)
       if (this.#pendingCatalogSymbol) {
-        const shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
-        if (placement.rotation) shape.rotation = placement.rotation
-        this.#document.shapes.push(shape)
+        let shape: SymbolShape
+        if (placement.inline) {
+          const inserted = insertOneWireInlinePlacement(this.#document.shapes, placement.inline, nextShapeId)
+          this.#document.shapes = inserted.shapes
+          shape = inserted.symbol
+        } else {
+          shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
+          if (placement.rotation) shape.rotation = placement.rotation
+          this.#document.shapes.push(shape)
+        }
         this.#document.selectedId = shape.id
         this.#document.selectedIds = new Set([shape.id])
-        this.#symbolPreviewPoint = placement.anchor
+        this.#symbolPreviewPoint = placement.inline ? null : placement.anchor
         this.#snapTarget = null
         this.#pushHistory()
         pubsub.publish('editor.symbol.placed', { shapeId: shape.id })

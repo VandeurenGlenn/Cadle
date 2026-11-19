@@ -86,7 +86,10 @@ type NativeAppElement = HTMLElement & {
   getBOMRows?: () => BomRow[]
   getCircuitScheduleEditorItems?: () => CircuitScheduleEditorItem[]
   autoNameElectrical?: (lightingCircuitCount: number) => { labeled: number; circuitCount: number; message: string }
-  generateAutoOneWire?: (pageIndex?: number, regenerationSources?: readonly Shape[]) => {
+  generateAutoOneWire?: (
+    pageIndex?: number,
+    regenerationSources?: readonly Shape[]
+  ) => {
     generated: boolean
     circuitCount: number
     pageCount?: number
@@ -616,33 +619,91 @@ export class AppShell extends LiteElement {
 
   async #addScheduleDifferential(boardId: string) {
     if (!this.projectKey || !this.project) return
-    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find((board) => board.id === boardId)
+    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find(
+      (board) => board.id === boardId
+    )
     if (!board) return
     const projectKey = this.projectKey
     const values = await this.requestInput({
       title: `Differentieel toevoegen aan ${board.name}`,
-      description: 'Voeg een beveiliging toe aan de kast en moduleplanner. Dit tekent geen nieuwe bedrading op het eendraads. Een elektrische rij is niet hetzelfde als een fysieke modulerij.',
+      description:
+        'Voeg een beveiliging toe aan de kast en moduleplanner. Dit tekent geen nieuwe bedrading op het eendraads. Een elektrische rij is niet hetzelfde als een fysieke modulerij.',
       submitLabel: 'Differentieel toevoegen',
       fields: [
-        { name: 'function', label: 'Functie', value: 'additional', options: [
-          { value: 'additional', label: 'Bijkomend differentieel' }, { value: 'main', label: 'Hoofddifferentieel' }] },
-        { name: 'current', label: 'Nominale stroom (A)', type: 'number', min: 1, step: 'any', required: true, value: '40' },
-        { name: 'sensitivity', label: 'Gevoeligheid (mA)', type: 'number', min: 1, step: 'any', required: true, value: '30' },
-        { name: 'poles', label: 'Pooltal', value: String(this.project.electricalProfile?.defaultPoles ?? 2), options: [
-          { value: '2', label: '2P' }, { value: '3', label: '3P' }, { value: '4', label: '4P' }] },
-        { name: 'type', label: 'Type', value: 'A', options: ['AC', 'A', 'F', 'B', 'other']
-          .map((value) => ({ value, label: value === 'other' ? 'Ander type' : value })) },
-        { name: 'railId', label: 'Elektrische rij', value: '', description: 'Voor een bijkomend differentieel. Kies geen rij als de koppeling nog niet bekend is.',
-          options: [{ value: '', label: 'Nog niet gekoppeld' }, ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))] }
+        {
+          name: 'function',
+          label: 'Functie',
+          value: 'additional',
+          options: [
+            { value: 'additional', label: 'Bijkomend differentieel' },
+            { value: 'main', label: 'Hoofddifferentieel' }
+          ]
+        },
+        {
+          name: 'current',
+          label: 'Nominale stroom (A)',
+          type: 'number',
+          min: 1,
+          step: 'any',
+          required: true,
+          value: '40'
+        },
+        {
+          name: 'sensitivity',
+          label: 'Gevoeligheid (mA)',
+          type: 'number',
+          min: 1,
+          step: 'any',
+          required: true,
+          value: '30'
+        },
+        {
+          name: 'poles',
+          label: 'Pooltal',
+          value: String(this.project.electricalProfile?.defaultPoles ?? 2),
+          options: [
+            { value: '2', label: '2P' },
+            { value: '3', label: '3P' },
+            { value: '4', label: '4P' }
+          ]
+        },
+        {
+          name: 'type',
+          label: 'Type',
+          value: 'A',
+          options: ['AC', 'A', 'F', 'B', 'other'].map((value) => ({
+            value,
+            label: value === 'other' ? 'Ander type' : value
+          }))
+        },
+        {
+          name: 'railId',
+          label: 'Elektrische rij',
+          value: '',
+          description: 'Voor een bijkomend differentieel. Kies geen rij als de koppeling nog niet bekend is.',
+          options: [
+            { value: '', label: 'Nog niet gekoppeld' },
+            ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))
+          ]
+        }
       ]
     })
     if (!values || this.projectKey !== projectKey || !this.project) return
     try {
       if (!isRcdType(values.type)) throw new Error('Kies een geldig differentieeltype.')
-      const next = addScheduleDifferential(this.project, boardId, {
-        id: crypto.randomUUID(), ratedCurrentA: Number(values.current), sensitivityMa: Number(values.sensitivity),
-        poles: Number(values.poles), type: values.type, railId: values.railId || undefined
-      }, values.function === 'main')
+      const next = addScheduleDifferential(
+        this.project,
+        boardId,
+        {
+          id: crypto.randomUUID(),
+          ratedCurrentA: Number(values.current),
+          sensitivityMa: Number(values.sensitivity),
+          poles: Number(values.poles),
+          type: values.type,
+          railId: values.railId || undefined
+        },
+        values.function === 'main'
+      )
       await setProjectData(projectKey, next)
       this.project = next
       this.circuitScheduleItems = refreshCircuitScheduleItems(next, this.circuitScheduleItems)
@@ -670,20 +731,38 @@ export class AppShell extends LiteElement {
   async #assignScheduleDifferential(id: string, boardId: string) {
     if (!this.projectKey || !this.project) return
     const item = this.circuitScheduleItems.find((item) => item.id === id)
-    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find((board) => board.id === boardId)
+    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find(
+      (board) => board.id === boardId
+    )
     if (!item || !board) return
     const projectKey = this.projectKey
     const values = await this.requestInput({
       title: `Differentieel toewijzen aan ${board.name}`,
       description: 'Dit bewaart de kastkoppeling en laat alle symbolen en draden op hun plaats.',
       submitLabel: 'Kastkoppeling opslaan',
-      fields: [{ name: 'railId', label: 'Elektrische rij', value: item.mainDifferential ? '' : item.railId ?? '',
-        options: item.mainDifferential ? [{ value: '', label: 'Hele kast (hoofddifferentieel)' }]
-          : [{ value: '', label: 'Nog niet gekoppeld' }, ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))] }]
+      fields: [
+        {
+          name: 'railId',
+          label: 'Elektrische rij',
+          value: item.mainDifferential ? '' : (item.railId ?? ''),
+          options: item.mainDifferential
+            ? [{ value: '', label: 'Hele kast (hoofddifferentieel)' }]
+            : [
+                { value: '', label: 'Nog niet gekoppeld' },
+                ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))
+              ]
+        }
+      ]
     })
     if (!values || this.projectKey !== projectKey || !this.project) return
     try {
-      const next = assignScheduleDifferential(this.project, this.circuitScheduleItems, id, boardId, values.railId || undefined)
+      const next = assignScheduleDifferential(
+        this.project,
+        this.circuitScheduleItems,
+        id,
+        boardId,
+        values.railId || undefined
+      )
       await setProjectData(projectKey, next)
       this.project = next
       this.circuitScheduleItems = refreshCircuitScheduleItems(next, this.circuitScheduleItems)
@@ -697,8 +776,10 @@ export class AppShell extends LiteElement {
     if (!this.projectKey || !this.project) return
     const previous = this.project
     const profile = normalizeElectricalProfile(this.project.electricalProfile)
-    profile.boards = profile.boards?.map((board) => ({ ...board,
-      floorPlanLocation: board.id === boardId ? location : board.floorPlanLocation }))
+    profile.boards = profile.boards?.map((board) => ({
+      ...board,
+      floorPlanLocation: board.id === boardId ? location : board.floorPlanLocation
+    }))
     this.project = { ...this.project, electricalProfile: profile }
     try {
       await setProjectData(this.projectKey, this.project)
@@ -789,7 +870,9 @@ export class AppShell extends LiteElement {
     } catch (error) {
       this.project = previous
       console.error('Schema-opbouw opslaan mislukt.', error)
-      globalThis.alert('De schema-opbouw kon niet worden opgeslagen. Probeer opnieuw; de bestaande tekening is behouden.')
+      globalThis.alert(
+        'De schema-opbouw kon niet worden opgeslagen. Probeer opnieuw; de bestaande tekening is behouden.'
+      )
       return
     }
     try {
@@ -869,7 +952,12 @@ export class AppShell extends LiteElement {
   }
 
   #restoreRecoveryPoint = async (event: CustomEvent<{ id: string }>) => {
-    if (!globalThis.confirm('Het volledige project wordt hersteld, inclusief andere pagina’s en kringgegevens. De huidige toestand wordt eerst als herstelpunt bewaard. Doorgaan?')) return
+    if (
+      !globalThis.confirm(
+        'Het volledige project wordt hersteld, inclusief andere pagina’s en kringgegevens. De huidige toestand wordt eerst als herstelpunt bewaard. Doorgaan?'
+      )
+    )
+      return
     try {
       const app = await this.#nativeAppForPage(this.loadedPage)
       if (!app?.restoreRecoveryPoint) throw new Error('De editor is nog niet klaar.')
@@ -1216,20 +1304,30 @@ export class AppShell extends LiteElement {
     return html`
       <div class="app-notices">
         ${this.#googleDriveAuthNotice()}
-        ${this._serviceWorkerUpdateReady ? html`
-          <aside class="app-notice update-notice" role="status" aria-label="App-update" aria-live="polite">
-            <custom-icon icon="refresh"></custom-icon>
-            <div>
-              <strong>Update klaar: herladen nodig</strong>
-              <span>Je kunt verder werken. Bij herladen slaan we eerst je tekening op.</span>
-              ${this._serviceWorkerReloadError
-                ? html`<span role="alert">${this._serviceWorkerReloadError}</span>` : ''}
-            </div>
-            <button type="button" ?disabled=${this._reloadingForUpdate} @click=${this.#reloadForServiceWorkerUpdate}>
-              ${this._reloadingForUpdate ? 'Bezig met opslaan...' : 'Opslaan en herladen'}
-            </button>
-          </aside>
-        ` : ''}
+        ${this._serviceWorkerUpdateReady
+          ? html`
+              <aside
+                class="app-notice update-notice"
+                role="status"
+                aria-label="App-update"
+                aria-live="polite">
+                <custom-icon icon="update"></custom-icon>
+                <div>
+                  <strong>Update klaar: herladen nodig</strong>
+                  <span>Je kunt verder werken. Bij herladen slaan we eerst je tekening op.</span>
+                  ${this._serviceWorkerReloadError
+                    ? html`<span role="alert">${this._serviceWorkerReloadError}</span>`
+                    : ''}
+                </div>
+                <button
+                  type="button"
+                  ?disabled=${this._reloadingForUpdate}
+                  @click=${this.#reloadForServiceWorkerUpdate}>
+                  ${this._reloadingForUpdate ? 'Bezig met opslaan...' : 'Opslaan en herladen'}
+                </button>
+              </aside>
+            `
+          : ''}
       </div>
     `
   }
@@ -1317,37 +1415,92 @@ export class AppShell extends LiteElement {
     if (!this.projectKey) return
     const settings = await this.requestInput({
       title: 'Legplan vloerverwarming',
-      description: 'Automatisch slakkenhuispatroon met aanvoer en retour naast elkaar. Vul de buisdiameter en legafstand in en klik daarna waar de verdeler moet komen. Bij 16 mm buis geldt voorlopig minimaal R80 voor alle buisbochten.',
+      description:
+        'Automatisch slakkenhuispatroon met aanvoer en retour naast elkaar. Vul de buisdiameter en legafstand in en klik daarna waar de verdeler moet komen. Bij 16 mm buis geldt voorlopig minimaal R80 voor alle buisbochten.',
       submitLabel: 'Verdeler plaatsen',
       fields: [
-        { name: 'diameterMm', label: 'Buisdiameter (mm)', type: 'number', value: '16', min: 6, max: 50, required: true },
-        { name: 'spacingMm', label: 'Legafstand h.o.h. (mm)', type: 'number', value: '100', min: 50, max: 500, required: true }
+        {
+          name: 'diameterMm',
+          label: 'Buisdiameter (mm)',
+          type: 'number',
+          value: '16',
+          min: 6,
+          max: 50,
+          required: true
+        },
+        {
+          name: 'spacingMm',
+          label: 'Legafstand h.o.h. (mm)',
+          type: 'number',
+          value: '100',
+          min: 50,
+          max: 500,
+          required: true
+        }
       ]
     })
     if (!settings) return
-    const diameterMm = Number(settings.diameterMm), spacingMm = Number(settings.spacingMm)
-    if (!Number.isFinite(diameterMm) || !Number.isFinite(spacingMm) || diameterMm < 6 || diameterMm > 50 || spacingMm < 50 || spacingMm > 500) return
+    const diameterMm = Number(settings.diameterMm),
+      spacingMm = Number(settings.spacingMm)
+    if (
+      !Number.isFinite(diameterMm) ||
+      !Number.isFinite(spacingMm) ||
+      diameterMm < 6 ||
+      diameterMm > 50 ||
+      spacingMm < 50 ||
+      spacingMm > 500
+    )
+      return
     await (await this.#nativeAppForPage(this.loadedPage))?.flushPendingSave?.()
     const project = await getProjectData(this.projectKey)
     const preferredSource = project.pages[this.loadedPage]?.heatingScheduleOf ?? this.loadedPage
-    const sourceKey = project.pages[preferredSource]?.pageType === 'groundplan' ? preferredSource
-      : Object.keys(project.pages).find((key) => project.pages[key].pageType === 'groundplan')
+    const sourceKey =
+      project.pages[preferredSource]?.pageType === 'groundplan'
+        ? preferredSource
+        : Object.keys(project.pages).find((key) => project.pages[key].pageType === 'groundplan')
     const state = sourceKey ? nativeStateForProjectPage(project, sourceKey as UUID) : null
-    const schema = state ? { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
-      ...state, selectedId: null,
-      shapes: structuredClone(state.shapes.filter((shape) => (!shape.heating || shape.heating.kind === 'exclusion') && !shape.generationKey?.startsWith('heating-penetration:') &&
-        ['wall', 'door', 'window', 'gate', 'image', 'symbol', 'rect', 'text'].includes(shape.kind))).map((shape) => ({ ...shape, locked: true }))
-    } }] } : { version: 'native-svg-1', objects: [] }
+    const schema = state
+      ? {
+          version: 'native-svg-1',
+          objects: [
+            {
+              kind: 'cadle-native-svg-document',
+              payload: {
+                ...state,
+                selectedId: null,
+                shapes: structuredClone(
+                  state.shapes.filter(
+                    (shape) =>
+                      (!shape.heating || shape.heating.kind === 'exclusion') &&
+                      !shape.generationKey?.startsWith('heating-penetration:') &&
+                      ['wall', 'door', 'window', 'gate', 'image', 'symbol', 'rect', 'text'].includes(shape.kind)
+                  )
+                ).map((shape) => ({ ...shape, locked: true }))
+              }
+            }
+          ]
+        }
+      : { version: 'native-svg-1', objects: [] }
     const base = 'Legplan vloerverwarming'
     const names = new Set(Object.values(project.pages).map((page) => page.name))
-    let name = base, index = 2
+    let name = base,
+      index = 2
     while (names.has(name)) name = `${base} ${index++}`
     const pageKey = await addPage(this.projectKey, name, schema, 'groundplan')
     this.project = await getProjectData(this.projectKey)
     this.project.pages[pageKey].heatingPlanOf = sourceKey
     await setProjectData(this.projectKey, this.project)
     await this.loadPage(pageKey)
-    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({ diameterMm, spacingMm, edgeMm: 100, capacity: 12, connectionMode: 'zone', shareSmallRooms: true, heatSourceRoom: false, manifoldSide: 'auto' })
+    ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({
+      diameterMm,
+      spacingMm,
+      edgeMm: 100,
+      capacity: 12,
+      connectionMode: 'zone',
+      shareSmallRooms: true,
+      heatSourceRoom: false,
+      manifoldSide: 'auto'
+    })
   }
 
   async openRenamePageDialog(pageKey: string) {
@@ -1473,7 +1626,9 @@ export class AppShell extends LiteElement {
       await this.savePage()
     } catch (error) {
       console.error('Pagina wisselen geannuleerd: opslaan mislukt.', error)
-      globalThis.alert('De huidige pagina kon niet worden opgeslagen. Probeer opnieuw op te slaan of download een herstelbestand voordat je wisselt.')
+      globalThis.alert(
+        'De huidige pagina kon niet worden opgeslagen. Probeer opnieuw op te slaan of download een herstelbestand voordat je wisselt.'
+      )
       return
     }
     this.splitViewOpen = false
@@ -1554,8 +1709,9 @@ export class AppShell extends LiteElement {
     }
     this.project = oneWirePage.project
     const previousPageKeys = oneWireGenerationPageKeys(this.project, oneWirePage.pageKey)
-    const regenerationSources = previousPageKeys.flatMap((key) =>
-      nativeStateForProjectPage(this.project, key)?.shapes.filter((shape) => shape.generationKey) ?? [])
+    const regenerationSources = previousPageKeys.flatMap(
+      (key) => nativeStateForProjectPage(this.project, key)?.shapes.filter((shape) => shape.generationKey) ?? []
+    )
     const usedPageKeys = new Set([oneWirePage.pageKey])
 
     await this.loadPage(oneWirePage.pageKey)
@@ -1612,7 +1768,9 @@ export class AppShell extends LiteElement {
         this.project = compacted
       } catch (error) {
         console.error('Overbodige eendraadsbladen konden niet worden verwijderd.', error)
-        globalThis.alert('De nieuwe indeling is opgeslagen, maar de oude vervolgbladen konden niet worden opgeruimd. Probeer opnieuw.')
+        globalThis.alert(
+          'De nieuwe indeling is opgeslagen, maar de oude vervolgbladen konden niet worden opgeruimd. Probeer opnieuw.'
+        )
       }
     }
     await this.loadPage(oneWirePage.pageKey)
@@ -2032,8 +2190,9 @@ export class AppShell extends LiteElement {
                           this.#addScheduleDifferential(event.detail.boardId)}
                         @schedule-differential-assigned=${(event: CustomEvent<{ id: string; boardId: string }>) =>
                           this.#assignScheduleDifferential(event.detail.id, event.detail.boardId)}
-                        @schedule-board-location-changed=${(event: CustomEvent<{ boardId: string; location?: { pageKey: string; shapeId: string } }>) =>
-                          this.#setScheduleBoardLocation(event.detail.boardId, event.detail.location)}
+                        @schedule-board-location-changed=${(
+                          event: CustomEvent<{ boardId: string; location?: { pageKey: string; shapeId: string } }>
+                        ) => this.#setScheduleBoardLocation(event.detail.boardId, event.detail.location)}
                         @circuit-board-changed=${(event: CustomEvent<{ circuitId: string; boardId: string }>) =>
                           this.#assignCircuitBoard(event.detail.circuitId, event.detail.boardId)}>
                       </circuit-schedule-field>

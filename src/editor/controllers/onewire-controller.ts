@@ -12,7 +12,8 @@ import {
   planOneWireLayout,
   type OneWireFamilyBounds,
   type OneWireFamilyDemand,
-  type OneWireFamilyPlacement
+  type OneWireFamilyPlacement,
+  type OneWireLayoutOptions
 } from '../layout/onewire-layout-plan.js'
 import {
   isOneWireRailShape,
@@ -31,8 +32,9 @@ export class OneWireController {
     return analyzeCircuits(shapes, profile, circuitSpecifications)
   }
 
-  plan(families: readonly OneWireFamilyDemand[], usableWidth: number, usableHeight: number) {
-    return planOneWireLayout(families, { usableWidth, usableHeight })
+  plan(families: readonly OneWireFamilyDemand[], usableWidth: number, usableHeight: number,
+    measureFamily?: OneWireLayoutOptions['measureFamily']) {
+    return planOneWireLayout(families, { usableWidth, usableHeight, measureFamily })
   }
 
   packFamilies(families: readonly OneWireFamilyBounds[], centerX: number) {

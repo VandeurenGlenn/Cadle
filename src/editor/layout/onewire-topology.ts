@@ -336,7 +336,7 @@ export const buildOneWireTopology = (
   if (plan.residualBreaker) {
     const status = text(
       'secondary-busbar-protection-label',
-      capacity.message,
+      `VERBRUIKERS · ${capacity.message}`,
       upperRail.start.x + 8,
       upperRail.start.y + 28,
       0.5
@@ -354,7 +354,7 @@ export const buildOneWireTopology = (
     )
     const warning = text(
       'secondary-busbar-protection-warning',
-      capacity.message,
+      `VERBRUIKERS · ${capacity.message}`,
       distributionRail.start.x + 8,
       distributionRail.start.y + 28,
       0.5

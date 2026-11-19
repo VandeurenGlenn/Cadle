@@ -49,8 +49,8 @@ export const scaleShapesBetweenPages = (
   offsetY: number
 ): Shape[] => shapes.map((shape) => scaleShape(shape, scale, offsetX, offsetY))
 
-/** Center the actual ink on paper without changing readable symbol sizes. */
-export const centerOneWireContent = (
+/** Center horizontally and use the lowest printable position without changing symbol sizes. */
+export const alignOneWireContent = (
   shapes: readonly Shape[], area: { x: number; y: number; width: number; height: number }
 ): { shapes: Shape[]; changed: boolean } => {
   const visible = shapes.filter((shape) => !shape.hidden)
@@ -59,7 +59,7 @@ export const centerOneWireContent = (
   const left = Math.min(...boxes.map((box) => box.x)), right = Math.max(...boxes.map((box) => box.x + box.width))
   const top = Math.min(...boxes.map((box) => box.y)), bottom = Math.max(...boxes.map((box) => box.y + box.height))
   const dx = right - left <= area.width - 48 ? area.x + area.width / 2 - (left + right) / 2 : 0
-  const dy = bottom - top <= area.height - 48 ? area.y + area.height / 2 - (top + bottom) / 2 : 0
+  const dy = bottom - top <= area.height - 48 ? area.y + area.height - 24 - bottom : 0
   if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return { shapes: [...shapes], changed: false }
   return { shapes: scaleShapesBetweenPages(shapes, 1, dx, dy), changed: true }
 }

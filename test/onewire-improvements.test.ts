@@ -7,7 +7,7 @@ import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/edit
 import { oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from '../src/editor/layout/onewire-topology-annotations.ts'
-import { centerOneWireContent } from '../src/editor/layout/page-scaling.ts'
+import { alignOneWireContent } from '../src/editor/layout/page-scaling.ts'
 import { pageLayout } from '../src/editor/layout/page-layout.ts'
 import { presentConnectionLabels } from '../src/editor/layout/connection-label-presentation.ts'
 import { paperTextContentMarkup, paperTextLinesForShape } from '../src/editor/layout/paper-text-layout.ts'
@@ -255,14 +255,14 @@ test('wrapped names keep the incoming cable before the main breaker and survive 
   assert.equal((sanitizeShapes(spaced).find((shape) => shape.id === incoming.id) as LineShape).connection?.name, incoming.connection!.name)
 
   const area = pageLayout(2376, 1680).content
-  const centered = centerOneWireContent(spaced, area)
+  const centered = alignOneWireContent(spaced, area)
   const boxes = centered.shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
   const minX = Math.min(...boxes.map((box) => box.x)), maxX = Math.max(...boxes.map((box) => box.x + box.width))
-  const minY = Math.min(...boxes.map((box) => box.y)), maxY = Math.max(...boxes.map((box) => box.y + box.height))
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height))
   close((minX + maxX) / 2, area.x + area.width / 2)
-  close((minY + maxY) / 2, area.y + area.height / 2)
+  close(maxY, area.y + area.height - 24)
   assert.equal((centered.shapes.find((shape) => shape.id === device.id) as SymbolShape).scale, device.scale)
-  assert.equal(centerOneWireContent(centered.shapes, area).changed, false)
+  assert.equal(alignOneWireContent(centered.shapes, area).changed, false)
 })
 
 test('repairs legacy EXVB ownership before the main breaker without moving devices or losing cable edits', () => {

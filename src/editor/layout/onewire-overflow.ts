@@ -3,7 +3,7 @@ import { cloneShape } from '../model/model.js'
 import { translateShape } from '../interaction/shape-transforms.js'
 import { oneWireLayoutBounds } from './onewire-connections.js'
 import { oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
-import { centerOneWireContent } from './page-scaling.js'
+import { alignOneWireContent } from './page-scaling.js'
 import { isOneWireRailShape } from './onewire-regeneration.js'
 import { normalizeOneWireFamilyKey } from './onewire-layout-plan.js'
 import { compareCircuitFamilies } from '../model/electrical.js'
@@ -148,12 +148,7 @@ export const paginateOneWireCircuits = (shapes: readonly Shape[], area: Area, ne
   const output = pages.map((page) => {
     if (page.rail) page.shapes.push({ ...page.rail, start: { x: page.min - 20, y: page.rail.start.y },
       end: { x: page.max + 20, y: page.rail.end.y } })
-    if (page.rail) for (const header of headers.filter((shape) => shape.groupId === rails.find((rail) => rail.id === page.sourceRailId)?.groupId)) {
-      if (header.kind !== 'text') continue
-      page.shapes.push({ ...header, id: nextId(), position: { x: page.min - 20, y: page.rail.start.y + 42 },
-        text: header.text.split(' · ').filter((part) => !/^(?:BLAD|VAN|VERVOLG)\s/.test(part)).join(' · ') })
-    }
-    return centerOneWireContent(page.shapes, area).shapes
+    return alignOneWireContent(page.shapes, area).shapes
   })
   return { pages: output, changed: true, fits: output.every((page) => {
     const b = box(page)

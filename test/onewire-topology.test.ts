@@ -97,7 +97,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === '4x10 mm² EXVB'))
   assert.ok(shapes.some((shape) => shape.kind === 'symbol' && shape.symbolTextOverrides?.description === 'remautomaat'))
   assert.ok(shapes.some((shape) => shape.kind === 'symbol' && shape.symbolTextOverrides?.description === 'Hoofdautomaat'))
-  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'BEGRENZDE RAIL · REMAUTOMAAT C40A'))
+  assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'VERBRUIKERS · BEGRENZDE RAIL · REMAUTOMAAT C40A'))
   assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'EV · U'))
   for (const deviceRole of ['main-switch', 'residual-breaker']) {
     const device = shapes.find((shape) => shape.sourceLink?.role === deviceRole)!

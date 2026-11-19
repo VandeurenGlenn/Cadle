@@ -173,6 +173,12 @@ export class OneWirePromptDialog extends LiteElement {
           <section class="preview">
             <span class="eyebrow">Cadle begrijpt dit als · ${this.modelStatus}</span>
             <pre>${interpreted ? oneWirePromptTree(interpreted).join('\n') : 'Beschrijf eerst de installatie.'}</pre>
+            <custom-button
+              type="text"
+              label="Beschrijving opnieuw analyseren"
+              title="Vervangt de lokale JSON-correcties door een nieuwe interpretatie van de beschrijving."
+              ?disabled=${!value.trim()}
+              @click=${() => this.#syncJsonFromPrompt()}></custom-button>
           </section>
           <details class="json-review">
             <summary>Gestructureerde JSON controleren of corrigeren</summary>

@@ -2,6 +2,7 @@ import { cableLabelText } from './model/cable-designation.js'
 import type { OneWireTopologyPlan } from '../types.js'
 import { validateOneWireTopology } from './onewire-topology-schema.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
+import { isRcdType } from './model/electrical.js'
 
 export type ParsedOneWirePrompt = {
   plan: OneWireTopologyPlan
@@ -92,16 +93,32 @@ const recognizedManufacturer = (value: string): string | undefined => {
 const manufacturerNeutralPosition = (manufacturer: string | undefined): 'left' | 'right' | undefined =>
   manufacturer === 'Schneider Electric' ? 'left' : manufacturer === 'TECO' ? 'right' : undefined
 
-const parseAdditionalDifferentials = (text: string): NonNullable<OneWireTopologyPlan['additionalDifferentials']> => {
+const parseAdditionalDifferentials = (
+  text: string, mainDifferentialIndex?: number
+): NonNullable<OneWireTopologyPlan['additionalDifferentials']> => {
   const result: NonNullable<OneWireTopologyPlan['additionalDifferentials']> = []
-  const pattern =
-    /(\d+)\s+(?:(?:bijkomende|extra)\s+)?(?:diffs?|differenti(?:e|ë)len?)\s+(?:(schneider(?:\s+electric)?|teco|tecko|niko|hager|abb|legrand)\s+)?(?:(\d+(?:[.,]\d+)?)\s*a\s+)?(\d+(?:[.,]\d+)?)\s*ma(?:\s+(?:voor|naar)\s+([^.,;]+))?/giu
-  for (const match of text.matchAll(pattern)) {
-    const count = Number(match[1])
-    const ratedCurrentA = match[3] ? Number(match[3].replace(',', '.')) : undefined
-    const sensitivityMa = Number(match[4].replace(',', '.'))
-    const purposeText = match[5] ?? ''
-    const manufacturer = recognizedManufacturer(match[2] ?? '')
+  const mentions = [...text.matchAll(
+    /\b(?:(\d+|een)\s+)?(?:(?:bijkomende|extra)\s+)?(diffs?|differentieel|differenti(?:e|ë)len?)\b/giu
+  )]
+  for (const [index, match] of mentions.entries()) {
+    const termIndex = match.index! + match[0].lastIndexOf(match[2])
+    if (termIndex === mainDifferentialIndex) continue
+    const prefix = text.slice(Math.max(0, match.index! - 36), match.index)
+    if (/\b(?:geen|zonder|afwezig|niet|noch)\b(?:\s+\p{L}+){0,3}\s*$/iu.test(prefix)) continue
+    const context = text.slice(match.index! + match[0].length, mentions[index + 1]?.index).split(/\.(?!\d)|[;\n]/u)[0]
+    const sensitivity = /\b(\d+(?:[.,]\d+)?)\s*ma\b/iu.exec(context)
+    const previousClause = index ? text.slice(mentions[index - 1].index! + mentions[index - 1][0].length, match.index) : ''
+    const inherited = !sensitivity && /\ben\s*$/iu.test(previousClause) && !/[.;\n]/u.test(previousClause)
+      ? result.at(-1) : undefined
+    if (!sensitivity && !inherited) continue
+    const current = /\b(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(context)
+    const ratedCurrentA = current ? Number(current[1].replace(',', '.')) : inherited?.ratedCurrentA
+    const sensitivityMa = sensitivity ? Number(sensitivity[1].replace(',', '.')) : inherited!.sensitivityMa
+    const count = match[1] && !/^een$/iu.test(match[1]) ? Number(match[1]) : 1
+    const purposeText = context.replace(/^[\s\S]*?\b(?:voor|naar)\s+/iu, '')
+    const type = /\btype\s+(AC|A|F|B)\b/iu.exec(context)?.[1].toUpperCase()
+    const rcdType = isRcdType(type) ? type : inherited?.rcdType
+    const manufacturer = recognizedManufacturer(context) ?? inherited?.manufacturer
     const neutralPosition = manufacturerNeutralPosition(manufacturer)
     const inheritedPattern = /\ben\s+(\d+)\s+(?:(?:diffs?|differenti(?:e|ë)len?)\s+)?(?:voor|naar)\s+([^,;.]+)/giu
     const firstInherited = inheritedPattern.exec(purposeText)
@@ -112,6 +129,7 @@ const parseAdditionalDifferentials = (text: string): NonNullable<OneWireTopology
       ...(ratedCurrentA ? { ratedCurrentA } : {}),
       ...(manufacturer ? { manufacturer } : {}),
       ...(neutralPosition ? { neutralPosition } : {}),
+      ...(rcdType ? { rcdType } : {}),
       purpose: differentialPurpose(primaryPurpose)
     })
 
@@ -123,6 +141,7 @@ const parseAdditionalDifferentials = (text: string): NonNullable<OneWireTopology
         ...(ratedCurrentA ? { ratedCurrentA } : {}),
         ...(manufacturer ? { manufacturer } : {}),
         ...(neutralPosition ? { neutralPosition } : {}),
+        ...(rcdType ? { rcdType } : {}),
         purpose: differentialPurpose(inherited[2])
       })
     }
@@ -198,7 +217,13 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
     }
   }
 
-  const differentialContext = /\b(?:hoofd)?diff(?:erentieel)?\b[^.\n,;]*/i.exec(text)?.[0] ?? text
+  const differentialMatches = [...text.matchAll(/\b(?:hoofd)?diff(?:erentieel)?\b[^.\n,;]*/giu)]
+  const completeDifferentials = differentialMatches.filter((match) =>
+    /\b\d+(?:[.,]\d+)?\s*a\b/iu.test(match[0]) && /\b\d+(?:[.,]\d+)?\s*ma\b/iu.test(match[0]))
+  const mainDifferentialMatch = completeDifferentials.find((match) => /^hoofd/iu.test(match[0])) ??
+    differentialMatches.find((match) => /^hoofd/iu.test(match[0]) && /\d+(?:[.,]\d+)?\s*(?:ma|a)\b/iu.test(match[0])) ??
+    completeDifferentials[0] ?? differentialMatches[0]
+  const differentialContext = mainDifferentialMatch?.[0] ?? text
   const current = /\b(\d+(?:[.,]\d+)?)\s*a\b/i.exec(differentialContext)
   const sensitivity = /\b(\d+(?:[.,]\d+)?)\s*ma\b/i.exec(differentialContext)
   if (current && sensitivity) {
@@ -219,25 +244,29 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
     plan.solarPlacement = 'parallel-after-main-differential'
   }
   if (plan.solar) {
+    const solarProtectionContext =
+      /\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b[^.\n,;]*/iu.exec(text)?.[0] ?? ''
+    const solarContext = text.slice(solarTerm.exec(text)?.index ?? text.length).split(/[.\n]/u)[0]
+    const describedBreakerPattern = /\bautomaat\b\s*(?:is\s+)?(?:(\d)\s*p\s*)?(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu
+    const describedSolarBreaker = describedBreakerPattern.exec(solarProtectionContext) ?? describedBreakerPattern.exec(solarContext)
     const solarBreakerCurrent =
       /\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b[^.\n,;]{0,24}?\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b/iu.exec(
         text
       )?.[1] ??
       /\b(?:c\s*)?(\d+(?:[.,]\d+)?)\s*a\b[^.\n,;]{0,24}?\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b/iu.exec(
         text
-      )?.[1]
+      )?.[1] ?? describedSolarBreaker?.[2]
     if (solarBreakerCurrent) {
       plan.solarBreakerRatedCurrentA = Number(solarBreakerCurrent.replace(',', '.'))
     }
-    const solarProtectionContext =
-      /\b(?:pv|solar|zonnepanelen?|omvormer)[-\s]?(?:automaat|beveiliging)\b[^.\n,;]*/iu.exec(text)?.[0] ?? ''
+    if (describedSolarBreaker?.[1]) plan.solarBreakerPoles = Number(describedSolarBreaker[1])
     const solarManufacturer = recognizedManufacturer(solarProtectionContext)
     if (solarManufacturer) {
       plan.solarBreakerManufacturer = solarManufacturer
       plan.solarBreakerNeutralPosition = manufacturerNeutralPosition(solarManufacturer)
     }
   }
-  const additionalDifferentials = parseAdditionalDifferentials(text)
+  const additionalDifferentials = parseAdditionalDifferentials(text, mainDifferentialMatch?.index)
   if (additionalDifferentials.length) plan.additionalDifferentials = additionalDifferentials
 
   return { plan, warnings: topologyWarnings(plan, text) }
@@ -273,10 +302,13 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
     : 'hoofddifferentieel'
   const mainSwitch = plan.mainSwitch ? `hoofdschakelaar ${plan.mainSwitch.ratedCurrentA} A` : 'hoofdschakelaar'
   return [
-    `${mainSwitch} → kWh-meter → ${cable} → ${differential}`,
+    `${cable} → ${mainSwitch} → kWh-meter → ${differential}`,
     ...(plan.solar ? ['├─ zonnepanelen / omvormer'] : []),
+    ...(plan.residualBreaker ? [
+      `└─ remautomaat ${plan.residualBreakerRatedCurrentA ?? 40} A${plan.consumers ? ` → verbruikers${plan.additionalDifferentials?.length ? 'rail' : ''}` : ''}`
+    ] : []),
     ...(plan.additionalDifferentials ?? []).map((item, index, items) => {
-      const connector = index === items.length - 1 && !plan.residualBreaker ? '└─' : '├─'
+      const connector = `${plan.residualBreaker ? '   ' : ''}${index === items.length - 1 ? '└─' : '├─'}`
       const purpose = item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'
       const rating = item.ratedCurrentA ? `${item.ratedCurrentA} A / ` : ''
       const destination = item.boardId?.trim()
@@ -284,11 +316,9 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
         : item.railId?.trim()
           ? `rij ${item.railId.trim()}`
           : purpose
-      return `${connector} ${item.count}× differentieel ${rating}${item.sensitivityMa} mA → ${destination}`
+      return `${connector} ${item.count}× differentieel ${rating}${item.sensitivityMa} mA${item.rcdType ? ` type ${item.rcdType}` : ''} → ${destination}`
     }),
-    ...(plan.residualBreaker
-      ? [`└─ remautomaat ${plan.residualBreakerRatedCurrentA ?? 40} A${plan.consumers ? ' → verbruikers' : ''}`]
-      : plan.consumers
+    ...(!plan.residualBreaker && plan.consumers
         ? ['└─ verbruikers']
         : [])
   ]
@@ -306,10 +336,10 @@ export const oneWireTopologyPrompt = (plan: OneWireTopologyPlan): string => [
     : 'Geen remautomaat.',
   plan.solar ? 'Zonnepanelen parallel na de hoofddifferentieel.' : 'Geen zonnepanelen.',
   ...(plan.solar && plan.solarBreakerRatedCurrentA ? [
-    `PV-automaat ${plan.solarBreakerManufacturer ?? ''} ${plan.solarBreakerRatedCurrentA} A.`
+    `PV-automaat ${plan.solarBreakerManufacturer ?? ''} ${plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P ` : ''}${plan.solarBreakerRatedCurrentA} A.`
   ] : []),
   plan.consumers ? 'Daarna de verbruikers.' : 'Geen verbruikers.',
   ...(plan.additionalDifferentials ?? []).map((item) =>
-    `${item.count} extra diffs ${item.manufacturer ?? ''} ${item.ratedCurrentA ? `${item.ratedCurrentA} A ` : ''}${item.sensitivityMa} mA voor ${
+    `${item.count} extra diffs ${item.manufacturer ?? ''} ${item.ratedCurrentA ? `${item.ratedCurrentA} A ` : ''}${item.sensitivityMa} mA${item.rcdType ? ` type ${item.rcdType}` : ''} voor ${
       item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'}.`)
 ].join(' ').replace(/ {2,}/g, ' ')

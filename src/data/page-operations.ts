@@ -30,6 +30,7 @@ export const redundantOneWirePageKeys = (
     const shapes = nativeStateForProjectPage(project, key)?.shapes
     return Boolean(shapes && shapes.length === payload.shapes.length && shapes.every((shape) =>
       !shape.locked && (shape.sourceLink?.role === 'overflow-reference' ||
+        (shape.kind === 'text' && shape.generationKey && shape.sourceLink?.role.startsWith('sheet-reference:')) ||
         Boolean(shape.generationKey && generatedKeys.has(shape.generationKey)))))
   })
 }

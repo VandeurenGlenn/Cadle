@@ -53,6 +53,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Overflow pagination belongs to explicit import/generation, never generic history recording or a single-rail insertion.
   Automatic generation uses the full printable width at the existing symbol scale. Regeneration reconciles source
   identities and connection-label overrides across its numbered sheets before removing redundant continuations.
+  Sheet planning measures generated circuit ink and uses the same overlap-aware family packing as the final drawing,
+  rather than reserving estimated column widths. Circuit busbars sit as low as the printable area and their labels allow;
+  automatic layout centers horizontally, never vertically. Generated sheet-reference captions are omitted.
   Cleanup requires every generated object to be represented on a used sheet; manual, locked or unrecognized
   content is retained. Cabinet destinations remain separate, and generation creates a recovery point first.
   When no complete main differential is configured, automatic generation first opens the topology review instead
@@ -60,6 +63,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   example for a new installation, or saved text/settings for an existing one. Closing discards draft changes;
   applying requires the main differential's A/mA ratings, saves the confirmed topology, and then generates the
   supply sheet. Reopening retains accepted JSON corrections until the description is changed.
+  An explicit re-analysis action refreshes an older interpretation without requiring a text edit; it replaces local JSON corrections.
+  Singular downstream differentials are recognized without an explicit count, with A/mA ratings in either order.
+  The limited rail is explicitly labelled for consumers; downstream differentials branch from that rail after the remautomaat.
   The incoming EXVB cable and its caption belong to the grid feeder before the main breaker, not the
   meter-to-main-differential link. Loading an older supply drawing moves the cable metadata and caption
   without moving its devices or changing their identities; wrapped captions extend only the incoming feeder.

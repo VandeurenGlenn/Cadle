@@ -118,6 +118,7 @@ export const iconSetTemplate = html`
       <span name="select_all">@symbol-select_all</span>
       <span name="save">@symbol-save</span>
       <span name="undo">@symbol-undo</span>
+      <span name="update">@symbol-update</span>
       <span name="redo">@symbol-redo</span>
       <span name="bring_forward">@symbol-move_selection_up</span>
       <span name="bring_to_front">@symbol-flip_to_front</span>

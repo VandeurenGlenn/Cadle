@@ -29,7 +29,7 @@ test('parses a Dutch one-wire topology description with a parallel solar branch'
     solarPlacement: 'parallel-after-main-differential'
   })
   assert.deepEqual(oneWirePromptTree(parsed.plan), [
-    'hoofdschakelaar → kWh-meter → 4x10 mm² EXVB → hoofddifferentieel 40 A / 300 mA',
+    '4x10 mm² EXVB → hoofdschakelaar → kWh-meter → hoofddifferentieel 40 A / 300 mA',
     '├─ zonnepanelen / omvormer',
     '└─ remautomaat 40 A → verbruikers'
   ])
@@ -93,7 +93,7 @@ test('stores the hoofdschakelaar rating in the structured topology', () => {
   assert.deepEqual(parsed.plan.mainSwitch, { ratedCurrentA: 25 })
   assert.equal(
     oneWirePromptTree(parsed.plan)[0],
-    'hoofdschakelaar 25 A → kWh-meter → 4x10 mm² EXVB → hoofddifferentieel 40 A / 300 mA'
+    '4x10 mm² EXVB → hoofdschakelaar 25 A → kWh-meter → hoofddifferentieel 40 A / 300 mA'
   )
 })
 
@@ -127,6 +127,39 @@ test('keeps counts, sensitivity and purpose of additional differentials', () => 
   ])
   assert.ok(oneWirePromptTree(parsed.plan).some((line) => line.includes('2× differentieel 30 mA → verbruikers')))
   assert.ok(oneWirePromptTree(parsed.plan).some((line) => line.includes('1× differentieel 30 mA → EV')))
+})
+
+test('recognizes the singular downstream differential and PV breaker in a natural supply description', () => {
+  const prompt = 'Inkomende kabel is 4x10 mm² EXVB. Hoofdschakelaar 32 A. Hoofddifferentieel 40A 300 mA. ' +
+    'Daarna een remautomaat naar differentieel 30mA 40 A type A en dan naar de verbruikers. ' +
+    'Er zijn zonnepanelen; plaats deze parallel aan de kant van de hoofddifferentieel de automaat is 2P 25A.'
+  const { plan } = parseOneWirePrompt(prompt)
+  assert.deepEqual(plan.additionalDifferentials, [
+    { count: 1, ratedCurrentA: 40, sensitivityMa: 30, rcdType: 'A', purpose: 'consumers' }
+  ])
+  assert.equal(plan.solarBreakerRatedCurrentA, 25)
+  assert.equal(plan.solarBreakerPoles, 2)
+  assert.equal(plan.mainDifferential?.sensitivityMa, 300)
+  assert.deepEqual(oneWirePromptTree(plan).slice(-2), [
+    '└─ remautomaat 40 A → verbruikersrail',
+    '   └─ 1× differentieel 40 A / 30 mA type A → verbruikers'
+  ])
+  assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(plan)).plan, plan)
+})
+
+test('does not duplicate the main differential or add negated extra differentials', () => {
+  assert.equal(parseOneWirePrompt('Diff 40A 300mA. Geen extra differentieel 30mA. Verbruikers.')
+    .plan.additionalDifferentials, undefined)
+  const plan = parseOneWirePrompt('Hoofddiff 40A 300mA. Een bijkomende differentieel 40A 30mA voor verbruikers.').plan
+  assert.deepEqual(plan.additionalDifferentials, [{ count: 1, ratedCurrentA: 40, sensitivityMa: 30, purpose: 'consumers' }])
+  const incomplete = parseOneWirePrompt('Hoofddifferentieel 63A. Een extra diff 40A 30mA voor verbruikers.').plan
+  assert.equal(incomplete.mainDifferential, undefined)
+  assert.equal(incomplete.additionalDifferentials?.length, 1)
+  const inherited = parseOneWirePrompt('Hoofddiff 40A 300mA. 2 diffs 40A 30mA voor verbruikers en 1 diff voor EV.').plan
+  assert.deepEqual(inherited.additionalDifferentials, [
+    { count: 2, ratedCurrentA: 40, sensitivityMa: 30, purpose: 'consumers' },
+    { count: 1, ratedCurrentA: 40, sensitivityMa: 30, purpose: 'ev' }
+  ])
 })
 
 test('warns about combined grid and PV current without a remautomaat', () => {

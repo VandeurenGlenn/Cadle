@@ -131,11 +131,10 @@ import {
   ONE_WIRE_RAIL_END_PADDING,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
-import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
+import { alignOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
 import { buildSolarInstallation, solarInstallationPlacement } from './layout/solar-installation-layout.js'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
-import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
 import { insertOneWireInlinePlacement, planOneWireInlinePlacement, type OneWireInlinePlacement } from './interaction/onewire-inline-placement.js'
@@ -1444,7 +1443,7 @@ export class CadleApp extends LiteElement {
         migrated = true
       }
       this.#layoutOneWireLabels(true)
-      this.#document.shapes = centerOneWireContent(this.#document.shapes, this.#safeAreaRect()).shapes
+      this.#document.shapes = alignOneWireContent(this.#document.shapes, this.#safeAreaRect()).shapes
       migrationComplete = migrated || !hasOneWireShapes
       if (migrationComplete) this.#documentSizeMigrated = true
     }
@@ -1468,9 +1467,13 @@ export class CadleApp extends LiteElement {
       this.#documentSizeMigrated = true
     }
     if (migrateLayout && pageType === 'onewire') {
-      const incomingCable = placeOneWireIncomingCable(this.#document.shapes)
-      if (incomingCable.changed) {
-        this.#document.shapes = incomingCable.shapes
+      const withoutReferences = this.#document.shapes.filter((shape) =>
+        shape.locked || (!shape.sourceLink?.role.startsWith('sheet-reference:') && shape.sourceLink?.role !== 'overflow-reference'))
+      const removedReferences = withoutReferences.length !== this.#document.shapes.length
+      const incomingCable = placeOneWireIncomingCable(withoutReferences)
+      if (removedReferences || incomingCable.changed) {
+        this.#document.shapes = removedReferences
+          ? alignOneWireContent(incomingCable.shapes, this.#safeAreaRect()).shapes : incomingCable.shapes
         this.#documentSizeMigrated = true
       }
     }
@@ -1538,21 +1541,9 @@ export class CadleApp extends LiteElement {
         ...(typeof source.order === 'number' ? { order: lowOrder + (highOrder - lowOrder) * index / layout.pages.length } : {}),
         schema: { version: 'native-svg-1', objects: [] } }
     }
-    const ordered = Object.entries(this.#project.pages).sort(([, a], [, b]) =>
-      (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.creationTime - b.creationTime)
     for (const [index, key] of keys.entries()) {
       const shapes = layout.pages[index]
-      const rail = shapes.find((shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape))
-      if (rail && keys.length > 1) {
-        const from = index ? ordered.findIndex(([id]) => id === keys[index - 1]) + 1 : null
-        const to = index < keys.length - 1 ? ordered.findIndex(([id]) => id === keys[index + 1]) + 1 : null
-        const hasHeader = shapes.some((shape) => shape.sourceLink?.role.startsWith('sheet-reference:'))
-        shapes.push({ id: nextShapeId(), kind: 'text', position: { x: rail.start.x, y: rail.start.y + (hasHeader ? 76 : 56) },
-          text: [from ? `VAN BLAD ${from}` : '', to ? `VERVOLG OP BLAD ${to}` : ''].filter(Boolean).join('\n'),
-          scale: paperTextScale(2.5), fill: '#000000', stroke: 'none',
-          sourceLink: { kind: 'board', id: this.#pageKey, role: 'overflow-reference' } })
-      }
-      const centered = centerOneWireContent(shapes, this.#safeAreaRect()).shapes
+      const centered = alignOneWireContent(shapes, this.#safeAreaRect()).shapes
       this.#project.pages[key].schema = { version: 'native-svg-1', objects: [
         { kind: 'cadle-native-svg-document', payload: { ...state, shapes: centered, selectedId: null } }
       ] }
@@ -3741,7 +3732,8 @@ export class CadleApp extends LiteElement {
     }
 
     const { generated: pageGenerated, retained: retainedShapes } =
-      this.#oneWireController.partitionRegenerationShapes(this.#document.shapes)
+      this.#oneWireController.partitionRegenerationShapes(this.#document.shapes.filter((shape) =>
+        shape.locked || shape.sourceLink?.role !== 'overflow-reference'))
     const previousGenerated = regenerationSources ? [...regenerationSources, ...pageGenerated] : pageGenerated
     const previousShapes = this.#document.shapes
     const previousSelectedId = this.#document.selectedId
@@ -3765,13 +3757,37 @@ export class CadleApp extends LiteElement {
           return {
             family,
             circuitCount: groups.length,
-            requiredWidth: this.#oneWireFamilyRequiredWidth(family),
             ...(boardId ? { boardId } : {}),
             ...(railId ? { railId } : {})
           }
         }),
         usableWidth,
-        usableHeight
+        usableHeight,
+        (family, circuitStart, circuitCount) => {
+          const familyGroups = analysis.groups.filter((group) => group.family === family)
+            .sort((a, b) => a.bindingId.localeCompare(b.bindingId, undefined, { numeric: true }))
+            .slice(circuitStart, circuitStart + circuitCount)
+          const bindings = new Set(familyGroups.map((group) => group.bindingId))
+          let sequence = 0
+          const preview = buildKamrailCircuitBundle({
+            rail: { id: 'measure-rail', kind: 'line', start: { x: -usableWidth, y: oneWireRailYForRows(1, safeArea) },
+              end: { x: usableWidth, y: oneWireRailYForRows(1, safeArea) } },
+            anchorX: 0,
+            options: this.#oneWireFamilyOptions(family, familyGroups),
+            familyComponents: this.#groundplanComponentsForFamily(family, analysis).filter((component) => bindings.has(component.bindingId)),
+            minimumRowY: safeArea.y,
+            nextShapeId: () => `measure-${++sequence}`,
+            oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
+            oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
+            symbolContentBounds,
+            branchStroke: ONEWIRE_BRANCH_STROKE
+          })
+          if (!preview) throw new Error(`Unable to measure one-wire family ${family}.`)
+          const ink = preview.shapes.filter((shape) => !shape.hidden && shape.sourceLink?.role !== 'description')
+            .map(oneWireLayoutBounds)
+          return { family, anchorX: 0, minX: Math.min(...ink.map((box) => box.x)),
+            maxX: Math.max(...ink.map((box) => box.x + box.width)), ink }
+        }
       )
       const topology = this.#project?.oneWireTopology
       const topologyPage = Boolean(topology) && pageIndex === 0
@@ -3873,48 +3889,6 @@ export class CadleApp extends LiteElement {
           }
           rails.set(railIndex, rail)
           this.#document.shapes.push(rail)
-          const destinationPages = [
-            ...new Set(
-              layoutPlan.placements
-                .filter(
-                  (candidate) =>
-                    (candidate.boardId ?? 'main') === boardId &&
-                    (candidate.railId ?? '__unassigned__') === (railId ?? '__unassigned__')
-                )
-                .map((candidate) => electricalSheetNumber(candidate.pageIndex))
-            )
-          ].sort((a, b) => a - b)
-          const currentSheet = pageIndex + 1
-          const previousSheet = destinationPages.filter((sheet) => sheet < currentSheet).at(-1) ?? (topology ? 1 : null)
-          const nextSheet = destinationPages.find((sheet) => sheet > currentSheet)
-          const boardLabel = boardId
-            .replace(/^(?:kast|board)[-\s]*/i, '')
-            .replace(/-/g, ' ')
-            .toUpperCase()
-          const railLabel = railId
-            ?.replace(/^(?:rij|rail)[-\s]*/i, '')
-            .replace(/-/g, ' ')
-            .toUpperCase()
-          const references = [
-            `KAST ${boardLabel || 'MAIN'}`,
-            railLabel ? `RIJ ${railLabel}` : '',
-            `BLAD E${currentSheet}`,
-            previousSheet ? `VAN E${previousSheet}` : '',
-            nextSheet ? `VERVOLG E${nextSheet}` : ''
-          ].filter(Boolean)
-          const sheetReference: TextShape = {
-            id: nextShapeId(),
-            kind: 'text',
-            position: { x: rail.start.x, y: rail.start.y + 42 },
-            text: references.join(' · '),
-            scale: paperTextScale(2.5),
-            fill: '#000000',
-            stroke: 'none',
-            groupId: rail.groupId,
-            generationKey: `board:${destinationId}:sheet-reference`,
-            sourceLink: { kind: 'board', id: boardId, role: `sheet-reference:${destinationId}` }
-          }
-          this.#document.shapes.push(sheetReference)
         }
       }
 
@@ -3923,45 +3897,12 @@ export class CadleApp extends LiteElement {
         const family = placement.family
         const rail = rails.get(placement.railIndex)
         if (!rail) throw new Error(`Missing one-wire rail ${placement.railIndex}.`)
-        const x = rail.start.x + placement.centerOffset - placement.requiredWidth / 2 + 30
+        const x = rail.start.x + (placement.anchorOffset ?? placement.centerOffset - placement.requiredWidth / 2 + 30)
         const familyGroups = analysis.groups
           .filter((group) => group.family === family)
           .sort((a, b) => a.bindingId.localeCompare(b.bindingId, undefined, { numeric: true }))
           .slice(placement.circuitStart, placement.circuitStart + placement.circuitCount)
-        const isMainDistributionBoard =
-          family.toUpperCase() === 'ALSB' &&
-          familyGroups.some((group) =>
-            group.components.some(
-              (component) => component.path && isDistributionBoardDevice(component.name, component.path)
-            )
-          )
-        const familyCurrent = Math.max(...familyGroups.map((group) => group.specification.breakerCurrentA))
-        const generated = this.#addKamrailCircuitBundle(rail, x, {
-          amps: familyCurrent,
-          cableSectionMm2: Math.max(...familyGroups.map((group) => group.specification.cableSectionMm2)),
-          cableConductors: Math.max(...familyGroups.map((group) => group.specification.cableConductors)),
-          hasProtectiveConductor: familyGroups[0]?.specification.hasProtectiveConductor ?? true,
-          cableFireClass: familyGroups[0]?.specification.cableFireClass,
-          cableType: familyGroups[0]?.specification.cableType ?? 'VOB',
-          cableInstallation: familyGroups[0]?.specification.cableInstallation ?? 'conduit-recessed',
-          showCableInstallation: familyGroups[0]?.specification.showCableInstallation ?? true,
-          breakerCurve: familyGroups[0]?.specification.breakerCurve ?? 'C',
-          poles: Math.max(...familyGroups.map((group) => group.specification.poles)),
-          phaseConfiguration: familyGroups.some(
-            (group) =>
-              group.specification.phaseConfiguration === 'three-phase' ||
-              group.specification.phaseConfiguration === 'L1+L2+L3+N'
-          )
-            ? 'three-phase'
-            : familyGroups[0]?.specification.phaseConfiguration,
-          manufacturer: familyGroups[0]?.specification.manufacturer ?? 'Schneider Electric',
-          neutralPosition: familyGroups[0]?.specification.neutralPosition ?? 'left',
-          showPhaseLabel: familyGroups[0]?.specification.showPhaseLabel ?? true,
-          family,
-          autoIncludeFamily: true,
-          omitBreaker: isMainDistributionBoard,
-          bindingIds: familyGroups.map((group) => group.bindingId)
-        })
+        const generated = this.#addKamrailCircuitBundle(rail, x, this.#oneWireFamilyOptions(family, familyGroups))
         if (!generated) throw new Error(`Unable to generate one-wire family ${family}.`)
         generatedFamilies += 1
       }
@@ -3974,7 +3915,7 @@ export class CadleApp extends LiteElement {
       const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
       this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
       this.#layoutOneWireLabels(true)
-      this.#document.shapes = centerOneWireContent(this.#document.shapes, safeArea).shapes
+      this.#document.shapes = alignOneWireContent(this.#document.shapes, safeArea).shapes
       this.#document.selectedId = null
       this.#document.selectedIds = new Set()
 
@@ -4169,36 +4110,30 @@ export class CadleApp extends LiteElement {
     return true
   }
 
-  #oneWireFamilyRequiredWidth(family: string): number {
-    const familyComponents = this.#groundplanComponentsForFamily(family)
-    const rows = new Map<string, typeof familyComponents>()
-    for (const component of familyComponents) {
-      const row = rows.get(component.bindingId)
-      if (row) row.push(component)
-      else rows.set(component.bindingId, [component])
+  #oneWireFamilyOptions(family: string, groups: CircuitAnalysis['groups']) {
+    return {
+      amps: Math.max(...groups.map((group) => group.specification.breakerCurrentA)),
+      cableSectionMm2: Math.max(...groups.map((group) => group.specification.cableSectionMm2)),
+      cableConductors: Math.max(...groups.map((group) => group.specification.cableConductors)),
+      hasProtectiveConductor: groups[0]?.specification.hasProtectiveConductor ?? true,
+      cableFireClass: groups[0]?.specification.cableFireClass,
+      cableType: groups[0]?.specification.cableType ?? 'VOB',
+      cableInstallation: groups[0]?.specification.cableInstallation ?? 'conduit-recessed',
+      showCableInstallation: groups[0]?.specification.showCableInstallation ?? true,
+      breakerCurve: groups[0]?.specification.breakerCurve ?? 'C',
+      poles: Math.max(...groups.map((group) => group.specification.poles)),
+      phaseConfiguration: groups.some((group) =>
+        group.specification.phaseConfiguration === 'three-phase' || group.specification.phaseConfiguration === 'L1+L2+L3+N')
+        ? 'three-phase' as const : groups[0]?.specification.phaseConfiguration,
+      manufacturer: groups[0]?.specification.manufacturer ?? 'Schneider Electric',
+      neutralPosition: groups[0]?.specification.neutralPosition ?? 'left',
+      showPhaseLabel: groups[0]?.specification.showPhaseLabel ?? true,
+      family,
+      autoIncludeFamily: true,
+      omitBreaker: family.toUpperCase() === 'ALSB' && groups.some((group) =>
+        group.components.some((component) => component.path && isDistributionBoardDevice(component.name, component.path))),
+      bindingIds: groups.map((group) => group.bindingId)
     }
-    let widestRow = 180
-    for (const components of rows.values()) {
-      let rowWidth = 84
-      for (const component of components) {
-        if (component.kind === 'empty') continue
-        const fallback = this.#oneWireComponentSymbol(component.kind)
-        const path = component.sourcePath ?? fallback.path
-        const name = component.sourceName ?? fallback.name
-        const scale = this.#oneWireSymbolScale(path, component.kind)
-        const bounds = symbolContentBounds({
-          id: 'measure',
-          kind: 'symbol',
-          position: { x: 0, y: 0 },
-          name,
-          path,
-          scale
-        })
-        rowWidth += bounds.width + 20
-      }
-      widestRow = Math.max(widestRow, rowWidth)
-    }
-    return widestRow + 40
   }
 
   #nearestKamrail(point: Point): { rail: LineShape; point: Point } | null {

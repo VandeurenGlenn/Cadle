@@ -78,7 +78,9 @@ test('only removes obsolete automatic sheets whose complete content is represent
   })
   const project = { pages: {
     root: page('One-wire diagram', [generated]),
-    stale: page('One-wire diagram 2', [generated]),
+    stale: page('One-wire diagram 2', [generated, { id: 'legacy-header', kind: 'text',
+      text: 'KAST MAIN · BLAD E2 · VAN E1 · VERVOLG E3', position: { x: 200, y: 1200 },
+      generationKey: 'board:main:sheet-reference', sourceLink: { kind: 'board', id: 'main', role: 'sheet-reference:main' } }]),
     manual: page('One-wire diagram 3', [generated, { ...generated, id: 'note', generationKey: undefined }]),
     locked: page('One-wire diagram 4', [{ ...generated, locked: true }]),
     unmatched: page('One-wire diagram 5', [{ ...generated, generationKey: 'board:B:label' }]),

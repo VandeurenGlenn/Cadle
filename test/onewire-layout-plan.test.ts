@@ -174,14 +174,31 @@ test('fits long circuit families into two balanced vertical columns before addin
   assert.equal(plan.placements[0]?.requiredWidth, 540)
 })
 
-test('centers the rail around circuit rows while preserving a clear top and bottom margin', () => {
-  const railY = oneWireRailYForRows(11, { y: 40, height: 1600 })
-  const top = railY - 360 - 10 * 96
-  const bottom = railY + 100
+test('places short and long circuit rails at the same lowest baseline', () => {
+  for (const rows of [1, 3, 11]) {
+    const railY = oneWireRailYForRows(rows, { y: 40, height: 1600 })
+    assert.equal(railY + 100, 1640)
+    assert.ok(railY - 360 - (rows - 1) * 96 >= 40)
+  }
+})
 
-  assert.equal(top, 130)
-  assert.equal(bottom, 1550)
-  assert.equal((top + bottom) / 2, 840)
+test('fills a sheet from measured overlapping ink instead of estimated column widths', () => {
+  const families = ['A', 'B', 'C', 'D'].map((family) => ({ family, circuitCount: 1, requiredWidth: 360 }))
+  const measureFamily = (family: string) => ({ family, anchorX: 0, minX: -20, maxX: 240,
+    ink: [{ x: -20, y: 300, width: 100, height: 100 },
+      { x: 0, y: family === 'A' ? 0 : -200, width: 240, height: 30 }] })
+  const plan = planOneWireLayout(families, { usableWidth: 900, usableHeight: 1200, measureFamily })
+  assert.equal(plan.pageCount, 1)
+  assert.equal(plan.placements.length, 4)
+  assert.ok(plan.placements.every((placement) => typeof placement.anchorOffset === 'number'))
+  const points = plan.placements.flatMap((placement) => {
+    const bounds = measureFamily(placement.family)
+    return [bounds.minX + placement.anchorOffset!, bounds.maxX + placement.anchorOffset!]
+  })
+  assert.ok(Math.min(...points) >= 0)
+  assert.ok(Math.max(...points) <= 900)
+  assert.equal(planOneWireLayout([...families, { family: 'E', circuitCount: 1 }],
+    { usableWidth: 900, usableHeight: 1200, measureFamily }).pageCount, 2)
 })
 
 test('packs separate families together while the page still has room', () => {

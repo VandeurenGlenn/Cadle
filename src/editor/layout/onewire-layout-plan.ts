@@ -16,15 +16,8 @@ export const ONE_WIRE_FIRST_ROW_OFFSET_Y = 360
 // Leave room for the tallest change-over switches at their readable paper size.
 export const ONE_WIRE_ROW_SPACING_Y = 96
 
-export const oneWireRailYForRows = (rows: number, safeArea: { y: number; height: number }): number => {
-  const rowCount = Math.max(1, Math.floor(rows))
-  const circuitHeight =
-    ONE_WIRE_FIRST_ROW_OFFSET_Y +
-    (rowCount - 1) * ONE_WIRE_ROW_SPACING_Y +
-    ONE_WIRE_RAIL_BOTTOM_CLEARANCE_Y
-  const top = safeArea.y + Math.max(0, (safeArea.height - circuitHeight) / 2)
-  return top + ONE_WIRE_FIRST_ROW_OFFSET_Y + (rowCount - 1) * ONE_WIRE_ROW_SPACING_Y
-}
+export const oneWireRailYForRows = (_rows: number, safeArea: { y: number; height: number }): number =>
+  safeArea.y + Math.max(0, safeArea.height - ONE_WIRE_RAIL_BOTTOM_CLEARANCE_Y)
 
 export type OneWireFamilyPlacement = {
   family: string
@@ -37,6 +30,7 @@ export type OneWireFamilyPlacement = {
   circuitCount: number
   centerOffset: number
   requiredWidth: number
+  anchorOffset?: number
 }
 
 export type OneWireLayoutPlan = {
@@ -180,9 +174,16 @@ export const insertOneWireFamilyBounds = (
   return positions
 }
 
+export type OneWireLayoutOptions = {
+  usableWidth: number
+  usableHeight: number
+  maxCircuitsPerPage?: number
+  measureFamily?: (family: string, circuitStart: number, circuitCount: number) => OneWireFamilyBounds
+}
+
 export const planOneWireLayout = (
   families: readonly OneWireFamilyDemand[],
-  options: { usableWidth: number; usableHeight: number; maxCircuitsPerPage?: number }
+  options: OneWireLayoutOptions
 ): OneWireLayoutPlan => {
   const heightCapacity = Math.max(
     1,
@@ -199,6 +200,16 @@ export const planOneWireLayout = (
   const placements: OneWireFamilyPlacement[] = []
   const occupiedWidths: number[] = []
   const occupiedSlots: number[] = []
+  const measured = new Map<OneWireFamilyPlacement, OneWireFamilyBounds>()
+  const packedBounds = (bounds: OneWireFamilyBounds[]) => {
+    const geometry = packOneWireFamilyBounds(bounds, 0)
+    const xs = bounds.flatMap((item) => {
+      const dx = geometry.familyXs.get(item.family)! - item.anchorX
+      return [item.minX + dx, item.maxX + dx]
+    })
+    const left = Math.min(geometry.startX, ...xs), right = Math.max(geometry.endX, ...xs)
+    return { geometry, left, width: right - left }
+  }
   const railPages = new Map<string, number>()
   let nextRailPage = 0
 
@@ -217,21 +228,25 @@ export const planOneWireLayout = (
         ONE_WIRE_MAX_CIRCUIT_COLUMNS,
         Math.max(1, Math.ceil(circuitCount / heightCapacity))
       )
+      const bounds = options.measureFamily?.(demand.family, circuitStart, circuitCount)
       const columnWidth = Math.max(180, demand.requiredWidth ?? 360)
-      const requiredWidth = Math.min(
+      const requiredWidth = bounds ? bounds.maxX - bounds.minX : Math.min(
         options.usableWidth,
         columnWidth * columnCount + ONE_WIRE_COLUMN_GAP_X * (columnCount - 1)
       )
       let pageIndex = previousChunkPage + 1
       if (circuitStart === 0) pageIndex = railStartPage
+      const widthOnPage = (page: number) => bounds
+        ? packedBounds([...placements.filter((item) => item.pageIndex === page).map((item) => measured.get(item)!), bounds]).width
+        : (occupiedWidths[page] ?? 0) + ((occupiedWidths[page] ?? 0) > 0 ? ONE_WIRE_FAMILY_GAP : 0) + requiredWidth
       while (
         (occupiedWidths[pageIndex] ?? 0) > 0 &&
-        (occupiedWidths[pageIndex] ?? 0) + ONE_WIRE_FAMILY_GAP + requiredWidth > options.usableWidth
+        widthOnPage(pageIndex) > options.usableWidth
       ) {
         pageIndex += 1
       }
       const slotIndex = occupiedSlots[pageIndex] ?? 0
-      placements.push({
+      const placement: OneWireFamilyPlacement = {
         family: demand.family,
         ...(demand.boardId ? { boardId: demand.boardId } : {}),
         ...(demand.railId ? { railId: demand.railId } : {}),
@@ -242,9 +257,11 @@ export const planOneWireLayout = (
         circuitCount,
         centerOffset: 0,
         requiredWidth
-      })
-      occupiedWidths[pageIndex] =
-        (occupiedWidths[pageIndex] ?? 0) + (slotIndex ? ONE_WIRE_FAMILY_GAP : 0) + requiredWidth
+      }
+      const occupiedWidth = widthOnPage(pageIndex)
+      placements.push(placement)
+      if (bounds) measured.set(placement, bounds)
+      occupiedWidths[pageIndex] = occupiedWidth
       occupiedSlots[pageIndex] = slotIndex + 1
       railPages.set(destinationKey, pageIndex)
       previousChunkPage = pageIndex
@@ -256,6 +273,15 @@ export const planOneWireLayout = (
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
     const pagePlacements = placements.filter((placement) => placement.pageIndex === pageIndex)
     const usedWidth = occupiedWidths[pageIndex] ?? 0
+    if (options.measureFamily) {
+      const packed = packedBounds(pagePlacements.map((placement) => measured.get(placement)!))
+      const offsetX = Math.max(0, (options.usableWidth - packed.width) / 2) - packed.left
+      for (const placement of pagePlacements) {
+        placement.anchorOffset = packed.geometry.familyXs.get(placement.family)! + offsetX
+        placement.centerOffset = placement.anchorOffset
+      }
+      continue
+    }
     let cursor = Math.max(0, (options.usableWidth - usedWidth) / 2)
     for (const placement of pagePlacements) {
       placement.centerOffset = cursor + placement.requiredWidth / 2

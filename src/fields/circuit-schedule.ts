@@ -1,6 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import type { CircuitScheduleLayout, ElectricalBoard, Project } from '../types.js'
-import { linkCircuitScheduleProtections, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { cabinetModulesPerRow, linkCircuitScheduleProtections, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
 import { cableEstimateBoardLocation, estimateCircuitCables, floorPlanBoardLocations, formatCableMetres } from '../editor/cable-estimate.js'
 import styles from './circuit-schedule.css' with { type: 'css' }
 
@@ -14,6 +14,7 @@ export class CircuitScheduleField extends LiteElement {
   @property({ attribute: false }) accessor project: Project | null = null
   @property({ attribute: false }) private accessor rows: EditableItem[] = []
   @property({ type: Number }) private accessor modulesPerRow: 18 | 24 = 24
+  @property({ attribute: false }) private accessor boardModulesPerRow: Record<string, 18 | 24> = {}
   @property() private accessor newBoardName = ''
   private draggedId = ''
 
@@ -25,6 +26,7 @@ export class CircuitScheduleField extends LiteElement {
 
   #sync() {
     this.modulesPerRow = this.layout?.modulesPerRow === 18 ? 18 : 24
+    this.boardModulesPerRow = { ...this.layout?.boardModulesPerRow }
     const configured = new Map((this.layout?.items ?? []).map((item, index) => [item.id, { ...item, index }]))
     this.rows = linkCircuitScheduleProtections(this.items
       .map((item, index) => ({
@@ -38,7 +40,9 @@ export class CircuitScheduleField extends LiteElement {
 
   #save() {
     const layout: CircuitScheduleLayout = {
+      ...this.layout,
       modulesPerRow: this.modulesPerRow,
+      boardModulesPerRow: this.boardModulesPerRow,
       items: this.rows.map(({ id, gapBefore }) => ({ id, ...(gapBefore ? { gapBefore } : {}) }))
     }
     this.dispatchEvent(
@@ -52,13 +56,24 @@ export class CircuitScheduleField extends LiteElement {
 
   #setModules(value: string) {
     this.modulesPerRow = value === '18' ? 18 : 24
-    this.rows = this.rows.map((row) => ({ ...row, gapBefore: Math.min(row.gapBefore, this.modulesPerRow) }))
+    this.rows = this.rows.map((row) => ({ ...row, gapBefore: Math.min(row.gapBefore, this.#width(row.boardId)) }))
+    this.#save()
+  }
+
+  #width(boardId: string) {
+    return cabinetModulesPerRow({ modulesPerRow: this.modulesPerRow, boardModulesPerRow: this.boardModulesPerRow }, boardId)
+  }
+
+  #setBoardModules(boardId: string, value: string) {
+    this.boardModulesPerRow = { ...this.boardModulesPerRow, [boardId]: value === '18' ? 18 : 24 }
+    this.rows = this.rows.map((row) => row.boardId === boardId
+      ? { ...row, gapBefore: Math.min(row.gapBefore, this.#width(boardId)) } : row)
     this.#save()
   }
 
   #setGap(id: string, value: string) {
     this.rows = this.rows.map((row) =>
-      row.id === id ? { ...row, gapBefore: Math.max(0, Math.min(this.modulesPerRow, Number(value) || 0)) } : row
+      row.id === id ? { ...row, gapBefore: Math.max(0, Math.min(this.#width(row.boardId), Number(value) || 0)) } : row
     )
     this.#save()
   }
@@ -162,13 +177,25 @@ export class CircuitScheduleField extends LiteElement {
           for (const estimate of measured) byCable.set(estimate.cable, (byCable.get(estimate.cable) ?? 0) + estimate.metres!)
           const location = this.project ? cableEstimateBoardLocation(this.project, board.id, locations) : undefined
           return html`
-            <section class="board-section">
+            <section class="board-section" data-board-id=${board.id}>
               <div class="board-heading">
                 <div>
                   <span>Verdeelbord</span>
                   <h3>${board.name}</h3>
                 </div>
-                <strong>${boardRows.filter((row) => row.kind === 'circuit').length} kringen</strong>
+                <div class="board-actions">
+                  ${board.id !== 'unassigned' ? html`
+                    <label><span>Modules per rij</span><select aria-label=${`Modules per rij voor ${board.name}`}
+                      @change=${(event: Event) => this.#setBoardModules(board.id, (event.target as HTMLSelectElement).value)}>
+                      <option value="18" .selected=${this.#width(board.id) === 18}>18 modules</option>
+                      <option value="24" .selected=${this.#width(board.id) === 24}>24 modules</option>
+                    </select></label>
+                    <button type="button" aria-label=${`Differentieel toevoegen aan ${board.name}`}
+                      @click=${() => this.dispatchEvent(new CustomEvent('schedule-differential-added', {
+                        bubbles: true, composed: true, detail: { boardId: board.id }
+                      }))}>Differentieel toevoegen</button>` : ''}
+                  <strong>${boardRows.filter((row) => row.kind === 'circuit').length} kringen</strong>
+                </div>
               </div>
               <div class="cable-summary">
                 <label><span>Kastpositie op situatieplan</span>
@@ -238,13 +265,25 @@ export class CircuitScheduleField extends LiteElement {
                                   this.#setBoard(item.id, (event.target as HTMLSelectElement).value)}>
                                 ${boards.filter((option) => option.id !== 'unassigned').map((option) => html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
                               </select>`
-                            : html`<span class="fixed-board">${board.name}</span>`}
+                            : html`<select aria-label=${`Verdeelbord voor differentieel ${item.id}`}
+                                @change=${(event: Event) => {
+                                  const control = event.target as HTMLSelectElement
+                                  const boardId = control.value
+                                  control.value = item.boardId
+                                  this.dispatchEvent(new CustomEvent('schedule-differential-assigned', {
+                                    bubbles: true, composed: true, detail: { id: item.id, boardId }
+                                  }))
+                                }}>
+                                <option value="unassigned" disabled .selected=${item.boardId === 'unassigned'}>Niet gekoppeld aan een kast</option>
+                                ${boards.filter((option) => option.id !== 'unassigned').map((option) =>
+                                  html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
+                              </select>`}
                           <input
                             class="gap"
                             aria-label=${`Vrije modules voor ${item.id}`}
                             type="number"
                             min="0"
-                            .max=${String(this.modulesPerRow)}
+                            .max=${String(this.#width(item.boardId))}
                             .value=${String(item.gapBefore)}
                             @change=${(event: Event) =>
                               this.#setGap(item.id, (event.target as HTMLInputElement).value)} />

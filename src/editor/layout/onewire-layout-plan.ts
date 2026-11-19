@@ -159,6 +159,29 @@ export const packOneWireFamilyBounds = (
   }
 }
 
+export const insertOneWireFamilyBounds = (
+  families: readonly OneWireFamilyBounds[],
+  insertedFamily: string
+): Map<string, number> => {
+  const positions = new Map(families.map((family) => [family.family, family.anchorX]))
+  const insertedIndex = families.findIndex((family) => family.family === insertedFamily)
+  if (insertedIndex < 0) return positions
+  for (let index = insertedIndex; index < families.length; index++) {
+    const family = families[index]
+    let x = family.anchorX
+    if (index === insertedIndex && families[index + 1]) {
+      x = index > 0 ? positions.get(families[index - 1].family)! : families[index + 1].anchorX
+    }
+    for (let previous = 0; previous < index; previous++) {
+      const before = families[previous]
+      const pair = packOneWireFamilyBounds([before, family], 0).familyXs
+      x = Math.max(x, positions.get(before.family)! + pair.get(family.family)! - pair.get(before.family)!)
+    }
+    positions.set(family.family, x)
+  }
+  return positions
+}
+
 export const planOneWireLayout = (
   families: readonly OneWireFamilyDemand[],
   options: { usableWidth: number; usableHeight: number; maxCircuitsPerPage?: number }

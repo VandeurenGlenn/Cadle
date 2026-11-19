@@ -1,11 +1,60 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildKamrailCircuitBundle } from '../src/editor/layout/onewire-helpers.ts'
-import { spaceOneWireCircuitAnnotations } from '../src/editor/layout/onewire-annotation-layout.ts'
+import { buildKamrailCircuitBundle, buildOneWireRowSection } from '../src/editor/layout/onewire-helpers.ts'
+import { placeOneWireCountLabels, spaceOneWireCircuitAnnotations } from '../src/editor/layout/onewire-annotation-layout.ts'
 import { applyOneWireCircuitPresentation } from '../src/editor/layout/onewire-circuit-presentation.ts'
 import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
-import type { Shape } from '../src/editor/model/types.ts'
+import type { Shape, TextShape } from '../src/editor/model/types.ts'
+
+test('places counts above their own horizontal or stacked symbols, clear of devices and wires', () => {
+  for (const compact of [false, true]) {
+    let id = 0
+    const section = buildOneWireRowSection(0, ['N1', [
+      { bindingId: 'N1', kind: 'switch', sourcePath: 'symbols/Switches/Switch general symbol.svg' },
+      ...[1, 2].map(() => ({ bindingId: 'N1', kind: 'load' as const,
+        sourcePath: 'symbols/Consumption appliances/Lighting.svg' })),
+      ...Array.from({ length: 11 }, () => ({ bindingId: 'N1', kind: 'load' as const,
+        sourcePath: 'symbols/Consumption appliances/Spot.svg' }))
+    ]], 1100, 400, {
+      nextShapeId: () => `count-${++id}`,
+      oneWireComponentSymbol: () => ({ name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+      branchStroke: '#000000'
+    }, compact)
+    const symbols = section.shapes.filter((shape) => shape.kind === 'symbol')
+    const counts = section.shapes.filter((shape): shape is TextShape =>
+      shape.kind === 'text' && shape.sourceLink?.role === 'count-label')
+    assert.deepEqual(counts.map((shape) => shape.text), ['x2', 'x11'])
+    for (const count of counts) {
+      const index = Number(/:count:(\d+)$/.exec(count.generationKey!)![1])
+      const box = oneWireLayoutBounds(count)
+      const body = oneWireLayoutBounds(symbols[index])
+      assert.ok(box.y + box.height <= body.y - 6 + 1e-8)
+      assert.equal(count.textAnchor, 'middle')
+      assert.equal(count.rotation, 0)
+      if (!compact) assert.ok(Math.abs(count.position.x - body.x - body.width / 2) < 1e-8)
+      for (const other of symbols.map(oneWireLayoutBounds)) {
+        assert.ok(box.x + box.width <= other.x || other.x + other.width <= box.x ||
+          box.y + box.height <= other.y || other.y + other.height <= box.y)
+      }
+      for (const wire of section.shapes) {
+        if (wire.kind !== 'line' || wire.start.x !== wire.end.x) continue
+        assert.ok(wire.start.x < box.x || wire.start.x > box.x + box.width ||
+          Math.max(wire.start.y, wire.end.y) < box.y || Math.min(wire.start.y, wire.end.y) > box.y + box.height)
+      }
+    }
+    const legacy = section.shapes.map((shape) => shape.sourceLink?.role === 'count-label' && shape.kind === 'text'
+      ? { ...shape, position: { x: 900, y: 900 }, textAnchor: 'start' as const } : shape)
+    const repaired = placeOneWireCountLabels(legacy)
+    assert.deepEqual(repaired, section.shapes)
+    assert.ok(repaired.every((shape, index) => shape.sourceLink?.role === 'count-label' || shape === legacy[index]))
+    assert.deepEqual(placeOneWireCountLabels(repaired), repaired)
+    const locked = legacy.map((shape) => shape.sourceLink?.role === 'count-label' ? { ...shape, locked: true } : shape)
+    assert.deepEqual(placeOneWireCountLabels(locked), locked)
+  }
+})
 
 const circuit = (empty = false) => {
   let id = 0

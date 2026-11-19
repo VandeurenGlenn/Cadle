@@ -100,9 +100,16 @@ main {
   margin: 2px 0 0;
   font-size: 17px;
 }
-.board-heading > strong {
+.board-actions strong {
   color: var(--md-sys-color-primary);
   font-size: 12px;
+}
+.board-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
 }
 .circuit-table {
   min-width: 1120px;

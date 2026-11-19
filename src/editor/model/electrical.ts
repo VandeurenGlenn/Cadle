@@ -1,4 +1,5 @@
 import { sanitizeCableFireClass } from './cable-designation.js'
+import { sanitizeSolarInstallation, type SolarInstallation } from '../solar-installation.js'
 export type ElectricalRole = 'switch' | 'load' | 'protection' | 'junction' | 'neutral'
 export const compareCircuitFamilies = (left: string, right: string): number => {
   if (left === right) return 0
@@ -25,6 +26,7 @@ export type ElectricalCableInstallation =
   | 'underground'
 
 export type ElectricalDeviceMetadata = {
+  solar?: SolarInstallation
   role: ElectricalRole
   oneWireEligible: boolean
   circuitType?: ElectricalCircuitType
@@ -222,6 +224,7 @@ export const electricalMetadataFromCatalog = (
     neutralPosition,
     productSeries: typeof explicit.productSeries === 'string' ? explicit.productSeries.trim() || undefined : undefined,
     productReference: typeof explicit.productReference === 'string' ? explicit.productReference.trim() || undefined : undefined,
+    solar: sanitizeSolarInstallation(explicit.solar),
     showPhaseLabel:
       typeof explicit.showPhaseLabel === 'boolean' ? explicit.showPhaseLabel : undefined,
     cableFireClass: sanitizeCableFireClass(explicit.cableFireClass),
@@ -300,6 +303,7 @@ export const sanitizeElectricalMetadata = (value: unknown): ElectricalDeviceMeta
         : neutralPositionForManufacturer(typeof raw.manufacturer === 'string' ? raw.manufacturer : undefined),
     productSeries: typeof raw.productSeries === 'string' ? raw.productSeries.trim() || undefined : undefined,
     productReference: typeof raw.productReference === 'string' ? raw.productReference.trim() || undefined : undefined,
+    solar: sanitizeSolarInstallation(raw.solar),
     showPhaseLabel:
       typeof raw.showPhaseLabel === 'boolean' ? raw.showPhaseLabel : undefined,
     cableFireClass: sanitizeCableFireClass(raw.cableFireClass),

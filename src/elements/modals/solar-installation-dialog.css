@@ -1,0 +1,43 @@
+form {
+  width: min(760px, 100%);
+}
+
+fieldset {
+  min-width: 0;
+  display: grid;
+  gap: var(--cadle-space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-sm);
+  padding: var(--cadle-space-3);
+}
+
+legend {
+  font: var(--md-sys-typescale-title-small);
+  padding: 0 var(--cadle-space-1);
+}
+
+.fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container);
+}
+
+small,
+.warnings {
+  font: var(--md-sys-typescale-body-small);
+}
+
+.warnings {
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+}

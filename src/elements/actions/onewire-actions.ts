@@ -117,6 +117,10 @@ export class OneWireActions extends LiteElement {
             </button>
           `
         )}
+        <button class="onewire-action-btn" title="Omvormer en zonnepanelen" aria-label="Omvormer en zonnepanelen"
+          @click=${() => pubsub.publish('editor.controls.command', { action: 'solar-installation' })}>
+          <custom-icon icon="solar_power"></custom-icon><span>Omvormer / PV</span>
+        </button>
         <div class="connection-menu">
           <button type="button" class="connection-trigger" title="Elektrische verbindingen" aria-label="Elektrische verbindingen"
             aria-controls="connection-options" aria-expanded=${this.menuOpen ? 'true' : 'false'}

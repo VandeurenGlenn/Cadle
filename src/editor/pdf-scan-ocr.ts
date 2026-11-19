@@ -46,7 +46,7 @@ export const mapOcrPageToPdfText = (
 }
 
 export type PdfScanOcrSession = {
-  recognize(canvas: HTMLCanvasElement, target: { width: number; height: number }): Promise<PdfScanOcrResult>
+  recognize(canvas: HTMLCanvasElement, target: { width: number; height: number }, minimumConfidence?: number): Promise<PdfScanOcrResult>
   terminate(): Promise<void>
 }
 
@@ -67,9 +67,9 @@ export const createPdfScanOcrSession = async (
     user_defined_dpi: '200'
   })
   return {
-    async recognize(canvas, target) {
+    async recognize(canvas, target, minimumConfidence) {
       const result = await worker.recognize(canvas, {}, { text: true, blocks: true })
-      return mapOcrPageToPdfText(result.data, canvas, target)
+      return mapOcrPageToPdfText(result.data, canvas, target, minimumConfidence)
     },
     async terminate() {
       await worker.terminate()

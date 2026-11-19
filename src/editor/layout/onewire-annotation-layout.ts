@@ -12,6 +12,47 @@ export const isOneWireFamilyLabel = (shape: Shape): shape is TextShape =>
   shape.kind === 'text' && shape.sourceLink?.role === 'label' &&
   (shape.sourceLink.kind === 'board' || shape.sourceLink.kind === 'circuit')
 
+export const placeOneWireCountLabels = (shapes: readonly Shape[]): Shape[] => {
+  if (!shapes.some((shape) => shape.sourceLink?.role === 'count-label')) return [...shapes]
+  const rowKey = (shape: Shape) => JSON.stringify([shape.oneWireRailId, shape.groupId, shape.bindingId])
+  const symbols = new Map<string, SymbolShape[]>()
+  for (const shape of shapes) {
+    if (shape.kind !== 'symbol' || (shape.sourceLink?.role !== 'load' && shape.sourceLink?.role !== 'switch')) continue
+    const key = rowKey(shape)
+    const row = symbols.get(key)
+    if (row) row.push(shape)
+    else symbols.set(key, [shape])
+  }
+  const wires = shapes.flatMap((shape) => shape.kind === 'line' && !shape.hidden
+    ? connectionSegments(shape).filter(({ start, end }) => Math.abs(start.x - end.x) < 1e-8)
+      .map((segment) => ({ ...segment, radius: (shape.strokeWidth ?? 2) / 2 })) : [])
+  return shapes.map((shape) => {
+    if (shape.kind !== 'text' || shape.sourceLink?.role !== 'count-label' || shape.hidden || shape.locked) return shape
+    const index = /:count:(\d+)$/.exec(shape.generationKey ?? '')?.[1]
+    const symbol = index === undefined ? undefined : symbols.get(rowKey(shape))?.[Number(index)]
+    if (!symbol || symbol.hidden) return shape
+    const body = oneWireLayoutBounds(symbol)
+    const label: TextShape = { ...shape, textAnchor: 'middle', rotation: 0, flipX: false, flipY: false,
+      position: { x: body.x + body.width / 2, y: body.y } }
+    let bounds = paperTextBounds(label)
+    label.position.y -= bounds.y + bounds.height - body.y + 6
+    bounds = paperTextBounds(label)
+    let blockers = wires.filter(({ start, end, radius }) =>
+      start.x + radius > bounds.x && start.x - radius < bounds.x + bounds.width &&
+      Math.max(start.y, end.y) + radius > bounds.y && Math.min(start.y, end.y) - radius < bounds.y + bounds.height)
+    while (blockers.length) {
+      label.position.x += Math.max(...blockers.map(({ start, radius }) => start.x + radius + 6)) - bounds.x
+      bounds = paperTextBounds(label)
+      blockers = wires.filter(({ start, end, radius }) =>
+        start.x + radius > bounds.x && start.x - radius < bounds.x + bounds.width &&
+        Math.max(start.y, end.y) + radius > bounds.y && Math.min(start.y, end.y) - radius < bounds.y + bounds.height)
+    }
+    return shape.textAnchor === 'middle' && !shape.rotation && !shape.flipX && !shape.flipY &&
+      Math.abs(shape.position.x - label.position.x) < 1e-8 && Math.abs(shape.position.y - label.position.y) < 1e-8
+      ? shape : label
+  })
+}
+
 export const placeOneWireFamilyLabels = (
   shapes: readonly Shape[],
   manual?: { selectedIds: ReadonlySet<string>; side: BindingLabelSide | 'auto' }

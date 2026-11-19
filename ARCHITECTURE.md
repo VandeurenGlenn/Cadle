@@ -60,15 +60,23 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - The circuit overview combines configured and schematic-only differentials, shows main/row protection chains and
   their supplied circuits, and flags missing or ambiguous assignments. Manual differentials follow actual conductor
   contacts to their outgoing rails, scoped to each schematic page; bare crossings never establish an assignment.
-  Its cabinet planner reuses the saved module order, 18/24-module width and reserved gaps. Pole-count widths are
+  Each cabinet exposes its own saved 18/24-module row width, falling back to the existing global width.
+  Cabinet headers can add configured differentials; new devices remain separate from existing topology/schematic
+  devices with identical ratings (`matchExistingSources: false`). Existing differentials can be assigned to a cabinet
+  and electrical rail, updating their profile/topology and all saved schematic copies without moving geometry.
+  Cabinet-dependent planner IDs are remapped so existing order and reserved gaps survive reassignment.
+  Adding a configured protection does not draw wiring. The cabinet planner reuses these widths, module order and reserved gaps. Pole-count widths are
   indicative, and changing the physical module arrangement does not change electrical connections or schematic geometry.
   Physical cabinet rows are numbered bottom-up: row 1 is the lowest row, without reversing saved module order within rows.
   Toggling a connection caption updates visibility only, without invoking circuit presentation spacing or rail packing.
   Empty circuits retain a real outgoing cable section sized for the complete cable caption, with clearance at both ends.
   Missing empty-circuit sections are repaired locally on opening without moving breakers, rails or populated circuits.
   Inspector cable edits never repack rails; circuit annotation spacing is restricted to the edited circuit.
-  Manual breaker insertion places only the new circuit and extends its rail outward if necessary, without shrinking
-  or recentering it or reapplying presentation to unrelated circuits. Global packing belongs to explicit layout generation.
+  Manual breaker insertion keeps alphabetical order on its own rail. Earlier circuits and unrelated rails stay fixed;
+  following circuits move right only as needed for clearance. The rail extends outward without shrinking or recentering.
+  Global packing belongs to explicit layout generation, never ordinary property edits.
+  Generated multiplicity counts sit above their own symbol, clear of conductors. Saved count labels are repaired locally
+  without moving devices; compact vertical stacks reserve room for those annotations.
   One-wire catalog and compose tools can insert a symbol into a conductor at the clicked position. Actual electrical
   contacts determine alignment and local wire cuts. When inserting vertically, connected rows above the clicked
   point move upward only as far as required to clear the symbol by 3 mm, including their labels and routed bends.
@@ -84,6 +92,13 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
   editor and SVG export. Existing catalog stair symbols remain supported.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
+- The one-wire “Omvormer / PV” action adds or edits a connected PV branch through a reviewable equipment form.
+  `src/editor/solar-installation.ts` parses aligned STC datasheet columns without mixing in BNPI/NOCT values;
+  ambiguous or incomplete columns remain explicit for correction. Image recognition reuses the local OCR worker.
+  Panel quantity, equal-string configuration and inverter/protection ratings are entered separately, never inferred
+  from a panel datasheet. Reviewed specifications live in electrical metadata and ordinary schema text, preserving
+  them across history, reopening and SVG/PDF export. Placement uses actual terminals and free space without moving
+  existing circuits; insufficient space is reported rather than silently placing equipment outside the print area.
 - The access-point and heat-pump drawing actions place catalog SVGs from `www/symbols/General/` and
   `www/symbols/Consumption appliances/`. The shared SVG loader defaults all symbol ink to black, independent
   of source colors and UI text color, while retaining transparent parts, white cutouts, and explicit object color overrides.

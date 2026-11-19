@@ -22,6 +22,7 @@ import '../elements/modals/dossier-preview.js'
 import type { DossierPreviewMaterial, DossierPreviewPage } from '../elements/modals/dossier-preview.js'
 import '../elements/modals/input-form-dialog.js'
 import type { InputFormDialog, InputFormRequest } from '../elements/modals/input-form-dialog.js'
+import type { SolarInstallationDialog, SolarInstallationRequest } from '../elements/modals/solar-installation-dialog.js'
 import '../elements/modals/symbol-picker-dialog.js'
 import '@vandeurenglenn/lite-elements/icon-set.js'
 import '@vandeurenglenn/lite-elements/icon.js'
@@ -45,7 +46,9 @@ import { downloadBom, downloadDataUrl } from '../editor/export/export-commands.j
 import { evaluateOneWirePreflight } from '../editor/onewire-preflight.js'
 import { validateOneWireTopology } from '../editor/onewire-topology-schema.js'
 import { storeOneWireTrainingExample } from '../editor/onewire-training-data.js'
-import type { CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { refreshCircuitScheduleItems, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { addScheduleDifferential, assignScheduleDifferential } from '../editor/circuit-schedule-editing.js'
+import { isRcdType } from '../editor/model/electrical.js'
 import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
 import { nativeStateForProjectPage } from '../data/project-document.js'
 import { connectGoogleDrive, installGoogleDriveExitBackup } from '../data/google-drive-backup.js'
@@ -610,6 +613,85 @@ export class AppShell extends LiteElement {
     await setProjectData(this.projectKey, this.project)
   }
 
+  async #addScheduleDifferential(boardId: string) {
+    if (!this.projectKey || !this.project) return
+    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find((board) => board.id === boardId)
+    if (!board) return
+    const projectKey = this.projectKey
+    const values = await this.requestInput({
+      title: `Differentieel toevoegen aan ${board.name}`,
+      description: 'Voeg een beveiliging toe aan de kast en moduleplanner. Dit tekent geen nieuwe bedrading op het eendraads. Een elektrische rij is niet hetzelfde als een fysieke modulerij.',
+      submitLabel: 'Differentieel toevoegen',
+      fields: [
+        { name: 'function', label: 'Functie', value: 'additional', options: [
+          { value: 'additional', label: 'Bijkomend differentieel' }, { value: 'main', label: 'Hoofddifferentieel' }] },
+        { name: 'current', label: 'Nominale stroom (A)', type: 'number', min: 1, step: 'any', required: true, value: '40' },
+        { name: 'sensitivity', label: 'Gevoeligheid (mA)', type: 'number', min: 1, step: 'any', required: true, value: '30' },
+        { name: 'poles', label: 'Pooltal', value: String(this.project.electricalProfile?.defaultPoles ?? 2), options: [
+          { value: '2', label: '2P' }, { value: '3', label: '3P' }, { value: '4', label: '4P' }] },
+        { name: 'type', label: 'Type', value: 'A', options: ['AC', 'A', 'F', 'B', 'other']
+          .map((value) => ({ value, label: value === 'other' ? 'Ander type' : value })) },
+        { name: 'railId', label: 'Elektrische rij', value: '', description: 'Voor een bijkomend differentieel. Kies geen rij als de koppeling nog niet bekend is.',
+          options: [{ value: '', label: 'Nog niet gekoppeld' }, ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))] }
+      ]
+    })
+    if (!values || this.projectKey !== projectKey || !this.project) return
+    try {
+      if (!isRcdType(values.type)) throw new Error('Kies een geldig differentieeltype.')
+      const next = addScheduleDifferential(this.project, boardId, {
+        id: crypto.randomUUID(), ratedCurrentA: Number(values.current), sensitivityMa: Number(values.sensitivity),
+        poles: Number(values.poles), type: values.type, railId: values.railId || undefined
+      }, values.function === 'main')
+      await setProjectData(projectKey, next)
+      this.project = next
+      this.circuitScheduleItems = refreshCircuitScheduleItems(next, this.circuitScheduleItems)
+    } catch (error) {
+      console.error('Differentieel toevoegen mislukt.', error)
+      globalThis.alert(`Differentieel toevoegen mislukt: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  async #saveScheduleLayout(layout: CircuitScheduleLayout): Promise<boolean> {
+    if (!this.projectKey || !this.project) return false
+    const previous = this.project
+    this.project = { ...previous, circuitScheduleLayout: layout }
+    try {
+      await setProjectData(this.projectKey, this.project)
+      return true
+    } catch (error) {
+      this.project = { ...previous, circuitScheduleLayout: { ...previous.circuitScheduleLayout } }
+      console.error('Kastindeling opslaan mislukt.', error)
+      globalThis.alert('De kastindeling kon niet worden opgeslagen. Probeer opnieuw.')
+      return false
+    }
+  }
+
+  async #assignScheduleDifferential(id: string, boardId: string) {
+    if (!this.projectKey || !this.project) return
+    const item = this.circuitScheduleItems.find((item) => item.id === id)
+    const board = normalizeElectricalProfile(this.project.electricalProfile).boards?.find((board) => board.id === boardId)
+    if (!item || !board) return
+    const projectKey = this.projectKey
+    const values = await this.requestInput({
+      title: `Differentieel toewijzen aan ${board.name}`,
+      description: 'Dit bewaart de kastkoppeling en laat alle symbolen en draden op hun plaats.',
+      submitLabel: 'Kastkoppeling opslaan',
+      fields: [{ name: 'railId', label: 'Elektrische rij', value: item.mainDifferential ? '' : item.railId ?? '',
+        options: item.mainDifferential ? [{ value: '', label: 'Hele kast (hoofddifferentieel)' }]
+          : [{ value: '', label: 'Nog niet gekoppeld' }, ...board.rails.map((rail) => ({ value: rail.id, label: rail.name }))] }]
+    })
+    if (!values || this.projectKey !== projectKey || !this.project) return
+    try {
+      const next = assignScheduleDifferential(this.project, this.circuitScheduleItems, id, boardId, values.railId || undefined)
+      await setProjectData(projectKey, next)
+      this.project = next
+      this.circuitScheduleItems = refreshCircuitScheduleItems(next, this.circuitScheduleItems)
+    } catch (error) {
+      console.error('Differentieel toewijzen mislukt.', error)
+      globalThis.alert(`Differentieel toewijzen mislukt: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   async #setScheduleBoardLocation(boardId: string, location?: { pageKey: string; shapeId: string }) {
     if (!this.projectKey || !this.project) return
     const previous = this.project
@@ -858,6 +940,14 @@ export class AppShell extends LiteElement {
     await this.rendered
     const dialog = this.shadowRoot?.querySelector('input-form-dialog') as InputFormDialog | null
     if (!dialog) return null
+    return dialog.show(request)
+  }
+
+  async requestSolarInstallation(request: SolarInstallationRequest) {
+    await import('../elements/modals/solar-installation-dialog.js')
+    await this.rendered
+    const dialog = this.shadowRoot?.querySelector<SolarInstallationDialog>('solar-installation-dialog')
+    if (!dialog) throw new Error('Het PV-venster is niet beschikbaar op deze pagina.')
     return dialog.show(request)
   }
 
@@ -1635,6 +1725,7 @@ export class AppShell extends LiteElement {
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>
       <color-picker-dialog></color-picker-dialog>
+      <solar-installation-dialog></solar-installation-dialog>
       <validation-report
         .open=${this.validationReportOpen}
         .report=${this.validationReportData}
@@ -1687,10 +1778,7 @@ export class AppShell extends LiteElement {
         .layout=${this.project?.circuitScheduleLayout ?? {}}
         @close=${() => (this.circuitScheduleDialogOpen = false)}
         @saved=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
-          if (!this.projectKey || !this.project) return
-          this.project = { ...this.project, circuitScheduleLayout: event.detail.layout }
-          await setProjectData(this.projectKey, this.project)
-          this.circuitScheduleDialogOpen = false
+          if (await this.#saveScheduleLayout(event.detail.layout)) this.circuitScheduleDialogOpen = false
         }}></circuit-schedule-dialog>
       <project-share-dialog
         .open=${this.projectShareDialogOpen}
@@ -1883,12 +1971,14 @@ export class AppShell extends LiteElement {
                         .boards=${normalizeElectricalProfile(this.project?.electricalProfile).boards}
                         .layout=${this.project?.circuitScheduleLayout ?? {}}
                         @schedule-layout-changed=${async (event: CustomEvent<{ layout: CircuitScheduleLayout }>) => {
-                          if (!this.projectKey || !this.project) return
-                          this.project = { ...this.project, circuitScheduleLayout: event.detail.layout }
-                          await setProjectData(this.projectKey, this.project)
+                          await this.#saveScheduleLayout(event.detail.layout)
                         }}
                         @schedule-board-added=${(event: CustomEvent<{ name: string }>) =>
                           this.#addScheduleBoard(event.detail.name)}
+                        @schedule-differential-added=${(event: CustomEvent<{ boardId: string }>) =>
+                          this.#addScheduleDifferential(event.detail.boardId)}
+                        @schedule-differential-assigned=${(event: CustomEvent<{ id: string; boardId: string }>) =>
+                          this.#assignScheduleDifferential(event.detail.id, event.detail.boardId)}
                         @schedule-board-location-changed=${(event: CustomEvent<{ boardId: string; location?: { pageKey: string; shapeId: string } }>) =>
                           this.#setScheduleBoardLocation(event.detail.boardId, event.detail.location)}
                         @circuit-board-changed=${(event: CustomEvent<{ circuitId: string; boardId: string }>) =>

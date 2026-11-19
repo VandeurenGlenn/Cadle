@@ -29,6 +29,7 @@ export type ElectricalBoard = {
 
 export type DifferentialProtection = {
   id: string
+  matchExistingSources?: boolean
   railId?: string
   ratedCurrentA: number
   sensitivityMa: number
@@ -112,6 +113,7 @@ export type ProjectCircuitSpecification = {
 
 export type CircuitScheduleLayout = {
   modulesPerRow?: 18 | 24
+  boardModulesPerRow?: Record<string, 18 | 24>
   /** @deprecated Legacy equal-column layout; read only for migration. */
   columns?: number
   items?: Array<{ id: string; gapBefore?: number }>

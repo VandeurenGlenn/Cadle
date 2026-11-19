@@ -1,6 +1,6 @@
 import { GRID_SIZE, PAPER_WORLD_UNITS_PER_MM, ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 export { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
-import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
+import { placeOneWireCountLabels, spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { protectionAnnotationLayout, PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './protection-label-layout.js'
 export { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
 import { cableLabelText as oneWireCableLabelText } from '../model/electrical-connection.js'
@@ -564,7 +564,7 @@ export const buildOneWireRowSection = (
       rotation,
       leftReach: probeSlotX - bounds.x,
       symbolRightReach,
-      rightReach: symbolRightReach + (repeatCount > 1 ? 6 + `x${repeatCount}`.length * PAPER_LABEL_FONT_SIZE * 0.68 : 0)
+      rightReach: symbolRightReach + (repeatCount > 1 && compactSingleCircuit ? 6 + PAPER_LABEL_FONT_SIZE * 1.2 : 0)
     }
   })
 
@@ -738,15 +738,10 @@ export const buildOneWireRowSection = (
         shape.rotation = (shape.rotation ?? 0) - 90
         continue
       }
-      if (shape.kind === 'text') {
-        shape.position = rotatePointOntoTrunk(shape.position)
-        // Multiplicity labels remain readable horizontally beside the stack.
-        shape.position.x += 8
-      }
     }
   }
 
-  return { shapes, ids }
+  return { shapes: placeOneWireCountLabels(shapes), ids }
 }
 
 export const buildKamrailCircuitBundle = (

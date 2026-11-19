@@ -291,6 +291,37 @@ test('refreshes linked devices, inserts Q alphabetically and edits selected brea
   expect(shapes.find((shape: any) => shape.id === 'manual-note').text).toBe('Bewaren')
   expect(shapes.filter((shape: any) => /^[RT]$/.test(shape.sourceLink?.id) && shape.sourceLink.role === 'breaker')).toHaveLength(2)
 
+  const pPositions = shapes.filter((shape: any) => shape.sourceLink?.id === 'P' ||
+    shape.bindingId?.replace(/\d+$/, '') === 'P').map((shape: any) => ({
+      id: shape.id, position: shape.position, start: shape.start, end: shape.end
+    }))
+  const assertCountsAbove = async () => {
+    const saved = await stored()
+    const counts = saved.filter((shape: any) => shape.sourceLink?.role === 'count-label')
+    expect(counts.length).toBeGreaterThan(0)
+    for (const count of counts) {
+      const index = Number(/:count:(\d+)$/.exec(count.generationKey)![1])
+      const symbol = saved.filter((shape: any) => shape.kind === 'symbol' && shape.groupId === count.groupId &&
+        shape.bindingId === count.bindingId && /^(load|switch)$/.test(shape.sourceLink?.role))[index]
+      await expect(async () => {
+        const labelBox = await app.locator(`text.shape-text[data-shape-id="${count.id}"]`).boundingBox()
+        const symbolBox = await app.locator(`g.shape-symbol[data-shape-id="${symbol.id}"] svg`).boundingBox()
+        expect(labelBox).not.toBeNull()
+        expect(symbolBox).not.toBeNull()
+        expect(labelBox!.y + labelBox!.height).toBeLessThan(symbolBox!.y)
+      }).toPass({ timeout: 5000 })
+    }
+    expect(await app.evaluate((element: any, ids: string[]) => {
+      const exported = new DOMParser().parseFromString(element.toSVG(), 'image/svg+xml')
+      return ids.every((id) => {
+        const selector = `text[data-shape-id="${id}"]`
+        const live = element.shadowRoot.querySelector(selector)!
+        const saved = exported.querySelector(selector)!
+        return ['x', 'y', 'text-anchor'].every((name) => live.getAttribute(name) === saved.getAttribute(name))
+      })
+    }, counts.map((shape: any) => shape.id))).toBe(true)
+  }
+  await assertCountsAbove()
   await page.getByRole('button', { name: 'Add breaker', exact: true }).last().click()
   const railPoint = await app.locator('line[data-shape-id="linked-rail"]').evaluate((line: SVGLineElement) => {
     const point = new DOMPoint(Number(line.getAttribute('x2')) - 2, Number(line.getAttribute('y2')))
@@ -307,6 +338,12 @@ test('refreshes linked devices, inserts Q alphabetically and edits selected brea
       .sort((a, b) => Number(a.getAttribute('x')) - Number(b.getAttribute('x'))).map((text) => text.textContent?.trim())
   })
   await expect.poll(order).toEqual(['P', 'Q', 'R', 'T'])
+  const afterInsertion = await stored()
+  expect(pPositions.map((before: any) => {
+    const current = afterInsertion.find((shape: any) => shape.id === before.id)
+    return { id: current.id, position: current.position, start: current.start, end: current.end }
+  })).toEqual(pPositions)
+  await assertCountsAbove()
   const panel = page.locator('app-shell #object-inspector')
   const closeProperties = async () => {
     if (await panel.getAttribute('data-open') === 'true') await panel.getByRole('button', { name: 'Close properties' }).click()

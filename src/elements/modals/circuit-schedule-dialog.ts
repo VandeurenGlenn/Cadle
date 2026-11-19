@@ -1,6 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import type { CircuitScheduleLayout, ElectricalBoard } from '../../types.js'
-import { packCircuitCabinetRows, type CircuitScheduleEditorItem } from '../../editor/circuit-schedule-page.js'
+import { cabinetModulesPerRow, packCircuitCabinetRows, type CircuitScheduleEditorItem } from '../../editor/circuit-schedule-page.js'
 import styles from './circuit-schedule-dialog.css' with { type: 'css' }
 
 type EditableItem = CircuitScheduleEditorItem & { gapBefore: number }
@@ -13,6 +13,7 @@ export class CircuitScheduleDialog extends LiteElement {
   @property({ attribute: false }) accessor boards: ElectricalBoard[] = []
   @property({ attribute: false }) private accessor rows: EditableItem[] = []
   @property({ type: Number }) private accessor modulesPerRow: 18 | 24 = 24
+  @property({ attribute: false }) private accessor boardModulesPerRow: Record<string, 18 | 24> = {}
 
   static styles = [styles]
 
@@ -26,6 +27,7 @@ export class CircuitScheduleDialog extends LiteElement {
 
   #sync() {
     this.modulesPerRow = this.layout?.modulesPerRow === 18 ? 18 : 24
+    this.boardModulesPerRow = { ...this.layout?.boardModulesPerRow }
     const config = new Map((this.layout?.items ?? []).map((item, index) => [item.id, { ...item, index }]))
     this.rows = this.items
       .map((item, index) => ({ ...item, gapBefore: config.get(item.id)?.gapBefore ?? 0, order: config.get(item.id)?.index ?? 10_000 + index }))
@@ -44,15 +46,27 @@ export class CircuitScheduleDialog extends LiteElement {
 
   #setGap(index: number, value: string) {
     const next = [...this.rows]
-    next[index] = { ...next[index], gapBefore: Math.max(0, Math.min(this.modulesPerRow, Number(value) || 0)) }
+    next[index] = { ...next[index], gapBefore: Math.max(0, Math.min(this.#width(next[index].boardId), Number(value) || 0)) }
     this.rows = next
   }
 
   #close = () => this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }))
 
+  #width(boardId: string) {
+    return cabinetModulesPerRow({ modulesPerRow: this.modulesPerRow, boardModulesPerRow: this.boardModulesPerRow }, boardId)
+  }
+
+  #setBoardModules(boardId: string, value: string) {
+    this.boardModulesPerRow = { ...this.boardModulesPerRow, [boardId]: value === '18' ? 18 : 24 }
+    this.rows = this.rows.map((row) => row.boardId === boardId
+      ? { ...row, gapBefore: Math.min(row.gapBefore, this.#width(boardId)) } : row)
+  }
+
   #save = () => {
     const layout: CircuitScheduleLayout = {
+      ...this.layout,
       modulesPerRow: this.modulesPerRow,
+      boardModulesPerRow: this.boardModulesPerRow,
       items: this.rows.map((row) => ({ id: row.id, ...(row.gapBefore ? { gapBefore: row.gapBefore } : {}) }))
     }
     this.dispatchEvent(new CustomEvent('saved', { bubbles: true, composed: true, detail: { layout } }))
@@ -82,9 +96,15 @@ export class CircuitScheduleDialog extends LiteElement {
             ${[...new Set(this.rows.map((row) => row.boardId))].map((boardId) => html`
               <section class="cabinet-board" data-board-id=${boardId}>
                 <h4>${this.boards.find((board) => board.id === boardId)?.name ?? (boardId === 'unassigned' ? 'Niet gekoppeld aan een kast' : boardId)}</h4>
-                ${packCircuitCabinetRows(this.rows.filter((row) => row.boardId === boardId), this.modulesPerRow).reverse().map((row, index, rows) => html`
-                  <div class="cabinet-row-heading"><span>Rij ${rows.length - index}</span><span>${row.used}/${this.modulesPerRow} modules</span></div>
-                  <div class="cabinet-row" style=${`--modules:${this.modulesPerRow}`}>
+                ${boardId !== 'unassigned' ? html`<label><span>Modules per rij</span>
+                  <select aria-label=${`Modules per rij voor ${this.boards.find((board) => board.id === boardId)?.name ?? boardId}`}
+                    @change=${(event: Event) => this.#setBoardModules(boardId, (event.target as HTMLSelectElement).value)}>
+                    <option value="18" .selected=${this.#width(boardId) === 18}>18 modules</option>
+                    <option value="24" .selected=${this.#width(boardId) === 24}>24 modules</option>
+                  </select></label>` : ''}
+                ${packCircuitCabinetRows(this.rows.filter((row) => row.boardId === boardId), this.#width(boardId)).reverse().map((row, index, rows) => html`
+                  <div class="cabinet-row-heading"><span>Rij ${rows.length - index}</span><span>${row.used}/${this.#width(boardId)} modules</span></div>
+                  <div class="cabinet-row" style=${`--modules:${this.#width(boardId)}`}>
                     ${row.cells.map(({ item, start, span }) => html`
                       <div class="cabinet-device" data-kind=${item.kind} data-item-id=${item.id}
                         style=${`grid-column:${start} / span ${span}`}
@@ -93,7 +113,7 @@ export class CircuitScheduleDialog extends LiteElement {
                         <small>${item.modules}M</small>
                       </div>`)}
                   </div>
-                  ${row.used > this.modulesPerRow ? html`<p class="overflow-warning">Een toestel is breder dan de gekozen rij. Controleer de kastbreedte.</p>` : ''}
+                  ${row.used > this.#width(boardId) ? html`<p class="overflow-warning">Een toestel is breder dan de gekozen rij. Controleer de kastbreedte.</p>` : ''}
                 `)}
               </section>`)}
           </div>
@@ -105,7 +125,7 @@ export class CircuitScheduleDialog extends LiteElement {
               </div>
               <div class="copy"><strong>${row.kind === 'circuit' ? `${row.id} · ` : ''}${row.title}</strong><span>${this.boards.find((board) => board.id === row.boardId)?.name ?? row.boardId} · ${row.subtitle}</span></div>
               <label class="gap"><span>Vrije modules ervoor</span>
-                <input type="number" min="0" .max=${String(this.modulesPerRow)} .value=${String(row.gapBefore)}
+                <input type="number" min="0" .max=${String(this.#width(row.boardId))} .value=${String(row.gapBefore)}
                   @change=${(event: Event) => this.#setGap(index, (event.target as HTMLInputElement).value)}>
               </label>
             </div>

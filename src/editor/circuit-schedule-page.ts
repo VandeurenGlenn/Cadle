@@ -124,6 +124,10 @@ export type ScheduleCircuit = {
   railId?: string
   mainDifferential?: boolean
   suppliedCircuitIds?: string[]
+  protectionId?: string
+  topologyIndex?: number
+  topologyMain?: boolean
+  sourceShapes?: Array<{ pageKey: string; shapeId: string }>
 }
 
 export type CircuitScheduleEditorItem = {
@@ -140,6 +144,10 @@ export type CircuitScheduleEditorItem = {
   assignmentWarning?: string
   mainDifferential?: boolean
   suppliedCircuitIds?: string[]
+  protectionId?: string
+  topologyIndex?: number
+  topologyMain?: boolean
+  sourceShapes?: Array<{ pageKey: string; shapeId: string }>
 }
 
 const circuitCategory = (type: CircuitGroup['specification']['circuitType']): string => {
@@ -220,6 +228,7 @@ const differentialRows = (project: Project | null): ScheduleCircuit[] => {
     return protections.map((protection, index) => ({
       id: protection.main ? `DIFF:${board.id}:MAIN` : `DIFF:${board.id}:${protection.id || index}`,
       boardId: board.id,
+      protectionId: protection.id,
       railId: protection.railId,
       mainDifferential: protection.main,
       protection: `${protection.ratedCurrentA}A / ${protection.sensitivityMa}mA`,
@@ -233,10 +242,14 @@ const differentialRows = (project: Project | null): ScheduleCircuit[] => {
   })
 }
 
-const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[]): ScheduleCircuit[] => {
+const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCircuit, 'id' | 'boardId' | 'railId'>[]): ScheduleCircuit[] => {
   const rows = differentialRows(project)
   if (!project) return rows
   const plan = project.oneWireTopology
+  // Newly planned devices must not absorb an existing device with identical ratings.
+  const separateIds = new Set(project.electricalProfile?.boards?.flatMap((board) =>
+    board.additionalDifferentials?.filter((item) => item.matchExistingSources === false)
+      .map((item) => `DIFF:${board.id}:${item.id}`) ?? []))
   const mainBoardId = project.electricalProfile?.boards?.[0]?.id ?? 'main'
   if (plan?.mainDifferential && !rows.some((row) => row.boardId === mainBoardId && row.mainDifferential)) {
     rows.push({ id: `DIFF:${mainBoardId}:MAIN`, boardId: mainBoardId, mainDifferential: true,
@@ -245,6 +258,8 @@ const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[
       cable: `TYPE ${plan.mainDifferential.rcdType ?? 'A'}`, consumers: [], rooms: [],
       category: 'Hoofddifferentieel', modules: plan.mainDifferentialPoles ?? project.electricalProfile?.defaultPoles ?? 2 })
   }
+  const topologyMain = plan?.mainDifferential && rows.find((row) => row.boardId === mainBoardId && row.mainDifferential)
+  if (topologyMain) topologyMain.topologyMain = true
   const ordered = plan ? orderedOneWireDifferentials(plan) : []
   const roles = new Map<string, ScheduleCircuit>()
   const matched = new Set<string>()
@@ -253,7 +268,7 @@ const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[
     const role = `additional-differential-${item.purpose}-${index + 1}`
     const current = item.ratedCurrentA ?? plan?.mainDifferential?.ratedCurrentA
     const protection = `${current ? `${current}A` : '? A'} / ${item.sensitivityMa}mA`
-    let row = rows.find((row) => !row.mainDifferential && !matched.has(row.id) &&
+    let row = rows.find((row) => !row.mainDifferential && !matched.has(row.id) && !separateIds.has(row.id) &&
       row.boardId === boardId && row.railId === item.railId &&
       row.protection === protection)
     if (!row) {
@@ -265,10 +280,12 @@ const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[
       rows.push(row)
     }
     matched.add(row.id)
+    row.topologyIndex = index
     roles.set(role, row)
   }
   const seen = new Set<string>()
-  const configuredIds = new Set(rows.map((row) => row.id))
+  const rowsByIdentity = new Map<string, ScheduleCircuit>()
+  const configuredIds = new Set(rows.filter((row) => !separateIds.has(row.id)).map((row) => row.id))
   const represented = new Set<string>()
   for (const [pageKey, page] of Object.entries(project.pages ?? {})) {
     if (page.pageType !== 'onewire') continue
@@ -276,7 +293,10 @@ const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[
     for (const shape of shapes) {
       if (shape.kind !== 'symbol' || shape.hidden || !isOneWireDistributionProtection(shape)) continue
       const identity = shape.generationKey ?? `${pageKey}:${shape.id}`
-      if (seen.has(identity)) continue
+      if (seen.has(identity)) {
+        rowsByIdentity.get(identity)?.sourceShapes?.push({ pageKey, shapeId: shape.id })
+        continue
+      }
       seen.add(identity)
       const top = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === 'top')
       const rails = top ? connectedOneWireRails(shapes, top.point) : []
@@ -320,6 +340,9 @@ const scheduleProtections = (project: Project | null, circuits: ScheduleCircuit[
         rows.push(row)
       }
       represented.add(row.id)
+      row.sourceShapes ??= []
+      row.sourceShapes.push({ pageKey, shapeId: shape.id })
+      rowsByIdentity.set(identity, row)
       if (!row.mainDifferential && supplied.length) row.suppliedCircuitIds = [...new Set(supplied.map((circuit) => circuit.id))]
       if (Number.isFinite(current) && Number.isFinite(residual)) row.protection = `${current}A / ${residual}mA`
       if (Number.isFinite(poles) && poles > 0) { row.poles = `${poles}P`; row.modules = poles }
@@ -365,6 +388,10 @@ const scheduleEditorItemsForRows = (rows: readonly ScheduleCircuit[]): CircuitSc
     railId: row.railId,
     mainDifferential: row.mainDifferential,
     suppliedCircuitIds: row.suppliedCircuitIds,
+    protectionId: row.protectionId,
+    topologyIndex: row.topologyIndex,
+    topologyMain: row.topologyMain,
+    sourceShapes: row.sourceShapes,
     title: row.category || row.id,
     subtitle: `${row.id.startsWith('DIFF:') ? '' : `${row.id} · `}${row.poles} · ${row.protection}${row.id.startsWith('DIFF:') && row.cable ? ` · ${row.cable}` : ''}`,
     kind: row.id.startsWith('DIFF:') ? 'differential' : 'circuit',
@@ -373,6 +400,17 @@ const scheduleEditorItemsForRows = (rows: readonly ScheduleCircuit[]): CircuitSc
   }))
   return linkCircuitScheduleProtections(items)
 }
+
+export const refreshCircuitScheduleItems = (
+  project: Project, items: readonly CircuitScheduleEditorItem[]
+): CircuitScheduleEditorItem[] => {
+  const circuits = items.filter((item) => item.kind === 'circuit')
+  return linkCircuitScheduleProtections([...scheduleEditorItemsForRows(scheduleProtections(project, circuits)), ...circuits])
+}
+
+export const cabinetModulesPerRow = (layout: CircuitScheduleLayout, boardId: string): 18 | 24 =>
+  layout.boardModulesPerRow?.[boardId] === 18 ? 18 : layout.boardModulesPerRow?.[boardId] === 24 ? 24
+    : layout.modulesPerRow === 18 ? 18 : 24
 
 export const linkCircuitScheduleProtections = <T extends CircuitScheduleEditorItem>(items: readonly T[]): T[] => {
   const linked: T[] = items.map((item) => ({ ...item, differentialIds: [], circuits: [], assignmentWarning: undefined }))

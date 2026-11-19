@@ -131,7 +131,8 @@ import {
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
 import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
-import { placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
+import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
+import { buildSolarInstallation, solarInstallationPlacement } from './layout/solar-installation-layout.js'
 import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
@@ -1285,7 +1286,7 @@ export class CadleApp extends LiteElement {
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
         if (!this.#applyPersistedState(state, false)) return null
-        let synced = placeOneWireFamilyLabels(removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
+        let synced = placeOneWireCountLabels(placeOneWireFamilyLabels(removeRedundantRailAttachments(repairGeneratedOneWireContacts(migrateOneWireCircuitGeometry(this.#document.shapes, {
           nextShapeId,
           oneWireComponentSymbol: (kind) => this.#oneWireComponentSymbol(kind),
           oneWireSymbolScale: (path, kind) => this.#oneWireSymbolScale(path, kind),
@@ -1293,7 +1294,7 @@ export class CadleApp extends LiteElement {
           branchStroke: '#000000',
           minimumRowY: this.#safeAreaRect().y,
           resolveSource: this.#oneWireSourceResolver(analysis, families)
-        }))))
+        })))))
         const emptyFamilies = new Set(synced.flatMap((shape) =>
           shape.sourceLink?.role === 'breaker' && shape.generationKey ? [shape.sourceLink.id] : []))
         const repairedEmptyFamilies = new Set<string>()
@@ -1540,7 +1541,7 @@ export class CadleApp extends LiteElement {
 
   #pushHistory(persist = true, replaceCurrent = false) {
     if (this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire') {
-      this.#document.shapes = placeOneWireFamilyLabels(this.#document.shapes)
+      this.#document.shapes = placeOneWireCountLabels(placeOneWireFamilyLabels(this.#document.shapes))
     }
     this.#document.history.push(
       {
@@ -3197,21 +3198,23 @@ export class CadleApp extends LiteElement {
     if (repack) this.#compactExistingOneWireRail()
   }
 
-  #compactExistingOneWireRail(preserveSingleRailLength = false, targetRailId?: string): boolean {
+  #compactExistingOneWireRail(preserveSingleRailLength = false, targetRailId?: string, insertedBreakerId?: string): boolean {
     let changed = false
-    const cleaned = removeRedundantRailAttachments(this.#document.shapes)
-    if (cleaned.length !== this.#document.shapes.length) {
-      this.#document.shapes = cleaned
-      changed = true
+    if (!insertedBreakerId) {
+      const cleaned = removeRedundantRailAttachments(this.#document.shapes)
+      if (cleaned.length !== this.#document.shapes.length) {
+        this.#document.shapes = cleaned
+        changed = true
+      }
+      // Keep the saved circuit names, but omit the duplicate headings from
+      // the diagram and from the width reserved for each circuit.
+      this.#document.shapes = this.#document.shapes.map((shape) => {
+        if (shape.kind !== 'text' || shape.sourceLink?.kind !== 'board' ||
+          shape.sourceLink.role !== 'description' || shape.hidden) return shape
+        changed = true
+        return { ...shape, hidden: true }
+      })
     }
-    // Keep the saved circuit names, but omit the duplicate headings from
-    // the diagram and from the width reserved for each circuit.
-    this.#document.shapes = this.#document.shapes.map((shape) => {
-      if (shape.kind !== 'text' || shape.sourceLink?.kind !== 'board' ||
-        shape.sourceLink.role !== 'description' || shape.hidden) return shape
-      changed = true
-      return { ...shape, hidden: true }
-    })
     const rails = this.#document.shapes.filter(
       (shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape)
     )
@@ -3288,6 +3291,13 @@ export class CadleApp extends LiteElement {
           ink: boxes
         }
       })
+      if (insertedBreakerId) {
+        const positions = this.#oneWireController.insertFamily(familyBounds, insertedBreakerId)
+        for (const anchor of railAnchors) {
+          anchorOffsets.set(anchor.id, positions.get(anchor.id)! - anchor.x)
+        }
+        continue
+      }
       const centerX = (rail.start.x + rail.end.x) / 2
       const geometry = this.#oneWireController.packFamilies(familyBounds, centerX)
       // Keep the terminal span centered on its own rail, not on asymmetric annotations or the page.
@@ -5562,6 +5572,71 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
+  async #configureSolarInstallation() {
+    if (this.readOnly || this.#project?.pages[this.#pageKey]?.pageType !== 'onewire') return
+    const pageKey = this.#pageKey
+    const project = this.#project
+    const selected = this.#shapeById(this.#document.selectedId)
+    const equipment = selected?.kind === 'symbol' && selected.electrical?.solar ? selected
+      : selected?.groupId ? this.#document.shapes.find((shape): shape is SymbolShape =>
+        shape.kind === 'symbol' && shape.groupId === selected.groupId && Boolean(shape.electrical?.solar)) : undefined
+    const previous = equipment?.electrical?.solar
+    const groupId = previous ? selected?.groupId : undefined
+    if (groupId && this.#document.shapes.some((shape) => shape.groupId === groupId && shape.locked)) {
+      globalThis.alert('Ontgrendel de PV-installatie voordat je deze bijwerkt.')
+      return
+    }
+    const rails = this.#document.shapes.filter((shape): shape is LineShape =>
+      this.#isKamrailShape(shape) && !shape.hidden && !shape.locked && Math.abs(shape.start.y - shape.end.y) < 0.01)
+    const result = await globalThis.cadleShell.requestSolarInstallation({
+      rails: rails.map((rail, index) => ({ id: rail.id, label: `Kamrail ${index + 1}${rail.bindingId ? ` · ${rail.bindingId}` : ''}` })),
+      railId: selected?.oneWireRailId, installation: previous
+    })
+    if (!result) return
+    if (pageKey !== this.#pageKey || project !== this.#project || this.readOnly) {
+      globalThis.alert('De actieve pagina is gewijzigd. Open de PV-installatie opnieuw op het gewenste blad.')
+      return
+    }
+    const area = this.#safeAreaRect()
+    const occupied = this.#document.shapes.filter((shape) => !groupId || shape.groupId !== groupId)
+    let rail = result.railId ? occupied.find((shape): shape is LineShape =>
+      shape.id === result.railId && this.#isKamrailShape(shape) && !shape.locked) : undefined
+    const newRail = !result.railId
+    if (!rail && !newRail) {
+      globalThis.alert('De gekozen kamrail is niet meer beschikbaar.')
+      return
+    }
+    rail ??= { id: nextShapeId(), kind: 'line', start: { x: area.x + 40, y: area.y + 40 },
+      end: { x: area.x + 280, y: area.y + 40 }, groupId: `onewire-kamrail-${nextShapeId()}`,
+      stroke: ONEWIRE_BRANCH_STROKE, strokeWidth: KAMRAIL_STROKE_WIDTH }
+    const oldFeed = groupId ? this.#document.shapes.find((shape): shape is LineShape =>
+      shape.kind === 'line' && shape.groupId === groupId && Math.abs(shape.start.y - rail.start.y) < 0.01) : undefined
+    const tap = { x: oldFeed?.start.x ?? Math.min(rail.start.x, rail.end.x) + 60, y: rail.start.y }
+    const direction = oldFeed && oldFeed.end.y > oldFeed.start.y ? 'bottom' : 'top'
+    let generated = buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction)
+    let dx = solarInstallationPlacement(generated, occupied, rail, area)
+    if (dx === undefined) {
+      generated = buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction === 'top' ? 'bottom' : 'top')
+      dx = solarInstallationPlacement(generated, occupied, rail, area)
+    }
+    if (dx === undefined) {
+      globalThis.alert('Geen vrije ruimte voor de PV-installatie op dit blad. Gebruik een vrij blad of vergroot het papierformaat. Bestaande kringen zijn niet verplaatst.')
+      return
+    }
+    const added = generated.map((shape) => translateShape(shape, dx, 0))
+    const left = Math.min(rail.start.x, rail.end.x, tap.x + dx - 20)
+    const right = Math.max(rail.start.x, rail.end.x, tap.x + dx + 20)
+    const resized: LineShape = { ...rail, start: { ...rail.start, x: rail.start.x <= rail.end.x ? left : right },
+      end: { ...rail.end, x: rail.start.x <= rail.end.x ? right : left } }
+    this.#document.shapes = [...occupied.map((shape) => shape.id === rail.id ? resized : shape), ...(newRail ? [resized] : []), ...added]
+    this.#activateTool('select')
+    const inverter = added.find((shape) => shape.kind === 'symbol' && shape.name === 'Omvormer')!
+    this.#document.selectedId = inverter.id
+    this.#document.selectedIds = new Set([inverter.id])
+    this.#pushHistory()
+    this.#render()
+  }
+
   #onNativeControlsCommand = (payload: {
     connectionKind?: ConnectionKind
     paper?: PaperPreset
@@ -5632,6 +5707,10 @@ export class CadleApp extends LiteElement {
     }
 
     switch (payload.action) {
+      case 'solar-installation':
+        void this.#configureSolarInstallation().catch((error: unknown) =>
+          globalThis.alert(`PV-installatie toevoegen mislukt: ${error instanceof Error ? error.message : String(error)}`))
+        return
       case 'edit-room-label': {
         const selected = this.#shapeById(this.#document.selectedId)
         if (selected && isRoomLabel(selected)) void this.#labelRoomAt(selected.position)
@@ -6342,6 +6421,7 @@ export class CadleApp extends LiteElement {
           allowEmptyFamily: Boolean(followUpKind) || hideFamilyLabel || familyGroups.length === 0
         })
         if (created) {
+          const createdBreakerId = this.#document.selectedId
           if (followUpKind) {
             const breaker = this.#shapeById(this.#document.selectedId)
             if (breaker?.kind === 'symbol') {
@@ -6351,6 +6431,7 @@ export class CadleApp extends LiteElement {
           }
           if (this.#project?.circuitSpecifications?.[family]) this.#updateOneWireCircuitPresentation(family, false, false)
           this.#document.shapes = presentConnectionLabels(this.#document.shapes)
+          if (createdBreakerId) this.#compactExistingOneWireRail(true, clickedKamrail.id, createdBreakerId)
           this.#resizeOneWireRailsToBreakers(clickedKamrail.id)
           this.#pushHistory()
           this.#render()

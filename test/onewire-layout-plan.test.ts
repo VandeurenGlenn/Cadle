@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   appendOneWireFamilyOffset,
+  insertOneWireFamilyBounds,
   normalizeOneWireFamilyKey,
   oneWireDestinationSheetLabels,
   oneWireRailYForRows,
@@ -9,6 +10,34 @@ import {
   packOneWireFamilyBounds,
   planOneWireLayout
 } from '../src/editor/layout/onewire-layout-plan.ts'
+
+test('inserts N between M and O without moving earlier circuits or closing saved gaps', () => {
+  const family = (name: string, x: number) => ({ family: name, anchorX: x, minX: x - 20, maxX: x + 80 })
+  const families = [family('M', 100), family('N', 1000), family('O', 250), family('P', 600)]
+  const original = structuredClone(families)
+  const positions = insertOneWireFamilyBounds(families, 'N')
+  assert.deepEqual([...positions], [['M', 100], ['N', 210], ['O', 320], ['P', 600]])
+  assert.deepEqual(families, original)
+  assert.deepEqual([...insertOneWireFamilyBounds([family('M', 100), family('N', 1000), family('O', 600)], 'N')],
+    [['M', 100], ['N', 210], ['O', 600]])
+  assert.deepEqual([...insertOneWireFamilyBounds([family('L', 1000), family('M', 100)], 'L')],
+    [['L', 100], ['M', 210]])
+  assert.deepEqual([...insertOneWireFamilyBounds([family('M', 100), family('N', 250)], 'N')],
+    [['M', 100], ['N', 250]])
+})
+
+test('makes room for an inserted circuit using overlapping ink, without reordering or moving the prefix', () => {
+  const family = (name: string, x: number, width: number) => ({
+    family: name, anchorX: x, minX: x - 20, maxX: x + width,
+    ink: [{ x: x - 20, y: 0, width: width + 20, height: 80 }]
+  })
+  const families = [family('M', 100, 50), family('N', 1000, 180), family('O', 250, 40), family('P', 350, 40)]
+  const positions = insertOneWireFamilyBounds(families, 'N')
+  assert.equal(positions.get('M'), 100)
+  assert.equal(positions.get('N'), 186)
+  assert.equal(positions.get('O'), 402)
+  assert.ok(positions.get('P')! > positions.get('O')!)
+})
 
 test('keeps a single-breaker rail readable and preserves the existing length when requested', () => {
   assert.deepEqual(oneWireRailSpanForAnchors([500]), { startX: 380, endX: 620 })

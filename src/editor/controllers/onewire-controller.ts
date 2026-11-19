@@ -3,6 +3,7 @@ import type { ElectricalProjectProfile, ProjectCircuitSpecification } from '../.
 import { analyzeCircuits } from '../circuit-analysis.js'
 import {
   appendOneWireFamilyOffset,
+  insertOneWireFamilyBounds,
   normalizeOneWireFamilyKey,
   oneWireDestinationSheetLabels,
   oneWireRailSpanForAnchors,
@@ -36,6 +37,10 @@ export class OneWireController {
 
   packFamilies(families: readonly OneWireFamilyBounds[], centerX: number) {
     return packOneWireFamilyBounds(families, centerX)
+  }
+
+  insertFamily(families: readonly OneWireFamilyBounds[], insertedFamily: string) {
+    return insertOneWireFamilyBounds(families, insertedFamily)
   }
 
   appendFamilyOffset(newFamilyMinX: number, occupiedMaxX: number) {

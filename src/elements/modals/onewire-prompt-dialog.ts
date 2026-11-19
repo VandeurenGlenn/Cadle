@@ -133,6 +133,8 @@ export class OneWirePromptDialog extends LiteElement {
     const parsed = value.trim() ? parseOneWirePrompt(value) : null
     const interpreted = this.interpretedPlan ?? parsed?.plan ?? null
     const warnings = this.interpretedPlan ? this.interpretationWarnings : (parsed?.warnings ?? [])
+    const missingSavedDifferentials = this.modelStatus === 'Opgeslagen structuur' &&
+      Boolean(parsed?.plan.additionalDifferentials?.length) && !interpreted?.additionalDifferentials?.length
     return html`
       <section
         class="panel"
@@ -172,6 +174,10 @@ export class OneWirePromptDialog extends LiteElement {
           </label>
           <section class="preview">
             <span class="eyebrow">Cadle begrijpt dit als · ${this.modelStatus}</span>
+            ${missingSavedDifferentials ? html`
+              <p role="status">De opgeslagen structuur mist de bijkomende differentieel uit je beschrijving.
+                Kies hieronder <strong>Beschrijving opnieuw analyseren</strong> om de structuur bij te werken.</p>
+            ` : ''}
             <pre>${interpreted ? oneWirePromptTree(interpreted).join('\n') : 'Beschrijf eerst de installatie.'}</pre>
             <custom-button
               type="text"

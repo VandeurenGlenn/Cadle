@@ -1918,6 +1918,7 @@ export class AppShell extends LiteElement {
               ? html`<home-field data-route="home"></home-field>`
               : html`<projects-field data-route="projects"></projects-field>`
     return html`
+      ${iconSetTemplate}
       ${this.#appNotices()}
       <page-operation-dialog @page-operation-submit=${this.#onPageOperationSubmit}></page-operation-dialog>
       <input-form-dialog></input-form-dialog>

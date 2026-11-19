@@ -13,6 +13,10 @@ test('first load without an open project shows Projects instead of an empty edit
   await expect(page).toHaveURL(/#!\/projects$/)
   await expect(page.locator('projects-field .header h1')).toBeVisible()
   await expect(page.locator('projects-field')).toContainText('Projects')
+  await expect(page.locator('projects-field custom-icon-button[icon="more_vert"] svg').first()).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new Event('cadle-google-drive-auth-required')))
+  await expect(page.locator('.drive-auth-notice custom-icon[icon="cloud_off"] svg')).toBeVisible()
+  await page.getByRole('button', { name: 'Melding sluiten', exact: true }).click()
   await expect.poll(() => page.evaluate(() => customElements.get('cadle-app') === undefined)).toBe(true)
   const startupResources = await page.evaluate(() =>
     performance.getEntriesByType('resource').map((entry) => entry.name)

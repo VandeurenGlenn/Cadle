@@ -15,6 +15,7 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   lists or hidden shapes, so Lite retains keyed rendering rather than falling back to plain value mapping.
 - `src/shell/app-shell.ts` — application shell composition root and project/page orchestration.
   Only the active application route is mounted; the editor does not instantiate hidden settings/project-list routes.
+  Both lightweight routes and the editor mount the shared icon registry so project actions and app notices render icons.
   Linked-page context is derived once per shell render. Visited sidebar views remain mounted and hidden rather than
   re-created when switching tabs, preserving search, scroll and category state without repeating initialization.
 - `src/sw.ts` — network-first SVG/OCR asset caching with offline fallback. A deterministic app-bundle fingerprint

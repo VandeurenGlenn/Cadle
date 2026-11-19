@@ -112,6 +112,8 @@ test('notifies other open tabs and stacks update and Drive notices on mobile', a
   expect(await other.evaluate(() => performance.timeOrigin)).toBe(otherTimeOrigin)
   await page.evaluate(() => window.dispatchEvent(new Event('cadle-google-drive-auth-required')))
   await expect(page.locator('.app-notice')).toHaveCount(2)
+  await expect(page.locator('.update-notice custom-icon svg')).toBeVisible()
+  await expect(page.locator('.drive-auth-notice custom-icon svg')).toBeVisible()
   const boxes = await page.locator('.app-notice').evaluateAll((notices) =>
     notices.map((notice) => {
       const { left, right, top, bottom } = notice.getBoundingClientRect()

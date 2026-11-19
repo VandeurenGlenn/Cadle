@@ -134,7 +134,7 @@ import {
 import { centerOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
 import { buildSolarInstallation, solarInstallationPlacement } from './layout/solar-installation-layout.js'
-import { spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
+import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { paperTextScale } from './layout/page-layout.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -1466,6 +1466,13 @@ export class CadleApp extends LiteElement {
       const fitted = fitShapesToContentArea(this.#document.shapes, this.#safeAreaRect())
       this.#document.shapes = fitted.shapes
       this.#documentSizeMigrated = true
+    }
+    if (migrateLayout && pageType === 'onewire') {
+      const incomingCable = placeOneWireIncomingCable(this.#document.shapes)
+      if (incomingCable.changed) {
+        this.#document.shapes = incomingCable.shapes
+        this.#documentSizeMigrated = true
+      }
     }
     return migrationComplete
   }

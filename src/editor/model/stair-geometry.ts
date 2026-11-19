@@ -6,6 +6,9 @@ export const isStairVariant = (value: unknown): value is StairVariant =>
 
 type Bounds = { x: number; y: number; width: number; height: number }
 
+export const doubleQuarterTurnFlightWidth = (width: number, height: number): number =>
+  Math.min((width - Math.min(8, width * 0.04)) / 2, height * 0.8)
+
 export const stairGeometry = (bounds: Bounds, variant: Exclude<StairVariant, 'stairs-route'>) => {
   const { x, y } = bounds
   const width = Math.max(1, bounds.width), height = Math.max(1, bounds.height)
@@ -32,9 +35,10 @@ export const stairGeometry = (bounds: Bounds, variant: Exclude<StairVariant, 'st
   }
 
   if (variant === 'stairs-double-quarter-turn') {
-    const flight = Math.min(width / 3, height * 0.4)
+    const flight = doubleQuarterTurnFlightWidth(width, height)
     const leftInner = x + flight, rightInner = right - flight, innerY = y + flight
-    const sideCount = treadCount(height - flight), topCount = treadCount(width - 2 * flight)
+    const sideCount = treadCount(height - flight)
+    const topCount = Math.max(1, Math.min(80, Math.round((width - 2 * flight) / 20)))
     for (let i = 1; i < sideCount; i++) {
       const ty = innerY + (height - flight) * i / sideCount
       treads.push(`M ${x} ${ty} L ${leftInner} ${ty} M ${rightInner} ${ty} L ${right} ${ty}`)

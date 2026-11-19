@@ -5,6 +5,7 @@ import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WI
 import { paperTextScale } from './page-layout.js'
 import { protectionDescriptionLayout } from './protection-label-layout.js'
 import { setProtectionDescription } from './protection-descriptions.js'
+import { placeOneWireIncomingCable } from './onewire-topology-annotations.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabel, rcdTypeFromLabel, rcdTypeLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 
@@ -96,7 +97,7 @@ export const buildOneWireTopology = (
         end: { x: x2, y: y2 },
         stroke: '#000000',
         strokeWidth,
-        ...(role !== 'secondary-busbar' ? { connection: role === 'incoming' && plan.incomingCable
+        ...(role !== 'secondary-busbar' ? { connection: role === 'grid-incoming' && plan.incomingCable
           ? { kind: 'cable' as const, ...plan.incomingCable, labelOwner: 'topology' as const, showLabel: true }
           : { kind: 'wire' as const, showLabel: false } } : {}),
         ...(energyFlow ? { energyFlow } : {}),
@@ -218,12 +219,8 @@ export const buildOneWireTopology = (
   )
   const mainBottom = terminalPoint(mainDifferential, 'bottom')
   const mainTitleY = protectionDescriptionLayout(mainDifferential)!.y
-  const cableSpaceTopY = mainTitleY + (plan.mainDifferential ? 36 : 0)
-  const lastCaptionY = plan.incomingCable ? cableSpaceTopY : plan.mainDifferential ? mainTitleY : mainBottom.y
-  // Preserve the space between devices; place the cable caption 3 mm above
-  // the meter instead of directly beneath the differential's description.
+  const lastCaptionY = plan.mainDifferential ? mainTitleY : mainBottom.y
   const meterTop = { x: mainTap.x, y: Math.max(mainBottom.y + 40, lastCaptionY + 48) }
-  const incomingCableY = meterTop.y - 24
   const meter = symbolAtTerminal('meter', 'kWh meter', KWH_PATH, KWH_SCALE, 'top', meterTop)
   const meterBottom = terminalPoint(meter, 'bottom')
   const mainSwitchTop = { x: meterBottom.x, y: meterBottom.y + 34 }
@@ -296,7 +293,7 @@ export const buildOneWireTopology = (
       cableLabelText(plan.incomingCable, 'x'),
       // Leave 3 mm from the conductor, including its diagonal cable marker.
       mainTap.x + 24,
-      incomingCableY
+      mainSwitchBottom.y + 40
     )
     shapes.push(cableLabel)
   }
@@ -571,5 +568,5 @@ export const buildOneWireTopology = (
     shapes.push(panels)
   }
 
-  return shapes
+  return placeOneWireIncomingCable(shapes).shapes
 }

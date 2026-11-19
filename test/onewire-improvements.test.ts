@@ -6,7 +6,7 @@ import { connectedOneWireBranchOwners, followConnectedConductors } from '../src/
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
-import { spaceOneWireTopologyAnnotations } from '../src/editor/layout/onewire-topology-annotations.ts'
+import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from '../src/editor/layout/onewire-topology-annotations.ts'
 import { centerOneWireContent } from '../src/editor/layout/page-scaling.ts'
 import { pageLayout } from '../src/editor/layout/page-layout.ts'
 import { presentConnectionLabels } from '../src/editor/layout/connection-label-presentation.ts'
@@ -213,7 +213,7 @@ test('rotating and mirroring a device keep wires on its source contacts', () => 
   }
 })
 
-test('wrapped cable and device names reserve space above the meter and survive serialization', () => {
+test('wrapped names keep the incoming cable before the main breaker and survive serialization', () => {
   let id = 0
   const initial = buildOneWireTopology({ version: 1, consumers: true, solar: false, residualBreaker: false,
     additionalDifferentials: [{ count: 1, purpose: 'consumers', sensitivityMa: 30 }],
@@ -221,7 +221,9 @@ test('wrapped cable and device names reserve space above the meter and survive s
   { start: { x: 100, y: 600 }, end: { x: 900, y: 600 } }, () => `${++id}`)
   const device = initial.find((shape) => shape.sourceLink?.role === 'main-differential') as SymbolShape
   device.symbolTextOverrides!.description = 'Algemene differentieel voor de volledige woning en garage'
-  const incoming = initial.find((shape) => shape.sourceLink?.role === 'incoming') as LineShape
+  const mainSwitch = initial.find((shape) => shape.sourceLink?.role === 'main-switch') as SymbolShape
+  mainSwitch.symbolTextOverrides!.description = 'Hoofdautomaat voor de volledige elektrische installatie'
+  const incoming = initial.find((shape) => shape.sourceLink?.role === 'grid-incoming') as LineShape
   incoming.connection!.name = 'Voeding woning & garage met afzonderlijke kabel naar verdeelbord'
   const branch = initial.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role.startsWith('additional-differential-')) as SymbolShape
   branch.symbolTextOverrides!.description = 'Beveiliging van alle stopcontacten in de garage en de keuken'
@@ -237,7 +239,13 @@ test('wrapped cable and device names reserve space above the meter and survive s
   const lastName = name.y + (name.lines.length - 1) * name.lineHeight
   assert.ok(oneWireLayoutBounds(caption).y > lastName)
   const meterTop = meter.position.y + oneWireSymbolTerminalInfo(meter.path, meter.scale)!.top!.y
-  close(meterTop - (oneWireLayoutBounds(caption).y + oneWireLayoutBounds(caption).height), 20)
+  close(meterTop, Math.max(device.position.y + oneWireSymbolTerminalInfo(device.path, device.scale)!.bottom!.y + 40, lastName + 48))
+  const movedSwitch = spaced.find((shape) => shape.id === mainSwitch.id) as SymbolShape
+  const switchName = protectionDescriptionLayout(movedSwitch)!
+  assert.ok(oneWireLayoutBounds(caption).y > switchName.y + (switchName.lines.length - 1) * switchName.lineHeight)
+  const cable = spaced.find((shape) => shape.id === incoming.id) as LineShape
+  close(cable.end.y - (oneWireLayoutBounds(caption).y + oneWireLayoutBounds(caption).height), 20)
+  assert.deepEqual(cable.start, oneWireSymbolConnectionAnchors(movedSwitch).find((anchor) => anchor.side === 'bottom')!.point)
   assert.ok(protectionPhaseLabelLayout(device)!.y >= lastName + 28)
   const movedBranch = spaced.find((shape) => shape.id === branch.id) as SymbolShape
   const feed = spaced.find((shape) => shape.sourceLink?.role === `${branch.sourceLink!.role}-to-rail`) as LineShape
@@ -255,4 +263,63 @@ test('wrapped cable and device names reserve space above the meter and survive s
   close((minY + maxY) / 2, area.y + area.height / 2)
   assert.equal((centered.shapes.find((shape) => shape.id === device.id) as SymbolShape).scale, device.scale)
   assert.equal(centerOneWireContent(centered.shapes, area).changed, false)
+})
+
+test('repairs legacy EXVB ownership before the main breaker without moving devices or losing cable edits', () => {
+  for (const hidden of [false, true]) {
+    let id = 0
+    const plan = { version: 1 as const, consumers: true, solar: false, residualBreaker: false,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
+      incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' } }
+    const rail = { start: { x: 100, y: 600 }, end: { x: 900, y: 600 } }
+    const legacy = buildOneWireTopology(plan, rail, () => `${++id}`)
+    const grid = legacy.find((shape) => shape.sourceLink?.role === 'grid-incoming') as LineShape
+    const oldIncoming = legacy.find((shape) => shape.sourceLink?.role === 'incoming') as LineShape
+    oldIncoming.connection = { ...grid.connection!, name: 'Eigen netvoeding EXVB', showLabel: !hidden, offsetMm: 7 }
+    grid.connection = { kind: 'wire', showLabel: false }
+    grid.end.y = grid.start.y + 36
+    const caption = legacy.find((shape) => shape.sourceLink?.role === 'incoming-cable-label') as TextShape
+    caption.position.y = oldIncoming.start.y - 24
+    caption.hidden = hidden
+    const before = structuredClone(legacy)
+    const repaired = placeOneWireIncomingCable(legacy)
+    assert.equal(repaired.changed, true)
+    assert.deepEqual(legacy, before)
+    assert.deepEqual(repaired.shapes.map((shape) => shape.id), legacy.map((shape) => shape.id))
+    for (const device of legacy.filter((shape) => shape.kind === 'symbol')) {
+      assert.equal(repaired.shapes.find((shape) => shape.id === device.id), device)
+    }
+    const cable = repaired.shapes.find((shape) => shape.id === grid.id) as LineShape
+    assert.deepEqual(cable.connection, oldIncoming.connection)
+    assert.deepEqual(cable.start, grid.start)
+    assert.equal(cable.energyFlow, grid.energyFlow)
+    assert.deepEqual((repaired.shapes.find((shape) => shape.id === oldIncoming.id) as LineShape).connection,
+      { kind: 'wire', showLabel: false })
+    const label = repaired.shapes.find((shape) => shape.id === caption.id) as TextShape
+    assert.ok(label.position.y > grid.start.y)
+    assert.equal(label.hidden, hidden)
+    assert.equal(placeOneWireIncomingCable(repaired.shapes).changed, false)
+    assert.deepEqual(placeOneWireIncomingCable(sanitizeShapes(repaired.shapes)).shapes, sanitizeShapes(repaired.shapes))
+
+    const fresh = buildOneWireTopology({ ...plan, incomingCable: { ...plan.incomingCable, sectionMm2: 16 } },
+      rail, () => `${++id}`)
+    const regenerated = placeOneWireIncomingCable(reconcileGeneratedOneWire(legacy, fresh).shapes).shapes
+    const regeneratedCable = regenerated.find((shape) => shape.id === grid.id) as LineShape
+    assert.equal(regeneratedCable.connection?.sectionMm2, 16)
+    assert.equal(regeneratedCable.connection?.kind, 'cable')
+    assert.equal(regeneratedCable.connection?.name, oldIncoming.connection.name)
+    assert.equal(regeneratedCable.connection?.showLabel, !hidden)
+    assert.equal(regeneratedCable.connection?.offsetMm, 7)
+  }
+})
+
+test('leaves supply conductors without an incoming cable configuration unchanged', () => {
+  let id = 0
+  const shapes = buildOneWireTopology({ version: 1, consumers: true, solar: false, residualBreaker: false },
+    { start: { x: 100, y: 600 }, end: { x: 900, y: 600 } }, () => `${++id}`)
+  const grid = shapes.find((shape) => shape.sourceLink?.role === 'grid-incoming') as LineShape
+  grid.end.y += 150
+  const repaired = placeOneWireIncomingCable(shapes)
+  assert.equal(repaired.changed, false)
+  assert.deepEqual(repaired.shapes, shapes)
 })

@@ -60,6 +60,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   example for a new installation, or saved text/settings for an existing one. Closing discards draft changes;
   applying requires the main differential's A/mA ratings, saves the confirmed topology, and then generates the
   supply sheet. Reopening retains accepted JSON corrections until the description is changed.
+  The incoming EXVB cable and its caption belong to the grid feeder before the main breaker, not the
+  meter-to-main-differential link. Loading an older supply drawing moves the cable metadata and caption
+  without moving its devices or changing their identities; wrapped captions extend only the incoming feeder.
   Recovery creation drains pending editor writes and adopts the shell's current project metadata before capturing
   the active drawing, so settings just saved by the shell cannot be overwritten by the editor's older project copy.
 - `src/editor/cable-estimate.ts` estimates cable route metres per circuit, board and cable designation for the circuit overview.
@@ -108,7 +111,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   `stairs-spiral`, `stairs-route`), not fixed-size
   catalog placements. For preset stairs, dragging defines width and length with a live preview; Shift constrains the footprint
   to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
-  editor and SVG export. Double-quarter-turn stairs have three flights, two winding corners and an open centre.
+  editor and SVG export. Double-quarter-turn stairs have three flights, two winding corners and a narrow open centre
+  (at most 1 mm on paper when the footprint allows it), without squeezing extra treads between adjacent corners.
   Existing catalog stair symbols remain supported.
   The "Traptraject tekenen" tool accepts successive orthogonal centreline clicks, starting at the lowest tread.
   Stair width is set in centimetres while drawing; Enter, double-click or "Trap bewaren" commits the complete route,

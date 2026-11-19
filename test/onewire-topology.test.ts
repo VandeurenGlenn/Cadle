@@ -125,12 +125,22 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.equal(mainDevice.symbolTextOverrides?.description, 'Hoofddiff.')
   assert.equal(mainTitle.x, mainAxis + 10)
   assert.equal(incomingCable.position.x, mainAxis + 24)
-  assert.equal(incomingCable.position.y - mainTitle.y, 60)
+  const gridBreaker = shapes.find((shape) => shape.sourceLink?.role === 'main-switch')!
+  const gridFeeder = shapes.find((shape) => shape.sourceLink?.role === 'grid-incoming')!
+  const meterFeed = shapes.find((shape) => shape.sourceLink?.role === 'incoming')!
+  assert.ok(gridBreaker.kind === 'symbol' && gridFeeder.kind === 'line' && meterFeed.kind === 'line')
+  assert.equal(gridFeeder.connection?.kind, 'cable')
+  assert.equal(gridFeeder.connection?.cableType, 'EXVB')
+  assert.equal(gridFeeder.connection?.labelOwner, 'topology')
+  assert.deepEqual(meterFeed.connection, { kind: 'wire', showLabel: false })
+  assert.ok(incomingCable.position.y > gridFeeder.start.y)
+  assert.equal(gridFeeder.end.y - incomingCable.position.y, 24)
+  assert.equal(incomingCable.position.y,
+    Math.max(gridFeeder.start.y + 40, protectionDescriptionLayout(gridBreaker)!.y + 60))
   assert.equal(incomingCable.rotation ?? 0, 0)
   assert.equal(incomingCable.fontWeight, 400)
   const meterTopY = meter.position.y + oneWireSymbolTerminalInfo(meter.path, meter.scale)!.top!.y
-  assert.equal(meterTopY - incomingCable.position.y, 24)
-  assert.equal(meterTopY, Math.max(mainDevice.position.y + mainTerminals.bottom!.y + 40, mainTitle.y + 84))
+  assert.equal(meterTopY, Math.max(mainDevice.position.y + mainTerminals.bottom!.y + 40, mainTitle.y + 48))
   const solarMeter = shapes.find((shape) => shape.sourceLink?.role === 'solar-meter')
   assert.ok(solarMeter?.kind === 'symbol')
   assert.equal(solarMeter.scale * 24 / 8, 8)

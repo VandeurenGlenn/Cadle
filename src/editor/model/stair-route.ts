@@ -1,5 +1,5 @@
 import type { LineShape, Point, RectShape, Shape, StairRoute } from './types.js'
-import { stairGeometry } from './stair-geometry.js'
+import { doubleQuarterTurnFlightWidth, stairGeometry } from './stair-geometry.js'
 
 const EPS = 1e-6
 const add = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y })
@@ -97,7 +97,7 @@ export const createStairRoute = (id: string, input: readonly Point[], width: num
 export const stairRoutePoints = (shape: RectShape): Point[] => {
   const { x, y, width: w, height: h } = boundsFor(shape)
   if (shape.stairRoute) return shape.stairRoute.points.map((p) => ({ x: x + p.x * w, y: y + p.y * h }))
-  const flight = shape.variant === 'stairs-double-quarter-turn' ? Math.min(w / 3, h * 0.4) : Math.min(w, h) * 0.4
+  const flight = shape.variant === 'stairs-double-quarter-turn' ? doubleQuarterTurnFlightWidth(w, h) : Math.min(w, h) * 0.4
   if (shape.variant === 'stairs-quarter-turn') return [
     { x: x + flight / 2, y: y + h }, { x: x + flight / 2, y: y + flight / 2 }, { x: x + w, y: y + flight / 2 }
   ]
@@ -112,7 +112,7 @@ export const stairRouteWidth = (shape: RectShape): number => {
   const { width: w, height: h } = boundsFor(shape)
   if (shape.stairRoute) return shape.stairRoute.width * Math.min(w, h)
   if (shape.variant === 'stairs-straight') return w
-  return shape.variant === 'stairs-double-quarter-turn' ? Math.min(w / 3, h * 0.4) : Math.min(w, h) * 0.4
+  return shape.variant === 'stairs-double-quarter-turn' ? doubleQuarterTurnFlightWidth(w, h) : Math.min(w, h) * 0.4
 }
 
 const localPoint = (p: Point, shape: RectShape): Point => {

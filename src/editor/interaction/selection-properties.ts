@@ -10,6 +10,7 @@ import { heatingManifoldSize, sanitizeHeating, type HeatingData } from '../heati
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import { logicalDeviceKey, orderBindingPoints } from '../auto-bindings.js'
 import { shapeAnchorPoint } from '../room-regions.js'
+import { isStairVariant } from '../model/stair-geometry.js'
 import {
   breakerCurrentLabel,
   inferCircuitType,
@@ -26,6 +27,7 @@ const phaseLabel = phaseConfigurationLabel
 export type SelectionPropertyUpdate = {
   rectVariant?: RoofVariant
   roofPattern?: RoofPattern
+  stairClipAtWalls?: boolean
   heating?: Partial<HeatingData>
   connection?: Partial<ElectricalConnection> | null
   text?: string
@@ -259,6 +261,9 @@ const applyProperties = (
     (payload.rectVariant === 'roof-left' || payload.rectVariant === 'roof-straight' || payload.rectVariant === 'roof-right')
   ) {
     updated.variant = payload.rectVariant
+  }
+  if (updated.kind === 'rect' && isStairVariant(updated.variant) && typeof payload.stairClipAtWalls === 'boolean') {
+    updated.stairClipAtWalls = payload.stairClipAtWalls
   }
   if (
     updated.kind === 'rect' &&

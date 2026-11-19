@@ -18,7 +18,8 @@ import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from '../roof-geometry.js'
-import { isStairVariant, stairGeometry } from '../model/stair-geometry.js'
+import { isStairVariant } from '../model/stair-geometry.js'
+import { stairShapeGeometry } from '../model/stair-route.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -180,7 +181,8 @@ export const shapeMarkup = (
   extraClass = '',
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
   monochrome = false,
-  heatingObstacles: HeatingObstacle[] = []
+  heatingObstacles: HeatingObstacle[] = [],
+  scene: readonly Shape[] = []
 ): string => {
   if (shape.hidden) return ''
   if (shape.kind === 'rect' && shape.heating) return heatingMarkup(shape, selected, monochrome, heatingObstacles)
@@ -292,7 +294,7 @@ export const shapeMarkup = (
       const strokeWidthStyle =
         typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
       if (isStairVariant(shape.variant)) {
-        const geometry = stairGeometry(bounds, shape.variant)
+        const geometry = stairShapeGeometry(shape, scene)
         return `
           <g class="shape shape-rect shape-stairs ${extraClass}" data-shape-id="${shape.id}" data-stair-variant="${shape.variant}"
             data-selected="${selectedAttr}" ${rectTransform(shape, bounds)}
@@ -300,6 +302,7 @@ export const shapeMarkup = (
             <path class="stairs-outline" d="${geometry.outline}"${fillAttr}></path>
             <path class="stairs-treads" d="${geometry.treads}"></path>
             <path class="stairs-arrow" d="${geometry.arrow}"></path>
+            ${geometry.breakLine ? `<path class="stairs-break" d="${geometry.breakLine}"></path>` : ''}
           </g>
         `
       }
@@ -583,9 +586,9 @@ export const buildSvgDocument = (options: {
     return entries
       .map((entry) =>
         entry.type === 'single'
-          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles)
+          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes)
           : `<g class="shape-group" data-group-id="${entry.groupId}">${entry.shapes
-              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles))
+              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes))
               .join('')}</g>`
       )
       .join('')

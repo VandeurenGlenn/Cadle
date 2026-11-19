@@ -62,6 +62,8 @@ export class ObjectPane extends LiteElement {
   @property({ type: String, attribute: false })
   private accessor _nativeRoofPattern: 'none' | 'tiles' | 'slates' | 'standing-seam' = 'none'
 
+  @property({ attribute: false }) private accessor _nativeStairClipAtWalls: boolean | null = null
+
   @property({ type: String, attribute: false })
   private accessor _nativeBindingId = ''
 
@@ -228,6 +230,7 @@ export class ObjectPane extends LiteElement {
     this._nativeConnection = shape.connection
     this._nativeSelectedId = shape.id
     this._nativeSelectedKind = shape.kind
+    this._nativeStairClipAtWalls = shape.stairClipAtWalls
     this._nativeRectVariant = shape.rectVariant ?? ''
     this._nativeRoofPattern =
       shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam'
@@ -1011,6 +1014,18 @@ export class ObjectPane extends LiteElement {
       <section>
         ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple ? this.#heatingProperties() : ''}
+        ${!multiple && this._nativeStairClipAtWalls !== null ? this.#propertySection('stairs', 'Trapweergave', html`
+          <label><span class="native-label">Zichtbaarheid</span>
+            <select class="native-select" data-stair-visibility .value=${this._nativeStairClipAtWalls ? 'floor' : 'full'}
+              @change=${(event: Event) => pubsub.publish('editor.object.update', {
+                stairClipAtWalls: (event.target as HTMLSelectElement).value === 'floor'
+              })}>
+              <option value="floor">Stoppen bij de eerste muur · gelijkvloers</option>
+              <option value="full">Volledige trap tonen</option>
+            </select>
+          </label>
+          <p class="dimension-hint">Het traject loopt vanaf de onderste trede. Het deel na een gekruiste muur blijft bewaard, maar is niet zichtbaar op dit plan.</p>
+        `, true) : ''}
         ${!multiple && this._nativeRectVariant ? this.#propertySection('roof', 'Dakvlak', html`
           <label><span class="native-label">Dakvorm</span>
             <select class="native-select" data-roof-direction .value=${this._nativeRectVariant}

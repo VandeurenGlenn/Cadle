@@ -28,6 +28,7 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-sliding-door', icon: 'door_sliding', title: 'Draw sliding door' },
   { action: 'draw-sliding-window', icon: 'window', title: 'Draw sliding window' },
   { action: 'draw-built-in-cabinet', icon: 'shelves', title: 'Draw built-in cabinet', hint: 'Drag to draw the cabinet footprint.' },
+  { action: 'draw-stairs-route', icon: 'stairs', title: 'Traptraject tekenen', hint: 'Klik vanaf de onderste trede de lijnstukken en bochten. Cadle tekent de treden en stopt bij een gekruiste muur. Enter of dubbelklik om te bewaren.', nativeOnly: true },
   { action: 'draw-stairs', icon: 'stairs', title: 'Rechte trap tekenen', hint: 'Sleep om de breedte en lengte te bepalen. Het voorbeeld volgt de muis.', nativeOnly: true },
   { action: 'draw-stairs-quarter-turn', icon: 'stairs', title: 'Kwartdraaitrap tekenen', hint: 'Sleep om de afmetingen te bepalen. Spiegel of roteer de trap via Object properties.', nativeOnly: true },
   { action: 'draw-stairs-double-quarter-turn', icon: 'stairs', title: 'Trap met 2 kwartslagen tekenen', hint: 'Sleep een U-vormige trap met twee kwartslagen. Spiegel of roteer de trap via Object properties.', nativeOnly: true },

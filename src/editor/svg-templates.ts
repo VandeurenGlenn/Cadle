@@ -25,7 +25,8 @@ import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../pre
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
-import { isStairVariant, stairGeometry } from './model/stair-geometry.js'
+import { isStairVariant } from './model/stair-geometry.js'
+import { stairShapeGeometry } from './model/stair-route.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -88,7 +89,8 @@ export const shapeTemplate = (
   selected: boolean,
   extraClass = '',
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
-  heatingObstacles: HeatingObstacle[] = []
+  heatingObstacles: HeatingObstacle[] = [],
+  scene: readonly Shape[] = []
 ) => {
   if (shape.hidden) return nothing
   if (shape.kind === 'rect' && shape.heating) return unsafeSVG(heatingMarkup(shape, selected, false, heatingObstacles))
@@ -248,7 +250,7 @@ export const shapeTemplate = (
       const fill = shape.fill ?? 'transparent'
       const stroke = shape.stroke ?? '#000000'
       if (isStairVariant(shape.variant)) {
-        const geometry = stairGeometry(bounds, shape.variant)
+        const geometry = stairShapeGeometry(shape, scene)
         const transform = rectTransform(shape, bounds)
         return svg`
           <g class=${`${shapeClass} shape-stairs`} data-shape-id=${shape.id} data-stair-variant=${shape.variant}
@@ -257,6 +259,7 @@ export const shapeTemplate = (
             <path class="stairs-outline" d=${geometry.outline} fill=${fill}></path>
             <path class="stairs-treads" d=${geometry.treads}></path>
             <path class="stairs-arrow" d=${geometry.arrow}></path>
+            ${geometry.breakLine ? svg`<path class="stairs-break" d=${geometry.breakLine}></path>` : nothing}
           </g>
         `
       }

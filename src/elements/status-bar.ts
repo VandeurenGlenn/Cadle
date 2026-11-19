@@ -24,6 +24,7 @@ const TOOL_LABELS: Record<string, string> = {
   'draw-sliding-window': 'Draw sliding window',
   'draw-built-in-cabinet': 'Draw built-in cabinet',
   'draw-stairs': 'Rechte trap tekenen',
+  'draw-stairs-route': 'Traptraject tekenen',
   'draw-stairs-quarter-turn': 'Kwartdraaitrap tekenen',
   'draw-stairs-double-quarter-turn': 'Trap met 2 kwartslagen tekenen',
   'draw-stairs-spiral': 'Wenteltrap tekenen',

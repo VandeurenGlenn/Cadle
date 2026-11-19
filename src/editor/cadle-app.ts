@@ -3,6 +3,7 @@ import { PAPER_WORLD_UNITS_PER_MM } from './constants.js'
 import { DEFAULT_DRAWING_SCALE, isDrawingScale, drawingUnitsForMetres, rescaleGroundPlan, scaleGroundPlanGeometry, type DrawingScale } from './layout/drawing-scale.js'
 import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize, heatingMarkup, heatingScheduleCSV, heatingRoomScope, presentHeatingTables, type HeatingData } from './heating-plan.js'
 import { heatingObstacleBounds } from './heating-openings.js'
+import { cleanStairRoute, createStairRoute, snapStairRoutePoint, stairRouteError } from './model/stair-route.js'
 import { heatingMaterialsCSV } from './heating-materials.js'
 import { readHeatingPipeProfiles, applyHeatingPipeProfile } from './heating-products.js'
 import { HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
@@ -288,6 +289,10 @@ export class CadleApp extends LiteElement {
   #heatingPipePoints: Point[] = []
   #heatingPipeReplacement: RectShape | null = null
   #heatingPipeHover: Point | null = null
+  #stairRoutePoints: Point[] = []
+  #stairRouteHover: Point | null = null
+  #stairWidthCm = 90
+  #stairRouteError: string | null = null
   #automaticHeatingSettings: AutomaticHeatingSettings | null = null
   #roomLabelError: string | null = null
   #roomLabelBusy = false
@@ -1481,6 +1486,9 @@ export class CadleApp extends LiteElement {
     this.#heatingPipePoints = []
     this.#heatingPipeReplacement = null
     this.#heatingPipeHover = null
+    this.#stairRoutePoints = []
+    this.#stairRouteHover = null
+    this.#stairRouteError = null
     this.#document.shapes = []
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
@@ -1931,6 +1939,11 @@ export class CadleApp extends LiteElement {
 
   #activateTool(tool: Tool) {
     this.#roomLabelError = null
+    if (tool !== 'stairs-route') {
+      this.#stairRoutePoints = []
+      this.#stairRouteHover = null
+      this.#stairRouteError = null
+    }
     if (tool !== 'heating-manifold') {
       this.#cancelHeatingCalculation()
       this.#automaticHeatingSettings = null
@@ -2327,6 +2340,11 @@ export class CadleApp extends LiteElement {
   }
 
   #onStageDoubleClick = async (event: MouseEvent) => {
+    if (this.#tools.current === 'stairs-route') {
+      event.preventDefault()
+      this.#commitStairRoute()
+      return
+    }
     if (this.#tools.current === 'heating-pipe') {
       event.preventDefault()
       this.#commitHeatingPipe()
@@ -4450,7 +4468,7 @@ export class CadleApp extends LiteElement {
     // every mouse movement. Calculate its tubes when the zone is committed.
     const preview = extraClass === 'draft' && shape.heating?.kind === 'zone' ? { ...shape, heating: undefined } : shape
     const content = shapeTemplate(preview, selected, extraClass, this.#symbolStrokeWidth,
-      shape.heating?.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [])
+      shape.heating?.kind === 'zone' ? heatingObstacleBounds(this.#document.shapes, shapeBounds) : [], this.#document.shapes)
     if (this.#highlightedHeatingCircuit && !shape.hidden && shape.heating?.kind === 'pipe') {
       const active = shape.heating.circuitId === this.#highlightedHeatingCircuit
       return svg`<g class=${active ? 'heating-circuit-highlight' : 'heating-circuit-muted'}
@@ -5015,6 +5033,20 @@ export class CadleApp extends LiteElement {
       <div class="canvas-host">
         <div class="stage-shell">
           <div class="panel">
+            ${this.#tools.current === 'stairs-route' ? html`<div class="stair-route-status" role="status">
+              <span>${this.#stairRouteError ?? 'Klik vanaf de onderste trede het traptraject en de bochten. De zichtbare trap stopt bij de eerste gekruiste muur.'}</span>
+              <label>Breedte (cm) <input aria-label="Trapbreedte (cm)" type="number" min="1" step="any" required
+                .value=${String(this.#stairWidthCm)} @change=${(event: Event) => {
+                  const input = event.target as HTMLInputElement
+                  if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) {
+                    this.#stairWidthCm = input.valueAsNumber
+                    this.#stairRouteError = null
+                    this.#render()
+                  } else input.reportValidity()
+                }} /></label>
+              <button type="button" @click=${() => this.#commitStairRoute()}>Trap bewaren</button>
+              <button type="button" @click=${() => this.#activateTool('select')}>Annuleren</button>
+            </div>` : ''}
             ${this.#tools.current === 'room-label' || this.#roomLabelError ? html`<div class="room-label-status" role=${this.#roomLabelError ? 'alert' : 'status'}>
               ${this.#roomLabelError ?? 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.'}
             </div>` : ''}
@@ -5497,6 +5529,7 @@ export class CadleApp extends LiteElement {
       ${this.#draft ? this.#measurementTemplate(this.#draft.start, this.#draft.end) : nothing}
       ${this.#wallChain ? this.#measurementTemplate(this.#wallChain.startPoint, this.#chainPreviewEnd) : nothing}
       ${this.#rubberBandTemplate()}
+      ${this.#stairRoutePreviewTemplate()}
       ${this.#heatingPipePoints.length && this.#heatingPipeHover
         ? unsafeSVG(heatingMarkup(createHeatingPipe('__heating-preview__', [...this.#heatingPipePoints, this.#heatingPipeHover], this.#heatingPipeReplacement?.heating ?? heatingDefaults('pipe', this.#drawingScale ?? DEFAULT_DRAWING_SCALE))))
         : nothing}
@@ -5884,6 +5917,32 @@ export class CadleApp extends LiteElement {
     this.#activateTool('select')
   }
 
+  #stairRoutePreviewTemplate() {
+    if (!this.#stairRoutePoints.length || !this.#stairRouteHover) return nothing
+    const points = cleanStairRoute([...this.#stairRoutePoints, this.#stairRouteHover])
+    const width = drawingUnitsForMetres(this.#stairWidthCm / 100, this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+    return svg`
+      ${!stairRouteError(points, width) ? this.#shapeTemplate(createStairRoute('__stair-preview__', points, width), false, 'draft') : nothing}
+      <polyline data-stair-route-preview points=${points.map((p) => `${p.x},${p.y}`).join(' ')}
+        fill="none" stroke="var(--md-sys-color-primary, #356859)" stroke-width="1" stroke-dasharray="4 4" pointer-events="none"></polyline>
+    `
+  }
+
+  #commitStairRoute() {
+    const widthInput = this.shadowRoot?.querySelector<HTMLInputElement>('.stair-route-status input')
+    if (widthInput && !widthInput.checkValidity()) { widthInput.reportValidity(); return }
+    const points = cleanStairRoute(this.#stairRoutePoints)
+    const width = drawingUnitsForMetres(this.#stairWidthCm / 100, this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+    this.#stairRouteError = stairRouteError(points, width)
+    if (this.#stairRouteError) { this.#render(); return }
+    const shape = createStairRoute(nextShapeId(), points, width)
+    this.#document.shapes.push(shape)
+    this.#document.selectedId = shape.id
+    this.#document.selectedIds = new Set([shape.id])
+    this.#pushHistory()
+    this.#activateTool('select')
+  }
+
   async #labelRoomAt(point: Point) {
     if (this.readOnly || this.#roomLabelBusy || this.#project?.pages?.[this.#pageKey]?.pageType !== 'groundplan') return
     const pageKey = this.#pageKey, project = this.#project, signature = JSON.stringify(this.#document.shapes), job = ++this.#roomLabelJob
@@ -6118,6 +6177,14 @@ export class CadleApp extends LiteElement {
 
     if (this.#tools.current === 'room-label' && event.button === 0) {
       await this.#labelRoomAt(rawPoint)
+      return
+    }
+    if (this.#tools.current === 'stairs-route' && event.button === 0) {
+      const point = snapStairRoutePoint(this.#snapPoint(rawPoint), this.#stairRoutePoints.at(-1))
+      if (!samePoint(point, this.#stairRoutePoints.at(-1) ?? null)) this.#stairRoutePoints.push(point)
+      this.#stairRouteHover = point
+      this.#stairRouteError = null
+      this.#render()
       return
     }
     if (this.#tools.current === 'heating-pipe' && event.button === 0) {
@@ -6634,6 +6701,11 @@ export class CadleApp extends LiteElement {
     if (!rawPoint) return
     this.#stageContextPastePoint = rawPoint
     pubsub.publish('shell.pointer', rawPoint)
+    if (this.#tools.current === 'stairs-route' && this.#stairRoutePoints.length) {
+      this.#stairRouteHover = snapStairRoutePoint(this.#snapPoint(rawPoint), this.#stairRoutePoints.at(-1))
+      this.#renderPreviewOnly()
+      return
+    }
     if (this.#tools.current === 'heating-pipe' && this.#heatingPipePoints.length) {
       this.#heatingPipeHover = this.#snapHeatingPoint(rawPoint)
       this.#renderPreviewOnly()
@@ -6952,6 +7024,18 @@ export class CadleApp extends LiteElement {
       return
     }
     if (isEditableKeyboardEvent(event)) return
+    if (this.#tools.current === 'stairs-route' && ['Enter', 'Escape', 'Backspace'].includes(event.key)) {
+      event.preventDefault()
+      if (event.key === 'Enter') this.#commitStairRoute()
+      else if (event.key === 'Escape') this.#activateTool('select')
+      else {
+        this.#stairRoutePoints.pop()
+        this.#stairRouteHover = this.#stairRoutePoints.at(-1) ?? null
+        this.#stairRouteError = null
+        this.#render()
+      }
+      return
+    }
     const requestedSocketCount = socketCountFromKeyboardEvent(event)
     if (requestedSocketCount !== null && this.#applySocketCount(requestedSocketCount)) {
       event.preventDefault()

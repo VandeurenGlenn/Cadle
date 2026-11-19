@@ -21,6 +21,7 @@ export type SelectionShape = {
   kind?: string
   rectVariant?: 'roof-left' | 'roof-straight' | 'roof-right'
   roofPattern?: 'none' | 'tiles' | 'slates' | 'standing-seam'
+  stairClipAtWalls?: boolean
   path?: string
   text?: string
   symbolTextFields?: SymbolTextField[]
@@ -127,6 +128,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       kind,
       rectVariant: shape.rectVariant === 'roof-left' || shape.rectVariant === 'roof-straight' || shape.rectVariant === 'roof-right' ? shape.rectVariant : null,
       roofPattern: shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam' ? shape.roofPattern : 'none',
+      stairClipAtWalls: typeof shape.stairClipAtWalls === 'boolean' ? shape.stairClipAtWalls : null,
       connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',
       label: kind === 'roof-left' || kind === 'roof-straight' || kind === 'roof-right' ? 'Dakvlak' : kind.charAt(0).toUpperCase() + kind.slice(1),

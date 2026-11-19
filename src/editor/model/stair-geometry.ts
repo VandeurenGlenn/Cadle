@@ -2,11 +2,11 @@ import type { StairVariant } from './types.js'
 
 export const isStairVariant = (value: unknown): value is StairVariant =>
   value === 'stairs-straight' || value === 'stairs-quarter-turn' ||
-  value === 'stairs-double-quarter-turn' || value === 'stairs-spiral'
+  value === 'stairs-double-quarter-turn' || value === 'stairs-spiral' || value === 'stairs-route'
 
 type Bounds = { x: number; y: number; width: number; height: number }
 
-export const stairGeometry = (bounds: Bounds, variant: StairVariant) => {
+export const stairGeometry = (bounds: Bounds, variant: Exclude<StairVariant, 'stairs-route'>) => {
   const { x, y } = bounds
   const width = Math.max(1, bounds.width), height = Math.max(1, bounds.height)
   const right = x + width, bottom = y + height

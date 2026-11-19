@@ -9,6 +9,7 @@ import { sanitizeRoomLabel } from '../room-labels.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
 import { isRoofPattern, oppositeRoofVariant } from '../roof-geometry.js'
 import { isStairVariant } from './stair-geometry.js'
+import { sanitizeStairRoute } from './stair-route.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -131,10 +132,16 @@ const copyGeneratedMetadata = (
     oneWireSourceSignature?: unknown
     hidden?: unknown
     locked?: unknown
+    stairRoute?: unknown
+    stairClipAtWalls?: unknown
   },
   target: Shape
 ): void => {
   if (typeof source.roomName === 'string' && source.roomName.trim()) target.roomName = source.roomName.trim().slice(0, 100)
+  if (target.kind === 'rect' && isStairVariant(target.variant)) {
+    if (target.variant === 'stairs-route') target.stairRoute = sanitizeStairRoute(source.stairRoute)
+    if (typeof source.stairClipAtWalls === 'boolean') target.stairClipAtWalls = source.stairClipAtWalls
+  }
   if (target.kind === 'text') {
     const label = sanitizeRoomLabel(source.roomLabel)
     if (label) { target.roomLabel = label; target.text = `${label.id}\n${label.name}` }
@@ -226,6 +233,8 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       rotation?: unknown
       variant?: unknown
       roofPattern?: unknown
+      stairRoute?: unknown
+      stairClipAtWalls?: unknown
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
@@ -297,6 +306,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
     }
 
     if (raw.kind === 'rect' && isPoint(raw.start) && isPoint(raw.end)) {
+      if (raw.variant === 'stairs-route' && !sanitizeStairRoute(raw.stairRoute)) continue
       const rect: RectShape = {
         id: raw.id,
         kind: 'rect',

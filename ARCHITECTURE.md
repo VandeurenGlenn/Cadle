@@ -105,11 +105,19 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
 - Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-double-quarter-turn`,
-  `stairs-spiral`), not fixed-size
-  catalog placements. Dragging defines their width and length with a live preview; Shift constrains the footprint
+  `stairs-spiral`, `stairs-route`), not fixed-size
+  catalog placements. For preset stairs, dragging defines width and length with a live preview; Shift constrains the footprint
   to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
   editor and SVG export. Double-quarter-turn stairs have three flights, two winding corners and an open centre.
   Existing catalog stair symbols remain supported.
+  The "Traptraject tekenen" tool accepts successive orthogonal centreline clicks, starting at the lowest tread.
+  Stair width is set in centimetres while drawing; Enter, double-click or "Trap bewaren" commits the complete route,
+  Backspace removes the last point and Escape cancels. Normalized route points and width scale with the rectangle.
+  `src/editor/model/stair-route.ts` generates flights, winding treads and the direction arrow. Both editor and export
+  stop visible geometry at the near face of the first crossed visible wall, retaining the complete route in storage.
+  This also applies to the existing straight and quarter-turn rectangle stairs; spiral and catalog symbols are unchanged.
+  "Trapweergave" in Object properties can show the complete stair instead. Adjacent walls, hidden walls and endpoint
+  touches do not cut stairs. Moving a wall or stair recalculates visibility without deleting or splitting the saved route.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
   through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text

@@ -1,5 +1,6 @@
 import type { RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
+import { isStairVariant } from '../model/stair-geometry.js'
 import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-cache.js'
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import { connectionSegments, CONNECTION_NAMES, type ElectricalConnection } from '../model/electrical-connection.js'
@@ -24,6 +25,7 @@ export type NativeSelectionShapePayload = {
   kind: string
   rectVariant?: RoofVariant
   roofPattern?: RoofPattern
+  stairClipAtWalls?: boolean
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
@@ -158,6 +160,10 @@ export const createNativeSelectionChangedPayload = (
   const shapePayload: NativeSelectionShapePayload = {
     id: selectedShape.id,
     kind, heatingObstacle: selectedShape.heatingObstacle
+  }
+  if (selectedShape.kind === 'rect' && isStairVariant(selectedShape.variant)) {
+    shapePayload.name = 'Trap'
+    if (selectedShape.variant !== 'stairs-spiral') shapePayload.stairClipAtWalls = selectedShape.stairClipAtWalls !== false
   }
   if (
     selectedShape.kind === 'rect' &&

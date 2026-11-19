@@ -236,14 +236,7 @@ test('uses the printable width and consolidates old automatic sheets without los
   const oneWireKeys = (project: Project) => Object.keys(project.pages).filter((key) => project.pages[key].pageType === 'onewire')
   await generate()
   const initial = await saved()
-  expect(oneWireKeys(initial), JSON.stringify(oneWireKeys(initial).map((key) => {
-    const state = nativeStateForProjectPage(initial, key)!
-    const bounds = state.shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
-    return { name: initial.pages[key].name, families: state.shapes.flatMap((shape) =>
-      shape.sourceLink?.role === 'breaker' ? [shape.sourceLink.id] : []),
-    width: Math.max(...bounds.map((box) => box.x + box.width)) - Math.min(...bounds.map((box) => box.x)),
-    top: Math.min(...bounds.map((box) => box.y)), world: [state.worldWidth, state.worldHeight] }
-  }))).toHaveLength(2)
+  expect(oneWireKeys(initial)).toHaveLength(2)
   const circuitKey = oneWireKeys(initial).find((key) => key !== rootKey)!
   await shell.evaluate((element, key) => (element as AppShell).loadPage(key), circuitKey)
   await expect.poll(() => page.locator('cadle-app:not([read-only])').evaluate((element, key) =>

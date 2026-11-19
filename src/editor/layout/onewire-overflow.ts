@@ -72,7 +72,7 @@ export type OverflowLayout = { pages: Shape[][]; changed: boolean; fits: boolean
 export const paginateOneWireCircuits = (shapes: readonly Shape[], area: Area, nextId: () => string): OverflowLayout => {
   const unchanged = { pages: [[...shapes]], changed: false, fits: true }
   const total = box(shapes)
-  if (total.width <= area.width - 48 && total.height <= area.height - 48) return unchanged
+  if (total.width <= area.width && total.height <= area.height) return unchanged
   if (shapes.some((shape) => shape.locked)) return { ...unchanged, fits: false }
   const rails = shapes.filter((shape): shape is LineShape => shape.kind === 'line' && isOneWireRailShape(shape))
   const breakers = shapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')

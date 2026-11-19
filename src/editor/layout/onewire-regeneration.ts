@@ -10,6 +10,9 @@ const preserveGeneratedIdentity = (fresh: Shape, previous: Shape): Shape => {
     }
   }
   if (fresh.kind === 'line' && previous.kind === 'line' && fresh.connection && previous.connection) {
+    if (fresh.connection.labelOwner === 'meter' && previous.connection.labelOwner !== 'meter') {
+      return { ...fresh, id: previous.id }
+    }
     const { via: _oldVia, ...previousConnection } = previous.connection
     return { ...fresh, id: previous.id, connection: {
       ...previousConnection, ...fresh.connection, kind: previous.connection.kind,

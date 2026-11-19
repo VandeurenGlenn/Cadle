@@ -2,6 +2,21 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { interpretOneWirePrompt, oneWirePromptTree, oneWireTopologyPrompt, parseOneWirePrompt } from '../src/editor/onewire-prompt.ts'
 
+test('keeps the meter-to-board cable separate from the EXVB before the main breaker', () => {
+  for (const description of [
+    'Inkomende kabel 4x10 mm² EXVB. Kabel van kWh-meter naar kast: 4x16 mm² XVB.',
+    'Kabel van kWh-meter naar kast: 4x16 mm² XVB. Inkomende kabel 4x10 mm² EXVB.',
+    'Inkomende kabel 4x10 mm² EXVB. Kring A: 3G2.5 mm² VOB. Kabel van kWh-meter naar kast: 4x16 mm² XVB.'
+  ]) {
+    const { plan } = parseOneWirePrompt(description)
+    assert.deepEqual(plan.incomingCable, { conductors: 4, sectionMm2: 10, cableType: 'EXVB' })
+    assert.deepEqual(plan.meterCable, { conductors: 4, sectionMm2: 16, cableType: 'XVB' })
+    assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(plan)).plan, plan)
+    assert.match(oneWirePromptTree(plan)[0], /EXVB.*kWh-meter → 4x16 mm² XVB → hoofddifferentieel/)
+  }
+  assert.equal(parseOneWirePrompt('Inkomende kabel 4x10 mm² EXVB.').plan.meterCable, undefined)
+})
+
 test('makes saved topology settings editable as a description without inventing absent equipment', () => {
   const plan = parseOneWirePrompt(
     'Inkomende kabel 5x10 mm² XVB. Hoofdzekering 40 A. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers. 2 extra diffs 40 A 30 mA voor verbruikers.'

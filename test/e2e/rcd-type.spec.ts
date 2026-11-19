@@ -13,6 +13,7 @@ test('shows breaker curves for saved ratings and curve-only edits in the editor 
     buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1,
       shapes: [{ id: 'curve-breaker', kind: 'symbol', name: 'Automaat',
         path: 'symbols/Protection devices/Automaat.svg', position: { x: 900, y: 600 }, scale: 4,
+        electrical: { role: 'protection', oneWireEligible: true, breakerCurrentA: 24 },
         symbolTextOverrides: { 'rated-current': '24A' } }],
       selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
   })

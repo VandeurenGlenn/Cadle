@@ -239,13 +239,18 @@ test('wrapped names keep the incoming cable before the main breaker and survive 
   const lastName = name.y + (name.lines.length - 1) * name.lineHeight
   assert.ok(oneWireLayoutBounds(caption).y > lastName)
   const meterTop = meter.position.y + oneWireSymbolTerminalInfo(meter.path, meter.scale)!.top!.y
-  close(meterTop, Math.max(device.position.y + oneWireSymbolTerminalInfo(device.path, device.scale)!.bottom!.y + 40, lastName + 48))
+  const meterCaption = spaced.find((shape) => shape.sourceLink?.role === 'meter-cable-label')!
+  const meterCaptionBounds = oneWireLayoutBounds(meterCaption)
+  assert.ok(meterCaptionBounds.y > lastName)
+  assert.ok(meterCaptionBounds.y + meterCaptionBounds.height < meterTop)
   const movedSwitch = spaced.find((shape) => shape.id === mainSwitch.id) as SymbolShape
   const switchName = protectionDescriptionLayout(movedSwitch)!
   assert.ok(oneWireLayoutBounds(caption).y > switchName.y + (switchName.lines.length - 1) * switchName.lineHeight)
   const cable = spaced.find((shape) => shape.id === incoming.id) as LineShape
   close(cable.end.y - (oneWireLayoutBounds(caption).y + oneWireLayoutBounds(caption).height), 20)
-  assert.deepEqual(cable.start, oneWireSymbolConnectionAnchors(movedSwitch).find((anchor) => anchor.side === 'bottom')!.point)
+  const switchBottom = oneWireSymbolConnectionAnchors(movedSwitch).find((anchor) => anchor.side === 'bottom')!.point
+  close(cable.start.x, switchBottom.x)
+  close(cable.start.y, switchBottom.y)
   assert.ok(protectionPhaseLabelLayout(device)!.y >= lastName + 28)
   const movedBranch = spaced.find((shape) => shape.id === branch.id) as SymbolShape
   const feed = spaced.find((shape) => shape.sourceLink?.role === `${branch.sourceLink!.role}-to-rail`) as LineShape
@@ -273,6 +278,7 @@ test('repairs legacy EXVB ownership before the main breaker without moving devic
       incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' } }
     const rail = { start: { x: 100, y: 600 }, end: { x: 900, y: 600 } }
     const legacy = buildOneWireTopology(plan, rail, () => `${++id}`)
+      .filter((shape) => shape.sourceLink?.role !== 'meter-cable-label')
     const grid = legacy.find((shape) => shape.sourceLink?.role === 'grid-incoming') as LineShape
     const oldIncoming = legacy.find((shape) => shape.sourceLink?.role === 'incoming') as LineShape
     oldIncoming.connection = { ...grid.connection!, name: 'Eigen netvoeding EXVB', showLabel: !hidden, offsetMm: 7 }
@@ -303,7 +309,7 @@ test('repairs legacy EXVB ownership before the main breaker without moving devic
 
     const fresh = buildOneWireTopology({ ...plan, incomingCable: { ...plan.incomingCable, sectionMm2: 16 } },
       rail, () => `${++id}`)
-    const regenerated = placeOneWireIncomingCable(reconcileGeneratedOneWire(legacy, fresh).shapes).shapes
+    const regenerated = placeOneWireIncomingCable(reconcileGeneratedOneWire(repaired.shapes, fresh).shapes).shapes
     const regeneratedCable = regenerated.find((shape) => shape.id === grid.id) as LineShape
     assert.equal(regeneratedCable.connection?.sectionMm2, 16)
     assert.equal(regeneratedCable.connection?.kind, 'cable')

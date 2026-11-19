@@ -15,7 +15,6 @@ import { buildHeatingGrid } from './heating-routing.js'
 import { snapWallPoint } from './interaction/wall-snap.js'
 import { wallJunctionMarkup } from './layout/wall-junctions.js'
 import { assignRoomLabel, isRoomLabel, nextRoomLabelId, roomLabelInRegion } from './room-labels.js'
-import { cableLabelText, withCableFireClass } from './model/cable-designation.js'
 import { LiteElement, html, customElement, repeat } from '@vandeurenglenn/lite'
 import { nothing, svg } from 'lit'
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js'
@@ -933,16 +932,22 @@ export class CadleApp extends LiteElement {
           return
         }
       }
-      if (connection?.labelOwner === 'topology' && this.#project?.oneWireTopology?.incomingCable) {
-        const cable = this.#project.oneWireTopology.incomingCable
-        if (connection.sectionMm2) cable.sectionMm2 = connection.sectionMm2
-        if (connection.conductors) cable.conductors = connection.conductors
-        if ('fireClass' in payload.connection) cable.fireClass = connection.fireClass?.trim() || undefined
-        if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
-        this.#document.shapes = this.#document.shapes.map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'incoming-cable-label'
-          ? { ...shape, text: connection.name?.trim() ? withCableFireClass(connection.name.trim(), cable.fireClass) : cableLabelText(cable, 'x'), hidden: connection.showLabel === false } : shape)
-        cadleShell.project = this.#project
-        void this.#persistProjectMetadata()
+      if ((connection?.labelOwner === 'topology' || connection?.labelOwner === 'meter') && this.#project?.oneWireTopology) {
+        const field = connection.labelOwner === 'meter' ? 'meterCable' : 'incomingCable'
+        const cable = this.#project.oneWireTopology[field] ?? (
+          connection.conductors && connection.sectionMm2 && connection.cableType && connection.cableType !== 'none'
+            ? { conductors: connection.conductors, sectionMm2: connection.sectionMm2, cableType: connection.cableType }
+            : undefined
+        )
+        if (cable) {
+          if (connection.sectionMm2) cable.sectionMm2 = connection.sectionMm2
+          if (connection.conductors) cable.conductors = connection.conductors
+          if ('fireClass' in payload.connection) cable.fireClass = connection.fireClass?.trim() || undefined
+          if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
+          this.#project.oneWireTopology[field] = cable
+          cadleShell.project = this.#project
+          void this.#persistProjectMetadata()
+        }
       }
     }
     if (currentPageType === 'onewire' && (payload.connection || payload.symbolTextOverrides)) {
@@ -3742,7 +3747,7 @@ export class CadleApp extends LiteElement {
     try {
       this.#document.shapes = [...retainedShapes]
       const safeArea = this.#safeAreaRect()
-      const railWidth = Math.max(1, safeArea.width - 48)
+      const railWidth = Math.max(1, safeArea.width)
       const railStartX = safeArea.x + (safeArea.width - railWidth) / 2
       const railEndX = railStartX + railWidth
       const usableWidth = Math.max(1, railEndX - railStartX)

@@ -58,7 +58,7 @@ export const alignOneWireContent = (
   const boxes = visible.map(oneWireLayoutBounds)
   const left = Math.min(...boxes.map((box) => box.x)), right = Math.max(...boxes.map((box) => box.x + box.width))
   const top = Math.min(...boxes.map((box) => box.y)), bottom = Math.max(...boxes.map((box) => box.y + box.height))
-  const dx = right - left <= area.width - 48 ? area.x + area.width / 2 - (left + right) / 2 : 0
+  const dx = right - left <= area.width ? area.x + area.width / 2 - (left + right) / 2 : 0
   const dy = bottom - top <= area.height - 48 ? area.y + area.height - 24 - bottom : 0
   if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return { shapes: [...shapes], changed: false }
   return { shapes: scaleShapesBetweenPages(shapes, 1, dx, dy), changed: true }

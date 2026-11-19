@@ -8,10 +8,11 @@ import { sanitizeConnection } from '../model/electrical-connection.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from './onewire-connections.js'
 import { PAPER_LABEL_FONT_SIZE, paperTextScale } from './page-layout.js'
 import {
-  ONE_WIRE_COLUMN_GAP_X,
+  packOneWireFamilyBounds,
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
   ONE_WIRE_ROW_SPACING_Y
 } from './onewire-layout-plan.js'
+import { translateShape } from '../interaction/shape-transforms.js'
 import { phaseConfigurationLabel, neutralPositionForManufacturer, shouldShowPhaseLabel } from '../model/electrical.js'
 import {
   oneWireSymbolBounds,
@@ -123,7 +124,6 @@ type RowSymbolSpec = {
 }
 
 const snapToGrid = (value: number): number => Math.round(value / GRID_SIZE) * GRID_SIZE
-const ONE_WIRE_COLUMN_SPACING_X = 200
 const ONE_WIRE_LABEL_SCALE = paperTextScale(2.75)
 const ONE_WIRE_TECHNICAL_LABEL_SCALE = PROTECTION_TEXT_SIZE / 18
 const ONE_WIRE_LABEL_WEIGHT = 500
@@ -772,43 +772,67 @@ export const buildKamrailCircuitBundle = (
     : ONE_WIRE_FIRST_ROW_OFFSET_Y
   const availableRowSpan =
     typeof minimumRowY === 'number' ? railY - firstRowOffsetY - minimumRowY : Number.POSITIVE_INFINITY
+  let rowHeadroom = 0
+  if (Number.isFinite(availableRowSpan) && drawableRows.length > 1) {
+    // Measure the tallest row with the final cable-annotation clearance.
+    const probes = drawableRows.flatMap((row) =>
+      buildOneWireRowSection(0, row, railY, startX, deps, compactSingleCircuit, ONE_WIRE_ROW_SPACING_Y, firstRowOffsetY).shapes)
+    const trunk: LineShape = {
+      id: 'column-clearance-probe', kind: 'line',
+      start: { x: startX, y: breakerSection?.breakerContentTopY ?? railY },
+      end: { x: startX, y: railY - firstRowOffsetY },
+      generationKey: `board:${options.family}:trunk`,
+      sourceLink: { kind: 'board', id: options.family, role: 'trunk' }
+    }
+    const spaced = spaceOneWireCircuitAnnotations([...(breakerSection?.shapes ?? []), trunk, ...probes],
+      options.family, { nextId: deps.nextShapeId }).shapes
+    const rows = spaced.filter((shape) => shape.sourceLink?.kind !== 'board')
+    if (rows.length) rowHeadroom = railY - firstRowOffsetY - Math.min(...rows.map((shape) => oneWireLayoutBounds(shape).y))
+  }
   const maximumRowsPerColumn = Number.isFinite(availableRowSpan)
-    ? Math.max(1, Math.floor(Math.max(0, availableRowSpan) / ONE_WIRE_ROW_SPACING_Y) + 1)
+    ? Math.max(1, Math.floor((availableRowSpan - rowHeadroom) / ONE_WIRE_ROW_SPACING_Y) + 1)
     : Math.max(1, drawableRows.length)
   const columnCount = Math.max(1, Math.ceil(drawableRows.length / maximumRowsPerColumn))
   const baseRowsPerColumn = Math.floor(drawableRows.length / columnCount)
   const columnsWithExtraRow = drawableRows.length % columnCount
-  const rowCounts = Array.from(
+  const balancedRowCounts = Array.from(
     { length: columnCount },
     (_, index) => baseRowsPerColumn + (index < columnsWithExtraRow ? 1 : 0)
   )
-  const columnXs: number[] = []
-  const rowSections: Array<ReturnType<typeof buildOneWireRowSection>> = []
-  let rowOffset = 0
-  let columnX = startX
-  for (const rowCount of rowCounts) {
-    columnXs.push(columnX)
-    let rightEdge = columnX
-    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-      const row = drawableRows[rowOffset + rowIndex]
-      if (!row) continue
-      const section = buildOneWireRowSection(rowIndex, row, railY, columnX, deps, compactSingleCircuit, ONE_WIRE_ROW_SPACING_Y, firstRowOffsetY)
-      rowSections.push(section)
-      for (const shape of section.shapes) {
-        if (shape.kind === 'line') rightEdge = Math.max(rightEdge, shape.start.x, shape.end.x)
-        if (shape.kind === 'symbol') {
-          const bounds = oneWireSymbolBounds(shape) ?? deps.symbolContentBounds(shape)
-          rightEdge = Math.max(rightEdge, bounds.x + bounds.width)
-        }
-        if (shape.kind === 'text')
-          rightEdge = Math.max(rightEdge, shape.position.x + shape.text.length * 11 * (shape.scale ?? 1))
-      }
+  const layoutColumns = (rowCounts: number[]) => {
+    let rowOffset = 0
+    const columns = rowCounts.map((rowCount, index) => {
+      const sections = drawableRows.slice(rowOffset, rowOffset + rowCount).map((row, rowIndex) =>
+        buildOneWireRowSection(rowIndex, row, railY, startX, deps, compactSingleCircuit, ONE_WIRE_ROW_SPACING_Y, firstRowOffsetY))
+      rowOffset += rowCount
+      const topY = railY - firstRowOffsetY - Math.max(0, rowCount - 1) * ONE_WIRE_ROW_SPACING_Y
+      const ink = sections.flatMap((section) => section.shapes.map(oneWireLayoutBounds))
+      ink.push({ x: startX - 1, y: topY, width: 2, height: railY - topY })
+      return { family: String(index), anchorX: startX, minX: Math.min(...ink.map((box) => box.x)),
+        maxX: Math.max(...ink.map((box) => box.x + box.width)), ink, sections }
+    })
+    const packed = packOneWireFamilyBounds(columns, 0)
+    const columnXs = [startX]
+    for (let index = 1; index < columns.length; index++) {
+      const distance = packed.familyXs.get(String(index))! - packed.familyXs.get(String(index - 1))!
+      columnXs.push(columnXs[index - 1] + Math.ceil(distance / GRID_SIZE) * GRID_SIZE)
     }
-    columnX = Math.ceil(
-      Math.max(columnX + ONE_WIRE_COLUMN_SPACING_X, rightEdge + ONE_WIRE_COLUMN_GAP_X) / GRID_SIZE
-    ) * GRID_SIZE
-    rowOffset += rowCount
+    const rowSections = columns.flatMap((column, index) => column.sections.map((section) => ({
+      ...section, shapes: columnXs[index] === startX ? section.shapes
+        : section.shapes.map((shape) => translateShape(shape, columnXs[index] - startX, 0))
+    })))
+    const left = Math.min(...columns.map((column, index) => column.minX + columnXs[index] - startX))
+    const right = Math.max(...columns.map((column, index) => column.maxX + columnXs[index] - startX))
+    return { rowCounts, columnXs, rowSections, width: right - left }
   }
+  let columnLayout = layoutColumns(balancedRowCounts)
+  if (columnCount > 1) {
+    const filledRowCounts = Array.from({ length: columnCount }, (_, index) =>
+      Math.min(maximumRowsPerColumn, drawableRows.length - index * maximumRowsPerColumn))
+    const filled = layoutColumns(filledRowCounts)
+    if (filled.width < columnLayout.width) columnLayout = filled
+  }
+  const { rowCounts, columnXs, rowSections } = columnLayout
   const createdIds: string[] = []
   const shapes: Shape[] = []
 

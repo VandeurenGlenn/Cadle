@@ -130,7 +130,12 @@ textarea:focus {
 }
 
 .supply-flow {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr 1.2fr .8fr 1.15fr 1.45fr;
+}
+
+.supply-flow .flow-step strong {
+  font: var(--md-sys-typescale-label-medium);
+  font-weight: 650;
 }
 
 .flow-step,

@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildKamrailCircuitBundle } from '../src/editor/layout/onewire-helpers.ts'
+import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
+import { oneWireSymbolBounds, oneWireSymbolScaleFor } from '../src/editor/layout/onewire-symbol-nodes.ts'
+import { pageLayout } from '../src/editor/layout/page-layout.ts'
 import {
   appendOneWireFamilyOffset,
   insertOneWireFamilyBounds,
@@ -199,6 +203,56 @@ test('fills a sheet from measured overlapping ink instead of estimated column wi
   assert.ok(Math.max(...points) <= 900)
   assert.equal(planOneWireLayout([...families, { family: 'E', circuitCount: 1 }],
     { usableWidth: 900, usableHeight: 1200, measureFamily }).pageCount, 2)
+})
+
+test('fits A–N and a fourteen-point Q by using free vertical space inside Q without shrinking symbols', () => {
+  const area = pageLayout(2376, 1680, 10, 8).content
+  const families = [...'ADEFGHIJKLMNQ']
+  const counts = [1, 8, 8, 3, 1, 6, 1, 2, 1, 1, 1, 1, 14]
+  const measureFamily = (family: string, start: number, count: number) => {
+    let id = 0
+    const components = Array.from({ length: count }, (_, index) => {
+      const bindingId = `${family}${start + index + 1}`
+      const switches = family === 'Q' ? [2, 0, 2, 2, 2, 0, 4, 0, 0, 0, 0, 0, 1, 1][index] : 0
+      return [
+        ...Array.from({ length: switches }, (_, switchIndex) => ({
+          bindingId, kind: 'switch' as const, sourceShapeId: `${bindingId}-switch-${switchIndex}`,
+          sourcePath: `symbols/Switches/${index === 6 && switchIndex > 0 && switchIndex < 3
+            ? 'Intermediate switch' : 'Single pole change over switch'}.svg`
+        })),
+        { bindingId, kind: 'load' as const, sourceShapeId: `${bindingId}-load`,
+          sourcePath: family === 'Q' ? 'symbols/Consumption appliances/Lighting.svg'
+            : 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg' }
+      ]
+    }).flat()
+    const preview = buildKamrailCircuitBundle({
+      rail: { id: 'rail', kind: 'line', start: { x: -area.width, y: oneWireRailYForRows(1, area) },
+        end: { x: area.width, y: oneWireRailYForRows(1, area) } },
+      anchorX: 0, minimumRowY: area.y,
+      options: { family, amps: family === 'Q' ? 16 : 20, poles: 4, cableConductors: 5,
+        cableSectionMm2: family === 'Q' ? 1.5 : 2.5, cableType: 'VOB', autoIncludeFamily: true },
+      familyComponents: components, nextShapeId: () => `measure-${++id}`,
+      oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+    })!
+    const ink = preview.shapes.filter((shape) => !shape.hidden && shape.sourceLink?.role !== 'description')
+      .map(oneWireLayoutBounds)
+    return { family, anchorX: 0, minX: Math.min(...ink.map((box) => box.x)),
+      maxX: Math.max(...ink.map((box) => box.x + box.width)), ink }
+  }
+  const usableWidth = area.width
+  const plan = planOneWireLayout(families.map((family, index) => ({ family, circuitCount: counts[index] })),
+    { usableWidth, usableHeight: area.height, measureFamily })
+  assert.equal(plan.pageCount, 1)
+  assert.equal(plan.placements.find((placement) => placement.family === 'Q')?.circuitCount, 14)
+  for (const placement of plan.placements) {
+    const bounds = measureFamily(placement.family, placement.circuitStart, placement.circuitCount)
+    assert.ok(bounds.minX + placement.anchorOffset! >= 0)
+    assert.ok(bounds.maxX + placement.anchorOffset! <= usableWidth)
+    assert.ok(bounds.ink.every((box) => box.y >= area.y && box.y + box.height <= area.y + area.height),
+      `${placement.family}: all ink stays inside the printable height`)
+  }
 })
 
 test('packs separate families together while the page still has room', () => {

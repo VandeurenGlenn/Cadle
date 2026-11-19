@@ -138,6 +138,7 @@ export class OneWirePromptDialog extends LiteElement {
         ${step('Inkomende kabel', plan.incomingCable ? cableLabelText(plan.incomingCable, 'x') : 'Niet opgegeven')}
         ${step('Hoofdschakelaar', plan.mainSwitch ? `${plan.mainSwitch.ratedCurrentA} A` : 'Niet opgegeven')}
         ${step('kWh-meter')}
+        ${step('Kabel meter → kast', plan.meterCable ? cableLabelText(plan.meterCable, 'x') : 'Nog op te geven')}
         ${step('Hoofddifferentieel', plan.mainDifferential
           ? `${plan.mainDifferential.ratedCurrentA} A / ${plan.mainDifferential.sensitivityMa} mA`
           : 'Nog niet volledig opgegeven')}
@@ -240,6 +241,7 @@ export class OneWirePromptDialog extends LiteElement {
               en eventuele PV. Voor extra differentiëlen: vermeld aantal, mA en bestemming, bijvoorbeeld “2 diffs 30 mA
               voor verbruikers en 1 voor EV”.</small
             >
+            <small>Vermeld de meter-kastkabel apart, bijvoorbeeld “Kabel van kWh-meter naar kast: 4x10 mm² XVB”.</small>
           </label>
           <section class="preview">
             <div class="preview-header">

@@ -30,6 +30,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     {
       version: 1,
       incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' },
+      meterCable: { conductors: 4, sectionMm2: 16, cableType: 'XVB' },
       mainSwitch: { ratedCurrentA: 25 },
       mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
       residualBreaker: true,
@@ -132,7 +133,10 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.equal(gridFeeder.connection?.kind, 'cable')
   assert.equal(gridFeeder.connection?.cableType, 'EXVB')
   assert.equal(gridFeeder.connection?.labelOwner, 'topology')
-  assert.deepEqual(meterFeed.connection, { kind: 'wire', showLabel: false })
+  assert.deepEqual(meterFeed.connection, { kind: 'cable', conductors: 4, sectionMm2: 16, cableType: 'XVB',
+    labelOwner: 'meter', showLabel: true })
+  const meterCaption = shapes.find((shape) => shape.sourceLink?.role === 'meter-cable-label')!
+  assert.ok(meterCaption.kind === 'text' && meterCaption.text === '4x16 mm² XVB')
   assert.ok(incomingCable.position.y > gridFeeder.start.y)
   assert.equal(gridFeeder.end.y - incomingCable.position.y, 24)
   assert.equal(incomingCable.position.y,
@@ -140,7 +144,9 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.equal(incomingCable.rotation ?? 0, 0)
   assert.equal(incomingCable.fontWeight, 400)
   const meterTopY = meter.position.y + oneWireSymbolTerminalInfo(meter.path, meter.scale)!.top!.y
-  assert.equal(meterTopY, Math.max(mainDevice.position.y + mainTerminals.bottom!.y + 40, mainTitle.y + 48))
+  const meterCaptionBounds = oneWireLayoutBounds(meterCaption)
+  assert.ok(meterCaptionBounds.y > mainTitle.y)
+  assert.ok(meterCaptionBounds.y + meterCaptionBounds.height < meterTopY)
   const solarMeter = shapes.find((shape) => shape.sourceLink?.role === 'solar-meter')
   assert.ok(solarMeter?.kind === 'symbol')
   assert.equal(solarMeter.scale * 24 / 8, 8)

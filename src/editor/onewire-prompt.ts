@@ -33,6 +33,9 @@ const topologyWarnings = (plan: OneWireTopologyPlan, prompt = ''): string[] => {
   if (!plan.incomingCable) {
     warnings.push('Geen volledige inkomende kabel herkend, bijvoorbeeld “4x10 mm² EXVB”.')
   }
+  if (!plan.meterCable) {
+    warnings.push('De kabel tussen kWh-meter en kast is nog niet opgegeven. Vermeld bijvoorbeeld “Kabel van kWh-meter naar kast: 4x10 mm² XVB”.')
+  }
   if (!plan.mainDifferential) {
     warnings.push('Hoofddifferentieel is onvolledig; vermeld zowel de nominale stroom in A als de gevoeligheid in mA.')
   }
@@ -205,15 +208,19 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
     }
   }
 
-  const cable =
-    /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2))?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)\b/i.exec(
-      text
-    )
-  if (cable) {
-    plan.incomingCable = {
-      conductors: Number(cable[1]),
-      sectionMm2: Number(cable[2].replace(',', '.')),
-      cableType: normalizeCableType(cable[3])
+  for (const clause of text.split(/[;\n]|\.(?!\d)/u)) {
+    const cable =
+      /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2))?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)\b/i.exec(
+        clause
+      )
+    if (cable) {
+      const field = /\b(?:(?:kwh[-\s]*)?(?:meter|teller)\b[^.;\n]{0,80}\b(?:kast|bord|hoofddiff(?:erentieel)?)|meter[-\s]?kastkabel)\b/iu.test(clause)
+        ? 'meterCable' : 'incomingCable'
+      plan[field] ??= {
+        conductors: Number(cable[1]),
+        sectionMm2: Number(cable[2].replace(',', '.')),
+        cableType: normalizeCableType(cable[3])
+      }
     }
   }
 
@@ -302,7 +309,7 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
     : 'hoofddifferentieel'
   const mainSwitch = plan.mainSwitch ? `hoofdschakelaar ${plan.mainSwitch.ratedCurrentA} A` : 'hoofdschakelaar'
   return [
-    `${cable} → ${mainSwitch} → kWh-meter → ${differential}`,
+    `${cable} → ${mainSwitch} → kWh-meter → ${plan.meterCable ? `${cableLabelText(plan.meterCable, 'x')} → ` : ''}${differential}`,
     ...(plan.solar ? ['├─ zonnepanelen / omvormer'] : []),
     ...(plan.residualBreaker ? [
       `└─ remautomaat ${plan.residualBreakerRatedCurrentA ?? 40} A${plan.consumers ? ` → verbruikers${plan.additionalDifferentials?.length ? 'rail' : ''}` : ''}`
@@ -326,6 +333,7 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
 
 export const oneWireTopologyPrompt = (plan: OneWireTopologyPlan): string => [
   ...(plan.incomingCable ? [`Inkomende kabel ${cableLabelText(plan.incomingCable, 'x')}.`] : []),
+  ...(plan.meterCable ? [`Kabel van kWh-meter naar kast: ${cableLabelText(plan.meterCable, 'x')}.`] : []),
   ...(plan.gridProtectionCurrentA ? [`Hoofdzekering ${plan.gridProtectionCurrentA} A.`] : []),
   ...(plan.mainSwitch ? [`Hoofdschakelaar ${plan.mainSwitch.manufacturer ?? ''} ${plan.mainSwitch.ratedCurrentA} A.`] : []),
   ...(plan.mainDifferential ? [

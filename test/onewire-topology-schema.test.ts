@@ -6,6 +6,7 @@ test('accepts strict model output for a one-wire topology', () => {
   const result = validateOneWireTopology({
     version: 1,
     incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' },
+    meterCable: { conductors: 4, sectionMm2: 16, cableType: 'XVB' },
     mainSwitch: { ratedCurrentA: 25 },
     mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 },
     residualBreaker: true,
@@ -18,6 +19,17 @@ test('accepts strict model output for a one-wire topology', () => {
     ]
   })
   assert.equal(result.valid, true)
+})
+
+test('rejects incomplete or invalid meter-to-board cable data', () => {
+  const result = validateOneWireTopology({
+    version: 1, residualBreaker: false, solar: false, consumers: true,
+    meterCable: { conductors: 0, sectionMm2: -10, cableType: 'invalid' }
+  })
+  assert.equal(result.valid, false)
+  assert.ok(result.errors.some((error) => error.includes('meterCable.conductors')))
+  assert.ok(result.errors.some((error) => error.includes('meterCable.sectionMm2')))
+  assert.ok(result.errors.some((error) => error.includes('meterCable.cableType')))
 })
 
 test('validates the structured hoofdschakelaar', () => {

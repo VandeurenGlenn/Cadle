@@ -45,6 +45,7 @@ export type OneWireTopologyPlan = {
     fireClass?: string
     cableType: 'VOB' | 'XVB' | 'XVB-Cca' | 'XGB' | 'XGB-Cca' | 'EXVB' | 'other'
   }
+  meterCable?: OneWireTopologyPlan['incomingCable']
   mainSwitch?: {
     ratedCurrentA: number
     manufacturer?: string

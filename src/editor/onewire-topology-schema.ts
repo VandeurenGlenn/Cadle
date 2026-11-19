@@ -1,6 +1,18 @@
 import type { OneWireTopologyPlan } from '../types.js'
 import { isRcdType } from './model/electrical.js'
 
+const cableSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['conductors', 'sectionMm2', 'cableType'],
+  properties: {
+    conductors: { type: 'integer', minimum: 1, maximum: 12 },
+    sectionMm2: { type: 'number', exclusiveMinimum: 0, maximum: 500 },
+    fireClass: { type: 'string', maxLength: 80 },
+    cableType: { enum: ['VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'] }
+  }
+} as const
+
 export const ONE_WIRE_TOPOLOGY_SCHEMA = {
   $id: 'https://cadle.be/schemas/onewire-topology.v1.json',
   type: 'object',
@@ -8,17 +20,8 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
   required: ['version', 'residualBreaker', 'solar', 'consumers'],
   properties: {
     version: { const: 1 },
-    incomingCable: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['conductors', 'sectionMm2', 'cableType'],
-      properties: {
-        conductors: { type: 'integer', minimum: 1, maximum: 12 },
-        sectionMm2: { type: 'number', exclusiveMinimum: 0, maximum: 500 },
-        fireClass: { type: 'string', maxLength: 80 },
-        cableType: { enum: ['VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'] }
-      }
-    },
+    incomingCable: cableSchema,
+    meterCable: cableSchema,
     mainSwitch: {
       type: 'object',
       additionalProperties: false,
@@ -96,6 +99,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
   const allowedKeys = new Set([
     'version',
     'incomingCable',
+    'meterCable',
     'mainSwitch',
     'mainDifferential',
     'residualBreaker',
@@ -154,25 +158,27 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
     }
   }
 
-  const cable = value.incomingCable === undefined ? null : record(value.incomingCable)
-  if (value.incomingCable !== undefined && !cable) errors.push('incomingCable moet een object zijn.')
-  if (cable) {
-    for (const key of Object.keys(cable)) {
-      if (!['conductors', 'sectionMm2', 'cableType', 'fireClass'].includes(key)) {
-        errors.push(`Onbekend incomingCable-veld: ${key}.`)
+  for (const field of ['incomingCable', 'meterCable'] as const) {
+    const cable = value[field] === undefined ? null : record(value[field])
+    if (value[field] !== undefined && !cable) errors.push(`${field} moet een object zijn.`)
+    if (cable) {
+      for (const key of Object.keys(cable)) {
+        if (!['conductors', 'sectionMm2', 'cableType', 'fireClass'].includes(key)) {
+          errors.push(`Onbekend ${field}-veld: ${key}.`)
+        }
       }
-    }
-    if (cable.fireClass !== undefined && (typeof cable.fireClass !== 'string' || cable.fireClass.length > 80)) {
-      errors.push('incomingCable.fireClass moet tekst zijn van maximaal 80 tekens.')
-    }
-    if (!Number.isInteger(cable.conductors) || Number(cable.conductors) < 1) {
-      errors.push('incomingCable.conductors moet een positief geheel getal zijn.')
-    }
-    if (typeof cable.sectionMm2 !== 'number' || !Number.isFinite(cable.sectionMm2) || cable.sectionMm2 <= 0) {
-      errors.push('incomingCable.sectionMm2 moet een positief getal zijn.')
-    }
-    if (!['VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].includes(String(cable.cableType))) {
-      errors.push('incomingCable.cableType is ongeldig.')
+      if (cable.fireClass !== undefined && (typeof cable.fireClass !== 'string' || cable.fireClass.length > 80)) {
+        errors.push(`${field}.fireClass moet tekst zijn van maximaal 80 tekens.`)
+      }
+      if (!Number.isInteger(cable.conductors) || Number(cable.conductors) < 1) {
+        errors.push(`${field}.conductors moet een positief geheel getal zijn.`)
+      }
+      if (typeof cable.sectionMm2 !== 'number' || !Number.isFinite(cable.sectionMm2) || cable.sectionMm2 <= 0) {
+        errors.push(`${field}.sectionMm2 moet een positief getal zijn.`)
+      }
+      if (!['VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].includes(String(cable.cableType))) {
+        errors.push(`${field}.cableType is ongeldig.`)
+      }
     }
   }
 

@@ -56,6 +56,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   identities and connection-label overrides across its numbered sheets before removing redundant continuations.
   Sheet planning measures generated circuit ink and uses the same overlap-aware family packing as the final drawing,
   rather than reserving estimated column widths. Circuit busbars sit as low as the printable area and their labels allow;
+  multi-column families compare balanced and height-filled columns using overlapping ink, without shrinking symbols.
+  Horizontal packing uses the printable width directly rather than adding a second inset inside the print margins.
   automatic layout centers horizontally, never vertically. Generated sheet-reference captions are omitted.
   Cleanup requires every generated object to be represented on a used sheet; manual, locked or unrecognized
   content is retained. Cabinet destinations remain separate, and generation creates a recovery point first.
@@ -72,7 +74,11 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Singular downstream differentials are recognized without an explicit count, with A/mA ratings in either order.
   The limited rail is explicitly labelled for consumers; downstream differentials branch from that rail after the remautomaat.
   The incoming EXVB cable and its caption belong to the grid feeder before the main breaker, not the
-  meter-to-main-differential link. Loading an older supply drawing moves the cable metadata and caption
+  meter-to-main-differential link. That link has its own optional `meterCable` specification, separate `meter` caption
+  ownership and editable cable properties. Missing meter-cable data is explicitly labelled as still to be supplied,
+  never copied from the upstream EXVB. Descriptions can specify it as “Kabel van kWh-meter naar kast: 4x10 mm² XVB”.
+  Protection current selectors offer standard ampere ratings and retain any nonstandard saved rating as an existing-value option.
+  Loading an older supply drawing moves the EXVB cable metadata and caption
   without moving its devices or changing their identities; wrapped captions extend only the incoming feeder.
   Recovery creation drains pending editor writes and adopts the shell's current project metadata before capturing
   the active drawing, so settings just saved by the shell cannot be overwritten by the editor's older project copy.

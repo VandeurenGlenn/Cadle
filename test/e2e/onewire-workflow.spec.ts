@@ -98,7 +98,7 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   expect((await saved()).oneWireTopology).toEqual(plan)
   expect((await protections()).some((shape) => shape.sourceLink?.role === 'main-differential')).toBe(true)
   await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
-  await description.fill('Inkomende kabel is 4x10 mm² EXVB. Hoofdschakelaar 32 A. Hoofddifferentieel 40A 300 mA. ' +
+  await description.fill('Inkomende kabel is 4x10 mm² EXVB. Kabel van kWh-meter naar kast: 4x16 mm² XVB. Hoofdschakelaar 32 A. Hoofddifferentieel 40A 300 mA. ' +
     'Daarna een remautomaat naar differentieel 30mA 40 A type A en dan naar de verbruikers. ' +
     'Er zijn zonnepanelen; plaats deze parallel aan de kant van de hoofddifferentieel de automaat is 2P 25A.')
   const legacyPlan = JSON.parse(await json.inputValue())
@@ -114,9 +114,10 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await dialog.locator('custom-button[label="Beschrijving opnieuw analyseren"]').click()
   const preview = dialog.locator('.preview')
   await expect(preview.locator('.supply-flow .flow-step strong')).toHaveText([
-    'Inkomende kabel', 'Hoofdschakelaar', 'kWh-meter', 'Hoofddifferentieel'
+    'Inkomende kabel', 'Hoofdschakelaar', 'kWh-meter', 'Kabel meter → kast', 'Hoofddifferentieel'
   ])
   await expect(preview.locator('.supply-flow .flow-step').first()).toContainText('4x10 mm² EXVB')
+  await expect(preview.locator('.supply-flow .flow-step').nth(3)).toContainText('4x16 mm² XVB')
   await expect(preview.locator('.branch-caption')).toContainText('parallel aangesloten')
   await expect(preview.locator('.branch-caption')).toContainText('vóór de remautomaat')
   await expect(preview.locator('.consumer-branch .branch-flow .flow-step strong')).toHaveText([
@@ -146,6 +147,15 @@ test('requires a reviewed supply description and preserves editable text, JSON c
     { count: 1, ratedCurrentA: 40, sensitivityMa: 30, rcdType: 'A', purpose: 'consumers' }
   ])
   const topology = Object.keys(updated.pages).flatMap((key) => nativeStateForProjectPage(updated, key)?.shapes ?? [])
+  expect(topology.find((shape) => shape.sourceLink?.role === 'incoming')).toMatchObject({
+    connection: { conductors: 4, sectionMm2: 16, cableType: 'XVB' }
+  })
+  expect(topology.find((shape) => shape.sourceLink?.role === 'grid-incoming')).toMatchObject({
+    connection: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' }
+  })
+  expect(topology.find((shape) => shape.sourceLink?.role === 'meter-cable-label')).toMatchObject({
+    text: '4x16 mm² XVB'
+  })
   expect(topology.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')).toMatchObject({
     electrical: { breakerCurrentA: 40, rcdSensitivityMa: 30, rcdType: 'A' }
   })
@@ -163,7 +173,7 @@ test('requires a reviewed supply description and preserves editable text, JSON c
 
 test('uses the printable width and consolidates old automatic sheets without losing device identities or cable overrides', async ({ page }, testInfo) => {
   const groundKey = randomUUID(), rootKey = randomUUID()
-  const families = [...'ABCDEFGHIJKL']
+  const families = [...'ADEFGHIJKLMNQ']
   const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
     { kind: 'cadle-native-svg-document', payload: { version: 2, paperLayoutVersion: 1,
       oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION, shapes, selectedId: null,
@@ -173,16 +183,31 @@ test('uses the printable width and consolidates old automatic sheets without los
     uuid: randomUUID(), creationTime: 1, name: 'Compacte eendraadsbladen', company: '',
     customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
     address: { street: '', number: '', postalCode: '', city: '' },
+    circuitSpecifications: Object.fromEntries(families.map((family) => [family,
+      { poles: 4, cableConductors: 5, breakerCurrentA: family === 'Q' ? 16 : 20 }])),
     oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
       mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
     pages: {
       [groundKey]: { name: 'Situatieplan', pageType: 'groundplan', creationTime: 1, schema: document(families.flatMap((family, index) =>
-        Array.from({ length: [1, 4, 8, 4, 3, 2, 6, 1, 2, 1, 1, 1][index] }, (_, point) => ({
-        id: `socket-${family}-${point}`, kind: 'symbol', name: 'Wall outlet with grounding',
-        path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', scale: 1,
-        position: { x: 200 + index * 120, y: 200 + point * 120 }, bindingId: `${family}${point + 1}`,
-        electrical: { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: 1 }
-      })))) },
+        Array.from({ length: [1, 8, 8, 3, 1, 6, 1, 2, 1, 1, 1, 1, 14][index] }, (_, point): Shape[] => {
+          const bindingId = `${family}${point + 1}`
+          const switches = family === 'Q' ? [2, 0, 2, 2, 2, 0, 4, 0, 0, 0, 0, 0, 1, 1][point] : 0
+          return [
+            ...Array.from({ length: switches }, (_, switchIndex): Shape => ({
+              id: `switch-${bindingId}-${switchIndex}`, kind: 'symbol', name: 'Switch',
+              path: `symbols/Switches/${point === 6 && switchIndex > 0 && switchIndex < 3
+                ? 'Intermediate switch' : 'Single pole change over switch'}.svg`,
+              scale: 1, position: { x: 200 + index * 120 + switchIndex * 30, y: 180 + point * 90 },
+              bindingId, electrical: { role: 'switch', oneWireEligible: true, circuitType: 'lighting' }
+            })),
+            { id: `load-${bindingId}`, kind: 'symbol', name: family === 'Q' ? 'Lighting' : 'Wall outlet with grounding',
+              path: family === 'Q' ? 'symbols/Consumption appliances/Lighting.svg'
+                : 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', scale: 1,
+              position: { x: 200 + index * 120, y: 200 + point * 90 }, bindingId,
+              electrical: { role: 'load', oneWireEligible: true, circuitType: family === 'Q' ? 'lighting' : 'sockets',
+                ...(family !== 'Q' ? { socketCount: 1 } : {}) } }
+          ]
+        }).flat())) },
       [rootKey]: { name: 'One-wire diagram', pageType: 'onewire', creationTime: 2, schema: document([]) }
     }
   }
@@ -211,14 +236,23 @@ test('uses the printable width and consolidates old automatic sheets without los
   const oneWireKeys = (project: Project) => Object.keys(project.pages).filter((key) => project.pages[key].pageType === 'onewire')
   await generate()
   const initial = await saved()
-  expect(oneWireKeys(initial)).toHaveLength(2)
+  expect(oneWireKeys(initial), JSON.stringify(oneWireKeys(initial).map((key) => {
+    const state = nativeStateForProjectPage(initial, key)!
+    const bounds = state.shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
+    return { name: initial.pages[key].name, families: state.shapes.flatMap((shape) =>
+      shape.sourceLink?.role === 'breaker' ? [shape.sourceLink.id] : []),
+    width: Math.max(...bounds.map((box) => box.x + box.width)) - Math.min(...bounds.map((box) => box.x)),
+    top: Math.min(...bounds.map((box) => box.y)), world: [state.worldWidth, state.worldHeight] }
+  }))).toHaveLength(2)
   const circuitKey = oneWireKeys(initial).find((key) => key !== rootKey)!
   await shell.evaluate((element, key) => (element as AppShell).loadPage(key), circuitKey)
   await expect.poll(() => page.locator('cadle-app:not([read-only])').evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), circuitKey)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('bottom-aligned-circuits.png') })
   const original = nativeStateForProjectPage(initial, circuitKey)!
-  expect(original.shapes.filter((shape) => shape.sourceLink?.role === 'breaker')).toHaveLength(12)
+  expect(original.shapes.filter((shape) => shape.sourceLink?.role === 'breaker')).toHaveLength(13)
+  expect(new Set(original.shapes.flatMap((shape) =>
+    shape.kind === 'symbol' && /^Q\d+$/.test(shape.bindingId ?? '') ? [shape.bindingId] : [])).size).toBe(14)
   expect(original.shapes.some((shape) => shape.sourceLink?.role.startsWith('sheet-reference:') ||
     shape.sourceLink?.role === 'overflow-reference')).toBe(false)
   const originalArea = pageLayout(original.worldWidth, original.worldHeight, original.printMargin,
@@ -232,7 +266,7 @@ test('uses the printable width and consolidates old automatic sheets without los
   cable.connection = { ...cable.connection!, name: 'Voeding garage behouden', showLabel: true }
   const deviceIds = original.shapes.filter((shape) => shape.sourceLink?.kind === 'device').map((shape) => shape.id).sort()
   const symbolSizes = original.shapes.flatMap((shape) => shape.kind === 'symbol' ? [[shape.id, shape.scale]] : [])
-  const legacyKeys = [circuitKey, randomUUID(), randomUUID()]
+  const legacyKeys = [circuitKey, randomUUID(), randomUUID(), randomUUID()]
   for (const [index, key] of legacyKeys.entries()) {
     const included = families.slice(index * 4, index * 4 + 4)
     const shapes = original.shapes.filter((shape) => {
@@ -251,7 +285,7 @@ test('uses the printable width and consolidates old automatic sheets without los
         { kind: 'cadle-native-svg-document', payload: { ...original, shapes } }
       ] } }
   }
-  expect(oneWireKeys(initial)).toHaveLength(4)
+  expect(oneWireKeys(initial)).toHaveLength(5)
   await shell.evaluate((element, key) => (element as AppShell).loadPage(key), groundKey)
   await store(initial)
   await page.goto('/#!/projects')

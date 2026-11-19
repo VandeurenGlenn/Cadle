@@ -7,7 +7,35 @@ import { electricalConnectionMarkup } from '../src/editor/electrical-connection-
 import { shapeMarkup } from '../src/editor/export/svg-export.ts'
 import { reconcileGeneratedOneWire } from '../src/editor/layout/onewire-regeneration.ts'
 import { presentConnectionLabels } from '../src/editor/layout/connection-label-presentation.ts'
-import type { LineShape } from '../src/editor/model/types.ts'
+import type { LineShape, Shape, TextShape } from '../src/editor/model/types.ts'
+import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
+
+test('meter-cable captions remain independent of grid EXVB captions through edits and regeneration', () => {
+  let id = 0
+  const plan = { version: 1 as const, residualBreaker: false, solar: false, consumers: true,
+    incomingCable: { conductors: 4, sectionMm2: 10, cableType: 'EXVB' as const },
+    meterCable: { conductors: 4, sectionMm2: 16, cableType: 'XVB' as const } }
+  const build = () => buildOneWireTopology(plan, { start: { x: 100, y: 500 }, end: { x: 900, y: 500 } }, () => `${++id}`)
+  const shapes = build()
+  const meter = shapes.find((shape) => shape.sourceLink?.role === 'incoming') as LineShape
+  const grid = shapes.find((shape) => shape.sourceLink?.role === 'grid-incoming') as LineShape
+  meter.connection = { ...meter.connection!, name: 'Voeding kast', showLabel: false }
+  grid.connection = { ...grid.connection!, name: 'Netkabel', showLabel: true }
+  const label = (shapes: Shape[], role: string) => shapes.find((shape) => shape.sourceLink?.role === role) as TextShape
+  const regenerated = presentConnectionLabels(sanitizeShapes(reconcileGeneratedOneWire(shapes, build()).shapes))
+  assert.equal(label(regenerated, 'meter-cable-label').text, 'Voeding kast')
+  assert.equal(label(regenerated, 'meter-cable-label').hidden, true)
+  assert.equal(label(regenerated, 'incoming-cable-label').text, 'Netkabel')
+  assert.equal(label(regenerated, 'incoming-cable-label').hidden, false)
+  assert.equal((regenerated.find((shape) => shape.id === meter.id) as LineShape).connection?.labelOwner, 'meter')
+  const legacy = build()
+  const oldMeter = legacy.find((shape) => shape.sourceLink?.role === 'incoming') as LineShape
+  oldMeter.connection = { kind: 'wire', showLabel: false }
+  const upgraded = presentConnectionLabels(reconcileGeneratedOneWire(legacy, build()).shapes)
+  assert.equal((upgraded.find((shape) => shape.id === oldMeter.id) as LineShape).connection?.kind, 'cable')
+  assert.equal(label(upgraded, 'meter-cable-label').text, '4x16 mm² XVB')
+  assert.equal(Boolean(label(upgraded, 'meter-cable-label').hidden), false)
+})
 
 const cable = (): LineShape => ({ id: 'cable', kind: 'line', start: { x: 100, y: 200 }, end: { x: 500, y: 200 },
   stroke: '#000000', strokeWidth: 2, connection: connectionDefaults('cable') })

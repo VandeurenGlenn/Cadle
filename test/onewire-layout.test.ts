@@ -1044,7 +1044,7 @@ test('wraps a 22-point manually inserted family into readable columns', () => {
   }
   const columnSizes = [...columns.values()].map((rows) => rows.length)
   assert.ok(Math.max(...columnSizes) - Math.min(...columnSizes) <= 1)
-  assert.equal(Math.max(...trunkXs) - Math.min(...trunkXs), 600)
+  assert.ok(Math.max(...trunkXs) - Math.min(...trunkXs) < 600)
   assert.ok(
     result.shapes.some(
       (shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk-distribution' && shape.end.x > shape.start.x

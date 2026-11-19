@@ -5,7 +5,8 @@ import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WI
 import { paperTextScale } from './page-layout.js'
 import { protectionDescriptionLayout } from './protection-label-layout.js'
 import { setProtectionDescription } from './protection-descriptions.js'
-import { placeOneWireIncomingCable } from './onewire-topology-annotations.js'
+import { spaceOneWireTopologyAnnotations } from './onewire-topology-annotations.js'
+import { meterCableLabel } from './connection-label-presentation.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabel, rcdTypeFromLabel, rcdTypeLabel, shouldShowPhaseLabel } from '../model/electrical.js'
 
@@ -99,6 +100,8 @@ export const buildOneWireTopology = (
         strokeWidth,
         ...(role !== 'secondary-busbar' ? { connection: role === 'grid-incoming' && plan.incomingCable
           ? { kind: 'cable' as const, ...plan.incomingCable, labelOwner: 'topology' as const, showLabel: true }
+          : role === 'incoming'
+            ? { kind: 'cable' as const, ...plan.meterCable, labelOwner: 'meter' as const, showLabel: true }
           : { kind: 'wire' as const, showLabel: false } } : {}),
         ...(energyFlow ? { energyFlow } : {}),
         ...(energySource ? { energySource } : {})
@@ -283,6 +286,7 @@ export const buildOneWireTopology = (
   shapes.push(
     line('incoming', meterTop.x, meterTop.y, mainBottom.x, mainBottom.y, ONE_WIRE_RENDERED_STROKE_WIDTH, plan.solar ? 'bidirectional' : 'forward')
   )
+  shapes.push(text('meter-cable-label', meterCableLabel(plan.meterCable), mainTap.x + 24, meterTop.y - 32))
   shapes.push(
     line('main-to-rail', mainTop.x, mainTop.y, mainTap.x, mainTap.y, ONE_WIRE_RENDERED_STROKE_WIDTH, plan.solar ? 'bidirectional' : 'forward')
   )
@@ -568,5 +572,5 @@ export const buildOneWireTopology = (
     shapes.push(panels)
   }
 
-  return placeOneWireIncomingCable(shapes).shapes
+  return spaceOneWireTopologyAnnotations(shapes)
 }

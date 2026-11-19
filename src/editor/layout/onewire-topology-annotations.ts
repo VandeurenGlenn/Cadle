@@ -83,12 +83,18 @@ export const spaceOneWireTopologyAnnotations = (shapes: readonly Shape[]): Shape
   const description = protectionDescriptionLayout(device)
   if (!bottom || !top || !description) return placeOneWireIncomingCable(shapes).shapes
   const lastNameY = description.y + Math.max(0, description.lines.length - 1) * description.lineHeight
-  const targetTop = Math.max(device.position.y + bottom.y + 40, lastNameY + 48)
+  const meterCaption = shapes.find((shape): shape is TextShape => shape.kind === 'text' &&
+    shape.groupId === device.groupId && shape.sourceLink?.role === 'meter-cable-label')
+  const captionY = Math.max(device.position.y + bottom.y + 40, lastNameY + 48)
+  const captionSpan = meterCaption
+    ? (paperTextLinesForShape(meterCaption).length - 1) * paperTextLineHeight(18 * (meterCaption.scale ?? 1)) : 0
+  const targetTop = meterCaption && !meterCaption.hidden ? captionY + captionSpan + 36 : captionY
   const dy = targetTop - meter.position.y - top.y
   const downstream = new Set(['meter', 'main-switch', 'main-switch-to-meter', 'grid-incoming'])
   return placeOneWireIncomingCable(shapes.map((shape) => {
     const role = shape.sourceLink?.role
     if (!role || shape.sourceLink?.id !== device.sourceLink?.id) return shape
+    if (shape === meterCaption) return { ...meterCaption, position: { x: meter.position.x + top.x + 24, y: captionY } }
     if (shape.kind === 'line' && role === 'incoming') return { ...shape, start: { ...shape.start, y: targetTop } }
     return downstream.has(role) && Math.abs(dy) > 0.01 ? translateShape(shape, 0, dy) : shape
   })).shapes

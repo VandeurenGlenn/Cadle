@@ -40,7 +40,8 @@ import {
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from '../api/project.js'
 import { circuitTemplates } from '../templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from '../editor/circuit-analysis.js'
-import { ensureOneWirePage } from '../data/page-operations.js'
+import { ensureOneWirePage, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../data/page-operations.js'
+import type { Shape } from '../editor/model/types.js'
 import { clonePageSchema } from '../data/page-schema.js'
 import { downloadBom, downloadDataUrl } from '../editor/export/export-commands.js'
 import { evaluateOneWirePreflight } from '../editor/onewire-preflight.js'
@@ -85,7 +86,7 @@ type NativeAppElement = HTMLElement & {
   getBOMRows?: () => BomRow[]
   getCircuitScheduleEditorItems?: () => CircuitScheduleEditorItem[]
   autoNameElectrical?: (lightingCircuitCount: number) => { labeled: number; circuitCount: number; message: string }
-  generateAutoOneWire?: (pageIndex?: number) => {
+  generateAutoOneWire?: (pageIndex?: number, regenerationSources?: readonly Shape[]) => {
     generated: boolean
     circuitCount: number
     pageCount?: number
@@ -1528,6 +1529,10 @@ export class AppShell extends LiteElement {
       return
     }
     this.project = oneWirePage.project
+    const previousPageKeys = oneWireGenerationPageKeys(this.project, oneWirePage.pageKey)
+    const regenerationSources = previousPageKeys.flatMap((key) =>
+      nativeStateForProjectPage(this.project, key)?.shapes.filter((shape) => shape.generationKey) ?? [])
+    const usedPageKeys = new Set([oneWirePage.pageKey])
 
     await this.loadPage(oneWirePage.pageKey)
     let activeApp = await this.#nativeAppForPage(oneWirePage.pageKey)
@@ -1535,9 +1540,9 @@ export class AppShell extends LiteElement {
       globalThis.alert('The one-wire page did not finish loading. Please try again.')
       return
     }
-    const result = activeApp.generateAutoOneWire?.(0)
+    const result = activeApp.generateAutoOneWire?.(0, regenerationSources)
     if (!result?.generated) globalThis.alert(result?.message ?? 'Unable to generate the one-wire diagram.')
-    if (!result?.generated || !result.pageCount || result.pageCount <= 1) return
+    if (!result?.generated || !result.pageCount) return
 
     await activeApp.flushPendingSave?.()
     for (let pageIndex = 1; pageIndex < result.pageCount; pageIndex += 1) {
@@ -1552,17 +1557,40 @@ export class AppShell extends LiteElement {
           ([, page]) => page.pageType === 'onewire' && page.name === pageName
         )?.[0]
       }
-      if (!overflowPageKey) continue
+      if (!overflowPageKey) {
+        globalThis.alert(`The one-wire page “${pageName}” could not be created. Existing sheets were kept.`)
+        return
+      }
+      usedPageKeys.add(overflowPageKey)
       await this.loadPage(overflowPageKey)
       activeApp = await this.#nativeAppForPage(overflowPageKey)
       if (!activeApp) {
         globalThis.alert(`The one-wire page “${pageName}” did not finish loading.`)
         return
       }
-      activeApp.generateAutoOneWire?.(pageIndex)
+      const generated = activeApp.generateAutoOneWire?.(pageIndex, regenerationSources)
+      if (!generated?.generated) {
+        globalThis.alert(generated?.message ?? `Unable to generate “${pageName}”. Existing sheets were kept.`)
+        return
+      }
       await activeApp.flushPendingSave?.()
     }
     this.project = await getProjectData(this.projectKey)
+    for (const key of oneWireGenerationPageKeys(this.project, oneWirePage.pageKey)) {
+      if (!previousPageKeys.includes(key)) usedPageKeys.add(key)
+    }
+    const redundantKeys = redundantOneWirePageKeys(this.project, previousPageKeys, usedPageKeys)
+    if (redundantKeys.length) {
+      const compacted = { ...this.project, pages: { ...this.project.pages } }
+      for (const key of redundantKeys) delete compacted.pages[key]
+      try {
+        await setProjectData(this.projectKey, compacted)
+        this.project = compacted
+      } catch (error) {
+        console.error('Overbodige eendraadsbladen konden niet worden verwijderd.', error)
+        globalThis.alert('De nieuwe indeling is opgeslagen, maar de oude vervolgbladen konden niet worden opgeruimd. Probeer opnieuw.')
+      }
+    }
     await this.loadPage(oneWirePage.pageKey)
   }
 

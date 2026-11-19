@@ -51,6 +51,10 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Circuit packing never treats an upstream differential as an outgoing breaker or owns its supply branch.
   Stationary rail taps remain covered when the outgoing circuits are packed; the rail keeps its own center.
   Overflow pagination belongs to explicit import/generation, never generic history recording or a single-rail insertion.
+  Automatic generation uses the full printable width at the existing symbol scale. Regeneration reconciles source
+  identities and connection-label overrides across its numbered sheets before removing redundant continuations.
+  Cleanup requires every generated object to be represented on a used sheet; manual, locked or unrecognized
+  content is retained. Cabinet destinations remain separate, and generation creates a recovery point first.
 - `src/editor/cable-estimate.ts` estimates cable route metres per circuit, board and cable designation for the circuit overview.
   It uses a rectilinear minimum spanning tree of labelled floor-plan devices and the selected board symbol at the page scale.
   Board locations are stable page/shape references, so moving a symbol or reassigning a circuit recalculates the estimate.
@@ -98,12 +102,19 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
   editor and SVG export. Existing catalog stair symbols remain supported.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
-- The one-wire “Omvormer / PV” action adds or edits a connected PV branch through a reviewable equipment form.
+- The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
+  through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text
+  import and variant selection; importing one component never replaces the other component's specifications.
   `src/editor/solar-installation.ts` parses aligned STC datasheet columns without mixing in BNPI/NOCT values;
-  ambiguous or incomplete columns remain explicit for correction. Image recognition reuses the local OCR worker.
+  the inverter parser reads nominal AC output, never recommended PV input or maximum/apparent output.
+  Ambiguous or incomplete columns remain explicit for correction. Image recognition reuses the local OCR worker,
+  normalizes light-on-grey table headers and leaves recognized text editable; ambiguous O/0 model suffixes are
+  flagged instead of silently corrected. Multiple variants require an explicit choice.
   Panel quantity, equal-string configuration and inverter/protection ratings are entered separately, never inferred
   from a panel datasheet. Reviewed specifications live in electrical metadata and ordinary schema text, preserving
-  them across history, reopening and SVG/PDF export. Placement uses actual terminals and free space without moving
+  them across history, reopening and SVG/PDF export. Legacy complete installations remain editable. Inverters
+  connect through their breaker to the selected AC kamrail; standalone panels have no automatic AC connection
+  and can be linked to an inverter's DC terminal using the connection tool. Placement uses actual terminals and free space without moving
   existing circuits; insufficient space is reported rather than silently placing equipment outside the print area.
 - The access-point and heat-pump drawing actions place catalog SVGs from `www/symbols/General/` and
   `www/symbols/Consumption appliances/`. The shared SVG loader defaults all symbol ink to black, independent

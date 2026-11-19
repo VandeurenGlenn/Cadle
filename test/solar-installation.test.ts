@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
+import { normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
   type SolarInstallation } from '../src/editor/solar-installation.ts'
 import { buildSolarInstallation, solarInstallationPlacement } from '../src/editor/layout/solar-installation-layout.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
@@ -44,6 +44,16 @@ test('reconstructs OCR columns spatially and accepts decimal commas without inve
   assert.equal(parseSolarDatasheet('unreadable image').panels.length, 0)
 })
 
+test('makes light-on-grey header text readable without changing white margins or ordinary body text', () => {
+  const header = [255, 170, 170, 255, 170, 170, 255]
+  const darkHeader = [255, 170, 170, 0, 170, 170, 255]
+  const body = [255, 255, 0, 255, 255, 0, 255]
+  const data = new Uint8ClampedArray([...header, ...darkHeader, ...body].flatMap((value) => [value, value, value, 255]))
+  normalizeSolarDatasheetHeaderContrast({ width: header.length, height: 3, data })
+  assert.deepEqual(Array.from(data), [255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, ...body]
+    .flatMap((value) => [value, value, value, 255]))
+})
+
 test('flags missing OCR decimal points and an outlier model instead of accepting corrupted specifications', () => {
   const result = parseSolarDatasheet(datasheet.replace('29.38', '2938').replace('34.62', '3462')
     .replace('ODA470-24V', 'ODAA70-24V'))
@@ -62,6 +72,78 @@ const installation: SolarInstallation = {
   panelCount: 12, stringCount: 2, inverterManufacturer: 'Test', inverterModel: 'INV-5000',
   inverterPowerW: 5000, phases: 1, breakerCurrentA: 25
 }
+
+const inverterSheet = `SUN2000-12/15/17/20/25K-MB0
+Technical Specification SUN2000-12K- SUN2000-15K- SUN2000-17K- SUN2000-20K- SUN2000-25K-
+MB0 MB0 MB0 MB0 MB0
+Efficiency
+Max. efficiency 98.4% 98.4% 98.4% 98.4% 98.4%
+DC Input
+Recommended max. PV power 18,000 Wp 22,500 Wp 25,500 Wp 30,000 Wp 37,500 Wp
+Max. input voltage 1,100 V
+Number of MPPT trackers 2
+Output
+Rated output power 12,000 W 15,000 W 17,000 W 20,000 W 25,000 W
+Max. apparent power 13,200 VA 16,500 VA 18,700 VA 22,000 VA 27,500 VA
+Rated output voltage 220 V AC/380 V AC, 230 V AC/400 V AC, 240 V AC/415 V AC; 3 W/N + PE`
+
+test('reads separate inverter variants from AC output, joins wrapped model codes and ignores PV and apparent power', () => {
+  const parsed = parseInverterDatasheet(inverterSheet)
+  assert.deepEqual(parsed.warnings, [])
+  assert.deepEqual(parsed.inverters.map((inverter) => inverter.inverterModel),
+    ['SUN2000-12K-MB0', 'SUN2000-15K-MB0', 'SUN2000-17K-MB0', 'SUN2000-20K-MB0', 'SUN2000-25K-MB0'])
+  assert.deepEqual(parsed.inverters.map((inverter) => inverter.inverterPowerW), [12000, 15000, 17000, 20000, 25000])
+  assert.ok(parsed.inverters.every((inverter) => inverter.maxDcVoltageV === 1100 && inverter.mpptCount === 2 && inverter.phases === 3))
+  const incomplete = parseInverterDatasheet(inverterSheet.replace('17,000 W ', ''))
+  assert.ok(incomplete.inverters.every((inverter) => inverter.inverterPowerW === undefined))
+  assert.ok(incomplete.warnings.some((warning) => warning.includes('AC-uitgangsvermogen')))
+  const decimal = parseInverterDatasheet('Manufacturer: Other-Brand\nModel INV-5000\nRated output power (kW) 5,000')
+  assert.equal(decimal.inverters[0].inverterPowerW, 5000)
+  assert.equal(decimal.inverters[0].inverterManufacturer, 'Other-Brand')
+  assert.equal(parseInverterDatasheet('Unreadable image').inverters.length, 0)
+})
+
+test('keeps real OCR header columns aligned and flags ambiguous model characters without guessing replacements', () => {
+  const result = parseInverterDatasheet(`SUN2000-12/15/17/20/25K-MBO
+Technical Specification
+SUN2000-12K- SUN2000-15K- SUN2000-17K- SUN2000-20K- SUN2000-25K
+Technical Specification
+MBO MBO MBO MBO MBO
+DC Input
+Max input voltage 1,100 V
+Number of MPP trackers 2
+Output
+Rated output power 12.000 W | 15,000 W 17,000 W | 20,000 w | 25000 W
+Rated output voltage 230 V AC/400 V AC, 3 W/N + PE`)
+  assert.deepEqual(result.inverters.map((inverter) => inverter.inverterModel),
+    ['SUN2000-12K-MBO', 'SUN2000-15K-MBO', 'SUN2000-17K-MBO', 'SUN2000-20K-MBO', 'SUN2000-25K-MBO'])
+  assert.deepEqual(result.inverters.map((inverter) => inverter.inverterPowerW), [12000, 15000, 17000, 20000, 25000])
+  assert.ok(result.inverters.every((inverter) => inverter.maxDcVoltageV === 1100 && inverter.mpptCount === 2 && inverter.phases === 3))
+  assert.equal(result.warnings.filter((warning) => warning.includes('letter O versus cijfer 0')).length, 5)
+})
+
+test('validates and serializes independent equipment without requiring or fabricating its counterpart', () => {
+  const panels: SolarInstallation = { kind: 'panels', panel: installation.panel, panelCount: 12, stringCount: 2 }
+  const inverter: SolarInstallation = { kind: 'inverter', inverterManufacturer: 'Other brand', inverterModel: 'INV-5000',
+    inverterPowerW: 5000, phases: 1, breakerCurrentA: 25, maxDcVoltageV: 600, mpptCount: 2 }
+  for (const value of [panels, inverter]) {
+    assert.equal(validateSolarInstallation(value), null)
+    assert.deepEqual(sanitizeSolarInstallation(value), value)
+    let id = 0
+    const shapes = buildSolarInstallation(value, value.kind === 'panels' ? undefined : 'rail', { x: 300, y: 800 }, () => `part-${++id}`)
+    const symbols = shapes.filter((shape) => shape.kind === 'symbol')
+    assert.equal(symbols.length, value.kind === 'panels' ? 1 : 2)
+    assert.deepEqual(sanitizeShapes(cloneShapes(shapes)).filter((shape) => shape.kind === 'symbol')
+      .map((shape) => shape.electrical?.solar), symbols.map(() => value))
+    if (value.kind === 'panels') {
+      assert.ok(shapes.every((shape) => shape.kind !== 'line' && !shape.oneWireRailId))
+      assert.equal(solarInstallationPlacement(shapes, [], undefined, { x: 0, y: 0, width: 2400, height: 1600 }), 0)
+    } else assert.ok(symbols.every((shape) => shape.name !== 'Zonnepanelen'))
+  }
+  assert.equal(sanitizeSolarInstallation({ ...inverter, mpptCount: 1.5 }), undefined)
+  assert.equal(sanitizeSolarInstallation({ ...panels, stringCount: 5 }), undefined)
+  assert.equal(sanitizeSolarInstallation({ kind: 'unknown' }), undefined)
+})
 
 test('rejects invalid quantities, unequal strings and implausible STC electrical values', () => {
   assert.equal(validateSolarInstallation(installation), null)

@@ -3685,7 +3685,7 @@ export class CadleApp extends LiteElement {
       this.#project?.electricalProfile, this.#project?.circuitSpecifications)
   }
 
-  generateAutoOneWire(pageIndex = 0): {
+  generateAutoOneWire(pageIndex = 0, regenerationSources?: readonly Shape[]): {
     generated: boolean
     circuitCount: number
     pageCount?: number
@@ -3706,19 +3706,20 @@ export class CadleApp extends LiteElement {
       }
     }
 
-    const { generated: previousGenerated, retained: retainedShapes } =
+    const { generated: pageGenerated, retained: retainedShapes } =
       this.#oneWireController.partitionRegenerationShapes(this.#document.shapes)
+    const previousGenerated = regenerationSources ? [...regenerationSources, ...pageGenerated] : pageGenerated
     const previousShapes = this.#document.shapes
     const previousSelectedId = this.#document.selectedId
     const previousSelectedIds = this.#document.selectedIds
 
     try {
       this.#document.shapes = [...retainedShapes]
-      const railWidth = Math.min(1200, Math.max(500, this.#worldWidth - 160))
-      const railStartX = (this.#worldWidth - railWidth) / 2
+      const safeArea = this.#safeAreaRect()
+      const railWidth = Math.max(1, safeArea.width - 48)
+      const railStartX = safeArea.x + (safeArea.width - railWidth) / 2
       const railEndX = railStartX + railWidth
       const usableWidth = Math.max(1, railEndX - railStartX)
-      const safeArea = this.#safeAreaRect()
       const usableHeight = Math.max(ONE_WIRE_FIRST_ROW_OFFSET_Y, safeArea.height)
       const layoutPlan = this.#oneWireController.plan(
         analysis.families.map((family) => {
@@ -5581,7 +5582,7 @@ export class CadleApp extends LiteElement {
       : selected?.groupId ? this.#document.shapes.find((shape): shape is SymbolShape =>
         shape.kind === 'symbol' && shape.groupId === selected.groupId && Boolean(shape.electrical?.solar)) : undefined
     const previous = equipment?.electrical?.solar
-    const groupId = previous ? selected?.groupId : undefined
+    let groupId = previous ? selected?.groupId : undefined
     if (groupId && this.#document.shapes.some((shape) => shape.groupId === groupId && shape.locked)) {
       globalThis.alert('Ontgrendel de PV-installatie voordat je deze bijwerkt.')
       return
@@ -5597,8 +5598,32 @@ export class CadleApp extends LiteElement {
       globalThis.alert('De actieve pagina is gewijzigd. Open de PV-installatie opnieuw op het gewenste blad.')
       return
     }
+    if (result.newEquipment) groupId = undefined
     const area = this.#safeAreaRect()
     const occupied = this.#document.shapes.filter((shape) => !groupId || shape.groupId !== groupId)
+    if (result.installation.kind === 'panels') {
+      const oldContact = groupId && previous?.kind === 'panels' && equipment
+        ? oneWireSymbolConnectionAnchors(equipment).find((anchor) => anchor.side === 'bottom')?.point : undefined
+      const taps = oldContact ? [{ x: oldContact.x, y: oldContact.y + 48 }]
+        : [area.y + area.height - 240, area.y + area.height / 2, area.y + 240]
+          .map((y) => ({ x: area.x + 60, y }))
+      for (const tap of taps) {
+        const generated = buildSolarInstallation(result.installation, undefined, tap, nextShapeId)
+        const dx = solarInstallationPlacement(generated, occupied, undefined, area)
+        if (dx === undefined || (oldContact && dx !== 0)) continue
+        const added = generated.map((shape) => translateShape(shape, dx, 0))
+        const panel = added.find((shape) => shape.kind === 'symbol')!
+        this.#document.shapes = [...occupied, ...added]
+        this.#activateTool('select')
+        this.#document.selectedId = panel.id
+        this.#document.selectedIds = new Set([panel.id])
+        this.#pushHistory()
+        this.#render()
+        return
+      }
+      globalThis.alert('Geen vrije ruimte voor de panelen op dit blad. Bestaande onderdelen en DC-aansluitingen zijn niet verplaatst.')
+      return
+    }
     let rail = result.railId ? occupied.find((shape): shape is LineShape =>
       shape.id === result.railId && this.#isKamrailShape(shape) && !shape.locked) : undefined
     const newRail = !result.railId

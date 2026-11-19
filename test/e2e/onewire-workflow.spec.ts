@@ -1,4 +1,119 @@
 import { expect, test, type Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import type { Project } from '../../src/types.ts'
+import type { AppShell } from '../../src/shell/app-shell.ts'
+import type { CadleApp } from '../../src/editor/cadle-app.ts'
+import type { Shape } from '../../src/editor/model/types.ts'
+import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
+import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { oneWireLayoutBounds } from '../../src/editor/layout/onewire-connections.ts'
+import { pageLayout } from '../../src/editor/layout/page-layout.ts'
+import { PAPER_PRESETS } from '../../src/editor/constants.ts'
+
+test('uses the printable width and consolidates old automatic sheets without losing device identities or cable overrides', async ({ page }) => {
+  const groundKey = randomUUID(), rootKey = randomUUID()
+  const families = [...'ABCDEFGH']
+  const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
+    { kind: 'cadle-native-svg-document', payload: { version: 2, paperLayoutVersion: 1,
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION, shapes, selectedId: null,
+      paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 } }
+  ] })
+  const project: Project = {
+    uuid: randomUUID(), creationTime: 1, name: 'Compacte eendraadsbladen', company: '',
+    customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
+    address: { street: '', number: '', postalCode: '', city: '' },
+    oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
+    pages: {
+      [groundKey]: { name: 'Situatieplan', pageType: 'groundplan', creationTime: 1, schema: document(families.map((family, index) => ({
+        id: `socket-${family}`, kind: 'symbol', name: 'Wall outlet with grounding',
+        path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', scale: 1,
+        position: { x: 200 + index * 200, y: 400 }, bindingId: `${family}1`,
+        electrical: { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: 1 }
+      }))) },
+      [rootKey]: { name: 'One-wire diagram', pageType: 'onewire', creationTime: 2, schema: document([]) }
+    }
+  }
+  const store = async (value: Project) => page.evaluate(async (project) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, value] of [['projects', project.name], ['project-data', JSON.stringify(project)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(project.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(value)
+      await writer.close()
+    }
+  }, value)
+  await page.goto('/#!/projects')
+  await store(project)
+  await page.reload()
+  const open = async () => {
+    await page.locator('projects-field custom-list-item[data-name="Compacte eendraadsbladen"]').click()
+    await expect.poll(() => page.locator('cadle-app:not([read-only])').evaluate((element, key) =>
+      (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  }
+  await open()
+  const shell = page.locator('app-shell')
+  const generate = () => shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  const saved = () => shell.evaluate((element) => (element as AppShell).project!)
+  const oneWireKeys = (project: Project) => Object.keys(project.pages).filter((key) => project.pages[key].pageType === 'onewire')
+  await generate()
+  const initial = await saved()
+  expect(oneWireKeys(initial)).toHaveLength(2)
+  const circuitKey = oneWireKeys(initial).find((key) => key !== rootKey)!
+  const original = nativeStateForProjectPage(initial, circuitKey)!
+  expect(original.shapes.filter((shape) => shape.sourceLink?.role === 'breaker')).toHaveLength(8)
+  const cable = original.shapes.find((shape) => shape.kind === 'line' && shape.bindingId === 'H' && shape.connection?.kind === 'cable')
+  expect(cable).toBeDefined()
+  if (cable?.kind !== 'line') throw new Error('Missing H cable.')
+  cable.connection = { ...cable.connection!, name: 'Voeding garage behouden', showLabel: true }
+  const deviceIds = original.shapes.filter((shape) => shape.sourceLink?.kind === 'device').map((shape) => shape.id).sort()
+  const symbolSizes = original.shapes.flatMap((shape) => shape.kind === 'symbol' ? [[shape.id, shape.scale]] : [])
+  const legacyKeys = [circuitKey, randomUUID(), randomUUID()]
+  for (const [index, key] of legacyKeys.entries()) {
+    const included = families.slice(index * 3, index * 3 + 3)
+    const shapes = original.shapes.filter((shape) => {
+      const family = (shape.bindingId ?? shape.sourceLink?.id ?? '').replace(/\d+$/, '')
+      return !families.includes(family) || included.includes(family)
+    })
+    initial.pages[key] = { ...initial.pages[circuitKey], name: `One-wire diagram ${index + 2}`,
+      creationTime: 3 + index, schema: { version: 'native-svg-1', objects: [
+        { kind: 'cadle-native-svg-document', payload: { ...original, shapes } }
+      ] } }
+  }
+  expect(oneWireKeys(initial)).toHaveLength(4)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), groundKey)
+  await store(initial)
+  await page.goto('/#!/projects')
+  await open()
+  await generate()
+  const compact = await saved()
+  expect(oneWireKeys(compact)).toHaveLength(2)
+  const combined = oneWireKeys(compact).flatMap((key) => {
+    const state = nativeStateForProjectPage(compact, key)!
+    const area = pageLayout(state.worldWidth, state.worldHeight, state.printMargin,
+      state.worldWidth / PAPER_PRESETS[state.paperPreset].widthMm).content
+    for (const shape of state.shapes.filter((shape) => !shape.hidden)) {
+      const bounds = oneWireLayoutBounds(shape)
+      expect(bounds.x, `${shape.id}: left print margin`).toBeGreaterThanOrEqual(area.x - 1e-6)
+      expect(bounds.y, `${shape.id}: top print margin`).toBeGreaterThanOrEqual(area.y - 1e-6)
+      expect(bounds.x + bounds.width, `${shape.id}: right print margin`).toBeLessThanOrEqual(area.x + area.width + 1e-6)
+      expect(bounds.y + bounds.height, `${shape.id}: bottom print margin`).toBeLessThanOrEqual(area.y + area.height + 1e-6)
+    }
+    return state.shapes
+  })
+  expect(combined.filter((shape) => shape.sourceLink?.kind === 'device').map((shape) => shape.id).sort()).toEqual(deviceIds)
+  expect(combined.flatMap((shape) => shape.kind === 'symbol' && symbolSizes.some(([id]) => id === shape.id)
+    ? [[shape.id, shape.scale]] : []).sort()).toEqual(symbolSizes.sort())
+  expect(combined.find((shape) => shape.id === cable.id)).toMatchObject({ connection: { name: 'Voeding garage behouden', showLabel: true } })
+  expect(compact.recovery?.length).toBeGreaterThan(0)
+  await generate()
+  expect(oneWireKeys(await saved())).toEqual(oneWireKeys(compact))
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="Compacte eendraadsbladen"]').click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(project.uuid)
+  await expect.poll(async () => oneWireKeys(await saved())).toEqual(oneWireKeys(compact))
+})
 
 test('generates imported circuit breakers without junction boxes or obsolete breaker assets', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')

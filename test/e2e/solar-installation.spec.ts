@@ -60,7 +60,7 @@ test('reviews a multivariant STC datasheet, adds and edits a connected PV instal
   await dialog.getByRole('button', { name: 'Annuleren' }).click()
   expect(await stored()).toEqual(initial)
   await trigger.click()
-  await dialog.locator('summary').click()
+  await dialog.locator('fieldset[data-equipment="panels"] summary').click()
   await dialog.getByRole('textbox', { name: 'Tekst van paneelfiche' }).fill(`SPECIFICATION (STC)
 MODEL TYPE ODA450-24V-MHDBRz ODA470-24V-MHDBRz
 Rated Peak Power-Pmax(Wp)* 450.00 470.00
@@ -70,7 +70,7 @@ Open Circuit Voltage-Voc(V)* 34.57 34.77
 Short Circuit Current-Isc(A)* 16.27 16.90
 ELECTRICAL DATA(BNPI)
 Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
-  await dialog.getByRole('button', { name: 'Tekst verwerken' }).click()
+  await dialog.getByRole('button', { name: 'Paneeltekst verwerken' }).click()
   await expect(dialog.getByLabel('Paneelvariant', { exact: true })).toHaveValue('')
   await dialog.getByLabel('Paneelvariant', { exact: true }).selectOption('1')
   await expect(dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true })).toHaveValue('470')
@@ -140,4 +140,84 @@ test('creates a kamrail on an empty schematic and shows image-import failures ex
   expect(shapes.filter((shape) => shape.groupId?.startsWith('onewire-kamrail-'))).toHaveLength(1)
   expect(shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat')).toMatchObject({ electrical: { poles: 4 } })
   await expect(app.locator('text.shape-text').filter({ hasText: '1 x 470 Wp = 0.47 kWp' })).toHaveCount(1)
+})
+
+test('imports inverter and panel sheets independently, preserves different brands and edits only the chosen equipment', async ({ page }) => {
+  const { app, stored, pageKey } = await openProject(page, [])
+  const trigger = page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })
+  await trigger.click()
+  const dialog = page.locator('solar-installation-dialog')
+  await dialog.getByLabel('Onderdeel', { exact: true }).selectOption('inverter')
+  await expect(dialog.getByLabel('Afbeelding van paneelfiche', { exact: true })).toHaveCount(0)
+  await dialog.locator('fieldset[data-equipment="inverter"] summary').click()
+  await dialog.getByLabel('Tekst van omvormerfiche', { exact: true }).fill(`Technical Specification SUN2000-12K- SUN2000-15K- SUN2000-17K- SUN2000-20K- SUN2000-25K-
+MB0 MB0 MB0 MB0 MB0
+DC Input
+Recommended max. PV power 18,000 Wp 22,500 Wp 25,500 Wp 30,000 Wp 37,500 Wp
+Max. input voltage 1,100 V
+Number of MPPT trackers 2
+Output
+Rated output power 12,000 W 15,000 W 17,000 W 20,000 W 25,000 W
+Max. apparent power 13,200 VA 16,500 VA 18,700 VA 22,000 VA 27,500 VA
+Rated output voltage 230 V AC/400 V AC; 3 W/N + PE`)
+  await dialog.getByRole('button', { name: 'Omvormertekst verwerken', exact: true }).click()
+  await expect(dialog.getByLabel('Omvormervariant', { exact: true })).toHaveValue('')
+  await dialog.getByLabel('Omvormervariant', { exact: true }).selectOption('3')
+  await expect(dialog.getByLabel('Omvormermodel', { exact: true })).toHaveValue('SUN2000-20K-MB0')
+  await expect(dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true })).toHaveValue('20000')
+  await expect(dialog.getByLabel('Fasen omvormer', { exact: true })).toHaveValue('3')
+  await dialog.getByLabel('Merk omvormer', { exact: true }).fill('Huawei')
+  await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('32')
+  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  const inverter = await stored()
+  expect(inverter.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(2)
+  expect(inverter.some((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toBe(false)
+  await trigger.click()
+  await dialog.getByRole('button', { name: 'Nieuw onderdeel toevoegen', exact: true }).click()
+  await expect(dialog.getByLabel('Onderdeel', { exact: true })).toHaveValue('panels')
+  await expect(dialog.getByLabel('Afbeelding van omvormerfiche', { exact: true })).toHaveCount(0)
+  await dialog.locator('fieldset[data-equipment="panels"] summary').click()
+  await dialog.getByLabel('Tekst van paneelfiche', { exact: true }).fill(`SPECIFICATION (STC)
+MODEL TYPE ODA470-24V-MHDBRz
+Rated Peak Power-Pmax(Wp) 470
+Maximum Power Voltage-Vmp(V) 29.55
+Maximum Power Current-Imp(A) 15.91
+Open Circuit Voltage-Voc(V) 34.77
+Short Circuit Current-Isc(A) 16.90`)
+  await dialog.getByRole('button', { name: 'Paneeltekst verwerken', exact: true }).click()
+  await dialog.getByLabel('Merk panelen', { exact: true }).fill('OSDA')
+  await dialog.getByLabel('Aantal panelen', { exact: true }).fill('12')
+  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('2')
+  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  const separate = await stored()
+  expect(separate.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
+  const panels = separate.filter((shape) => !inverter.some((before) => before.id === shape.id))
+  expect(panels.every((shape) => shape.kind !== 'line' && !shape.oneWireRailId)).toBe(true)
+  expect(panels.find((shape) => shape.kind === 'symbol')).toMatchObject({
+    electrical: { solar: { kind: 'panels', panel: { manufacturer: 'OSDA', powerWp: 470 }, panelCount: 12 } }
+  })
+  await trigger.click()
+  await expect(dialog.getByLabel('Merk panelen', { exact: true })).toHaveValue('OSDA')
+  await dialog.getByLabel('Aantal panelen', { exact: true }).fill('18')
+  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('3')
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  const updated = await stored()
+  expect(updated.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp' })).toHaveCount(1)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  await stored()
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  const saved = await stored()
+  expect(saved.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
+  expect(saved.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  const svg = await app.evaluate((element) => (element as CadleApp).toSVG())
+  expect(svg).toContain('Huawei')
+  expect(svg).toContain('OSDA')
+  expect(svg).toContain('18 x 470 Wp')
 })

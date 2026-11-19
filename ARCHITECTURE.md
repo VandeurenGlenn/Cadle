@@ -65,6 +65,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   applying requires the main differential's A/mA ratings, saves the confirmed topology, and then generates the
   supply sheet. Reopening retains accepted JSON corrections until the description is changed.
   An explicit re-analysis action refreshes an older interpretation without requiring a text edit; it replaces local JSON corrections.
+  The review preview shows ordered supply steps, separate parallel PV/consumer branches and downstream differentials
+  nested under the consumer rail, with a stacked layout on narrow screens.
   A saved interpretation missing downstream differentials explicitly recognized in the description is flagged in the preview;
   opening alone still preserves the accepted JSON until the user explicitly re-analyzes and applies it.
   Singular downstream differentials are recognized without an explicit count, with A/mA ratings in either order.

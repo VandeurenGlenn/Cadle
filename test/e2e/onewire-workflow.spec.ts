@@ -112,8 +112,32 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await expect(dialog.locator('.preview [role="status"]')).toContainText('mist de bijkomende differentieel')
   expect(JSON.parse(await json.inputValue()).additionalDifferentials).toBeUndefined()
   await dialog.locator('custom-button[label="Beschrijving opnieuw analyseren"]').click()
-  await expect(dialog.locator('.preview')).toContainText('1× differentieel 40 A / 30 mA type A')
+  const preview = dialog.locator('.preview')
+  await expect(preview.locator('.supply-flow .flow-step strong')).toHaveText([
+    'Inkomende kabel', 'Hoofdschakelaar', 'kWh-meter', 'Hoofddifferentieel'
+  ])
+  await expect(preview.locator('.supply-flow .flow-step').first()).toContainText('4x10 mm² EXVB')
+  await expect(preview.locator('.branch-caption')).toContainText('parallel aangesloten')
+  await expect(preview.locator('.branch-caption')).toContainText('vóór de remautomaat')
+  await expect(preview.locator('.consumer-branch .branch-flow .flow-step strong')).toHaveText([
+    'Remautomaat', 'Verbruikersrail'
+  ])
+  const differential = preview.locator('.consumer-branch .differential-group')
+  await expect(differential).toContainText('1× differentieel')
+  await expect(differential).toContainText('40 A / 30 mA')
+  await expect(differential).toContainText('type A')
+  await expect(differential).toContainText('Naar verbruikers')
+  await expect(preview.locator('.solar-branch')).toContainText('2P 25 A')
+  await expect(preview.locator('.solar-branch .differential-group')).toHaveCount(0)
   await expect(dialog.locator('.preview [role="status"]')).toHaveCount(0)
+  await differential.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('topology-preview-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await differential.scrollIntoViewIfNeeded()
+  await expect(differential).toBeVisible()
+  expect(await dialog.locator('.panel').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('topology-preview-mobile.png') })
+  await page.setViewportSize({ width: 1280, height: 720 })
   await dialog.locator('custom-button[label="Structuur toepassen"]').click()
   await expect.poll(async () => (await protections()).find((shape) =>
     shape.sourceLink?.role === 'additional-differential-consumers-1')?.kind).toBe('symbol')
@@ -506,7 +530,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   await supplyOptions.getByRole('radio', { name: 'L2 + N' }).click()
 
   const objectPane = page.locator('object-pane')
-  await objectPane.locator('[data-electrical-field="breakerCurrentA"]').fill('25')
+  await objectPane.locator('[data-electrical-field="breakerCurrentA"]').selectOption('25')
   await objectPane.locator('[data-electrical-field="breakerCurve"]').selectOption('D')
   await objectPane.locator('[data-electrical-field="cableSectionMm2"]').selectOption('4')
   await objectPane.locator('[data-electrical-field="cableConductors"]').fill('4')

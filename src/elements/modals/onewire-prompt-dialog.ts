@@ -1,7 +1,8 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import '@vandeurenglenn/lite-elements/button.js'
 import styles from './onewire-prompt-dialog.css' with { type: 'css' }
-import { interpretOneWirePrompt, oneWirePromptTree, oneWireTopologyPrompt, parseOneWirePrompt } from '../../editor/onewire-prompt.js'
+import { interpretOneWirePrompt, oneWireTopologyPrompt, parseOneWirePrompt } from '../../editor/onewire-prompt.js'
+import { cableLabelText } from '../../editor/model/cable-designation.js'
 import { validateOneWireTopology } from '../../editor/onewire-topology-schema.js'
 import type { OneWireTopologyPlan } from '../../types.js'
 
@@ -126,6 +127,74 @@ export class OneWirePromptDialog extends LiteElement {
     )
   }
 
+  #topologyPreview(plan: OneWireTopologyPlan) {
+    const differentials = plan.additionalDifferentials ?? []
+    const hasConsumerBranch = plan.residualBreaker || plan.consumers || differentials.length > 0
+    const step = (label: string, detail = '') => html`
+      <li class="flow-step"><strong>${label}</strong>${detail ? html`<span>${detail}</span>` : ''}</li>
+    `
+    return html`
+      <ol class="supply-flow" aria-label="Voeding in aansluitvolgorde">
+        ${step('Inkomende kabel', plan.incomingCable ? cableLabelText(plan.incomingCable, 'x') : 'Niet opgegeven')}
+        ${step('Hoofdschakelaar', plan.mainSwitch ? `${plan.mainSwitch.ratedCurrentA} A` : 'Niet opgegeven')}
+        ${step('kWh-meter')}
+        ${step('Hoofddifferentieel', plan.mainDifferential
+          ? `${plan.mainDifferential.ratedCurrentA} A / ${plan.mainDifferential.sensitivityMa} mA`
+          : 'Nog niet volledig opgegeven')}
+      </ol>
+      ${plan.solar || hasConsumerBranch ? html`
+        <div class="branch-caption">
+          <strong>Aftakkingen na de hoofddifferentieel</strong>
+          ${plan.solar && hasConsumerBranch ? html`<p>Deze twee takken zijn parallel aangesloten${plan.residualBreaker ? ': de zonnepanelen zitten vóór de remautomaat' : ''}.</p>` : ''}
+        </div>
+        <div class="topology-branches">
+          ${plan.solar ? html`
+            <section class="topology-branch solar-branch" aria-label="Aftakking zonnepanelen">
+              <h4>Zonnepanelen</h4>
+              <ol class="branch-flow" aria-label="Aansluiting zonnepanelen">
+                ${step('PV-automaat', [
+                  plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P` : '',
+                  plan.solarBreakerRatedCurrentA ? `${plan.solarBreakerRatedCurrentA} A` : ''
+                ].filter(Boolean).join(' '))}
+                ${step('Omvormer / zonnepanelen')}
+              </ol>
+            </section>
+          ` : ''}
+          ${hasConsumerBranch ? html`
+            <section class="topology-branch consumer-branch" aria-label="Aftakking verbruikers">
+              <h4>Verbruikers</h4>
+              <ol class="branch-flow" aria-label="Voeding verbruikersrail">
+                ${plan.residualBreaker ? step('Remautomaat', `${plan.residualBreakerRatedCurrentA ?? 40} A`) : ''}
+                ${step('Verbruikersrail', plan.residualBreaker
+                  ? `Begrensd op ${plan.residualBreakerRatedCurrentA ?? 40} A`
+                  : 'Zonder remautomaat')}
+              </ol>
+              ${differentials.length ? html`
+                <p class="rail-caption">Bijkomende differentiëlen vanaf deze rail:</p>
+                <div class="differential-branches">
+                  ${differentials.map((item) => {
+                    const destination = [
+                      item.boardId?.trim() ? `kast ${item.boardId.trim()}` : '',
+                      item.railId?.trim() ? `rij ${item.railId.trim()}` : '',
+                      item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'
+                    ].filter(Boolean).join(' · ')
+                    return html`
+                      <section class="differential-group">
+                        <strong>${item.count}× differentieel</strong>
+                        <span>${item.ratedCurrentA ? `${item.ratedCurrentA} A / ` : ''}${item.sensitivityMa} mA${item.rcdType ? ` · type ${item.rcdType}` : ''}</span>
+                        <p>Naar ${destination}</p>
+                      </section>
+                    `
+                  })}
+                </div>
+              ` : plan.consumers ? html`<p class="rail-caption">Vanaf deze rail naar de verbruikers / kringen.</p>` : ''}
+            </section>
+          ` : ''}
+        </div>
+      ` : ''}
+    `
+  }
+
   render() {
     if (!this.open) return html``
 
@@ -173,18 +242,23 @@ export class OneWirePromptDialog extends LiteElement {
             >
           </label>
           <section class="preview">
-            <span class="eyebrow">Cadle begrijpt dit als · ${this.modelStatus}</span>
+            <div class="preview-header">
+              <strong>Cadle begrijpt dit als</strong>
+              <span class="model-status">${this.modelStatus}</span>
+            </div>
             ${missingSavedDifferentials ? html`
               <p role="status">De opgeslagen structuur mist de bijkomende differentieel uit je beschrijving.
                 Kies hieronder <strong>Beschrijving opnieuw analyseren</strong> om de structuur bij te werken.</p>
             ` : ''}
-            <pre>${interpreted ? oneWirePromptTree(interpreted).join('\n') : 'Beschrijf eerst de installatie.'}</pre>
-            <custom-button
-              type="text"
-              label="Beschrijving opnieuw analyseren"
-              title="Vervangt de lokale JSON-correcties door een nieuwe interpretatie van de beschrijving."
-              ?disabled=${!value.trim()}
-              @click=${() => this.#syncJsonFromPrompt()}></custom-button>
+            ${interpreted ? this.#topologyPreview(interpreted) : html`<p>Beschrijf eerst de installatie.</p>`}
+            <div class="preview-actions">
+              <custom-button
+                type="text"
+                label="Beschrijving opnieuw analyseren"
+                title="Vervangt de lokale JSON-correcties door een nieuwe interpretatie van de beschrijving."
+                ?disabled=${!value.trim()}
+                @click=${() => this.#syncJsonFromPrompt()}></custom-button>
+            </div>
           </section>
           <details class="json-review">
             <summary>Gestructureerde JSON controleren of corrigeren</summary>

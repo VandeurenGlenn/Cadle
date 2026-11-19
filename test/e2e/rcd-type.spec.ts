@@ -13,11 +13,11 @@ test('shows breaker curves for saved ratings and curve-only edits in the editor 
     buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1,
       shapes: [{ id: 'curve-breaker', kind: 'symbol', name: 'Automaat',
         path: 'symbols/Protection devices/Automaat.svg', position: { x: 900, y: 600 }, scale: 4,
-        symbolTextOverrides: { 'rated-current': '20A' } }],
+        symbolTextOverrides: { 'rated-current': '24A' } }],
       selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
   })
   const breaker = app.locator('g.shape-symbol[data-shape-id="curve-breaker"]')
-  await expect(breaker.locator('text').filter({ hasText: /^C20A$/ })).toHaveCount(1)
+  await expect(breaker.locator('text').filter({ hasText: /^C24A$/ })).toHaveCount(1)
   const selectBreaker = async () => {
     const point = await breaker.locator('path').first().evaluate((path: SVGPathElement) => {
       const point = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
@@ -26,12 +26,15 @@ test('shows breaker curves for saved ratings and curve-only edits in the editor 
     await page.mouse.click(point.x, point.y)
   }
   await selectBreaker()
+  const current = page.locator('object-pane [data-electrical-field="breakerCurrentA"]')
+  await expect(current).toHaveValue('24')
+  await expect(current.locator('option:checked')).toHaveText('24 A (bestaande waarde)')
   const curve = page.locator('object-pane').getByRole('combobox', { name: 'Breaker curve', exact: true })
   for (const value of ['B', 'D']) {
     await curve.selectOption(value)
-    await expect(breaker.locator('text').filter({ hasText: new RegExp(`^${value}20A$`) })).toHaveCount(1)
+    await expect(breaker.locator('text').filter({ hasText: new RegExp(`^${value}24A$`) })).toHaveCount(1)
   }
-  await page.locator('object-pane [data-electrical-field="breakerCurrentA"]').fill('25')
+  await current.selectOption('25')
   await expect(breaker.locator('text').filter({ hasText: /^D25A$/ })).toHaveCount(1)
   expect(await app.evaluate((element: any) => element.toSVG())).toContain('>D25A</text>')
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
@@ -40,6 +43,7 @@ test('shows breaker curves for saved ratings and curve-only edits in the editor 
   await expect(breaker.locator('text').filter({ hasText: /^D25A$/ })).toHaveCount(1)
   await selectBreaker()
   await expect(curve).toHaveValue('D')
+  await expect(current).toHaveValue('25')
 })
 
 test('edits protection pole counts independently and retains them after reopening', async ({ page }) => {

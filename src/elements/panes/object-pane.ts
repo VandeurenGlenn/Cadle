@@ -30,6 +30,7 @@ import '@vandeurenglenn/lite-elements/icon.js'
 
 const CABLE_FIRE_CLASS_OPTIONS = ['Aca', 'B1ca', 'B2ca', 'Cca', 'Dca', 'Eca', 'Fca', 'CCS', 'LSOH', 'LSZH']
 const CABLE_SECTION_OPTIONS = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240]
+const BREAKER_CURRENT_OPTIONS = [1, 2, 3, 4, 6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125]
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
@@ -987,6 +988,7 @@ export class ObjectPane extends LiteElement {
   #renderNativeSelection() {
     const isResidualBreaker = /residual-current/i.test(`${this._nativePath} ${this._nativeName}`)
     const isProtectionDevice = this._nativeCircuitPropertiesEditable
+    const breakerCurrentA = this.#effectiveElectrical().breakerCurrentA
     const hasSelection = this._selectionCount > 0
     if (!hasSelection) {
       return html`
@@ -1161,15 +1163,19 @@ ${this.#propertySection('protection', 'Protection', html`
 </label>
 <label
                         ><span class="native-label">${isResidualBreaker ? 'Rated current (A)' : 'Breaker (A)'}</span
-                        ><input
+                        ><select
                           data-electrical-field="breakerCurrentA"
-                          class="native-input"
-                          type="number"
-                          min="1"
-                          .value=${String(this.#effectiveElectrical().breakerCurrentA ?? '')}
-                          @input=${(event: Event) =>
-                            this.#updateElectrical('breakerCurrentA', (event.target as HTMLInputElement).value)}
-                      /></label>                    ${isResidualBreaker
+                          class="native-select"
+                          @change=${(event: Event) =>
+                            this.#updateElectrical('breakerCurrentA', (event.target as HTMLSelectElement).value)}>
+                          <option value="" ?selected=${breakerCurrentA === undefined}>${multiple ? 'Verschillend / niet ingesteld' : 'Not set'}</option>
+                          ${BREAKER_CURRENT_OPTIONS.map((current) => html`
+                            <option value=${String(current)} ?selected=${breakerCurrentA === current}>${current} A</option>
+                          `)}
+                          ${breakerCurrentA !== undefined && !BREAKER_CURRENT_OPTIONS.includes(breakerCurrentA) ? html`
+                            <option value=${String(breakerCurrentA)} selected>${breakerCurrentA} A (bestaande waarde)</option>
+                          ` : ''}
+                        </select></label>                    ${isResidualBreaker
                       ? ''
                       : html`<div class="native-row">
                           <label

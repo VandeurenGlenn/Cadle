@@ -1,86 +1,104 @@
 import { expect, test } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { AppShell } from '../../src/shell/app-shell.ts'
+import type { Project } from '../../src/types.ts'
 import type { SymbolShape } from '../../src/editor/model/types.ts'
 import { DEFAULT_AREI_PROFILE } from '../../src/editor/electrical-profile.ts'
 
-    test('keeps slow ID edits stable and numbers logical points from the assigned cabinet', async ({ page }) => {
-      await page.setViewportSize({ width: 1920, height: 1100 })
-      await page.goto('/?fixture=priority-suite#!/projects')
-      await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
-      const app = page.locator('cadle-app:not([read-only])')
-      const shell = page.locator('app-shell')
-      await expect.poll(() => app.evaluate((element) =>
-        (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
-      await shell.evaluate((element, profile) => {
-        const project = (element as AppShell).project
-        project.electricalProfile = { ...profile, boards: [
-          { id: 'main', name: 'Hoofdkast', rails: [{ id: 'rail-1', name: 'Rail 1' }] },
-          { id: 'garage', name: 'Garage', rails: [{ id: 'rail-1', name: 'Rail 1' }],
-            floorPlanLocation: { pageKey: '00000000-0000-4000-8000-000000000102', shapeId: 'board-garage' } }
-        ] }
-        project.circuitSpecifications = { ...project.circuitSpecifications, AL: { boardId: 'garage' } }
-      }, DEFAULT_AREI_PROFILE)
-      const path = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="white" stroke="black"/></svg>')}`
-      const shapes: SymbolShape[] = [
-        ...[600, 1300].map((x, index): SymbolShape => ({
-          id: index ? 'board-garage' : 'board-main', kind: 'symbol', name: 'Verdeelbord', path, scale: 1.5,
-          position: { x, y: 350 }, electrical: { role: 'protection', oneWireEligible: false,
-            boardId: index ? 'garage' : 'main' }
-        })),
-        ...[700, 800, 900, 1000, 1100, 1200, 1050, 1060, 1070].map((x, index): SymbolShape => ({
-          id: `point-${index}`, kind: 'symbol', name: 'Socket outlet', path, scale: 1.5,
-          position: { x, y: 600 }, ...(index >= 6 ? { groupId: 'triple-socket' } : {}),
-          electrical: { role: 'load', circuitType: 'sockets', oneWireEligible: true }
-        }))
-      ]
-      await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
-        name: 'cabinet-point-numbering.json', mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify({ version: 2, paperLayoutVersion: 1, shapes, selectedId: null,
-          paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }))
-      })
-      await expect(app.locator('g.shape-symbol svg rect')).toHaveCount(shapes.length)
-      const select = async (id: string, multiple = false) => {
-        await app.locator(`g.shape-symbol[data-shape-id="${id}"]`).click({
-          ...(multiple ? { modifiers: ['ControlOrMeta' as const] } : {})
-        })
-      }
-      await select('point-7')
-      for (let index = 0; index < 6; index++) await select(`point-${index}`, true)
-      await expect.poll(() => shell.evaluate((element) => (element as AppShell).selectedObjectCount)).toBe(9)
-      const input = page.locator('object-pane .native-binding-input')
-      const original = await input.elementHandle()
-      const ids = () => app.evaluate((element) => (element as CadleApp).analyzeBindings().groups
-        .map((group) => group.bindingId).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })))
-      await input.pressSequentially('a1', { delay: 450 })
-      await input.press('ArrowLeft')
-      await input.pressSequentially('l', { delay: 450 })
-      await expect(input).toHaveValue('al1')
-      await expect(input).toBeFocused()
-      expect(await input.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(2)
-      expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
-      expect(await ids()).toEqual([])
-      await input.press('Enter')
-      await expect.poll(ids).toEqual(['AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'AL7'])
-      const points = await app.evaluate((element) => (element as CadleApp).analyzeBindings().groups.map((group) => ({
-        id: group.bindingId, shapes: group.components.map((component) => component.shapeId)
-      })))
-      expect(points.find((point) => point.id === 'AL1')?.shapes).toContain('point-5')
-      expect(points.find((point) => point.id === 'AL7')?.shapes).toContain('point-0')
-      expect(points.find((point) => point.id === 'AL3')?.shapes.some((id) => /^point-[678]$/.test(id))).toBe(true)
-      await app.evaluate((element) => (element as CadleApp).undo())
-      await expect.poll(ids).toEqual([])
-      await app.evaluate((element) => (element as CadleApp).redo())
-      await expect.poll(ids).toEqual(['AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'AL7'])
-      await input.fill('AL11')
-      await select('board-main')
-      await expect.poll(() => shell.evaluate((element) => (element as AppShell).selectedObjectCount)).toBe(1)
-      await expect.poll(ids).toEqual(['AL11', 'AL12', 'AL13', 'AL14', 'AL15', 'AL16', 'AL17'])
-      await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
-      await page.reload()
-      await page.locator('custom-button[label="Open"]').click()
-      await expect.poll(ids).toEqual(['AL11', 'AL12', 'AL13', 'AL14', 'AL15', 'AL16', 'AL17'])
+test('keeps slow ID edits stable and numbers logical points from the assigned cabinet', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1100 })
+  await page.goto('/#!/projects')
+  await expect(page.locator('projects-field')).toBeVisible()
+  const app = page.locator('cadle-app:not([read-only])')
+  const shell = page.locator('app-shell')
+  const path = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="white" stroke="black"/></svg>')}`
+  const shapes: SymbolShape[] = [
+    ...[600, 1300].map((x, index): SymbolShape => ({
+      id: index ? 'board-garage' : 'board-main', kind: 'symbol', name: 'Verdeelbord', path, scale: 1.5,
+      position: { x, y: 350 }, electrical: { role: 'protection', oneWireEligible: false,
+        boardId: index ? 'garage' : 'main' }
+    })),
+    ...[700, 800, 900, 1000, 1100, 1200, 1050, 1060, 1070].map((x, index): SymbolShape => ({
+      id: `point-${index}`, kind: 'symbol', name: 'Socket outlet', path, scale: 1.5,
+      position: { x, y: 600 }, ...(index >= 6 ? { groupId: 'triple-socket' } : {}),
+      electrical: { role: 'load', circuitType: 'sockets', oneWireEligible: true }
+    }))
+  ]
+  const project: Project = {
+    uuid: randomUUID(), creationTime: 1, name: 'IDs vanaf de kast',
+    customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' }, company: '',
+    address: { street: '', number: '', postalCode: '', city: '' },
+    electricalProfile: { ...DEFAULT_AREI_PROFILE, boards: [
+      { id: 'main', name: 'Hoofdkast', rails: [{ id: 'rail-1', name: 'Rail 1' }] },
+      { id: 'garage', name: 'Garage', rails: [{ id: 'rail-1', name: 'Rail 1' }],
+        floorPlanLocation: { pageKey: '00000000-0000-4000-8000-000000000102', shapeId: 'board-garage' } }
+    ] },
+    circuitSpecifications: { AL: { boardId: 'garage' } },
+    pages: { '00000000-0000-4000-8000-000000000102': {
+      creationTime: 1, name: 'Situatieplan', pageType: 'groundplan',
+      schema: { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
+        version: 2, paperLayoutVersion: 1, shapes, selectedId: null, drawingScale: 100,
+        paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680
+      } }] }
+    } }
+  }
+  await page.evaluate(async (project) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, value] of [['projects', project.name], ['project-data', JSON.stringify(project)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(project.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(value)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click()
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await expect(app.locator('g.shape-symbol svg rect')).toHaveCount(shapes.length)
+  const select = async (id: string, multiple = false) => {
+    await app.locator(`g.shape-symbol[data-shape-id="${id}"]`).click({
+      ...(multiple ? { modifiers: ['ControlOrMeta' as const] } : {})
     })
+  }
+  await select('point-8')
+  for (let index = 0; index < 6; index++) await select(`point-${index}`, true)
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).selectedObjectCount)).toBe(9)
+  const input = page.locator('object-pane .native-binding-input')
+  const original = await input.elementHandle()
+  const ids = () => app.evaluate((element) => (element as CadleApp).analyzeBindings().groups
+    .map((group) => group.bindingId).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })))
+  await input.pressSequentially('a1', { delay: 450 })
+  await input.press('ArrowLeft')
+  await input.pressSequentially('l', { delay: 450 })
+  await expect(input).toHaveValue('al1')
+  await expect(input).toBeFocused()
+  expect(await input.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(2)
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await ids()).toEqual([])
+  await input.press('Enter')
+  await expect.poll(ids).toEqual(['AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'AL7'])
+  const points = await app.evaluate((element) => (element as CadleApp).analyzeBindings().groups.map((group) => ({
+    id: group.bindingId, shapes: group.components.map((component) => component.shapeId)
+  })))
+  expect(points.find((point) => point.id === 'AL1')?.shapes).toContain('point-5')
+  expect(points.find((point) => point.id === 'AL7')?.shapes).toContain('point-0')
+  expect(points.find((point) => point.id === 'AL3')?.shapes.some((id) => /^point-[678]$/.test(id))).toBe(true)
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expect.poll(ids).toEqual([])
+  await app.evaluate((element) => (element as CadleApp).redo())
+  await expect.poll(ids).toEqual(['AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'AL7'])
+  await input.fill('AL11')
+  await select('board-main')
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).selectedObjectCount)).toBe(1)
+  await expect.poll(ids).toEqual(['AL11', 'AL12', 'AL13', 'AL14', 'AL15', 'AL16', 'AL17'])
+  await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(ids).toEqual(['AL11', 'AL12', 'AL13', 'AL14', 'AL15', 'AL16', 'AL17'])
+})
 
 for (const width of [1440, 600]) {
   test(`selection opens properties and deselection closes them at ${width}px`, async ({ page }) => {

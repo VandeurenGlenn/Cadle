@@ -1060,13 +1060,14 @@ export class ObjectPane extends LiteElement {
           .value=${this._nativeBindingId}
           maxlength="24"
           @input=${this.#onNativeBindingInput}
-          @change=${this.#saveNativeBinding}
+          @blur=${this.#saveNativeBinding}
           @keydown=${(event: KeyboardEvent) => {
             if (event.key !== 'Enter' || event.isComposing) return
             event.preventDefault()
             this.#saveNativeBinding()
           }}
-          placeholder="e.g. Q1" />` : ''}
+          placeholder="e.g. Q1" />
+        <p class="native-label">Bevestig met Enter of verlaat het veld.</p>` : ''}
 
         ${!multiple && this._nativeSelectedKind === 'line' ? this.#propertySection('connection', 'Cable & wire', html`
 ${this.#renderConnectionProperties()}
@@ -1760,7 +1761,7 @@ ${isProtectionDevice ? html`                    <div class="native-row">
 `, false)}
         ${this.#propertySection('details', 'Object details', html`
         ${multiple
-          ? html`<div class="native-note">Binding updates apply to all selected objects.</div>`
+          ? html`<div class="native-note">Punten worden vanaf de gekoppelde kastpositie genummerd; zonder die positie blijft de tekenvolgorde behouden. Een groep telt als één punt. Geselecteerde lampen delen één ID.</div>`
           : html`
               <div class="native-kv"><span>Type</span><strong>${this._nativeConnection ? CONNECTION_NAMES[this._nativeConnection.kind] : this._nativeSelectedKind || '-'}</strong></div>
               <div class="native-kv">

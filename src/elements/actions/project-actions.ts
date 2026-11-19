@@ -99,6 +99,9 @@ export class ProjectActions extends LiteElement {
       case 'import-json':
         pubsub.publish('editor.controls.command', { action })
         break
+      case 'import-roomplan':
+        pubsub.publish('editor.controls.command', { action: 'import-json' })
+        break
       case 'generate-one-wire':
         cadleShell.generateAutoOneWireSchema()
         break

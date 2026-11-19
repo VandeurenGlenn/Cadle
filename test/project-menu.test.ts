@@ -21,7 +21,7 @@ test('keeps project, import and export commands discoverable', () => {
   )
 
   assert.deepEqual(groupedActions.new, ['create', 'new-from-template'])
-  assert.deepEqual(groupedActions.import, ['import-pdf', 'upload', 'import-json'])
+  assert.deepEqual(groupedActions.import, ['import-roomplan', 'import-pdf', 'upload', 'import-json'])
   assert.deepEqual(groupedActions.export, ['download', 'export-pdf', 'export-json', 'print-svg', 'export-bom', 'share'])
   assert.deepEqual(
     PROJECT_MENU_PRIMARY_ACTIONS.map((item) => item.action),

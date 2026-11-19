@@ -30,6 +30,7 @@ export const PROJECT_MENU_GROUPS: ProjectMenuGroup[] = [
     id: 'import',
     title: 'Import',
     items: [
+      { title: 'Import RoomPlan-scan', action: 'import-roomplan', icon: 'view_in_ar' },
       { title: 'Import old plan from PDF', action: 'import-pdf', icon: 'picture_as_pdf' },
       { title: 'Upload project', action: 'upload', icon: 'upload_file' },
       { title: 'Import drawing JSON', action: 'import-json', icon: 'data_object' }

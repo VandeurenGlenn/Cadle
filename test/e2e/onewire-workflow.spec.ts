@@ -10,6 +10,95 @@ import { oneWireLayoutBounds } from '../../src/editor/layout/onewire-connections
 import { pageLayout } from '../../src/editor/layout/page-layout.ts'
 import { PAPER_PRESETS } from '../../src/editor/constants.ts'
 
+test('requires a reviewed supply description and preserves editable text, JSON corrections and the main protections', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const groundKey = '00000000-0000-4000-8000-000000000102'
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  project.uuid = randomUUID()
+  project.name = 'Bewerkbare schema-opbouw'
+  project.pages = { [groundKey]: project.pages[groundKey] }
+  delete project.oneWirePrompt
+  delete project.oneWireTopology
+  await page.goto('/#!/projects')
+  await page.evaluate(async (project) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, value] of [['projects', project.name], ['project-data', JSON.stringify(project)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(project.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(value)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  const open = async () => {
+    await page.locator('projects-field custom-list-item[data-name="Bewerkbare schema-opbouw"]').click()
+    await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(project.uuid)
+  }
+  await open()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  const generate = () => shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  const dialog = page.locator('onewire-prompt-dialog')
+  const description = dialog.getByRole('textbox', { name: 'Beschrijving', exact: true })
+  const json = dialog.locator('.json-editor')
+  await generate()
+  await expect(description).toHaveValue(/Hoofddifferentieel 40 A 300 mA/)
+  await expect(dialog).toContainText('bewerkbaar voorbeeld')
+  const example = await description.inputValue()
+  await description.fill('Niet opslaan')
+  await description.press('Escape')
+  expect(await shell.evaluate((element) => (element as AppShell).project!.oneWireTopology)).toBeUndefined()
+  expect(await shell.evaluate((element) => (element as AppShell).project!.pages)).toEqual(project.pages)
+  await generate()
+  await expect(description).toHaveValue(example)
+  await description.fill('Hoofddifferentieel 63 A. Daarna de verbruikers.')
+  await dialog.locator('custom-button[label="Structuur toepassen"]').click()
+  await expect(dialog.getByRole('alert')).toContainText('gevoeligheid in mA')
+  const prompt = 'Inkomende kabel 5x10 mm² XVB. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Remautomaat 40 A naar de verbruikers. Geen zonnepanelen.'
+  await description.fill(prompt)
+  await expect(dialog.locator('.preview')).toContainText(/Lokaal model actief|Regelparser \(model niet beschikbaar\)/)
+  const plan = JSON.parse(await json.inputValue())
+  expect(plan.mainDifferential).toMatchObject({ ratedCurrentA: 63, sensitivityMa: 300 })
+  expect(plan.solar).toBe(false)
+  plan.mainDifferential.rcdType = 'B'
+  plan.mainDifferentialPoles = 4
+  await dialog.locator('.json-review summary').click()
+  await json.fill(JSON.stringify(plan))
+  await dialog.locator('custom-button[label="Structuur toepassen"]').click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  const saved = () => shell.evaluate((element) => (element as AppShell).project!)
+  const protections = async () => {
+    const project = await saved()
+    return Object.keys(project.pages).flatMap((key) => nativeStateForProjectPage(project, key)?.shapes ?? [])
+      .filter((shape) => shape.kind === 'symbol')
+  }
+  await expect.poll(async () => (await protections()).map((shape) => shape.sourceLink?.role))
+    .toEqual(expect.arrayContaining(['main-differential', 'main-switch', 'meter', 'residual-breaker']))
+  expect((await protections()).find((shape) => shape.sourceLink?.role === 'main-differential')).toMatchObject({
+    electrical: { breakerCurrentA: 63, rcdSensitivityMa: 300, rcdType: 'B', poles: 4 }
+  })
+  expect((await protections()).some((shape) => shape.sourceLink?.role === 'solar-panels')).toBe(false)
+  expect((await saved()).oneWirePrompt).toBe(prompt)
+  await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
+  await expect(description).toHaveValue(prompt)
+  expect(JSON.parse(await json.inputValue())).toEqual(plan)
+  await description.fill('Niet bewaren')
+  await description.press('Escape')
+  await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
+  await expect(description).toHaveValue(prompt)
+  expect(JSON.parse(await json.inputValue())).toEqual(plan)
+  await description.press('Escape')
+  await page.reload()
+  await open()
+  expect((await saved()).oneWireTopology).toEqual(plan)
+  expect((await protections()).some((shape) => shape.sourceLink?.role === 'main-differential')).toBe(true)
+})
+
 test('uses the printable width and consolidates old automatic sheets without losing device identities or cable overrides', async ({ page }) => {
   const groundKey = randomUUID(), rootKey = randomUUID()
   const families = [...'ABCDEFGH']
@@ -246,12 +335,27 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(validation.groups[0].specification.breakerCurve).toBe('C')
 
   await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
+  const topologyReview = page.locator('onewire-prompt-dialog')
+  await expect(topologyReview).toHaveAttribute('data-open')
+  await topologyReview.getByRole('textbox', { name: 'Beschrijving', exact: true }).fill(
+    'Inkomende kabel 4x10 mm² EXVB. Hoofdschakelaar 40 A. Hoofddifferentieel 40 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers.'
+  )
+  await topologyReview.locator('custom-button[label="Structuur toepassen"]').click()
+  await expect(topologyReview).not.toHaveAttribute('data-open')
+  await expect.poll(() => page.locator('app-shell').evaluate((element) =>
+    Object.values((element as AppShell).project!.pages).map((page) => page.name))).toContain('One-wire diagram 2')
+  await page.locator('app-shell').evaluate(async (element) => {
+    const shell = element as AppShell
+    const key = Object.keys(shell.project!.pages).find((key) => shell.project!.pages[key].name === 'One-wire diagram 2')
+    if (!key) throw new Error('Missing outgoing-circuit sheet.')
+    await shell.loadPage(key)
+  })
   await expect
     .poll(() =>
       page.locator('app-shell').evaluate((element: any) => element.project?.pages?.[element.loadedPage]?.pageType)
     )
     .toBe('onewire')
-  const generated = await page.locator('cadle-app').evaluate((element: any) => element.generateAutoOneWire())
+  const generated = await page.locator('cadle-app').evaluate((element: any) => element.generateAutoOneWire(1))
   expect(generated.generated, generated.message).toBe(true)
   const generatedSvg = await page.locator('cadle-app').evaluate((element: any) => element.toSVG())
   expect((generatedSvg.match(/data-shape-id=/g) ?? []).length).toBeGreaterThan(3)
@@ -520,10 +624,10 @@ test('inserts a breaker with balanced rail ends without shrinking the rail', asy
   await page.locator('project-actions').getByRole('button', { name: 'More' }).click()
   await page.locator('project-actions custom-list-item[data-action="describe-one-wire"]').click()
   const topologyDialog = page.locator('onewire-prompt-dialog')
-  await expect(topologyDialog.locator('textarea:not(.json-editor)')).toHaveValue('')
+  await expect(topologyDialog.locator('textarea:not(.json-editor)')).not.toHaveValue('')
   await expect(topologyDialog.locator('textarea:not(.json-editor)')).not.toHaveAttribute('placeholder', '')
-  await expect(topologyDialog.locator('.json-editor')).toHaveValue('')
-  await expect(topologyDialog.locator('custom-button[label="Structuur toepassen"]')).toHaveAttribute('disabled')
+  await expect(topologyDialog.locator('.json-editor')).not.toHaveValue('')
+  await expect(topologyDialog.locator('custom-button[label="Structuur toepassen"]')).not.toHaveAttribute('disabled')
   await topologyDialog.locator('custom-button[label="Sluiten"]').click()
 
   const stage = page.locator('cadle-app svg.stage')

@@ -729,18 +729,31 @@ export class AppShell extends LiteElement {
     parserTopology: OneWireTopologyPlan
   }) => {
     if (!this.projectKey || !this.project) return
+    try {
+      await this.savePage()
+    } catch (error) {
+      console.error('Schema-opbouw opslaan geannuleerd: de tekening kon niet worden opgeslagen.', error)
+      globalThis.alert('De tekening kon niet worden opgeslagen. De schema-opbouw is niet gewijzigd.')
+      return
+    }
     const validation = validateOneWireTopology(detail.topology)
     if (!validation.valid || !validation.value) {
       globalThis.alert(`Ongeldige schema-opbouw: ${validation.errors.join(' ')}`)
       return
     }
+    if (!validation.value.mainDifferential) {
+      globalThis.alert('Vul de hoofddifferentieel volledig in, met de nominale stroom in A en de gevoeligheid in mA.')
+      return
+    }
+    const topology = validation.value
+    const previous = this.project
     this.project = {
       ...this.project,
       oneWirePrompt: detail.prompt,
-      oneWireTopology: validation.value,
-      ...(validation.value.gridProtectionCurrentA ? { mainFuseA: validation.value.gridProtectionCurrentA } : {})
+      oneWireTopology: topology,
+      ...(topology.gridProtectionCurrentA ? { mainFuseA: topology.gridProtectionCurrentA } : {})
     }
-    const mainDifferential = detail.topology.mainDifferential
+    const mainDifferential = topology.mainDifferential
     if (mainDifferential) {
       const profile = this.project.electricalProfile ?? {
         standard: 'AREI' as const,
@@ -762,8 +775,8 @@ export class AppShell extends LiteElement {
                     id: board.mainDifferential?.id ?? 'main-differential',
                     ratedCurrentA: mainDifferential.ratedCurrentA,
                     sensitivityMa: mainDifferential.sensitivityMa,
-                    poles: board.mainDifferential?.poles ?? profile.defaultPoles,
-                    type: board.mainDifferential?.type ?? 'A'
+                    poles: topology.mainDifferentialPoles ?? board.mainDifferential?.poles ?? profile.defaultPoles,
+                    type: mainDifferential.rcdType ?? board.mainDifferential?.type ?? 'A'
                   }
                 }
               : board
@@ -771,7 +784,14 @@ export class AppShell extends LiteElement {
         : profile.boards
       this.project.electricalProfile = { ...profile, boards }
     }
-    await setProjectData(this.projectKey, this.project)
+    try {
+      await setProjectData(this.projectKey, this.project)
+    } catch (error) {
+      this.project = previous
+      console.error('Schema-opbouw opslaan mislukt.', error)
+      globalThis.alert('De schema-opbouw kon niet worden opgeslagen. Probeer opnieuw; de bestaande tekening is behouden.')
+      return
+    }
     try {
       await storeOneWireTrainingExample(detail.prompt, detail.parserTopology, validation.value)
     } catch (error) {
@@ -1514,6 +1534,10 @@ export class AppShell extends LiteElement {
       }
       return
     }
+    if (!this.project.oneWireTopology?.mainDifferential) {
+      this.openOneWirePromptDialog()
+      return
+    }
 
     let oneWirePage: Awaited<ReturnType<typeof ensureOneWirePage>>
     try {
@@ -1817,8 +1841,9 @@ export class AppShell extends LiteElement {
           this.projects = await getProjects()
         }}></project-share-dialog>
       <onewire-prompt-dialog
-        .open=${this.oneWirePromptDialogOpen}
         .prompt=${this.project?.oneWirePrompt ?? ''}
+        .topology=${this.project?.oneWireTopology}
+        .open=${this.oneWirePromptDialogOpen}
         @close=${() => (this.oneWirePromptDialogOpen = false)}
         @apply-topology=${(
           event: CustomEvent<{

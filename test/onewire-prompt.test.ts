@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { interpretOneWirePrompt, oneWirePromptTree, parseOneWirePrompt } from '../src/editor/onewire-prompt.ts'
+import { interpretOneWirePrompt, oneWirePromptTree, oneWireTopologyPrompt, parseOneWirePrompt } from '../src/editor/onewire-prompt.ts'
+
+test('makes saved topology settings editable as a description without inventing absent equipment', () => {
+  const plan = parseOneWirePrompt(
+    'Inkomende kabel 5x10 mm² XVB. Hoofdzekering 40 A. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers. 2 extra diffs 40 A 30 mA voor verbruikers.'
+  ).plan
+  assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(plan)).plan, plan)
+  const solar = parseOneWirePrompt(
+    'Hoofddifferentieel 63 A 300 mA. Remautomaat Schneider 40 A. PV-automaat TECO 20 A parallel na de hoofddifferentieel. Verbruikers.'
+  ).plan
+  assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(solar)).plan, solar)
+})
 
 test('parses a Dutch one-wire topology description with a parallel solar branch', () => {
   const parsed = parseOneWirePrompt(

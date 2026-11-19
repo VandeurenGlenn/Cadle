@@ -55,6 +55,13 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   identities and connection-label overrides across its numbered sheets before removing redundant continuations.
   Cleanup requires every generated object to be represented on a used sheet; manual, locked or unrecognized
   content is retained. Cabinet destinations remain separate, and generation creates a recovery point first.
+  When no complete main differential is configured, automatic generation first opens the topology review instead
+  of silently generating only outgoing circuits. The description is an editable local draft: a clearly marked
+  example for a new installation, or saved text/settings for an existing one. Closing discards draft changes;
+  applying requires the main differential's A/mA ratings, saves the confirmed topology, and then generates the
+  supply sheet. Reopening retains accepted JSON corrections until the description is changed.
+  Recovery creation drains pending editor writes and adopts the shell's current project metadata before capturing
+  the active drawing, so settings just saved by the shell cannot be overwritten by the editor's older project copy.
 - `src/editor/cable-estimate.ts` estimates cable route metres per circuit, board and cable designation for the circuit overview.
   It uses a rectilinear minimum spanning tree of labelled floor-plan devices and the selected board symbol at the page scale.
   Board locations are stable page/shape references, so moving a symbol or reassigning a circuit recalculates the estimate.

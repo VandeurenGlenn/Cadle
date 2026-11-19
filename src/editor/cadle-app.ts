@@ -1148,7 +1148,16 @@ export class CadleApp extends LiteElement {
 
   async createRecoveryPoint(label = 'Handmatig herstelpunt'): Promise<void> {
     if (this.readOnly) throw new Error('Een alleen-lezen project kan niet worden gewijzigd.')
+    const projectKey = this.#projectKey
+    const pageKey = this.#pageKey
+    if (!projectKey || !pageKey) throw new Error('Open eerst een project.')
     await this.flushPendingCircuitUpdates()
+    await this.flushPendingSave()
+    const project = cadleShell.project
+    if (this.#projectKey !== projectKey || this.#pageKey !== pageKey || cadleShell.projectKey !== projectKey || !project) {
+      throw new Error('De actieve pagina is gewijzigd. Maak het herstelpunt opnieuw op het gewenste blad.')
+    }
+    this.#project = project
     this.#persist()
     await this.flushPendingSave()
     if (!this.#project || !this.#pageKey) throw new Error('Open eerst een project.')

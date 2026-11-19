@@ -293,3 +293,23 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
         : [])
   ]
 }
+
+export const oneWireTopologyPrompt = (plan: OneWireTopologyPlan): string => [
+  ...(plan.incomingCable ? [`Inkomende kabel ${cableLabelText(plan.incomingCable, 'x')}.`] : []),
+  ...(plan.gridProtectionCurrentA ? [`Hoofdzekering ${plan.gridProtectionCurrentA} A.`] : []),
+  ...(plan.mainSwitch ? [`Hoofdschakelaar ${plan.mainSwitch.manufacturer ?? ''} ${plan.mainSwitch.ratedCurrentA} A.`] : []),
+  ...(plan.mainDifferential ? [
+    `Hoofddifferentieel ${plan.mainDifferential.manufacturer ?? ''} ${plan.mainDifferential.ratedCurrentA} A ${plan.mainDifferential.sensitivityMa} mA.`
+  ] : []),
+  plan.residualBreaker
+    ? `Remautomaat ${plan.residualBreakerManufacturer ?? ''}${plan.residualBreakerRatedCurrentA ? ` ${plan.residualBreakerRatedCurrentA} A` : ''}.`
+    : 'Geen remautomaat.',
+  plan.solar ? 'Zonnepanelen parallel na de hoofddifferentieel.' : 'Geen zonnepanelen.',
+  ...(plan.solar && plan.solarBreakerRatedCurrentA ? [
+    `PV-automaat ${plan.solarBreakerManufacturer ?? ''} ${plan.solarBreakerRatedCurrentA} A.`
+  ] : []),
+  plan.consumers ? 'Daarna de verbruikers.' : 'Geen verbruikers.',
+  ...(plan.additionalDifferentials ?? []).map((item) =>
+    `${item.count} extra diffs ${item.manufacturer ?? ''} ${item.ratedCurrentA ? `${item.ratedCurrentA} A ` : ''}${item.sensitivityMa} mA voor ${
+      item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'}.`)
+].join(' ').replace(/ {2,}/g, ' ')

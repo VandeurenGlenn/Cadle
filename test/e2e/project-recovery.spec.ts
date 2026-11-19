@@ -116,6 +116,8 @@ test('restores a full project through History after restarting and keeps the pre
     delete shell.project.pages[schematic]
   }, schematic)
   await app.evaluate((element) => (element as CadleApp).createRecoveryPoint('Na wijzigingen'))
+  expect(await shell.evaluate((element) => (element as AppShell).project.circuitSpecifications?.A.cableSectionMm2)).toBe(10)
+  expect(await shell.evaluate((element, key) => Boolean((element as AppShell).project.pages[key]), schematic)).toBe(false)
   await reopen(page)
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
   await shell.evaluate((element) => (element as AppShell).toggleHistoryPanel())

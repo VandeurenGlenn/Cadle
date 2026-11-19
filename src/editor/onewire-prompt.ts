@@ -210,16 +210,20 @@ export const parseOneWirePrompt = (prompt: string): ParsedOneWirePrompt => {
 
   for (const clause of text.split(/[;\n]|\.(?!\d)/u)) {
     const cable =
-      /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2))?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)\b/i.exec(
+      /(\d+)\s*[xg×]\s*(\d+(?:[.,]\d+)?)\s*(?:mm(?:²|2)?)?\s*(exvb|exb|xvb(?:[-\s]?cca)?|xgb(?:[-\s]?cca)?|vob)?\b/i.exec(
         clause
       )
     if (cable) {
-      const field = /\b(?:(?:kwh[-\s]*)?(?:meter|teller)\b[^.;\n]{0,80}\b(?:kast|bord|hoofddiff(?:erentieel)?)|meter[-\s]?kastkabel)\b/iu.test(clause)
+      const meterTarget = /\bnaar\s+(?:de\s+)?hoofddiff(?:erentieel)?\b/iu.exec(clause)
+      const field = (
+        /\b(?:(?:kwh[-\s]*)?(?:meter|teller)\b[^.;\n]{0,80}\b(?:kast|bord|hoofddiff(?:erentieel)?)|meter[-\s]?kastkabel)\b/iu.test(clause) ||
+        (meterTarget?.index !== undefined && cable.index < meterTarget.index)
+      )
         ? 'meterCable' : 'incomingCable'
       plan[field] ??= {
         conductors: Number(cable[1]),
         sectionMm2: Number(cable[2].replace(',', '.')),
-        cableType: normalizeCableType(cable[3])
+        cableType: normalizeCableType(cable[3] ?? '')
       }
     }
   }

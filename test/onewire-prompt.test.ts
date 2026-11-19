@@ -17,6 +17,16 @@ test('keeps the meter-to-board cable separate from the EXVB before the main brea
   assert.equal(parseOneWirePrompt('Inkomende kabel 4x10 mm² EXVB.').plan.meterCable, undefined)
 })
 
+test('recognizes an untyped cable leading to the main differential as the meter cable', () => {
+  const { plan } = parseOneWirePrompt(
+    'Inkomende kabel is 4x10 mm² EXVB. Hoofdschakelaar 32 A. 4x10mm naar Hoofddifferentieel 40A 300mA.'
+  )
+
+  assert.deepEqual(plan.incomingCable, { conductors: 4, sectionMm2: 10, cableType: 'EXVB' })
+  assert.deepEqual(plan.meterCable, { conductors: 4, sectionMm2: 10, cableType: 'other' })
+  assert.ok(oneWirePromptTree(plan)[0].includes('kWh-meter → 4x10 mm² → hoofddifferentieel'))
+})
+
 test('makes saved topology settings editable as a description without inventing absent equipment', () => {
   const plan = parseOneWirePrompt(
     'Inkomende kabel 5x10 mm² XVB. Hoofdzekering 40 A. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers. 2 extra diffs 40 A 30 mA voor verbruikers.'

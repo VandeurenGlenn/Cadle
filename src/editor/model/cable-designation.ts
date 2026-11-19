@@ -8,7 +8,7 @@ export const withCableFireClass = (text: string, fireClass?: string): string => 
 
 export const cableTypeLabel = (cable: { cableType?: string; fireClass?: string }): string => {
   const fireClass = sanitizeCableFireClass(cable.fireClass)
-  const type = cable.cableType === 'none' ? '' : (cable.cableType?.trim() ?? '')
+  const type = cable.cableType === 'none' || cable.cableType === 'other' ? '' : (cable.cableType?.trim() ?? '')
   // Older files encode Cca in the cable type. A detailed class replaces it.
   const base = (fireClass ? type.replace(/-Cca$/i, '') : type).replace('-', ' ')
   return withCableFireClass(base, fireClass)

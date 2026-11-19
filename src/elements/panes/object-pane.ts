@@ -146,13 +146,14 @@ export class ObjectPane extends LiteElement {
     super.connectedCallback()
     pubsub.subscribe('editor.selection.changed', this.#onNativeSelectionChanged)
     pubsub.subscribe('native.binding.focus-input', this.#focusBindingInput)
+    window.addEventListener('pointerdown', this.#commitBindingBeforePointerDown, true)
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
     pubsub.unsubscribe('editor.selection.changed', this.#onNativeSelectionChanged)
     pubsub.unsubscribe('native.binding.focus-input', this.#focusBindingInput)
-    this.#cancelBindingSave()
+    window.removeEventListener('pointerdown', this.#commitBindingBeforePointerDown, true)
   }
 
   #focusBindingInput = () => {
@@ -166,8 +167,12 @@ export class ObjectPane extends LiteElement {
   }
 
   #onNativeSelectionChanged = (payload: SelectionPayload) => {
-    this.#cancelBindingSave()
     const selection = normalizeSelection(payload)
+    const key = JSON.stringify([payload.pageKey, payload.selectionIds ?? [selection.shape?.id], selection.selectionCount])
+    const preserveBinding = key === this.#bindingSelectionKey &&
+      this.shadowRoot?.activeElement === this._nativeBindingInput
+    if (key !== this.#bindingSelectionKey) this.#bindingDirty = false
+    this.#bindingSelectionKey = key
     if (selection.shape?.id !== this._nativeSelectedId) {
       this._customCableFireClass = false
       this._customCableSection = false
@@ -228,7 +233,7 @@ export class ObjectPane extends LiteElement {
       shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam'
         ? shape.roofPattern
         : 'none'
-    this._nativeBindingId = shape.bindingId
+    if (!preserveBinding) this._nativeBindingId = shape.bindingId
     this._nativeName = shape.name
     this._nativeIsRoom = shape.isRoom
     this._nativeRoomName = shape.roomName
@@ -283,31 +288,26 @@ export class ObjectPane extends LiteElement {
     pubsub.publish('editor.object.update', { bindingLabelSide: side })
   }
 
-  #bindingSaveTimer: ReturnType<typeof setTimeout> | null = null
+  #bindingSelectionKey = ''
+  #bindingDirty = false
+
+  #commitBindingBeforePointerDown = (event: PointerEvent) => {
+    if (this.#bindingDirty && !event.composedPath().includes(this._nativeBindingInput)) this.#saveNativeBinding()
+  }
 
   #onNativeBindingInput = (event: Event) => {
     const target = event.target as HTMLInputElement | null
-    const value = (target?.value ?? '').trim().toUpperCase()
-    this._nativeBindingId = value
-    if (this.#bindingSaveTimer !== null) clearTimeout(this.#bindingSaveTimer)
-    this.#bindingSaveTimer = setTimeout(() => {
-      this.#bindingSaveTimer = null
-      this.#saveNativeBinding()
-    }, 350)
-  }
-
-  #cancelBindingSave = () => {
-    if (this.#bindingSaveTimer === null) return
-    clearTimeout(this.#bindingSaveTimer)
-    this.#bindingSaveTimer = null
+    this._nativeBindingId = target?.value ?? ''
+    this.#bindingDirty = true
   }
 
   #saveNativeBinding = () => {
-    this.#cancelBindingSave()
-    if (this._selectionCount === 0) return
+    if (!this.#bindingDirty || this._selectionCount === 0) return
+    this._nativeBindingId = this._nativeBindingId.trim().toUpperCase()
     pubsub.publish('editor.object.update', {
       bindingId: this._nativeBindingId
     })
+    this.#bindingDirty = false
   }
 
   #runCircuitOperation = async (kind: CircuitOperationKind) => {
@@ -1061,6 +1061,11 @@ export class ObjectPane extends LiteElement {
           maxlength="24"
           @input=${this.#onNativeBindingInput}
           @change=${this.#saveNativeBinding}
+          @keydown=${(event: KeyboardEvent) => {
+            if (event.key !== 'Enter' || event.isComposing) return
+            event.preventDefault()
+            this.#saveNativeBinding()
+          }}
           placeholder="e.g. Q1" />` : ''}
 
         ${!multiple && this._nativeSelectedKind === 'line' ? this.#propertySection('connection', 'Cable & wire', html`

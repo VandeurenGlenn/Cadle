@@ -69,6 +69,18 @@ test('fills a socket circuit up to eight points regardless of distance', () => {
   assert.equal(family('socket-1'), family('socket-3'))
 })
 
+test('numbers automatic socket points away from their cabinet rather than top to bottom', () => {
+  const shapes = [
+    symbol('far', 100, 0, 'load', 'sockets'),
+    symbol('middle', 500, 100, 'load', 'sockets'),
+    symbol('near', 900, 200, 'load', 'sockets')
+  ]
+  const plan = planAutomaticBindings(shapes, 1, { x: 1000, y: 200 })
+  assert.equal(plan.assignments.get('near'), 'A1')
+  assert.equal(plan.assignments.get('middle'), 'A2')
+  assert.equal(plan.assignments.get('far'), 'A3')
+})
+
 test('starts a second socket circuit only after eight points', () => {
   const shapes = Array.from({ length: 9 }, (_, index) =>
     symbol(`socket-${index + 1}`, index * 40, 0, 'load', 'sockets')

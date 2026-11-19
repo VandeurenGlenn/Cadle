@@ -118,6 +118,43 @@ test('continues numbering when a multi-selection binding includes a starting num
   )
 })
 
+test('numbers points consecutively away from the cabinet, not in drawing or selection order', () => {
+  const shapes = [
+    { ...symbol('far'), position: { x: 100, y: 200 } },
+    { ...symbol('middle'), position: { x: 500, y: 200 } },
+    { ...symbol('near'), position: { x: 900, y: 200 } },
+    { ...symbol('unselected'), bindingId: 'B1' }
+  ]
+  const context = {
+    selectedIds: new Set(['middle', 'far', 'near']), selectedId: 'far',
+    groupedSelection: false, bindingOrigin: { x: 1000, y: 200 }
+  }
+  const updated = updateSelectionProperties(shapes, { bindingId: 'AL1' }, context)!
+  assert.deepEqual(updated.map((shape) => shape.bindingId), ['AL3', 'AL2', 'AL1', 'B1'])
+  assert.deepEqual(updateSelectionProperties(updated, { bindingId: 'AL1' }, context), updated)
+  assert.deepEqual(updateSelectionProperties(shapes, { bindingId: 'AL4' }, context)!
+    .map((shape) => shape.bindingId), ['AL6', 'AL5', 'AL4', 'B1'])
+  assert.ok(shapes.slice(0, 3).every((shape) => shape.bindingId === undefined))
+  assert.equal(updated[3], shapes[3])
+})
+
+test('counts each grouped assembly once without leaving stale member IDs or gaps', () => {
+  const shapes = [
+    { ...symbol('far'), position: { x: 300, y: 0 } },
+    { ...symbol('group-left'), groupId: 'double', position: { x: 190, y: 0 }, bindingId: 'OLD1' },
+    { ...symbol('group-right'), groupId: 'double', position: { x: 210, y: 0 }, bindingId: 'OLD2' },
+    { ...symbol('near'), position: { x: 100, y: 0 } }
+  ]
+  const context = {
+    selectedIds: new Set(shapes.map((shape) => shape.id)), selectedId: 'group-right',
+    groupedSelection: false, bindingOrigin: { x: 0, y: 0 }
+  }
+  const updated = updateSelectionProperties(shapes, { bindingId: 'AL1' }, context)!
+  assert.deepEqual(updated.map((shape) => shape.bindingId), ['AL3', undefined, 'AL2', 'AL1'])
+  assert.deepEqual(updateSelectionProperties(updated, { bindingId: '' }, context)!
+    .map((shape) => shape.bindingId), [undefined, undefined, undefined, undefined])
+})
+
 test('keeps a selected switch and lighting load on the same binding point', () => {
   const light: Shape = {
     ...symbol('light'),
@@ -160,7 +197,8 @@ test('assigns one shared binding point to multiple selected lights without a swi
   const updated = updateSelectionProperties(
     source,
     { bindingId: ' n1 ' },
-    { selectedIds: new Set(lights.map((shape) => shape.id)), selectedId: 'lamp', groupedSelection: false }
+    { selectedIds: new Set(lights.map((shape) => shape.id)), selectedId: 'lamp', groupedSelection: false,
+      bindingOrigin: { x: 1000, y: 1000 } }
   )
 
   assert.deepEqual(updated?.map((shape) => shape.bindingId), ['N1', 'N1', 'N1', undefined])

@@ -34,6 +34,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   descriptions are weakly cached per sanitized SVG, with fresh copies returned to consumers.
 - `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
+- Binding-ID edits remain local while typing and commit once on Enter or leaving the field, before pointer selection changes.
+  Bulk numbering counts grouped assemblies as one point and orders points by distance from the assigned cabinet on the same
+  floor plan. Without a unique cabinet position it retains the existing order. Selected lights keep their shared point ID.
 - `src/editor/controllers/` — stateful editor controllers for history, tools, the viewport, and ordered persistence.
 - Ordered persistence reports saving/saved/error from actual writes. A failed operation and all successors remain queued
   until an explicit retry; the status bar offers retry and an in-memory project download without requiring a successful save.

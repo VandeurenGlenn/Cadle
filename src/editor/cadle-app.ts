@@ -209,6 +209,8 @@ import { symbolContentBounds } from './layout/symbol-layout.js'
 import { migrateOneWireCircuitGeometry } from './layout/onewire-circuit-migration.js'
 import { updateSelectionProperties, type SelectionPropertyUpdate } from './interaction/selection-properties.js'
 import { planAutomaticBindings } from './auto-bindings.js'
+import { cableEstimateBoardLocation, floorPlanBoardLocations } from './cable-estimate.js'
+import { normalizeElectricalProfile } from './electrical-profile.js'
 import { applyCircuitOperation, type CircuitOperationKind } from './circuit-operations.js'
 import {
   DEFAULT_SYMBOL_STROKE_WIDTH,
@@ -900,7 +902,8 @@ export class CadleApp extends LiteElement {
     const nextShapes = updateSelectionProperties(this.#document.shapes, payload, {
       selectedIds: this.#document.selectedIds,
       selectedId: this.#document.selectedId,
-      groupedSelection: this.#selectedGroupId() !== null
+      groupedSelection: this.#selectedGroupId() !== null,
+      bindingOrigin: typeof payload.bindingId === 'string' ? this.#bindingOrigin(payload.bindingId) : undefined
     })
     if (!nextShapes) return
     this.#document.shapes = this.#followOneWireConnections(this.#document.shapes, nextShapes)
@@ -3603,13 +3606,36 @@ export class CadleApp extends LiteElement {
     )
   }
 
+  #bindingOrigin(bindingId = ''): Point | undefined {
+    if (!this.#project || !this.#pageKey || this.#project.pages[this.#pageKey]?.pageType !== 'groundplan') return undefined
+    const family = this.#normalizeBindingFamily(bindingId)
+    const boardIds = new Set(this.#document.shapes.flatMap((shape) =>
+      bindingId && this.#document.selectedIds.has(shape.id) && shape.kind === 'symbol' && shape.electrical?.boardId
+        ? [shape.electrical.boardId] : []))
+    const boardId = (family ? this.#project.circuitSpecifications?.[family]?.boardId : undefined) ??
+      (boardIds.size === 1 ? [...boardIds][0] : boardIds.size > 1 ? undefined
+        : normalizeElectricalProfile(this.#project.electricalProfile).boards?.[0]?.id)
+    if (!boardId) return undefined
+    const project = {
+      ...this.#project,
+      pages: {
+        ...this.#project.pages,
+        [this.#pageKey]: { ...this.#project.pages[this.#pageKey], schema: {
+          version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: this.#nativeDocumentState() }]
+        } }
+      }
+    }
+    const location = cableEstimateBoardLocation(project, boardId, floorPlanBoardLocations(project))
+    return location?.pageKey === this.#pageKey ? location.position : undefined
+  }
+
   autoNameElectrical(lightingCircuitCount: number): { labeled: number; circuitCount: number; message: string } {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     if (currentPageType === 'onewire' || currentPageType === 'circuit-schedule') {
       return { labeled: 0, circuitCount: 0, message: 'Open a floor plan before automatically naming circuits.' }
     }
 
-    const plan = planAutomaticBindings(this.#document.shapes, lightingCircuitCount)
+    const plan = planAutomaticBindings(this.#document.shapes, lightingCircuitCount, this.#bindingOrigin())
     if (!plan.assignments.size) {
       return { labeled: 0, circuitCount: 0, message: 'All recognized electrical symbols already have a label.' }
     }
@@ -4603,6 +4629,7 @@ export class CadleApp extends LiteElement {
         canConvertToRoom
       }),
       pageKey: this.#pageKey,
+      selectionIds: selectedShapes.map((shape) => shape.id),
       highlightedHeatingCircuit: this.#highlightedHeatingCircuit
     })
   }

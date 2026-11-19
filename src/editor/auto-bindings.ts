@@ -45,6 +45,11 @@ const familyName = (index: number): string => {
 
 const distanceSquared = (left: Point, right: Point): number => (left.x - right.x) ** 2 + (left.y - right.y) ** 2
 
+export const orderBindingPoints = <T extends { point: Point }>(points: readonly T[], origin?: Point): T[] =>
+  origin
+    ? [...points].sort((left, right) => distanceSquared(left.point, origin) - distanceSquared(right.point, origin))
+    : [...points]
+
 const centroid = (cluster: DeviceCluster): Point => ({
   x: cluster.reduce((sum, device) => sum + device.point.x, 0) / cluster.length,
   y: cluster.reduce((sum, device) => sum + device.point.y, 0) / cluster.length
@@ -140,7 +145,7 @@ const electricalDevice = (shape: Shape, roomName?: string): Device | null => {
   }
 }
 
-const logicalDeviceKey = (shape: Shape): string =>
+export const logicalDeviceKey = (shape: Shape): string =>
   shape.groupId && !shape.groupId.startsWith('onewire-') ? `group:${shape.groupId}` : `shape:${shape.id}`
 
 const collapseGroupedDevices = (devices: Device[], shapes: readonly Shape[]): Device[] => {
@@ -170,7 +175,11 @@ const collapseGroupedDevices = (devices: Device[], shapes: readonly Shape[]): De
   })
 }
 
-export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitCount: number): AutomaticBindingPlan => {
+export const planAutomaticBindings = (
+  shapes: readonly Shape[],
+  lightingCircuitCount: number,
+  boardOrigin?: Point
+): AutomaticBindingPlan => {
   const requestedLightingCircuits = Math.max(1, Math.floor(lightingCircuitCount))
   const rooms = namedRoomRegions(shapes)
   const devices = collapseGroupedDevices(
@@ -198,7 +207,8 @@ export const planAutomaticBindings = (shapes: readonly Shape[], lightingCircuitC
   }
   const assignCluster = (cluster: DeviceCluster): string => {
     const family = nextFamily()
-    spatialOrder(cluster).forEach((device, index) => assignments.set(device.shape.id, `${family}${index + 1}`))
+    orderBindingPoints(spatialOrder(cluster), boardOrigin)
+      .forEach((device, index) => assignments.set(device.shape.id, `${family}${index + 1}`))
     return family
   }
 

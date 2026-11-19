@@ -8,6 +8,8 @@ import { resizedSymbolStrokeWidth } from '../model/symbol-scale.js'
 import { sanitizeConnection, type ElectricalConnection } from '../model/electrical-connection.js'
 import { heatingManifoldSize, sanitizeHeating, type HeatingData } from '../heating-plan.js'
 import { symbolTextFieldsFor } from '../symbol-metadata.js'
+import { logicalDeviceKey, orderBindingPoints } from '../auto-bindings.js'
+import { shapeAnchorPoint } from '../room-regions.js'
 import {
   breakerCurrentLabel,
   inferCircuitType,
@@ -53,6 +55,7 @@ export type SelectionUpdateContext = {
   selectedIds: ReadonlySet<string>
   selectedId: string | null
   groupedSelection: boolean
+  bindingOrigin?: Point
 }
 
 const isLineShape = (shape: Shape): shape is LineShape =>
@@ -203,23 +206,43 @@ const sequentialBindingIds = (
   shapes: readonly Shape[],
   targetIds: ReadonlySet<string>,
   bindingId: string | undefined,
-  groupedSelection: boolean
-): Map<string, string> | null => {
-  if (!bindingId || groupedSelection || targetIds.size < 2) return null
+  context: SelectionUpdateContext
+): Map<string, string | undefined> | null => {
+  if (!bindingId || context.groupedSelection || targetIds.size < 2) return null
   if (isSharedLightingPointSelection(shapes, targetIds)) {
     return new Map(shapes.filter((shape) => targetIds.has(shape.id)).map((shape) => [shape.id, bindingId]))
   }
   const match = /^(.*?)(\d+)?$/.exec(bindingId)
   const prefix = match?.[1] || bindingId
   const start = match?.[2] ? Number(match[2]) : 1
-  const result = new Map<string, string>()
-  let index = 0
-  // Document order is stable and matches the drawing's stacking order.
+  const groups = new Map<string, Shape[]>()
   for (const shape of shapes) {
     if (!targetIds.has(shape.id)) continue
-    result.set(shape.id, `${prefix}${start + index}`)
-    index += 1
+    const key = logicalDeviceKey(shape)
+    const members = groups.get(key)
+    if (members) members.push(shape)
+    else groups.set(key, [shape])
   }
+  const points = [...groups.values()].map((members) => {
+    const anchors = members.flatMap((shape) => {
+      const point = shapeAnchorPoint(shape)
+      return point ? [point] : []
+    })
+    return {
+      members,
+      point: {
+        x: anchors.reduce((sum, point) => sum + point.x, 0) / anchors.length,
+        y: anchors.reduce((sum, point) => sum + point.y, 0) / anchors.length
+      }
+    }
+  })
+  const result = new Map<string, string | undefined>()
+  orderBindingPoints(points, context.bindingOrigin).forEach(({ members }, index) => {
+    const primary = members.find((shape) => shape.id === context.selectedId) ?? members[0]
+    for (const shape of members) {
+      result.set(shape.id, shape === primary ? `${prefix}${start + index}` : undefined)
+    }
+  })
   return result
 }
 
@@ -479,13 +502,13 @@ export const updateSelectionProperties = (
         })
       : []
   const bindingId = normalizedBindingId(payload)
-  const bindingIds = sequentialBindingIds(shapes, targetIds, bindingId, context.groupedSelection)
+  const bindingIds = sequentialBindingIds(shapes, targetIds, bindingId, context)
   const hasHeatingPipes = shapes.some((shape) => shape.heating?.kind === 'pipe')
   let changed = false
   const next = shapes.map((shape) => {
     if (!targetIds.has(shape.id)) return shape
     changed = true
-    const updated = applyProperties(shape, payload, center, bindingIds?.get(shape.id) ?? bindingId, context)
+    const updated = applyProperties(shape, payload, center, bindingIds ? bindingIds.get(shape.id) : bindingId, context)
     if (!hasHeatingPipes && !context.groupedSelection && payload.heating?.circuits !== undefined &&
       shape.kind === 'rect' && shape.heating?.kind === 'manifold' && !shape.heating.automatic && updated.kind === 'rect' && updated.heating) {
       const previous = heatingManifoldSize(shape.heating.circuits, shape.heating.drawingScale)

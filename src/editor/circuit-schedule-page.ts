@@ -135,7 +135,7 @@ export type CircuitScheduleEditorItem = {
   boardId: string
   title: string
   subtitle: string
-  kind: 'differential' | 'circuit'
+  kind: 'differential' | 'residual-breaker' | 'circuit'
   modules: number
   cable?: string
   railId?: string
@@ -149,6 +149,9 @@ export type CircuitScheduleEditorItem = {
   topologyMain?: boolean
   sourceShapes?: Array<{ pageKey: string; shapeId: string }>
 }
+
+export const circuitScheduleItemLabel = (id: string): string =>
+  id.startsWith('DIFF:') ? 'DIFF' : id.startsWith('REM:') ? 'REM' : id
 
 const circuitCategory = (type: CircuitGroup['specification']['circuitType']): string => {
   switch (type) {
@@ -260,6 +263,13 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
   }
   const topologyMain = plan?.mainDifferential && rows.find((row) => row.boardId === mainBoardId && row.mainDifferential)
   if (topologyMain) topologyMain.topologyMain = true
+  const residualId = `REM:${mainBoardId}:residual-breaker`
+  if (plan?.residualBreaker) {
+    const poles = plan.residualBreakerPoles ?? project.electricalProfile?.defaultPoles ?? 2
+    rows.push({ id: residualId, boardId: mainBoardId, protection: `C${plan.residualBreakerRatedCurrentA ?? 40}A`,
+      poles: `${poles}P`, cable: '', consumers: [], rooms: [], category: 'Remautomaat',
+      note: 'Voedingsbeveiliging', modules: poles })
+  }
   const ordered = plan ? orderedOneWireDifferentials(plan) : []
   const roles = new Map<string, ScheduleCircuit>()
   const matched = new Set<string>()
@@ -283,21 +293,22 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
     row.topologyIndex = index
     roles.set(role, row)
   }
-  const seen = new Set<string>()
   const rowsByIdentity = new Map<string, ScheduleCircuit>()
   const configuredIds = new Set(rows.filter((row) => !separateIds.has(row.id)).map((row) => row.id))
   const represented = new Set<string>()
-  for (const [pageKey, page] of Object.entries(project.pages ?? {})) {
-    if (page.pageType !== 'onewire') continue
+  const sources = Object.entries(project.pages ?? {}).flatMap(([pageKey, page]) => {
+    if (page.pageType !== 'onewire') return []
     const shapes = nativeStateForProjectPage(project, pageKey)?.shapes ?? []
-    for (const shape of shapes) {
-      if (shape.kind !== 'symbol' || shape.hidden || !isOneWireDistributionProtection(shape)) continue
+    return shapes.flatMap((shape) => {
+      if (shape.kind !== 'symbol' || shape.hidden) return []
       const identity = shape.generationKey ?? `${pageKey}:${shape.id}`
-      if (seen.has(identity)) {
-        rowsByIdentity.get(identity)?.sourceShapes?.push({ pageKey, shapeId: shape.id })
-        continue
-      }
-      seen.add(identity)
+      const topology = /^board:(.+):topology:(?:v\d+:)?(main-differential|additional-differential-[a-z]+-\d+|residual-breaker)$/.exec(shape.generationKey ?? '')
+      const role = shape.sourceLink?.role ?? topology?.[2]
+      if (role !== 'residual-breaker' && !isOneWireDistributionProtection(shape)) return []
+      const sourceIdentity = topology ? `board:${topology[1]}:topology:${topology[2]}`
+        : shape.generationKey ?? (shape.sourceLink?.kind === 'board' &&
+          /^(main-differential|additional-differential-[a-z]+-\d+|residual-breaker)$/.test(role ?? '')
+          ? `board:${shape.sourceLink.id}:topology:${role}` : identity)
       const top = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === 'top')
       const rails = top ? connectedOneWireRails(shapes, top.point) : []
       const supplied = rails.flatMap((rail) => shapes.filter((item) => item.kind === 'symbol' && item.oneWireRailId === rail.id &&
@@ -316,39 +327,78 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
       })
       const boardIds = new Set(destinations.map((item) => item.boardId))
       const railIds = new Set(destinations.map((item) => item.railId))
-      const role = shape.sourceLink?.role
+      const sourceBoardId = shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : topology?.[1]
       const boardId = shape.electrical?.boardId ?? (boardIds.size === 1 ? [...boardIds][0] : undefined) ??
-        (role === 'main-differential' && shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : undefined)
+        (role === 'main-differential' || role === 'residual-breaker'
+          ? sourceBoardId === 'main' ? mainBoardId : sourceBoardId : undefined)
       const railId = shape.electrical?.railId ?? (railIds.size === 1 ? [...railIds][0] : undefined)
-      let row = role === 'main-differential' ? rows.find((item) => item.mainDifferential && item.boardId === (boardId ?? mainBoardId))
-        : role ? roles.get(role) : undefined
-      const values = shape.symbolTextOverrides ?? {}
-      const current = shape.electrical?.breakerCurrentA ?? shape.electrical?.ratedCurrentA ?? Number.parseFloat(values['rated-current'] ?? values['desc:40A'] ?? '')
-      const residual = shape.electrical?.rcdSensitivityMa ?? Number.parseFloat(values['residual-current'] ?? values['desc:300mA'] ?? '')
-      const poles = shape.electrical?.poles ?? Number.parseInt(values.poles ?? values['desc:nP'] ?? '', 10)
-      if (!row && boardId) {
-        const matches = rows.filter((item) => configuredIds.has(item.id) && !represented.has(item.id) &&
-          item.boardId === boardId && (item.mainDifferential || (railId && item.railId === railId)) &&
-          item.protection === `${current}A / ${residual}mA`)
-        if (matches.length === 1) row = matches[0]
+      return [{ pageKey, shape, identity, sourceIdentity, role, boardId, railId, supplied }]
+    })
+  })
+  const destinations = new Map<string, { boards: Set<string>; rails: Set<string>; order: number }>()
+  for (const source of sources) {
+    const destination = destinations.get(source.sourceIdentity) ?? { boards: new Set<string>(), rails: new Set<string>(), order: destinations.size }
+    if (source.boardId && source.boardId !== 'unassigned') destination.boards.add(source.boardId)
+    if (source.railId) destination.rails.add(source.railId)
+    destinations.set(source.sourceIdentity, destination)
+  }
+  // Resolve a known destination before its unassigned continuation copies.
+  const priority = (source: typeof sources[number]) =>
+    (source.boardId && source.boardId !== 'unassigned' ? 2 : 0) + (source.railId ? 1 : 0)
+  sources.sort((a, b) => destinations.get(a.sourceIdentity)!.order - destinations.get(b.sourceIdentity)!.order ||
+    priority(b) - priority(a))
+  for (const { pageKey, shape, identity, sourceIdentity, role, boardId, railId, supplied } of sources) {
+    const destination = destinations.get(sourceIdentity)!
+    const conflicting = destination.boards.size > 1 || destination.rails.size > 1
+    const key = JSON.stringify([sourceIdentity, ...(conflicting ? [boardId, railId] : [])])
+    const previous = rowsByIdentity.get(key)
+    if (previous) {
+      previous.sourceShapes!.push({ pageKey, shapeId: shape.id })
+      if (!previous.mainDifferential) {
+        previous.railId ??= railId
+        if (supplied.length) previous.suppliedCircuitIds = [...new Set([...(previous.suppliedCircuitIds ?? []), ...supplied.map((circuit) => circuit.id)])]
       }
-      if (!row) {
-        row = { id: `DIFF:${boardId ?? 'unassigned'}:${identity}`, boardId: boardId ?? 'unassigned', railId,
-          mainDifferential: role === 'main-differential', protection: `${Number.isFinite(current) ? `${current}A` : '? A'} / ${Number.isFinite(residual) ? `${residual}mA` : '? mA'}`,
-          poles: Number.isFinite(poles) ? `${poles}P` : '? P', cable: shape.electrical?.rcdType ?? values['rcd-type'] ?? '',
-          consumers: [], rooms: [], category: 'Differentieel (eendraads)', modules: Number.isFinite(poles) ? poles : 2 }
-        rows.push(row)
-      }
-      represented.add(row.id)
-      row.sourceShapes ??= []
-      row.sourceShapes.push({ pageKey, shapeId: shape.id })
-      rowsByIdentity.set(identity, row)
-      if (!row.mainDifferential && supplied.length) row.suppliedCircuitIds = [...new Set(supplied.map((circuit) => circuit.id))]
-      if (Number.isFinite(current) && Number.isFinite(residual)) row.protection = `${current}A / ${residual}mA`
-      if (Number.isFinite(poles) && poles > 0) { row.poles = `${poles}P`; row.modules = poles }
-      if (shape.electrical?.rcdType || values['rcd-type']) row.cable = shape.electrical?.rcdType ?? values['rcd-type']
-      if (values.description?.trim()) row.category = values.description.trim()
+      continue
     }
+    const residual = role === 'residual-breaker'
+    let row = residual ? rows.find((item) => item.id === residualId)
+      : role === 'main-differential' ? rows.find((item) => item.mainDifferential && item.boardId === (boardId ?? mainBoardId))
+        : role ? roles.get(role) : undefined
+    const values = shape.symbolTextOverrides ?? {}
+    const current = shape.electrical?.breakerCurrentA ?? shape.electrical?.ratedCurrentA ??
+      Number.parseFloat((values['rated-current'] ?? values['desc:40A'] ?? '').replace(/^[BCD]/, ''))
+    const sensitivity = shape.electrical?.rcdSensitivityMa ?? Number.parseFloat(values['residual-current'] ?? values['desc:300mA'] ?? '')
+    const poles = shape.electrical?.poles ?? Number.parseInt(values.poles ?? values['desc:nP'] ?? '', 10)
+    if (!row && boardId && !residual) {
+      const matches = rows.filter((item) => configuredIds.has(item.id) && !represented.has(item.id) &&
+        item.boardId === boardId && (item.mainDifferential || (railId && item.railId === railId)) &&
+        item.protection === `${current}A / ${sensitivity}mA`)
+      if (matches.length === 1) row = matches[0]
+    }
+    if (!row) {
+      const id = `${residual ? 'REM' : 'DIFF'}:${boardId ?? 'unassigned'}:${identity}`
+      row = { id: rows.some((item) => item.id === id) ? `${id}:${pageKey}:${shape.id}` : id, boardId: boardId ?? 'unassigned', railId,
+        mainDifferential: role === 'main-differential', protection: residual ? '? A'
+          : `${Number.isFinite(current) ? `${current}A` : '? A'} / ${Number.isFinite(sensitivity) ? `${sensitivity}mA` : '? mA'}`,
+        poles: Number.isFinite(poles) ? `${poles}P` : '? P', cable: residual ? '' : shape.electrical?.rcdType ?? values['rcd-type'] ?? '',
+        consumers: [], rooms: [], category: residual ? 'Remautomaat' : 'Differentieel (eendraads)',
+        ...(residual ? { note: 'Voedingsbeveiliging' } : {}),
+        modules: Number.isFinite(poles) ? poles : 2 }
+      rows.push(row)
+    }
+    represented.add(row.id)
+    row.sourceShapes ??= []
+    row.sourceShapes.push({ pageKey, shapeId: shape.id })
+    rowsByIdentity.set(key, row)
+    if (!row.mainDifferential && supplied.length) row.suppliedCircuitIds = [...new Set([...(row.suppliedCircuitIds ?? []), ...supplied.map((circuit) => circuit.id)])]
+    if (residual && Number.isFinite(current)) {
+      const curve = shape.electrical?.breakerCurve ?? /^[BCD]/.exec(values['rated-current'] ?? '')?.[0] ?? 'C'
+      row.protection = `${curve}${current}A`
+    }
+    else if (!residual && Number.isFinite(current) && Number.isFinite(sensitivity)) row.protection = `${current}A / ${sensitivity}mA`
+    if (Number.isFinite(poles) && poles > 0) { row.poles = `${poles}P`; row.modules = poles }
+    if (!residual && (shape.electrical?.rcdType || values['rcd-type'])) row.cable = shape.electrical?.rcdType ?? values['rcd-type']
+    if (values.description?.trim()) row.category = values.description.trim()
   }
   return rows
 }
@@ -382,22 +432,25 @@ export const circuitScheduleEditorItems = (
 }
 
 const scheduleEditorItemsForRows = (rows: readonly ScheduleCircuit[]): CircuitScheduleEditorItem[] => {
-  const items: CircuitScheduleEditorItem[] = rows.map((row) => ({
-    id: row.id,
-    boardId: row.boardId,
-    railId: row.railId,
-    mainDifferential: row.mainDifferential,
-    suppliedCircuitIds: row.suppliedCircuitIds,
-    protectionId: row.protectionId,
-    topologyIndex: row.topologyIndex,
-    topologyMain: row.topologyMain,
-    sourceShapes: row.sourceShapes,
-    title: row.category || row.id,
-    subtitle: `${row.id.startsWith('DIFF:') ? '' : `${row.id} · `}${row.poles} · ${row.protection}${row.id.startsWith('DIFF:') && row.cable ? ` · ${row.cable}` : ''}`,
-    kind: row.id.startsWith('DIFF:') ? 'differential' : 'circuit',
-    modules: row.modules,
-    ...(row.id.startsWith('DIFF:') ? {} : { cable: row.cable })
-  }))
+  const items: CircuitScheduleEditorItem[] = rows.map((row) => {
+    const kind = row.id.startsWith('REM:') ? 'residual-breaker' : row.id.startsWith('DIFF:') ? 'differential' : 'circuit'
+    return {
+      id: row.id,
+      boardId: row.boardId,
+      railId: row.railId,
+      mainDifferential: row.mainDifferential,
+      suppliedCircuitIds: row.suppliedCircuitIds,
+      protectionId: row.protectionId,
+      topologyIndex: row.topologyIndex,
+      topologyMain: row.topologyMain,
+      sourceShapes: row.sourceShapes,
+      title: row.category || row.id,
+      subtitle: `${kind === 'circuit' ? `${row.id} · ` : ''}${row.poles} · ${row.protection}${kind === 'differential' && row.cable ? ` · ${row.cable}` : ''}`,
+      kind,
+      modules: row.modules,
+      ...(kind === 'circuit' ? { cable: row.cable } : {})
+    }
+  })
   return linkCircuitScheduleProtections(items)
 }
 
@@ -477,7 +530,7 @@ const scheduleTableRow = (circuit: ScheduleCircuit, rowIndex: number): string =>
   const consumers = circuit.note?.trim() || circuit.consumers.join(', ') || 'Reserve'
   return `<g>
     <rect x="${PAGE_X}" y="${y}" width="${PAGE_W}" height="${TABLE_ROW_H}" fill="${rowIndex % 2 ? '#fdfbf9' : '#ffffff'}" stroke="#e4dad4" stroke-width="0.3"/>
-    ${text(12, y + 5, circuit.id.startsWith('DIFF:') ? 'DIFF' : circuit.id, { size: 3, weight: 750, fill: '#a85427' })}
+    ${text(12, y + 5, circuitScheduleItemLabel(circuit.id), { size: 3, weight: 750, fill: '#a85427' })}
     ${text(30, y + 5, circuit.category || 'Overig', { size: 2.6, weight: 600 })}
     ${text(72, y + 5, `${circuit.poles} · ${circuit.protection}`, { size: 2.6, weight: 650 })}
     ${text(100, y + 5, circuit.cable, { size: 2.45, fill: '#4d433d' })}

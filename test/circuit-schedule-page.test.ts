@@ -148,6 +148,143 @@ test('does not claim a unique circuit assignment when multiple differentials sha
   assert.match(items.find((item) => item.id === 'A')!.assignmentWarning!, /Meerdere/)
 })
 
+test('includes the configured residual breaker with its actual cabinet, rating and module width in the schedule and export', () => {
+  const project = projectFixture()
+  project.electricalProfile!.boards![0].id = 'actual-cabinet'
+  project.oneWireTopology = { version: 1, consumers: true, solar: true, residualBreaker: true,
+    residualBreakerRatedCurrentA: 63, residualBreakerPoles: 4 }
+  const circuit = group('A1', 'A', 'actual-cabinet')
+  const items = circuitScheduleEditorItems(project, analysis([circuit]))
+  const residual = items.find((item) => item.kind === 'residual-breaker')!
+  assert.equal(residual.title, 'Remautomaat')
+  assert.equal(residual.boardId, 'actual-cabinet')
+  assert.equal(residual.subtitle, '4P · C63A')
+  assert.equal(residual.modules, 4)
+  assert.deepEqual(items.find((item) => item.id === 'A')!.differentialIds, [])
+  assert.equal(packCircuitCabinetRows(items.map((item) => ({ ...item, gapBefore: 0 })), 18)[0].used, 6)
+  const exported = buildCircuitScheduleSvgs(project, analysis([circuit])).join('')
+  assert.match(exported, />REM<\/text>/)
+  assert.match(exported, />Remautomaat<\/text>/)
+  assert.match(exported, /4P · C63A/)
+  assert.match(exported, /Voedingsbeveiliging/)
+  assert.equal(refreshCircuitScheduleItems(project, items).filter((item) => item.kind === 'residual-breaker').length, 1)
+})
+
+test('recognizes schematic-only residual breakers and counts their versioned copies once without including ordinary breakers', () => {
+  const project = projectFixture()
+  project.oneWireTopology = { version: 1, consumers: true, solar: false, residualBreaker: true,
+    residualBreakerRatedCurrentA: 40, residualBreakerPoles: 4 }
+  let sequence = 0
+  const shapes = buildOneWireTopology(project.oneWireTopology, { start: { x: 200, y: 1200 }, end: { x: 1800, y: 1200 } },
+    () => `rem-${++sequence}`)
+  const residual = shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'residual-breaker')!
+  const copy = { ...residual, id: 'old-rem', sourceLink: undefined,
+    generationKey: residual.generationKey!.replace(/:v\d+:/, ':v1:') }
+  project.pages.schematic = { name: 'Eendraads', creationTime: 1, pageType: 'onewire',
+    schema: schematicSchema([...shapes, ...schematicCircuit('A')]) }
+  project.pages.old = { name: 'Vervolg', creationTime: 2, pageType: 'onewire', schema: schematicSchema([copy]) }
+  const before = structuredClone(project)
+  const items = refreshCircuitScheduleItems(project, [])
+  assert.equal(items.length, 2)
+  const remautomaat = items.filter((item) => item.kind === 'residual-breaker')
+  assert.equal(remautomaat.length, 1)
+  assert.equal(remautomaat[0].sourceShapes!.length, 2)
+  assert.equal(remautomaat[0].subtitle, '4P · C40A')
+  assert.deepEqual(project, before)
+  project.oneWireTopology.residualBreaker = false
+  const schematicOnly = refreshCircuitScheduleItems(project, []).filter((item) => item.kind === 'residual-breaker')
+  assert.equal(schematicOnly.length, 1)
+  assert.equal(schematicOnly[0].kind, 'residual-breaker')
+  assert.equal(schematicOnly[0].sourceShapes!.length, 2)
+  project.pages = {}
+  assert.equal(refreshCircuitScheduleItems(project, []).length, 0)
+})
+
+test('counts versioned schematic copies once and prefers their known cabinet without merging distinct devices', () => {
+  const project = projectFixture()
+  project.electricalProfile!.boards!.push({ id: 'garage', name: 'Garage', rails: [{ id: 'rail-3', name: 'Rij 3' }] })
+  const old: Shape = { id: 'old-diff', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg', position: { x: 800, y: 1200 }, scale: 3,
+    generationKey: 'board:main:topology:v31:additional-differential-consumers-1',
+    electrical: { role: 'protection', oneWireEligible: true, railId: 'rail-3', poles: 4, breakerCurrentA: 40, rcdSensitivityMa: 30 } }
+  const current = { ...old, id: 'current-diff', generationKey: 'board:main:topology:v33:additional-differential-consumers-1',
+    sourceLink: { kind: 'board' as const, id: 'main', role: 'additional-differential-consumers-1' },
+    electrical: { ...old.electrical, boardId: 'garage' } }
+  const other = { ...current, id: 'other-diff', generationKey: 'board:main:topology:v33:additional-differential-consumers-2',
+    sourceLink: { ...current.sourceLink, role: 'additional-differential-consumers-2' } }
+  const sourceOnly = { ...current, id: 'source-only', generationKey: undefined }
+  const manual = { ...old, id: 'manual-diff', generationKey: undefined }
+  project.pages.old = { name: 'Oud eendraads', creationTime: 1, pageType: 'onewire', schema: schematicSchema([manual, old]) }
+  project.pages.current = { name: 'Eendraads', creationTime: 2, pageType: 'onewire', schema: schematicSchema([current, sourceOnly, other]) }
+  const before = structuredClone(project)
+  const items = refreshCircuitScheduleItems(project, [])
+  assert.equal(items.length, 3)
+  assert.equal(items[0].sourceShapes![0].shapeId, manual.id)
+  assert.ok(items.slice(1).every((item) => item.boardId === 'garage'))
+  const merged = items.find((item) => item.sourceShapes?.some((source) => source.shapeId === old.id))!
+  assert.equal(merged.sourceShapes!.length, 3)
+  assert.match(merged.id, /v33:additional-differential-consumers-1$/)
+  assert.deepEqual(project, before)
+  const assigned = assignScheduleDifferential(project, items, merged.id, 'main', 'rail-1')
+  const reassigned = refreshCircuitScheduleItems(assigned, []).find((item) => item.boardId === 'main')!
+  assert.equal(reassigned.sourceShapes!.length, 3)
+  assert.equal(refreshCircuitScheduleItems(assigned, []).length, 3)
+})
+
+test('combines circuit coverage from continuation copies and preserves conflicting cabinet assignments', () => {
+  const project = projectFixture()
+  const diff: Shape = { id: 'diff-a', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg', position: { x: 800, y: 1200 }, scale: 3,
+    generationKey: 'board:main:topology:v33:additional-differential-consumers-1',
+    sourceLink: { kind: 'board', id: 'main', role: 'additional-differential-consumers-1' },
+    electrical: { role: 'protection', oneWireEligible: true, poles: 4, breakerCurrentA: 40, rcdSensitivityMa: 30 } }
+  for (const [index, family] of ['A', 'B'].entries()) {
+    const copy = { ...diff, id: `diff-${family}` }
+    const top = oneWireSymbolConnectionAnchors(copy).find((anchor) => anchor.side === 'top')!.point
+    const railId = `rail-${family}`
+    project.pages[family] = { name: family, creationTime: index, pageType: 'onewire', schema: schematicSchema([
+      copy, { id: railId, kind: 'line', groupId: `onewire-kamrail-${family}`,
+        start: { x: top.x - 200, y: top.y - 80 }, end: { x: top.x + 200, y: top.y - 80 } },
+      { id: `feed-${family}`, kind: 'line', start: top, end: { x: top.x, y: top.y - 80 } },
+      ...schematicCircuit(family).map((shape) => ({ ...shape, oneWireRailId: railId }))
+    ]) }
+  }
+  const items = circuitScheduleEditorItems(project, analysis([group('A1', 'A'), group('B1', 'B')]))
+  const differentials = items.filter((item) => item.kind === 'differential')
+  assert.equal(differentials.length, 1)
+  assert.deepEqual(differentials[0].circuits, ['A', 'B'])
+  const garageCopy = { ...diff, id: 'garage-diff', electrical: { ...diff.electrical, boardId: 'garage' } }
+  project.pages.garage = { name: 'Garage', creationTime: 3, pageType: 'onewire', schema: schematicSchema([garageCopy]) }
+  const conflicting = circuitScheduleEditorItems(project, analysis([group('A1', 'A'), group('B1', 'B')]))
+    .filter((item) => item.kind === 'differential')
+  assert.equal(conflicting.length, 2)
+  assert.deepEqual(conflicting.map((item) => item.boardId).sort(), ['garage', 'main'])
+  const railCopy = { ...diff, id: 'other-rail-diff', electrical: { ...diff.electrical, boardId: 'main', railId: 'rail-2' } }
+  project.pages.otherRail = { name: 'Andere rij', creationTime: 4, pageType: 'onewire', schema: schematicSchema([railCopy]) }
+  const differentRails = circuitScheduleEditorItems(project, analysis([group('A1', 'A'), group('B1', 'B')]))
+    .filter((item) => item.kind === 'differential')
+  assert.equal(differentRails.length, 3)
+  assert.equal(new Set(differentRails.map((item) => item.id)).size, 3)
+})
+
+test('resolves old main differential copies to the actual main cabinet rather than the topology root name', () => {
+  const project = projectFixture()
+  project.electricalProfile!.boards![0].id = 'actual-cabinet'
+  project.electricalProfile!.boards![0].mainDifferential = { id: 'main', poles: 4, ratedCurrentA: 63, sensitivityMa: 300 }
+  const old: Shape = { id: 'old-main', kind: 'symbol', name: 'Hoofddifferentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg', position: { x: 800, y: 1200 }, scale: 3,
+    generationKey: 'board:main:topology:v31:main-differential',
+    electrical: { role: 'protection', oneWireEligible: true, poles: 4, breakerCurrentA: 63, rcdSensitivityMa: 300 } }
+  const current = { ...old, id: 'current-main', generationKey: 'board:main:topology:v33:main-differential',
+    electrical: { ...old.electrical, boardId: 'actual-cabinet' } }
+  project.pages.schematic = { name: 'Eendraads', creationTime: 1, pageType: 'onewire', schema: schematicSchema([old, current]) }
+  const items = refreshCircuitScheduleItems(project, [])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].boardId, 'actual-cabinet')
+  assert.equal(items[0].mainDifferential, true)
+  assert.equal(items[0].sourceShapes!.length, 2)
+})
+
 test('packs cabinet modules per board, wraps rows and retains explicitly reserved space', () => {
   const items = circuitScheduleEditorItems(null, analysis([group('A1', 'A'), group('B1', 'B'), group('C1', 'C', 'garage')]))
     .map((item) => ({ ...item, modules: 10, gapBefore: item.id === 'A' ? 2 : 0 }))

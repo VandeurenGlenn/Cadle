@@ -1,6 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import type { CircuitScheduleLayout, ElectricalBoard } from '../../types.js'
-import { cabinetModulesPerRow, packCircuitCabinetRows, type CircuitScheduleEditorItem } from '../../editor/circuit-schedule-page.js'
+import { cabinetModulesPerRow, circuitScheduleItemLabel, packCircuitCabinetRows, type CircuitScheduleEditorItem } from '../../editor/circuit-schedule-page.js'
 import styles from './circuit-schedule-dialog.css' with { type: 'css' }
 
 type EditableItem = CircuitScheduleEditorItem & { gapBefore: number }
@@ -109,7 +109,7 @@ export class CircuitScheduleDialog extends LiteElement {
                       <div class="cabinet-device" data-kind=${item.kind} data-item-id=${item.id}
                         style=${`grid-column:${start} / span ${span}`}
                         title=${`${item.title} · ${item.subtitle}${item.railId ? ` · ${item.railId}` : ''}`}>
-                        <strong>${item.kind === 'differential' ? 'DIFF' : item.id}</strong>
+                        <strong>${circuitScheduleItemLabel(item.id)}</strong>
                         <small>${item.modules}M</small>
                       </div>`)}
                   </div>

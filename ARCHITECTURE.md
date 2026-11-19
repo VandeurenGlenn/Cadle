@@ -60,6 +60,12 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - The circuit overview combines configured and schematic-only differentials, shows main/row protection chains and
   their supplied circuits, and flags missing or ambiguous assignments. Manual differentials follow actual conductor
   contacts to their outgoing rails, scoped to each schematic page; bare crossings never establish an assignment.
+  Schematic copies share a stable source identity across topology geometry versions. Known cabinet assignments take
+  precedence over unassigned copies, and supplied circuits are combined across continuation sheets. Conflicting
+  schematic-only destinations and distinct devices with identical ratings remain separate; reconciliation never edits drawings.
+  Configured and source-tagged schematic residual breakers appear separately as `REM`/`Remautomaat`, with their
+  current rating, curve and pole-count module width in the overview, cabinet planner and PDF/SVG schedule.
+  They are feeding protections, not differentials or extra circuits, and their inclusion never regenerates wiring.
   Each cabinet exposes its own saved 18/24-module row width, falling back to the existing global width.
   Cabinet headers can add configured differentials; new devices remain separate from existing topology/schematic
   devices with identical ratings (`matchExistingSources: false`). Existing differentials can be assigned to a cabinet

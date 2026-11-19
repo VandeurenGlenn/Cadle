@@ -12,6 +12,7 @@ import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/e
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 import { applyOneWireCircuitPresentation } from '../../src/editor/layout/onewire-circuit-presentation.ts'
 import { translateShape } from '../../src/editor/interaction/shape-transforms.ts'
+import { buildOneWireTopology } from '../../src/editor/layout/onewire-topology.ts'
 
 const ground = '00000000-0000-4000-8000-000000000102' as UUID
 const schematic = '00000000-0000-4000-8000-000000000104' as UUID
@@ -235,6 +236,107 @@ test('edits cabinet widths and adds or assigns differentials persistently withou
   await expect(planner.getByRole('combobox', { name: 'Kastbreedte', exact: true })).toHaveValue('18')
   await expect(planner.locator(`.cabinet-device[data-item-id="${addedId}"]`)).toHaveAttribute('style', /grid-column:3 \/ span 4/)
   await expect(planner.locator(`.cabinet-device[data-item-id="${assignedId}"]`)).toHaveAttribute('style', /grid-column:4 \/ span 4/)
+})
+
+test('counts versioned differential copies once in the overview and planner and reassigns all copies', async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 1100 })
+  const project = fixture()
+  project.name = 'Differentielen zonder dubbeltelling'
+  const continuation = randomUUID()
+  const old: SymbolShape = { id: 'old-diff', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg', position: { x: 800, y: 1200 }, scale: 3,
+    generationKey: 'board:main:topology:v31:additional-differential-consumers-1',
+    electrical: { role: 'protection', oneWireEligible: true, poles: 4, breakerCurrentA: 40, rcdSensitivityMa: 30, railId: 'rail-1' } }
+  const current: SymbolShape = { ...old, id: 'current-diff', position: { x: 1000, y: 1200 },
+    generationKey: 'board:main:topology:v33:additional-differential-consumers-1',
+    sourceLink: { kind: 'board', id: 'main', role: 'additional-differential-consumers-1' },
+    electrical: { ...old.electrical, boardId: 'garage' } }
+  const other: SymbolShape = { ...current, id: 'other-diff', position: { x: 1400, y: 1200 },
+    generationKey: 'board:main:topology:v33:additional-differential-consumers-2',
+    sourceLink: { kind: 'board', id: 'main', role: 'additional-differential-consumers-2' } }
+  project.pages[schematic].schema = schema([old])
+  project.pages[continuation] = { creationTime: 3, name: 'Vervolg', pageType: 'onewire', schema: schema([current, other]) }
+  const id = `DIFF:garage:${current.generationKey}`
+  project.circuitScheduleLayout = { modulesPerRow: 24, items: [{ id, gapBefore: 3 }] }
+  await seed(page, project)
+  const shell = page.locator('app-shell')
+  const drawings = () => shell.evaluate((element) => Object.fromEntries(Object.entries((element as AppShell).project.pages)
+    .filter(([, page]) => page.pageType !== 'circuit-schedule')))
+  const before = await drawings()
+  await shell.evaluate((element) => (element as AppShell).openCircuitScheduleDialog())
+  const overview = page.locator('circuit-schedule-field')
+  const main = overview.locator('.board-section[data-board-id="main"]')
+  const garage = overview.locator('.board-section[data-board-id="garage"]')
+  await expect(overview.locator('.device[data-kind="differential"]')).toHaveCount(2)
+  await expect(garage.locator('.device[data-kind="differential"]')).toHaveCount(2)
+  await expect(overview.getByRole('heading', { name: 'Niet gekoppeld aan een kast', exact: true })).toHaveCount(0)
+  expect(await drawings()).toEqual(before)
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  const planner = page.getByRole('dialog', { name: 'Kastlayoutplanner', exact: true })
+  await expect(planner.locator('.cabinet-device[data-kind="differential"]')).toHaveCount(2)
+  await expect(planner.locator(`.cabinet-device[data-item-id="${id}"]`)).toHaveAttribute('style', /grid-column:4 \/ span 4/)
+  await planner.getByRole('button', { name: 'Sluiten', exact: true }).click()
+  await overview.getByRole('combobox', { name: `Verdeelbord voor differentieel ${id}`, exact: true }).selectOption('main')
+  const input = page.locator('input-form-dialog')
+  await input.getByRole('combobox', { name: /^Elektrische rij/ }).selectOption('rail-1')
+  await input.getByRole('button', { name: 'Kastkoppeling opslaan', exact: true }).click()
+  await expect(main.locator('.device[data-kind="differential"]')).toHaveCount(1)
+  await expect(garage.locator('.device[data-kind="differential"]')).toHaveCount(1)
+  const expected = structuredClone(before)
+  for (const [key, index] of [[schematic, 0], [continuation, 0]] as const) {
+    const raw = expected[key].schema.objects[0] as { payload: { shapes: SymbolShape[] } }
+    raw.payload.shapes[index].electrical = { ...raw.payload.shapes[index].electrical, boardId: 'main', railId: 'rail-1' }
+  }
+  expect(await drawings()).toEqual(expected)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect(overview.locator('.device[data-kind="differential"]')).toHaveCount(2)
+  await expect(main.locator('.device[data-kind="differential"]')).toHaveCount(1)
+  await expect(garage.locator('.device[data-kind="differential"]')).toHaveCount(1)
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  const assignedId = `DIFF:main:${old.generationKey}`
+  await expect(planner.locator(`.cabinet-device[data-item-id="${assignedId}"]`)).toHaveAttribute('style', /grid-column:4 \/ span 4/)
+})
+
+test('includes the residual breaker once in the overview and saved cabinet planner without changing schematic geometry', async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 1100 })
+  const project = fixture()
+  project.name = 'Remautomaat in kastoverzicht'
+  project.oneWireTopology = { version: 1, consumers: true, solar: true, residualBreaker: true,
+    residualBreakerRatedCurrentA: 63, residualBreakerPoles: 4 }
+  let sequence = 0
+  project.pages[schematic].schema = schema(buildOneWireTopology(project.oneWireTopology,
+    { start: { x: 200, y: 1200 }, end: { x: 1800, y: 1200 } }, () => `rem-${++sequence}`))
+  await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element) => (element as AppShell).openCircuitScheduleDialog())
+  const overview = page.locator('circuit-schedule-field')
+  const residual = overview.locator('.device[data-kind="residual-breaker"]')
+  await expect(residual).toHaveCount(1)
+  await expect(residual.locator('.circuit-id')).toHaveText('REM')
+  await expect(residual.locator('.description')).toHaveText(/^remautomaat$/i)
+  await expect(residual.locator('.protection')).toHaveText('4P · C63A')
+  await expect(residual).toContainText('Hoofdkast')
+  await expect(residual.getByRole('combobox')).toHaveCount(0)
+  const before = await shell.evaluate((element) => (element as AppShell).project.pages)
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  const planner = page.getByRole('dialog', { name: 'Kastlayoutplanner', exact: true })
+  const module = planner.locator('.cabinet-device[data-kind="residual-breaker"]')
+  await expect(module).toHaveCount(1)
+  await expect(module).toContainText('REM')
+  await expect(module).toContainText('4M')
+  await planner.locator('.item[data-kind="residual-breaker"]').getByLabel('Vrije modules ervoor').fill('2')
+  await planner.locator('.item[data-kind="residual-breaker"]').getByLabel('Vrije modules ervoor').press('Tab')
+  await expect(module).toHaveAttribute('style', /grid-column:3 \/ span 4/)
+  await planner.getByRole('button', { name: 'Indeling opslaan', exact: true }).click()
+  await expect(planner).not.toBeVisible()
+  expect(await shell.evaluate((element) => (element as AppShell).project.pages)).toEqual(before)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect(residual).toHaveCount(1)
+  await expect(residual.locator('.protection')).toHaveText('4P · C63A')
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  await expect(module).toHaveAttribute('style', /grid-column:3 \/ span 4/)
 })
 
 test('numbers physical cabinet rows from bottom to top for each board and preserves saved positions', async ({ page }) => {

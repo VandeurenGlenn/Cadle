@@ -1,6 +1,6 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import type { CircuitScheduleLayout, ElectricalBoard, Project } from '../types.js'
-import { cabinetModulesPerRow, linkCircuitScheduleProtections, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
+import { cabinetModulesPerRow, circuitScheduleItemLabel, linkCircuitScheduleProtections, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
 import { cableEstimateBoardLocation, estimateCircuitCables, floorPlanBoardLocations, formatCableMetres } from '../editor/cable-estimate.js'
 import styles from './circuit-schedule.css' with { type: 'css' }
 
@@ -239,11 +239,11 @@ export class CircuitScheduleField extends LiteElement {
                             event.preventDefault()
                             this.#drop(item.id)
                           }}>
-                          <strong class="circuit-id">${item.id.startsWith('DIFF:') ? 'DIFF' : item.id}</strong>
+                          <strong class="circuit-id">${circuitScheduleItemLabel(item.id)}</strong>
                           <span class="description">${item.title}</span>
                           <span class="protection">${item.subtitle.replace(`${item.id} · `, '')}</span>
                           <span class="protection-assignment">
-                            <strong>${item.railId ? board.rails.find((rail) => rail.id === item.railId)?.name ?? item.railId : item.mainDifferential ? 'Hele kast' : 'Rij niet gekoppeld'}</strong>
+                            <strong>${item.kind === 'residual-breaker' ? 'Voedingsbeveiliging' : item.railId ? board.rails.find((rail) => rail.id === item.railId)?.name ?? item.railId : item.mainDifferential ? 'Hele kast' : 'Rij niet gekoppeld'}</strong>
                             ${item.kind === 'differential'
                               ? html`<span>${item.circuits?.length ? `Voedt: ${item.circuits.join(', ')}` : ''}</span>`
                               : (item.differentialIds ?? []).map((id) => {
@@ -265,7 +265,7 @@ export class CircuitScheduleField extends LiteElement {
                                   this.#setBoard(item.id, (event.target as HTMLSelectElement).value)}>
                                 ${boards.filter((option) => option.id !== 'unassigned').map((option) => html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
                               </select>`
-                            : html`<select aria-label=${`Verdeelbord voor differentieel ${item.id}`}
+                            : item.kind === 'differential' ? html`<select aria-label=${`Verdeelbord voor differentieel ${item.id}`}
                                 @change=${(event: Event) => {
                                   const control = event.target as HTMLSelectElement
                                   const boardId = control.value
@@ -277,7 +277,7 @@ export class CircuitScheduleField extends LiteElement {
                                 <option value="unassigned" disabled .selected=${item.boardId === 'unassigned'}>Niet gekoppeld aan een kast</option>
                                 ${boards.filter((option) => option.id !== 'unassigned').map((option) =>
                                   html`<option value=${option.id} .selected=${option.id === item.boardId}>${option.name}</option>`)}
-                              </select>`}
+                              </select>` : html`<span>${board.name}</span>`}
                           <input
                             class="gap"
                             aria-label=${`Vrije modules voor ${item.id}`}

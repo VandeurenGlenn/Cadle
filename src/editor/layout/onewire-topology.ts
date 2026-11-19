@@ -337,20 +337,7 @@ export const buildOneWireTopology = (
     return upperTap(fraction)
   }
 
-  if (plan.residualBreaker) {
-    const status = text(
-      'secondary-busbar-protection-label',
-      `VERBRUIKERS · ${capacity.message}`,
-      upperRail.start.x + 8,
-      upperRail.start.y + 28,
-      0.5
-    )
-    if (capacity.status === 'overload') status.fill = '#b3261e'
-    shapes.push(status)
-    shapes.push(
-      text('secondary-busbar-capacity-detail', capacity.detail, upperRail.start.x + 8, upperRail.start.y + 56, 0.43)
-    )
-  } else if (plan.solar && (plan.consumers || additional.length)) {
+  if (!plan.residualBreaker && plan.solar && (plan.consumers || additional.length)) {
     const directTap = busTap(0.16)
     const directUpperTap = upperTapAtX(directTap.x)
     shapes.push(

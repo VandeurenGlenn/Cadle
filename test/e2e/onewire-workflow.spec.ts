@@ -162,9 +162,10 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   expect(topology.find((shape) => shape.sourceLink?.role === 'solar-breaker')).toMatchObject({
     electrical: { breakerCurrentA: 25, poles: 2 }
   })
-  expect(topology.find((shape) => shape.sourceLink?.role === 'secondary-busbar-protection-label')).toMatchObject({
-    text: 'VERBRUIKERS · BEGRENZDE RAIL · REMAUTOMAAT C40A'
-  })
+  expect(topology.some((shape) =>
+    shape.sourceLink?.role === 'secondary-busbar-protection-label' ||
+    shape.sourceLink?.role === 'secondary-busbar-capacity-detail'
+  )).toBe(false)
   const rail = topology.find((shape) => shape.sourceLink?.role === 'secondary-busbar')
   const feed = topology.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1-to-rail')
   expect(rail?.kind === 'line' && feed?.kind === 'line' && feed.start.y === rail.start.y).toBe(true)
@@ -299,6 +300,10 @@ test('uses the printable width and consolidates old automatic sheets without los
     }
     return state.shapes
   })
+  expect(combined.some((shape) =>
+    shape.sourceLink?.role === 'secondary-busbar-protection-label' ||
+    shape.sourceLink?.role === 'secondary-busbar-capacity-detail'
+  )).toBe(false)
   expect(combined.filter((shape) => shape.sourceLink?.kind === 'device').map((shape) => shape.id).sort()).toEqual(deviceIds)
   expect(combined.some((shape) => shape.sourceLink?.role.startsWith('sheet-reference:') ||
     shape.sourceLink?.role === 'overflow-reference')).toBe(false)

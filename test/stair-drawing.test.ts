@@ -7,7 +7,7 @@ import { cloneShape, sanitizeShapes, scaleShape, shapeBounds } from '../src/edit
 import { stairGeometry } from '../src/editor/model/stair-geometry.ts'
 import { shapeMarkup } from '../src/editor/export/svg-export.ts'
 
-for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-spiral'] as const) {
+for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral'] as const) {
   test(`${variant} resizes with the pointer and retains its geometry after saving and scaling`, () => {
     const draft = createDraftShape(variant, { x: 100, y: 120 }, variant)
     assert.equal(draft.kind, 'rect')
@@ -50,4 +50,24 @@ test('quarter-turn stairs have two perpendicular flights instead of a rectangula
   assert.match(turning.outline, /L 200 80 L 80 80 L 80 300/)
   assert.notEqual(turning.arrow, straight.arrow)
   assert.match(turning.arrow, /L 40 40 L 180 40/)
+})
+
+test('double-quarter-turn stairs have three flights, two winding corners and an open centre', () => {
+  const geometry = stairGeometry({ x: 10, y: 20, width: 240, height: 300 }, 'stairs-double-quarter-turn')
+  assert.equal(geometry.outline,
+    'M 10 320 L 10 20 L 250 20 L 250 320 L 170 320 L 170 100 L 90 100 L 90 320 Z')
+  assert.ok(geometry.treads.includes('M 10 20 L 90 100'))
+  assert.ok(geometry.treads.includes('M 250 20 L 170 100'))
+  assert.ok(geometry.treads.includes('M 130 20 L 130 100'))
+  assert.ok(geometry.arrow.startsWith('M 50 300 L 50 60 L 210 60 L 210 300'))
+})
+
+test('double-quarter-turn stairs retain an open centre in wide, shallow and tiny footprints', () => {
+  for (const [width, height] of [[120, 600], [600, 120], [1, 1]]) {
+    const geometry = stairGeometry({ x: 0, y: 0, width, height }, 'stairs-double-quarter-turn')
+    for (const path of Object.values(geometry)) assert.doesNotMatch(path, /NaN|Infinity/)
+    const flight = Math.min(width / 3, height * 0.4)
+    assert.ok(width - 2 * flight > 0)
+    assert.ok(geometry.outline.includes(`L ${width - flight} ${flight} L ${flight} ${flight}`))
+  }
 })

@@ -48,6 +48,7 @@ type NodeSpec = {
   cutRadius: number | null
   // Exact ports for compound symbols whose contacts do not form one circle.
   connectionPorts?: Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>>
+  connectionPortsOnly?: boolean
   protectionBody?: { left: number; right: number }
   // Explicit one-wire scale for symbols without a standard node circle.
   oneWireScale?: number
@@ -251,6 +252,11 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       viewBox: { width: 20.0825, height: 8.74394 },
       node: { x: 10.04125, y: 4.37197 },
       cutRadius: 9.92125,
+      connectionPorts: {
+        left: { x: 0.12, y: 4.37197 },
+        right: { x: 19.9625, y: 4.37197 }
+      },
+      connectionPortsOnly: true,
       // The wide relay needs more width for its internal switching mark.
       oneWireScale: (6 * PAPER_WORLD_UNITS_PER_MM) / 24
     }
@@ -639,6 +645,9 @@ export const oneWireSymbolPortInfo = (path: string, scale: number): Partial<Reco
     [side, pointOffset(spec.viewBox, point, renderedSymbolScale(path, scale))]
   ))
 }
+
+export const oneWireSymbolUsesExplicitPorts = (path: string): boolean =>
+  findSpec(path)?.connectionPortsOnly === true
 
 export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireTerminalInfo | null => {
   const spec = TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec

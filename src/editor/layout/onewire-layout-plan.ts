@@ -131,9 +131,7 @@ export const packOneWireFamilyBounds = (
     if (index && family.ink?.length && families.slice(0, index).every((previous) => previous.ink?.length)) {
       // Only reserve horizontal space where ink overlaps vertically. A wide
       // upper lighting row need not reserve room for the next breaker's poles.
-      // Keep 2 mm of visible breathing room between neighboring circuits;
-      // collision clearance alone makes the row numbers look attached.
-      const rowGap = Math.max(gap, 16)
+      const rowGap = gap
       x = provisional[index - 1].x + rowGap
       for (let prior = 0; prior < index; prior++) {
         const previous = families[prior]

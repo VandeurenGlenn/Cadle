@@ -709,6 +709,24 @@ test('places one impulse relay between push buttons and lighting loads', () => {
   }
   const generated = buildKamrailCircuitBundle({ ...common, familyComponents: [pushButton, light] })
   assert.ok(generated)
+  const impulse = generated.shapes.find(
+    (shape): shape is Extract<Shape, { kind: 'symbol' }> =>
+      shape.kind === 'symbol' && /impulse relay/i.test(shape.path)
+  )
+  assert.ok(impulse)
+  assert.equal(impulse.rotation, -90)
+  const impulsePorts = oneWireSymbolConnectionAnchors(impulse)
+  const rowWires = generated.shapes.filter(
+    (shape): shape is Extract<Shape, { kind: 'line' }> =>
+      shape.kind === 'line' && shape.sourceLink?.role === 'row-wire'
+  )
+  for (const side of ['top', 'bottom'] as const) {
+    const port = impulsePorts.find((anchor) => anchor.side === side)?.point
+    assert.ok(port)
+    assert.ok(rowWires.some((wire) =>
+      [wire.start, wire.end].some((point) => Math.hypot(point.x - port.x, point.y - port.y) < 1e-8)
+    ), `${side} impulse relay contact must meet its row conductor`)
+  }
   assert.deepEqual(
     generated.shapes
       .filter((shape): shape is Extract<Shape, { kind: 'symbol' }> => shape.kind === 'symbol')

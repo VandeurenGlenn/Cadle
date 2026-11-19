@@ -30,6 +30,7 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-built-in-cabinet', icon: 'shelves', title: 'Draw built-in cabinet', hint: 'Drag to draw the cabinet footprint.' },
   { action: 'draw-stairs', icon: 'stairs', title: 'Rechte trap tekenen', hint: 'Sleep om de breedte en lengte te bepalen. Het voorbeeld volgt de muis.', nativeOnly: true },
   { action: 'draw-stairs-quarter-turn', icon: 'stairs', title: 'Kwartdraaitrap tekenen', hint: 'Sleep om de afmetingen te bepalen. Spiegel of roteer de trap via Object properties.', nativeOnly: true },
+  { action: 'draw-stairs-double-quarter-turn', icon: 'stairs', title: 'Trap met 2 kwartslagen tekenen', hint: 'Sleep een U-vormige trap met twee kwartslagen. Spiegel of roteer de trap via Object properties.', nativeOnly: true },
   { action: 'draw-stairs-spiral', icon: 'stairs', title: 'Wenteltrap tekenen', hint: 'Sleep om de afmetingen te bepalen. Houd Shift ingedrukt voor een ronde trap.', nativeOnly: true },
   { action: 'draw-access-point', icon: 'wifi', title: 'Place Wi-Fi access point', hint: 'Move the cursor to preview the access point, then click to place.' },
   { action: 'draw-heat-pump', icon: 'heat_pump', title: 'Warmtepomp plaatsen', hint: 'Beweeg de muis voor een voorbeeld en klik om de warmtepomp te plaatsen.', nativeOnly: true },

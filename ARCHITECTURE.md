@@ -104,10 +104,12 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   retaining continuation-wire identities instead of leaving a bypass through the symbol.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.
 - `src/editor/interaction/` — keyboard, pointer, selection, and shape-transform use cases.
-- Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-spiral`), not fixed-size
+- Stairs are editable rectangle shapes (`stairs-straight`, `stairs-quarter-turn`, `stairs-double-quarter-turn`,
+  `stairs-spiral`), not fixed-size
   catalog placements. Dragging defines their width and length with a live preview; Shift constrains the footprint
   to a square. `src/editor/model/stair-geometry.ts` supplies the shared tread, outline, and direction paths for the
-  editor and SVG export. Existing catalog stair symbols remain supported.
+  editor and SVG export. Double-quarter-turn stairs have three flights, two winding corners and an open centre.
+  Existing catalog stair symbols remain supported.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
   through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text

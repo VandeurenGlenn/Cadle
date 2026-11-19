@@ -34,8 +34,8 @@ test('makes room for an inserted circuit using overlapping ink, without reorderi
   const families = [family('M', 100, 50), family('N', 1000, 180), family('O', 250, 40), family('P', 350, 40)]
   const positions = insertOneWireFamilyBounds(families, 'N')
   assert.equal(positions.get('M'), 100)
-  assert.equal(positions.get('N'), 186)
-  assert.equal(positions.get('O'), 402)
+  assert.equal(positions.get('N'), 180)
+  assert.equal(positions.get('O'), 390)
   assert.ok(positions.get('P')! > positions.get('O')!)
 })
 
@@ -297,7 +297,7 @@ test('packs circuits by actual rows without reserving empty space above breaker 
     if (left.y + left.height + 8 < right.y || right.y + right.height + 8 < left.y) continue
     clearances.push(b + right.x - 400 - (a + left.x + left.width))
   }
-  assert.ok(clearances.every((clearance) => clearance >= 16 - 1e-8))
-  assert.equal(Math.min(...clearances), 16)
-  assert.equal((roomy.endX - roomy.startX) - (compact.endX - compact.startX), 8)
+  assert.ok(clearances.every((clearance) => clearance >= 10 - 1e-8))
+  assert.equal(Math.min(...clearances), 10)
+  assert.equal((roomy.endX - roomy.startX) - (compact.endX - compact.startX), 14)
 })

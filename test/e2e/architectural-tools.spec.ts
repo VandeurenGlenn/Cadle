@@ -109,6 +109,11 @@ test('draws sized stairs, sliding windows and cabinets and places equipment symb
   await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-quarter-turn"]')).toHaveCount(1)
 
   await more.click()
+  await page.getByRole('button', { name: 'Trap met 2 kwartslagen tekenen', exact: true }).click()
+  await draw(1000, 740, 1280, 1060)
+  await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-double-quarter-turn"]')).toHaveCount(1)
+
+  await more.click()
   await page.getByRole('button', { name: 'Wenteltrap tekenen', exact: true }).click()
   await draw(640, 700, 880, 940)
   await expect(app.locator('g.shape-stairs[data-stair-variant="stairs-spiral"]')).toHaveCount(1)
@@ -164,14 +169,14 @@ test('draws sized stairs, sliding windows and cabinets and places equipment symb
   expect(exported).toContain('>AP</text>')
   expect(exported).toContain('M23 19 Q50 -7 77 19 M32 25 Q50 7 68 25')
   expect(exported).toMatch(/<title\b[^>]*>Heat pump<\/title>/)
-  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-spiral']) {
+  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral']) {
     expect(exported).toContain(`data-stair-variant="${variant}"`)
   }
   await app.evaluate(async (element: any) => { await element.flushPendingSave() })
   await shell.evaluate(async (element: any) => { await element.loadPage('00000000-0000-4000-8000-000000000101') })
   await shell.evaluate(async (element: any, key) => { await element.loadPage(key) }, pageKey)
   await expect(placedHeatPump).toHaveCount(1)
-  await expect(app.locator('g.shape-stairs')).toHaveCount(3)
+  await expect(app.locator('g.shape-stairs')).toHaveCount(4)
   await expect.poll(() => app.locator('g[data-stair-variant="stairs-straight"] .stairs-outline')
     .evaluate((path: SVGPathElement) => {
       const bounds = path.getBBox()

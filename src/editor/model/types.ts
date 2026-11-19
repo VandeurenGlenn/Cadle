@@ -31,7 +31,7 @@ export type Point = { x: number; y: number }
 
 export type RoofVariant = 'roof-left' | 'roof-straight' | 'roof-right'
 export type RoofPattern = 'none' | 'tiles' | 'slates' | 'standing-seam'
-export type StairVariant = 'stairs-straight' | 'stairs-quarter-turn' | 'stairs-spiral'
+export type StairVariant = 'stairs-straight' | 'stairs-quarter-turn' | 'stairs-double-quarter-turn' | 'stairs-spiral'
 
 export type OneWireSourceLink = {
   kind: 'board' | 'circuit' | 'device'

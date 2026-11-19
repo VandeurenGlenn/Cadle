@@ -1,7 +1,8 @@
 import type { StairVariant } from './types.js'
 
 export const isStairVariant = (value: unknown): value is StairVariant =>
-  value === 'stairs-straight' || value === 'stairs-quarter-turn' || value === 'stairs-spiral'
+  value === 'stairs-straight' || value === 'stairs-quarter-turn' ||
+  value === 'stairs-double-quarter-turn' || value === 'stairs-spiral'
 
 type Bounds = { x: number; y: number; width: number; height: number }
 
@@ -27,6 +28,29 @@ export const stairGeometry = (bounds: Bounds, variant: StairVariant) => {
       outline: `M ${x} ${cy} A ${rx} ${ry} 0 1 1 ${right} ${cy} A ${rx} ${ry} 0 1 1 ${x} ${cy} Z M ${cx - post} ${cy} A ${post} ${post} 0 1 1 ${cx + post} ${cy} A ${post} ${post} 0 1 1 ${cx - post} ${cy} Z`,
       treads: treads.join(' '),
       arrow: `M ${cx} ${cy + ry * 0.65} A ${rx * 0.65} ${ry * 0.65} 0 1 1 ${tipX} ${cy} M ${tipX - head} ${cy - head} L ${tipX} ${cy} L ${tipX + head} ${cy - head}`
+    }
+  }
+
+  if (variant === 'stairs-double-quarter-turn') {
+    const flight = Math.min(width / 3, height * 0.4)
+    const leftInner = x + flight, rightInner = right - flight, innerY = y + flight
+    const sideCount = treadCount(height - flight), topCount = treadCount(width - 2 * flight)
+    for (let i = 1; i < sideCount; i++) {
+      const ty = innerY + (height - flight) * i / sideCount
+      treads.push(`M ${x} ${ty} L ${leftInner} ${ty} M ${rightInner} ${ty} L ${right} ${ty}`)
+    }
+    for (let i = 1; i < topCount; i++) {
+      const tx = leftInner + (width - 2 * flight) * i / topCount
+      treads.push(`M ${tx} ${y} L ${tx} ${innerY}`)
+    }
+    treads.push(`M ${x} ${innerY} L ${leftInner} ${innerY} L ${leftInner} ${y} M ${x} ${y} L ${leftInner} ${innerY}`)
+    treads.push(`M ${rightInner} ${y} L ${rightInner} ${innerY} L ${right} ${innerY} M ${right} ${y} L ${rightInner} ${innerY}`)
+    const leftAxis = x + flight / 2, rightAxis = right - flight / 2
+    const arrowY = y + flight / 2, tipY = bottom - flight / 4
+    return {
+      outline: `M ${x} ${bottom} L ${x} ${y} L ${right} ${y} L ${right} ${bottom} L ${rightInner} ${bottom} L ${rightInner} ${innerY} L ${leftInner} ${innerY} L ${leftInner} ${bottom} Z`,
+      treads: treads.join(' '),
+      arrow: `M ${leftAxis} ${tipY} L ${leftAxis} ${arrowY} L ${rightAxis} ${arrowY} L ${rightAxis} ${tipY} M ${rightAxis - head} ${tipY - head} L ${rightAxis} ${tipY} L ${rightAxis + head} ${tipY - head}`
     }
   }
 

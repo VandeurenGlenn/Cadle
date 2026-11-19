@@ -171,11 +171,15 @@ export const repairOneWireInlineConnections = (shapes: readonly Shape[], nextId:
     const previous = next.find((shape): shape is LineShape =>
       shape.kind === 'line' && shape.sourceLink?.role === `inline-wire:${symbol.id}`)
     const candidates = next.filter((shape) => shape !== previous && shape.id !== symbol.id)
-    const plan = planOneWireInlinePlacement(candidates, symbol, point, true)
+    let plan = planOneWireInlinePlacement(candidates, symbol, point, true)
+    if (!plan || 'error' in plan || !plan.cut) {
+      plan = planOneWireInlinePlacement(candidates, symbol, point, false)
+    }
     if (!plan || 'error' in plan || !plan.cut || Math.hypot(plan.point.x - point.x, plan.point.y - point.y) > 1e-8) continue
+    const repairedSymbol = plan.symbol.rotation === symbol.rotation ? symbol : plan.symbol
     let first = true
     next = insertOneWireInlinePlacement(candidates,
-      { ...plan, symbol }, () => {
+      { ...plan, symbol: repairedSymbol }, () => {
         if (first) { first = false; return symbol.id }
         return previous?.id ?? nextId()
       }).shapes.map((shape) => shape.kind === 'line' && previous && shape.id === previous.id

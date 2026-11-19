@@ -128,7 +128,7 @@ test('built-in cabinet footprints block floor heating unless explicitly allowed'
 })
 
 test('drawn stairs retain the catalog stairs room-access and floor-obstacle behavior', () => {
-  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-spiral'] as const) {
+  for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral'] as const) {
     const stair: RectShape = {
       id: variant, kind: 'rect', variant,
       start: { x: 500, y: 440 }, end: { x: 620, y: 640 }

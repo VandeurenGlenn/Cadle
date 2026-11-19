@@ -134,6 +134,38 @@ test('source regeneration reconnects an inline device without duplicating its up
   assert.deepEqual(repairOneWireInlineConnections(restored, () => 'unused'), restored)
 })
 
+test('repairs an unrotated legacy impulse relay inserted into a vertical conductor', () => {
+  const trunk: LineShape = {
+    id: 'trunk',
+    kind: 'line',
+    start: { x: 100, y: 600 },
+    end: { x: 100, y: 0 },
+    bindingId: 'A1',
+    connection: { kind: 'wire' }
+  }
+  const relay = symbol('symbols/Switches/Impulse relay.svg', {
+    position: { x: 100, y: 300 },
+    sourceLink: { kind: 'circuit', id: 'A1', role: 'inline' }
+  })
+
+  const repaired = repairOneWireInlineConnections([trunk, relay], () => 'inline-wire-lower')
+  const repairedRelay = repaired.find((shape): shape is SymbolShape => shape.kind === 'symbol')
+  assert.ok(repairedRelay)
+  assert.equal(repairedRelay.rotation, -90)
+
+  const ports = oneWireSymbolConnectionAnchors(repairedRelay)
+  const wires = repaired.filter((shape): shape is LineShape =>
+    shape.kind === 'line' && (shape.id === 'trunk' || shape.sourceLink?.role === `inline-wire:${relay.id}`)
+  )
+  for (const side of ['top', 'bottom'] as const) {
+    const port = ports.find((anchor) => anchor.side === side)?.point
+    assert.ok(port)
+    assert.ok(wires.some((wire) =>
+      [wire.start, wire.end].some((point) => Math.hypot(point.x - port.x, point.y - port.y) < 1e-8)
+    ), `${side} impulse relay contact must meet its wire`)
+  }
+})
+
 test('passthrough lamps keep the conductor intact and fixed-terminal devices connect in either orientation', () => {
   const wire: LineShape = { id: 'wire', kind: 'line', start: { x: 100, y: 600 }, end: { x: 100, y: 0 } }
   const lamp = planOneWireInlinePlacement([wire], symbol('symbols/Consumption appliances/Lighting.svg'), { x: 100, y: 300 })

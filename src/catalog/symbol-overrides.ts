@@ -233,19 +233,30 @@ export async function setStoredCatalogSymbolStyleDefaults(
 export function applyCatalogSymbolOverrides(catalog: Catalog): Catalog {
   if (symbolOverridesCache.length === 0) return catalog
   const overrides = new Map(symbolOverridesCache.map((entry) => [entry.path, entry]))
-  return catalog
-    .map((section) => ({
-      ...section,
-      symbols: section.symbols.flatMap((symbol) => {
-        const override = overrides.get(symbol.path)
-        if (override?.disabled) return []
-        return [
-          {
-            ...symbol,
-            name: override?.name ?? symbol.name
-          }
-        ]
-      })
-    }))
-    .filter((section) => section.symbols.length > 0)
+  const sections: Catalog = []
+  let catalogChanged = false
+  for (const section of catalog) {
+    const symbols: Catalog[number]['symbols'] = []
+    let sectionChanged = false
+    for (const symbol of section.symbols) {
+      const override = overrides.get(symbol.path)
+      if (override?.disabled) {
+        sectionChanged = true
+        continue
+      }
+      if (override?.name && override.name !== symbol.name) {
+        sectionChanged = true
+        symbols.push({ ...symbol, name: override.name })
+      } else {
+        symbols.push(symbol)
+      }
+    }
+    if (!symbols.length) {
+      catalogChanged = true
+      continue
+    }
+    if (sectionChanged) catalogChanged = true
+    sections.push(sectionChanged ? { ...section, symbols } : section)
+  }
+  return catalogChanged ? sections : catalog
 }

@@ -15,6 +15,8 @@ export type EditableSymbolTextField = {
 const symbolSvgCache = new Map<string, CachedSymbolSvg>()
 const symbolSvgLoading = new Map<string, Promise<void>>()
 const MAX_SYMBOL_CACHE_ENTRIES = 256
+const editableTextFieldsCache = new WeakMap<CachedSymbolSvg, EditableSymbolTextField[]>()
+const overriddenSvgCache = new Map<string, { source: string; result: string }>()
 
 const isDataSvg = (path: string) => /^data:image\/svg\+xml/i.test(path)
 
@@ -292,18 +294,21 @@ export const listEditableSymbolTextFields = (path: string): EditableSymbolTextFi
   }
   const cached = getCachedSymbolSvg(path)
   if (!cached) return []
+  const existing = editableTextFieldsCache.get(cached)
+  if (existing) return existing.map((field) => ({ ...field }))
   const doc = symbolDocFromInner(cached.inner)
   if (!doc) return []
   const candidates = collectTextFieldCandidates(doc)
-  return candidates.map(({ key, label, value }) => ({
+  const fields = candidates.map(({ key, label, value }) => ({
     key,
     label: prettifySymbolFieldLabel(path, label, value),
     value
   }))
+  editableTextFieldsCache.set(cached, fields)
+  return fields.map((field) => ({ ...field }))
 }
 
 export const applySymbolTextOverrides = (path: string, inner: string, overrides?: Record<string, string>): string => {
-  void path
   if (!overrides) return inner
   const effectiveEntries = Object.entries(overrides).filter(
     (entry): entry is [string, string] =>
@@ -311,10 +316,12 @@ export const applySymbolTextOverrides = (path: string, inner: string, overrides?
   )
   if (!effectiveEntries.length) return inner
 
+  const cacheKey = JSON.stringify([path, effectiveEntries])
+  const cached = getBoundedCache(overriddenSvgCache, cacheKey)
+  if (cached?.source === inner) return cached.result
   const doc = symbolDocFromInner(inner)
   if (!doc) return inner
   const candidates = collectTextFieldCandidates(doc)
-  if (!candidates.length) return inner
 
   const map = new Map(effectiveEntries.map(([key, value]) => [key.trim(), value]))
   let changed = false
@@ -325,8 +332,9 @@ export const applySymbolTextOverrides = (path: string, inner: string, overrides?
     candidate.element.textContent = nextValue
     changed = true
   }
-  if (!changed) return inner
-  return doc.documentElement.innerHTML
+  const result = changed ? doc.documentElement.innerHTML : inner
+  setBoundedCache(overriddenSvgCache, cacheKey, { source: inner, result }, MAX_SYMBOL_CACHE_ENTRIES)
+  return result
 }
 
 export const preloadSymbolSvg = async (path: string): Promise<void> => {

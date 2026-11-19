@@ -75,15 +75,15 @@ export class CircuitScheduleDialog extends LiteElement {
               <option value="24" .selected=${this.modulesPerRow === 24}>24 modules</option>
             </select>
           </label>
-          <p>Indicatieve breedtes op basis van het pooltal. Controleer de echte productbreedtes. Fysieke rijen zijn geen nieuwe elektrische diff-koppelingen.</p>
+          <p>Rij 1 staat onderaan; we tellen van onder naar boven. Indicatieve breedtes op basis van het pooltal. Controleer de echte productbreedtes. Fysieke rijen zijn geen nieuwe elektrische diff-koppelingen.</p>
         </div>
         <div class="list">
           <div class="cabinet-preview" aria-label="Module-indeling per kast">
             ${[...new Set(this.rows.map((row) => row.boardId))].map((boardId) => html`
               <section class="cabinet-board" data-board-id=${boardId}>
                 <h4>${this.boards.find((board) => board.id === boardId)?.name ?? (boardId === 'unassigned' ? 'Niet gekoppeld aan een kast' : boardId)}</h4>
-                ${packCircuitCabinetRows(this.rows.filter((row) => row.boardId === boardId), this.modulesPerRow).map((row, index) => html`
-                  <div class="cabinet-row-heading"><span>Rij ${index + 1}</span><span>${row.used}/${this.modulesPerRow} modules</span></div>
+                ${packCircuitCabinetRows(this.rows.filter((row) => row.boardId === boardId), this.modulesPerRow).reverse().map((row, index, rows) => html`
+                  <div class="cabinet-row-heading"><span>Rij ${rows.length - index}</span><span>${row.used}/${this.modulesPerRow} modules</span></div>
                   <div class="cabinet-row" style=${`--modules:${this.modulesPerRow}`}>
                     ${row.cells.map(({ item, start, span }) => html`
                       <div class="cabinet-device" data-kind=${item.kind} data-item-id=${item.id}

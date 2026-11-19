@@ -27,6 +27,11 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Catalog SVG previews share in-flight loading and a bounded cache of raw markup and measured full/compact previews.
   Cards do not start a second image request while SVG markup is loading; failed loads are not cached and can be retried.
   The catalog management form is only constructed while open.
+  Applying catalog overrides preserves unchanged section and symbol identities, so editing one entry does not
+  redraw unrelated cards.
+- `src/editor/symbol-svg-cache.ts` — bounded shared symbol markup and text-override results for editor and export.
+  Text variants include the override values and validate the original SVG content before reuse. Editable-field
+  descriptions are weakly cached per sanitized SVG, with fresh copies returned to consumers.
 - `src/editor/model/` — canonical shape types, document-state validation, geometry, normalization, and legacy migration.
   Modules here must not depend on UI components or persistence.
 - `src/editor/controllers/` — stateful editor controllers for history, tools, the viewport, and ordered persistence.
@@ -54,6 +59,7 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   contacts to their outgoing rails, scoped to each schematic page; bare crossings never establish an assignment.
   Its cabinet planner reuses the saved module order, 18/24-module width and reserved gaps. Pole-count widths are
   indicative, and changing the physical module arrangement does not change electrical connections or schematic geometry.
+  Physical cabinet rows are numbered bottom-up: row 1 is the lowest row, without reversing saved module order within rows.
   Toggling a connection caption updates visibility only, without invoking circuit presentation spacing or rail packing.
   Empty circuits retain a real outgoing cable section sized for the complete cable caption, with clearance at both ends.
   Missing empty-circuit sections are repaired locally on opening without moving breakers, rails or populated circuits.

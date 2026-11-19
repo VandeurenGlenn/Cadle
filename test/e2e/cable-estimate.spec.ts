@@ -159,6 +159,68 @@ test('shows differential coverage per row and opens a persistent cabinet module 
   await expect(planner.locator('.cabinet-device[data-item-id="B"]')).toHaveAttribute('style', /grid-column:9 \/ span 2/)
 })
 
+test('numbers physical cabinet rows from bottom to top for each board and preserves saved positions', async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 1100 })
+  const project = fixture()
+  project.name = 'Kastrijen van onder naar boven'
+  const shapes = nativeStateForProjectPage(project, ground)!.shapes
+  for (const id of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+    project.circuitSpecifications![id] = { ...project.circuitSpecifications!.A, boardId: 'main' }
+    shapes.push(device(`row-${id}`, 500, 500, `${id}1`))
+  }
+  for (const id of 'ABCDEFGHIJKLMNO') {
+    project.circuitSpecifications![`G${id}`] = { ...project.circuitSpecifications!.B, boardId: 'garage' }
+    shapes.push(device(`row-G${id}`, 1300, 500, `G${id}1`))
+  }
+  project.pages[ground].schema = schema(shapes)
+  await seed(page, project)
+  const shell = page.locator('app-shell')
+  await shell.evaluate((element) => (element as AppShell).openCircuitScheduleDialog())
+  const overview = page.locator('circuit-schedule-field')
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  const planner = page.getByRole('dialog', { name: 'Kastlayoutplanner', exact: true })
+  const expectBottomUp = async () => {
+    const boards = await planner.locator('.cabinet-board').evaluateAll((boards) => boards.map((board) => ({
+      id: board.getAttribute('data-board-id'),
+      labels: [...board.querySelectorAll('.cabinet-row-heading > span:first-child')].map((label) => label.textContent),
+      rows: [...board.querySelectorAll('.cabinet-row')].map((row) => ({
+        y: row.getBoundingClientRect().top,
+        items: [...row.querySelectorAll('.cabinet-device')].map((item) => item.getAttribute('data-item-id'))
+      }))
+    })))
+    expect(boards).toHaveLength(2)
+    for (const board of boards) {
+      expect(board.rows.length).toBeGreaterThan(1)
+      expect(board.labels).toEqual(board.rows.map((_, index) => `Rij ${board.rows.length - index}`))
+      for (let index = 1; index < board.rows.length; index++) {
+        expect(board.rows[index].y).toBeGreaterThan(board.rows[index - 1].y)
+      }
+      expect(board.rows.at(-1)!.items[0]).toBe(board.id === 'main' ? 'A' : 'B')
+    }
+    return boards.map(({ id, labels, rows }) => ({ id, labels, items: rows.map((row) => row.items) }))
+  }
+  for (const width of ['24', '18']) {
+    await planner.getByLabel('Kastbreedte').selectOption(width)
+    await expectBottomUp()
+  }
+  const gap = planner.locator('.item[data-kind="circuit"]')
+    .filter({ has: page.locator('.copy > strong').filter({ hasText: /^A ·/ }) }).getByLabel('Vrije modules ervoor')
+  await gap.fill('3')
+  await gap.press('Tab')
+  await expect(planner.locator('.cabinet-device[data-item-id="A"]')).toHaveAttribute('style', /grid-column:4 \/ span 2/)
+  const before = await expectBottomUp()
+  const schemas = await shell.evaluate((element) => (element as AppShell).project.pages)
+  await planner.getByRole('button', { name: 'Indeling opslaan', exact: true }).click()
+  await expect(planner).not.toBeVisible()
+  expect(await shell.evaluate((element) => (element as AppShell).project.pages)).toEqual(schemas)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await overview.getByRole('button', { name: 'Kastlayoutplanner', exact: true }).click()
+  await expect(planner.getByLabel('Kastbreedte')).toHaveValue('18')
+  expect(await expectBottomUp()).toEqual(before)
+  await expect(planner.locator('.cabinet-device[data-item-id="A"]')).toHaveAttribute('style', /grid-column:4 \/ span 2/)
+})
+
 test('hiding a cable caption preserves every device, wire and text position through undo and reopening', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1100 })
   const project = fixture()

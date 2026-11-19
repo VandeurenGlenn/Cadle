@@ -85,6 +85,53 @@ test('retains visited project and catalog LiteElements when changing sidebar tab
   await project!.dispose()
 })
 
+test('catalog edits and rerenders leave unrelated symbol cards untouched', async ({ page }) => {
+  await openProject(page)
+  const svg = (shape: string) => 'data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${shape}</svg>`)
+  const catalog: Catalog = [{ category: 'Performance group', symbols: [
+    { kind: 'test', name: 'Changed symbol', path: svg('<rect width="20" height="20"/>') },
+    { kind: 'test', name: 'Stable symbol', path: svg('<circle cx="10" cy="10" r="8"/>') }
+  ] }]
+  await page.locator('app-shell').evaluate((element, catalog) => { (element as AppShell).catalog = catalog }, catalog)
+  await page.getByRole('tab', { name: 'Symbols catalog', exact: true }).click()
+  const drawer = page.locator('project-pane catalog-element')
+  await drawer.evaluate((element) => {
+    element.addEventListener('catalog-structure-updated', (event) => event.stopPropagation())
+  })
+  await drawer.locator('catalog-category').evaluate((category) => {
+    (category as HTMLElement & { open: boolean }).open = true
+  })
+  const stable = drawer.locator('catalog-item[aria-label="Place Stable symbol"]')
+  await expect(stable.locator('.preview svg')).toHaveCount(1)
+  const metrics = await stable.evaluateHandle((element) => {
+    const card = element as CatalogItem
+    const original = card.render
+    let renders = 0
+    card.render = function () { renders++; return original.call(this) }
+    return { count: () => renders, restore: () => { card.render = original } }
+  })
+  await page.locator('app-shell').evaluate((element) => (element as AppShell).openCatalogEditor())
+  const editor = drawer.locator('catalog-editor')
+  const row = editor.locator('.symbol-row').filter({ hasText: 'Changed symbol' })
+  await row.getByLabel('Drawer name').fill('Renamed symbol')
+  await row.getByLabel('Drawer name').press('Tab')
+  await expect(drawer.locator('catalog-item[aria-label="Place Renamed symbol"]')).toBeVisible()
+  await editor.locator('.symbol-row').filter({ hasText: 'Renamed symbol' }).getByLabel('Hidden', { exact: true }).check()
+  await expect(drawer.locator('catalog-item[aria-label="Place Renamed symbol"]')).toHaveCount(0)
+  for (let index = 0; index < 5; index++) {
+    await drawer.evaluate(async (element) => {
+      const catalog = element as HTMLElement & { requestRender(): void; rendered: Promise<void> }
+      catalog.requestRender()
+      await catalog.rendered
+    })
+  }
+  expect(await metrics.evaluate((counter) => counter.count()),
+    'renaming/hiding one entry must not redraw unchanged cards').toBe(0)
+  await metrics.evaluate((counter) => counter.restore())
+  await metrics.dispose()
+})
+
 test('retries failed preview loads and refreshes changed SVG sources', async ({ page }) => {
   await openProject(page)
   let failing = true, requests = 0

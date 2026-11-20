@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
+import { electricalSupplyLabel, normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
 import { phaseConfigurationLabelForPoles } from '../src/editor/model/electrical.ts'
 
 test('keeps distributor and Belgian supply configuration in the project profile', () => {
@@ -34,6 +34,7 @@ test('keeps supply and phase defaults electrically consistent', () => {
     supplyConfiguration: '1x230V+N',
     phaseConfiguration: 'single-phase'
   })
+
   const threePhase = normalizeElectricalProfile({
     ...normalizeElectricalProfile(undefined),
     supplyConfiguration: '3x230V',
@@ -42,6 +43,14 @@ test('keeps supply and phase defaults electrically consistent', () => {
 
   assert.equal(singlePhase.phaseConfiguration, 'L1+N')
   assert.equal(threePhase.phaseConfiguration, 'three-phase')
+})
+
+test('formats the configured grid voltage for a one-wire label', () => {
+  const profile = normalizeElectricalProfile(undefined)
+  assert.equal(electricalSupplyLabel({ ...profile, supplyConfiguration: '3x400V+N', supplyVoltageV: 400 }), '3x400V+N')
+  assert.equal(electricalSupplyLabel({ ...profile, supplyConfiguration: 'other', supplyVoltageV: 230,
+    phaseConfiguration: 'L1+N' }), '230V · L1+N')
+  assert.equal(electricalSupplyLabel(undefined), undefined)
 })
 
 test('does not label a two-pole device with all three phases', () => {

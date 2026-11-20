@@ -70,7 +70,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   of silently generating only outgoing circuits. The description is an editable local draft: a clearly marked
   example for a new installation, or saved text/settings for an existing one. Closing discards draft changes;
   applying requires the main differential's A/mA ratings, saves the confirmed topology, and then generates the
-  supply sheet. Reopening retains accepted JSON corrections until the description is changed.
+  supply sheet. The incoming grid annotation uses the net configuration from project details. Reopening retains
+  accepted JSON corrections until the description is changed.
   An explicit re-analysis action refreshes an older interpretation without requiring a text edit; it replaces local JSON corrections.
   The review preview shows ordered supply steps, separate parallel PV/consumer branches and downstream differentials
   nested under the consumer rail, with a stacked layout on narrow screens.

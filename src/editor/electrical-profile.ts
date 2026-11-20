@@ -77,3 +77,13 @@ export const normalizeElectricalProfile = (profile: ElectricalProjectProfile | u
       : DEFAULT_AREI_PROFILE.boards?.map((board) => ({ ...board, rails: board.rails.map((rail) => ({ ...rail })) }))
   }
 }
+
+export const electricalSupplyLabel = (profile: ElectricalProjectProfile | undefined): string | undefined => {
+  if (!profile) return undefined
+  const normalized = normalizeElectricalProfile(profile)
+  if (normalized.supplyConfiguration !== 'other') return normalized.supplyConfiguration
+  const phase = normalized.phaseConfiguration === 'single-phase' ? '1F'
+    : normalized.phaseConfiguration === 'three-phase' ? '3F'
+      : normalized.phaseConfiguration
+  return `${normalized.supplyVoltageV}V · ${phase}`
+}

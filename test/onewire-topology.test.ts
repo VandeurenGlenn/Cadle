@@ -83,7 +83,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v36:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v37:')))
   for (const shape of shapes) {
     if (shape.kind === 'line') {
       assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 4 : 2)
@@ -260,6 +260,20 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     assert.deepEqual(flows[0].from, flows[1].to)
     assert.deepEqual(flows[0].to, flows[1].from)
   }
+})
+
+test('shows the project grid voltage beside the incoming connection', () => {
+  const shapes = buildOneWireTopology({
+    version: 1, consumers: true, solar: false, residualBreaker: false
+  }, { start: { x: 100, y: 700 }, end: { x: 900, y: 700 } }, ids(),
+  { gridVoltageLabel: '3x400V+N' })
+  const voltage = shapes.find((shape) => shape.sourceLink?.role === 'grid-voltage-label')
+  const incoming = shapes.find((shape) => shape.sourceLink?.role === 'grid-incoming')
+  assert.ok(voltage?.kind === 'text')
+  assert.equal(voltage.text, 'Net: 3x400V+N')
+  assert.ok(incoming?.kind === 'line')
+  if (incoming?.kind !== 'line') return
+  assert.ok(incoming.end.y > voltage.position.y)
 })
 
 test('hides an incompatible three-phase label on the two-pole PV breaker', () => {

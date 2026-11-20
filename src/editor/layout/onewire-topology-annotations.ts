@@ -15,10 +15,12 @@ export const placeOneWireIncomingCable = (input: readonly Shape[]): { shapes: Sh
       shape.sourceLink?.role === 'incoming' && shape.connection?.labelOwner === 'topology')
     const caption = shapes.find((shape): shape is TextShape => belongs(shape) && shape.kind === 'text' &&
       shape.sourceLink?.role === 'incoming-cable-label')
+    const voltage = shapes.find((shape): shape is TextShape => belongs(shape) && shape.kind === 'text' &&
+      shape.sourceLink?.role === 'grid-voltage-label')
     const bottom = oneWireSymbolTerminalInfo(device.path, device.scale)?.bottom
     const description = protectionDescriptionLayout(device)
     if (feeder?.kind !== 'line' || !bottom || !description) continue
-    if (!caption && !oldIncoming && feeder.connection?.labelOwner !== 'topology') continue
+    if (!caption && !oldIncoming && feeder.connection?.labelOwner !== 'topology' && !voltage) continue
     let connection = feeder.connection
     if (oldIncoming?.kind === 'line' && oldIncoming.connection) {
       const { via: _via, ...legacy } = oldIncoming.connection
@@ -28,10 +30,16 @@ export const placeOneWireIncomingCable = (input: readonly Shape[]): { shapes: Sh
         ...(legacy.offsetMm !== undefined ? { offsetMm: legacy.offsetMm } : {}) }
     }
     const lastNameY = description.y + Math.max(0, description.lines.length - 1) * description.lineHeight
-    const captionY = Math.max(device.position.y + bottom.y + 40, lastNameY + 60)
+    const voltageY = Math.max(device.position.y + bottom.y + 4, lastNameY + 20)
+    const voltageSpan = voltage ? (paperTextLinesForShape(voltage).length - 1) *
+      paperTextLineHeight(18 * (voltage.scale ?? 1)) : 0
+    const captionY = Math.max(device.position.y + bottom.y + 40, lastNameY + 60,
+      voltage ? voltageY + voltageSpan + 16 : 0)
     const captionSpan = caption ? (paperTextLinesForShape(caption).length - 1) * paperTextLineHeight(18 * (caption.scale ?? 1)) : 0
     const endY = caption && !caption.hidden && connection?.showLabel !== false
-      ? captionY + captionSpan + 24 : device.position.y + bottom.y + 36
+      ? captionY + captionSpan + 24
+      : voltage && !voltage.hidden ? Math.max(device.position.y + bottom.y + 36, voltageY + voltageSpan + 24)
+        : device.position.y + bottom.y + 36
     shapes = shapes.map((shape) => {
       if (shape === oldIncoming && shape.kind === 'line') {
         changed = true
@@ -45,6 +53,11 @@ export const placeOneWireIncomingCable = (input: readonly Shape[]): { shapes: Sh
         Math.abs(shape.position.y - captionY) > 0.01)) {
         changed = true
         return { ...shape, position: { x: feeder.start.x + 24, y: captionY } }
+      }
+      if (shape === voltage && shape.kind === 'text' && (Math.abs(shape.position.x - feeder.start.x - 24) > 0.01 ||
+        Math.abs(shape.position.y - voltageY) > 0.01)) {
+        changed = true
+        return { ...shape, position: { x: feeder.start.x + 24, y: voltageY } }
       }
       return shape
     })

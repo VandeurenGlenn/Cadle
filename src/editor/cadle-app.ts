@@ -211,7 +211,7 @@ import { migrateOneWireCircuitGeometry } from './layout/onewire-circuit-migratio
 import { updateSelectionProperties, type SelectionPropertyUpdate } from './interaction/selection-properties.js'
 import { planAutomaticBindings } from './auto-bindings.js'
 import { cableEstimateBoardLocation, floorPlanBoardLocations } from './cable-estimate.js'
-import { normalizeElectricalProfile } from './electrical-profile.js'
+import { electricalSupplyLabel, normalizeElectricalProfile } from './electrical-profile.js'
 import { applyCircuitOperation, type CircuitOperationKind } from './circuit-operations.js'
 import {
   DEFAULT_SYMBOL_STROKE_WIDTH,
@@ -3167,6 +3167,7 @@ export class CadleApp extends LiteElement {
         rcdTypesByRole: oneWireTopologyRcdTypes(previous),
         descriptionsByRole: oneWireTopologyDescriptions(previous),
         gridProtectionCurrentA: this.#project?.mainFuseA,
+        gridVoltageLabel: electricalSupplyLabel(this.#project?.electricalProfile),
         defaultPoles: this.#project?.electricalProfile?.defaultPoles,
         phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
         protectionManufacturer: 'Schneider Electric',
@@ -3868,6 +3869,7 @@ export class CadleApp extends LiteElement {
             rcdTypesByRole: oneWireTopologyRcdTypes(previousGenerated),
             descriptionsByRole: oneWireTopologyDescriptions(previousGenerated),
             gridProtectionCurrentA: this.#project?.mainFuseA,
+            gridVoltageLabel: electricalSupplyLabel(this.#project?.electricalProfile),
             defaultPoles: this.#project?.electricalProfile?.defaultPoles,
             phaseConfiguration: this.#project?.electricalProfile?.phaseConfiguration,
             protectionManufacturer: 'Schneider Electric',

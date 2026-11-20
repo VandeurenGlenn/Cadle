@@ -22,7 +22,7 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = (oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35) * 2
-const TOPOLOGY_GEOMETRY_VERSION = 36
+const TOPOLOGY_GEOMETRY_VERSION = 37
 
 export const oneWireTopologyRcdTypes = (shapes: readonly Shape[]) => Object.fromEntries(shapes.flatMap((shape) => {
   if (shape.kind !== 'symbol' || !shape.sourceLink?.role || !/^board:main:topology:/.test(shape.generationKey ?? '')) return []
@@ -34,6 +34,7 @@ type TopologyRail = Pick<LineShape, 'start' | 'end'>
 
 export type OneWireTopologyOptions = {
   gridProtectionCurrentA?: number
+  gridVoltageLabel?: string
   defaultPoles?: number
   phaseConfiguration?: 'single-phase' | 'three-phase' | 'L1+N' | 'L2+N' | 'L3+N' | 'L1+L2+L3+N'
   protectionManufacturer?: string
@@ -298,6 +299,10 @@ export const buildOneWireTopology = (
       mainSwitchBottom.y + 40
     )
     shapes.push(cableLabel)
+  }
+  if (options.gridVoltageLabel?.trim()) {
+    shapes.push(text('grid-voltage-label', `Net: ${options.gridVoltageLabel.trim()}`,
+      mainSwitchBottom.x + 24, mainSwitchBottom.y + 4))
   }
   const protectionTitle = (name: string, device: SymbolShape) => {
     setProtectionDescription(device, options.descriptionsByRole?.[device.sourceLink!.role] ?? name)

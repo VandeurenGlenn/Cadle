@@ -274,6 +274,30 @@ test('packs separate families together while the page still has room', () => {
   )
 })
 
+test('tightens quiet family gaps and opens more space around dense ink', () => {
+  const family = (name: string, ink: Array<{ y: number; height: number }>) => ({
+    family: name,
+    anchorX: 0,
+    minX: 0,
+    maxX: 100,
+    ink: ink.map(({ y, height }) => ({ x: 0, y, width: 100, height }))
+  })
+  const packed = packOneWireFamilyBounds(
+    [
+      family('J', [{ y: 0, height: 10 }]),
+      family('K', [{ y: 100, height: 10 }]),
+      family('L', Array.from({ length: 5 }, () => ({ y: 100, height: 10 })))
+    ],
+    0
+  )
+  const j = packed.familyXs.get('J')!
+  const k = packed.familyXs.get('K')!
+  const l = packed.familyXs.get('L')!
+
+  assert.equal(k - j, 6)
+  assert.equal(l - k - 100, 22)
+})
+
 test('does not backfill an earlier sheet with circuits after a wider family', () => {
   const plan = planOneWireLayout(
     [

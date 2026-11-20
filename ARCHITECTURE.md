@@ -57,6 +57,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Sheet planning measures generated circuit ink and uses the same overlap-aware family packing as the final drawing,
   rather than reserving estimated column widths. Circuit busbars sit as low as the printable area and their labels allow;
   multi-column families compare balanced and height-filled columns using overlapping ink, without shrinking symbols.
+  Pairwise family gaps follow measured ink: vertically separate groups can sit closer, while dense groups sharing
+  multiple rows get extra clearance.
   Circuit-row switches and loads use a modestly reduced optical size; breaker and protection symbols keep their rated scale.
   If measured family ink narrowly exceeds printable width, the inter-family gap contracts in small steps before a
   continuation sheet is added; symbol scale and non-overlap constraints are preserved.

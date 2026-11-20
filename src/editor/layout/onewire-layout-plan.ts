@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 111
+export const ONE_WIRE_LAYOUT_VERSION = 112
 export const ONE_WIRE_FAMILY_GAP = 10
 const ONE_WIRE_COMPACT_FAMILY_GAPS = [ONE_WIRE_FAMILY_GAP, 8, 6, 4, 2] as const
 export const ONE_WIRE_COLUMN_GAP_X = 60
@@ -86,6 +86,24 @@ export const appendOneWireFamilyOffset = (
   gap = ONE_WIRE_FAMILY_GAP
 ): number => occupiedMaxX + gap - newFamilyMinX
 
+const oneWireFamilyPairGap = (
+  left: OneWireFamilyBounds,
+  right: OneWireFamilyBounds,
+  gap: number
+): number => {
+  if (!left.ink?.length || !right.ink?.length) return gap
+  const overlapsVertically = (a: { y: number; height: number }, b: { y: number; height: number }) =>
+    !(a.y + a.height + 8 < b.y || b.y + b.height + 8 < a.y)
+  const sharedInk = left.ink.filter((a) => right.ink!.some((b) => overlapsVertically(a, b))).length +
+    right.ink.filter((b) => left.ink!.some((a) => overlapsVertically(a, b))).length
+  const minimumGap = Math.min(2, gap)
+  const scale = gap > minimumGap
+    ? (gap - minimumGap) / (ONE_WIRE_FAMILY_GAP - minimumGap)
+    : 0
+  if (!sharedInk) return Math.max(minimumGap, gap - 4 * scale)
+  return gap + Math.min(24, Math.max(0, sharedInk - 4) * 6) * scale
+}
+
 export const oneWireRailSpanForAnchors = (
   anchorXs: readonly number[],
   existingSpan?: { startX: number; endX: number },
@@ -126,13 +144,14 @@ export const packOneWireFamilyBounds = (
     if (index && family.ink?.length && families.slice(0, index).every((previous) => previous.ink?.length)) {
       // Only reserve horizontal space where ink overlaps vertically. A wide
       // upper lighting row need not reserve room for the next breaker's poles.
-      const rowGap = gap
+      const rowGap = oneWireFamilyPairGap(families[index - 1], family, gap)
       x = provisional[index - 1].x + rowGap
       for (let prior = 0; prior < index; prior++) {
         const previous = families[prior]
+        const pairGap = oneWireFamilyPairGap(previous, family, gap)
         for (const a of previous.ink!) for (const b of family.ink) {
           if (a.y + a.height + 8 < b.y || b.y + b.height + 8 < a.y) continue
-          x = Math.max(x, provisional[prior].x + a.x + a.width - previous.anchorX + rowGap - (b.x - family.anchorX))
+          x = Math.max(x, provisional[prior].x + a.x + a.width - previous.anchorX + pairGap - (b.x - family.anchorX))
         }
       }
     }

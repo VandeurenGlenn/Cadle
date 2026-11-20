@@ -125,10 +125,10 @@ test('uses the same protection layout and type size for manual, topology and cir
     assert.doesNotMatch(manual.inner, /N-L1|40A|2P/)
     if (name === 'Automaat') {
       const positions = protectionAnnotationLayout(shape)!
-      assert.equal(positions.current.x, positions.poles.x)
+      assert.ok(positions.current.x < positions.poles.x)
       assert.ok(positions.current.y > positions.poles.y)
       assert.match(manual.annotations, new RegExp(
-        `x="${positions.current.x}" y="${positions.current.y}" text-anchor="end"[^>]*>C40A<`
+        `x="${positions.current.x}" y="${positions.current.y}" text-anchor="start"[^>]*>C40A<`
       ))
     }
     for (const value of ['2P', 'N-L1', name === 'Automaat' ? 'C40A' : '40A']) {

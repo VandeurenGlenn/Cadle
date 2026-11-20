@@ -173,9 +173,9 @@ export const spaceOneWireCircuitAnnotations = (
         case 'breaker-poles': return positionLabel(shape, labels.poles.x, labels.poles.y)
         case 'breaker-current': {
           let current = positionLabel(shape, labels.current.x, labels.current.y)
-          if (current.textAnchor !== 'end') {
+          if (current.textAnchor !== 'start') {
             changed = true
-            current = { ...current, textAnchor: 'end' }
+            current = { ...current, textAnchor: 'start' }
           }
           return current
         }

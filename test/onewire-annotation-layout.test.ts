@@ -95,15 +95,16 @@ const checkClearance = (shapes: Shape[]) => {
   const current = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-current')!
   const phase = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-phase')!
   assert.ok(current.kind === 'text' && phase.kind === 'text')
-  assert.equal(current.textAnchor, 'end')
+  assert.equal(current.textAnchor, 'start')
   assert.notEqual(phase.position.x, current.position.x)
   assert.equal(phase.position.y - current.position.y, -8)
   assert.ok(phase.position.y < breaker.position.y + terminals.bottom!.y)
   const currentBox = oneWireLayoutBounds(current)
   const phaseBox = oneWireLayoutBounds(phase)
+  const poles = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === 'breaker-poles')!)
+  assert.ok(Math.abs(currentBox.x - poles.x) < 1e-8)
   assert.ok(phaseBox.x + phaseBox.width <= currentBox.x || currentBox.x + currentBox.width <= phaseBox.x ||
     phaseBox.y + phaseBox.height <= currentBox.y || currentBox.y + currentBox.height <= phaseBox.y)
-  const poles = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === 'breaker-poles')!)
   assert.ok(poles.x + poles.width < axisX - 10)
   assert.ok(currentBox.x + currentBox.width < axisX - 10)
   assert.ok(currentBox.y >= poles.y + poles.height)

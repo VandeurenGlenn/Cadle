@@ -206,7 +206,7 @@ export const symbolTextPresentation = (shape: SymbolShape): { inner: string; ann
     annotations: [
       label('poles', layout.poles, 'end'),
       residual ? row(['device-type', 'residual-current'], layout.residual) : '',
-      residual ? row(['rated-current', 'rcd-type'], layout.current) : label('rated-current', layout.current, 'end'),
+      residual ? row(['rated-current', 'rcd-type'], layout.current) : label('rated-current', layout.current),
       label('phase', layout.phase),
       descriptionText
     ].join('')

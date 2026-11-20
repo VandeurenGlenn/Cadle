@@ -1528,24 +1528,41 @@ export class CadleApp extends LiteElement {
     this.#oneWireBusBarId = null
   }
 
-  #redistributeOverflow() {
+  #redistributeOverflow(reconcileChildren = false) {
     if (!this.#project || !this.#pageKey || this.#project.pages[this.#pageKey]?.pageType !== 'onewire') return
     const source = this.#project.pages[this.#pageKey]
     const layout = paginateOneWireCircuits(this.#document.shapes.filter((shape) => shape.sourceLink?.role !== 'overflow-reference'), this.#safeAreaRect(), nextShapeId)
-    if (!layout.changed || !layout.fits) return
-    const previousChildren = Object.entries(this.#project.pages).filter(([, page]) => page.oneWireOverflowOf === this.#pageKey)
+    if (!layout.fits) return
+    const previousChildren = Object.entries(this.#project.pages)
+      .filter(([, page]) => page.oneWireOverflowOf === this.#pageKey)
+      .sort(([, left], [, right]) => (left.order ?? 0) - (right.order ?? 0))
+    if (!layout.changed && (!reconcileChildren || !previousChildren.length)) return
+    if (!layout.changed) {
+      previousChildren.forEach(([key]) => delete this.#project!.pages[key as UUID])
+      cadleShell.project = this.#project
+      void this.#persistProjectMetadata()
+      return
+    }
     const lowOrder = Math.max(source.order ?? 0, ...previousChildren.map(([, page]) => page.order ?? 0))
     const highOrder = Math.min(...Object.values(this.#project.pages).flatMap((page) =>
       typeof page.order === 'number' && page.order > lowOrder ? [page.order] : []), lowOrder + 1)
     const state = this.#nativeDocumentState()
     const keys = [this.#pageKey]
     for (let index = 1; index < layout.pages.length; index++) {
-      const key = nextShapeId() as UUID
+      const key = (reconcileChildren ? previousChildren[index - 1]?.[0] : undefined) as UUID | undefined ?? nextShapeId() as UUID
       keys.push(key)
-      this.#project.pages[key] = { name: `${source.name} · vervolg ${previousChildren.length + index}`,
-        creationTime: Date.now(), pageType: 'onewire', oneWireOverflowOf: this.#pageKey,
+      this.#project.pages[key] ??= {
+        name: `${source.name} · vervolg ${reconcileChildren ? index : previousChildren.length + index}`,
+        creationTime: Date.now(),
+        pageType: 'onewire',
+        oneWireOverflowOf: this.#pageKey,
         ...(typeof source.order === 'number' ? { order: lowOrder + (highOrder - lowOrder) * index / layout.pages.length } : {}),
-        schema: { version: 'native-svg-1', objects: [] } }
+        schema: { version: 'native-svg-1', objects: [] }
+      }
+      this.#project.pages[key].name = `${source.name} · vervolg ${reconcileChildren ? index : previousChildren.length + index}`
+    }
+    if (reconcileChildren) {
+      previousChildren.slice(layout.pages.length - 1).forEach(([key]) => delete this.#project!.pages[key as UUID])
     }
     for (const [index, key] of keys.entries()) {
       const shapes = layout.pages[index]
@@ -3926,7 +3943,7 @@ export class CadleApp extends LiteElement {
       this.#document.selectedId = null
       this.#document.selectedIds = new Set()
 
-      this.#redistributeOverflow()
+      this.#redistributeOverflow(true)
       this.#pushHistory()
       this.#render()
       return {

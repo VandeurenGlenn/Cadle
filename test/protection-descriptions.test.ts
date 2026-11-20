@@ -84,3 +84,16 @@ test('uses the same adjusted pole-label position for an automaat', () => {
   assert.equal(position.y, base.centerY + 15)
   assert.match(presentation.annotations, new RegExp(`x="${position.x}" y="${position.y}" text-anchor="end"[^>]*>4P<`))
 })
+
+test('centers automation names vertically and leaves the main differential label below its ratings', () => {
+  const topology = buildOneWireTopology({ ...plan, residualBreaker: true }, rail, nextId)
+  for (const role of ['main-switch', 'residual-breaker']) {
+    const device = topology.find((shape) => shape.sourceLink?.role === role) as SymbolShape
+    const layout = protectionLabelLayout(device)!
+    const description = protectionDescriptionLayout(device)!
+    assert.equal(description.y, layout.centerY + 8)
+  }
+  const mainDifferential = topology.find((shape) => shape.sourceLink?.role === 'main-differential') as SymbolShape
+  const differentialLayout = protectionLabelLayout(mainDifferential)!
+  assert.equal(protectionDescriptionLayout(mainDifferential)!.y, differentialLayout.centerY + 40)
+})

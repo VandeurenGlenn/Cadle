@@ -31,7 +31,7 @@ export const protectionDescriptionLayout = (shape: SymbolShape) => {
   if (!layout) return null
   const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
   const lines = wrapPaperText(shape.symbolTextOverrides?.description ?? '', PROTECTION_TEXT_SIZE)
-  return { x: layout.rightX, y: layout.centerY + (residual ? 40 : 29), lines,
+  return { x: layout.rightX, y: layout.centerY + (residual ? 40 : PROTECTION_TEXT_SIZE * 0.4), lines,
     lineHeight: paperTextLineHeight(PROTECTION_TEXT_SIZE) }
 }
 

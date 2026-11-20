@@ -5,7 +5,7 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 112
+export const ONE_WIRE_LAYOUT_VERSION = 113
 export const ONE_WIRE_FAMILY_GAP = 10
 const ONE_WIRE_COMPACT_FAMILY_GAPS = [ONE_WIRE_FAMILY_GAP, 8, 6, 4, 2] as const
 export const ONE_WIRE_COLUMN_GAP_X = 60
@@ -86,22 +86,16 @@ export const appendOneWireFamilyOffset = (
   gap = ONE_WIRE_FAMILY_GAP
 ): number => occupiedMaxX + gap - newFamilyMinX
 
-const oneWireFamilyPairGap = (
+const oneWireFamilyOverlapScore = (
   left: OneWireFamilyBounds,
-  right: OneWireFamilyBounds,
-  gap: number
+  right: OneWireFamilyBounds
 ): number => {
-  if (!left.ink?.length || !right.ink?.length) return gap
+  if (!left.ink?.length || !right.ink?.length) return 0
   const overlapsVertically = (a: { y: number; height: number }, b: { y: number; height: number }) =>
     !(a.y + a.height + 8 < b.y || b.y + b.height + 8 < a.y)
   const sharedInk = left.ink.filter((a) => right.ink!.some((b) => overlapsVertically(a, b))).length +
     right.ink.filter((b) => left.ink!.some((a) => overlapsVertically(a, b))).length
-  const minimumGap = Math.min(2, gap)
-  const scale = gap > minimumGap
-    ? (gap - minimumGap) / (ONE_WIRE_FAMILY_GAP - minimumGap)
-    : 0
-  if (!sharedInk) return Math.max(minimumGap, gap - 4 * scale)
-  return gap + Math.min(24, Math.max(0, sharedInk - 4) * 6) * scale
+  return Math.log2(sharedInk + 1)
 }
 
 export const oneWireRailSpanForAnchors = (
@@ -135,6 +129,19 @@ export const packOneWireFamilyBounds = (
   endPadding = ONE_WIRE_RAIL_END_PADDING
 ): PackedOneWireRailGeometry => {
   if (!families.length) return { startX: centerX, endX: centerX, familyXs: new Map() }
+  const pairScores = families.slice(0, -1).map((family, index) =>
+    oneWireFamilyOverlapScore(family, families[index + 1]))
+  const averageScore = pairScores.length
+    ? pairScores.reduce((total, score) => total + score, 0) / pairScores.length
+    : 0
+  const scoreRange = pairScores.length ? Math.max(...pairScores) - Math.min(...pairScores) : 0
+  const minimumGap = Math.min(2, gap)
+  const gapScale = gap > minimumGap
+    ? (gap - minimumGap) / (ONE_WIRE_FAMILY_GAP - minimumGap)
+    : 0
+  const pairGaps = pairScores.map((score) => scoreRange
+    ? gap + ((score - averageScore) / scoreRange) * 4 * gapScale
+    : gap)
   const provisional: Array<{ family: string; x: number; minX: number; maxX: number }> = []
   let previousMaxX = 0
   for (const [index, family] of families.entries()) {
@@ -144,11 +151,11 @@ export const packOneWireFamilyBounds = (
     if (index && family.ink?.length && families.slice(0, index).every((previous) => previous.ink?.length)) {
       // Only reserve horizontal space where ink overlaps vertically. A wide
       // upper lighting row need not reserve room for the next breaker's poles.
-      const rowGap = oneWireFamilyPairGap(families[index - 1], family, gap)
+      const rowGap = pairGaps[index - 1] ?? gap
       x = provisional[index - 1].x + rowGap
       for (let prior = 0; prior < index; prior++) {
         const previous = families[prior]
-        const pairGap = oneWireFamilyPairGap(previous, family, gap)
+        const pairGap = prior === index - 1 ? rowGap : gap
         for (const a of previous.ink!) for (const b of family.ink) {
           if (a.y + a.height + 8 < b.y || b.y + b.height + 8 < a.y) continue
           x = Math.max(x, provisional[prior].x + a.x + a.width - previous.anchorX + pairGap - (b.x - family.anchorX))

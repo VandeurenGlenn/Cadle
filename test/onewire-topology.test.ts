@@ -111,7 +111,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     const axisX = device.position.x + terminals.bottom!.x
     assert.equal(title.x, axisX + 10)
     const centerY = device.position.y + (terminals.top!.y + terminals.bottom!.y) / 2
-    assert.equal(title.y, centerY + 29)
+    assert.equal(title.y, centerY + 8)
   }
 
   const busY = 700

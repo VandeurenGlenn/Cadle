@@ -21,8 +21,8 @@ const RCD_SCALE = ONE_WIRE_RCD_SCALE
 const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
-const SOLAR_PANEL_SCALE = oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35
-const TOPOLOGY_GEOMETRY_VERSION = 33
+const SOLAR_PANEL_SCALE = (oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35) * 2
+const TOPOLOGY_GEOMETRY_VERSION = 35
 
 export const oneWireTopologyRcdTypes = (shapes: readonly Shape[]) => Object.fromEntries(shapes.flatMap((shape) => {
   if (shape.kind !== 'symbol' || !shape.sourceLink?.role || !/^board:main:topology:/.test(shape.generationKey ?? '')) return []

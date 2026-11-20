@@ -304,6 +304,7 @@ export const buildOneWireBreakerSection = (
     id: deps.nextShapeId(),
     kind: 'text',
     position: labels?.current ?? { x: x + 12, y: center.y + 5 },
+    textAnchor: 'end',
     text: `${specification?.breakerCurve ?? 'C'}${specification?.amps ?? 20}A`,
     fill: '#000000',
     stroke: 'none',

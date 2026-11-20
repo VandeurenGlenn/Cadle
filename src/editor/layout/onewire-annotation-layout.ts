@@ -171,7 +171,14 @@ export const spaceOneWireCircuitAnnotations = (
       if (!belongs(shape) || shape.kind !== 'text') return shape
       switch (shape.sourceLink?.role) {
         case 'breaker-poles': return positionLabel(shape, labels.poles.x, labels.poles.y)
-        case 'breaker-current': return positionLabel(shape, labels.current.x, labels.current.y)
+        case 'breaker-current': {
+          let current = positionLabel(shape, labels.current.x, labels.current.y)
+          if (current.textAnchor !== 'end') {
+            changed = true
+            current = { ...current, textAnchor: 'end' }
+          }
+          return current
+        }
         case 'breaker-phase': {
           const position = labels.phase
           const phase = positionLabel(shape, position.x, position.y)

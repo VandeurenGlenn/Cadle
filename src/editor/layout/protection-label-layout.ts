@@ -63,7 +63,7 @@ export const protectionAnnotationBounds = (shape: SymbolShape) => {
   add(values.poles ?? values['desc:nP'] ?? 'nP', layout.poles, true)
   const storedCurrent = values['rated-current'] ?? values[rcd ? 'desc:40A' : 'desc:20A'] ?? (rcd ? '40A' : '20A')
   const current = rcd ? storedCurrent : breakerCurrentLabel(storedCurrent, shape.electrical?.breakerCurve)
-  add([current, rcd ? values['rcd-type'] ?? 'Type A' : ''].filter(Boolean).join('  '), layout.current)
+  add([current, rcd ? values['rcd-type'] ?? 'Type A' : ''].filter(Boolean).join('  '), layout.current, !rcd)
   if (rcd) add(`ΔI ${values['residual-current'] ?? values['desc:300mA'] ?? '300mA'}`, layout.residual, false, PROTECTION_TEXT_SIZE * 1.2)
   add(values.phase ?? values['desc:n'] ?? 'n', layout.phase)
   layout.description.lines.forEach((line, index) => add(line, {
@@ -86,12 +86,12 @@ export const protectionAnnotationLayout = (shape: SymbolShape) => {
   const layout = protectionLabelLayout(shape)
   if (!layout) return null
   const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
+  const poles = { x: layout.leftX + 6, y: layout.centerY + 15 }
   return {
-    poles: {
-      x: layout.leftX + 6,
-      y: layout.centerY + 15
-    },
-    current: { x: layout.rightX, y: layout.centerY + (residual ? 12 : 5) },
+    poles,
+    current: residual
+      ? { x: layout.rightX, y: layout.centerY + 12 }
+      : { x: poles.x, y: poles.y + paperTextLineHeight(PROTECTION_TEXT_SIZE) },
     residual: { x: layout.rightX, y: layout.centerY - 12 },
     type: { x: layout.rightX, y: layout.centerY + 12 },
     phase: protectionPhaseLabelLayout(shape)!,

@@ -6,7 +6,7 @@ import {
   symbolTextLayer,
   symbolTextPresentation
 } from '../src/editor/symbol-metadata.js'
-import { protectionDescriptionLayout, protectionLabelLayout, protectionPhaseLabelLayout } from '../src/editor/layout/protection-label-layout.ts'
+import { protectionAnnotationLayout, protectionDescriptionLayout, protectionLabelLayout, protectionPhaseLabelLayout } from '../src/editor/layout/protection-label-layout.ts'
 
 test('keeps protection text semantics outside the SVG geometry', () => {
   const metadata = symbolMetadataFor('symbols/Protection devices/Automaat.svg')
@@ -123,6 +123,14 @@ test('uses the same protection layout and type size for manual, topology and cir
       assert.deepEqual(symbolTextPresentation({ ...shape, generationKey }), manual)
     }
     assert.doesNotMatch(manual.inner, /N-L1|40A|2P/)
+    if (name === 'Automaat') {
+      const positions = protectionAnnotationLayout(shape)!
+      assert.equal(positions.current.x, positions.poles.x)
+      assert.ok(positions.current.y > positions.poles.y)
+      assert.match(manual.annotations, new RegExp(
+        `x="${positions.current.x}" y="${positions.current.y}" text-anchor="end"[^>]*>C40A<`
+      ))
+    }
     for (const value of ['2P', 'N-L1', name === 'Automaat' ? 'C40A' : '40A']) {
       const annotation = manual.annotations.split('</text>').find((label) => label.includes(`>${value}</`) || label.endsWith(`>${value}`))!
       assert.match(annotation, /font-size="20" font-weight="400"/)

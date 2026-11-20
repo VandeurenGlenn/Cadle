@@ -60,6 +60,7 @@ type NodeSpec = {
 // differently sized viewBoxes — normalizing on the node keeps every switch's
 // circle the same rendered size on the wire.
 const SWITCH_NODE_RADIUS = 2.83465
+const APPLIANCE_CONTACT_RADIUS = 2.26772
 
 const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   {
@@ -461,7 +462,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: {
       viewBox: { width: 17.2579, height: 17.2579 },
       node: { x: 8.62894, y: 8.62898 },
-      cutRadius: null,
+      cutRadius: APPLIANCE_CONTACT_RADIUS,
       oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },
@@ -470,7 +471,7 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
     spec: {
       viewBox: { width: 17.2579, height: 17.2579 },
       node: { x: 8.62894, y: 10.8967 },
-      cutRadius: null,
+      cutRadius: APPLIANCE_CONTACT_RADIUS,
       oneWireScale: ONE_WIRE_DEFAULT_SCALE
     }
   },

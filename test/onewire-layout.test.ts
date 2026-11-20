@@ -949,6 +949,42 @@ test('connects dishwasher feeds to the contact ring and refrigerator feeds to th
   }
 })
 
+test('terminates appliance row conductors at oven, dishwasher, washing-machine and dryer contacts', () => {
+  const rail = { id: 'rail', kind: 'line' as const, start: { x: 80, y: 1200 }, end: { x: 1400, y: 1200 },
+    groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+  const names = ['Electric oven', 'Dishwasher', 'Washing machine', 'Dryer']
+  const result = buildKamrailCircuitBundle({
+    rail, anchorX: 400, options: { amps: 20, family: 'A', autoIncludeFamily: true },
+    familyComponents: names.map((name, index) => ({
+      bindingId: 'A1', kind: 'load' as const, sourceShapeId: `appliance-${index}`, sourceName: name,
+      sourcePath: `symbols/Consumption appliances/${name}.svg`
+    })),
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  const wires = result.shapes.filter((shape) => shape.kind === 'line')
+  for (const device of result.shapes.filter((shape) => shape.kind === 'symbol' && shape.sourceLink?.kind === 'device')) {
+    if (device.kind !== 'symbol') continue
+    const node = oneWireSymbolNodeInfo(device.path, device.scale, device.rotation)
+    assert.ok(node, device.name)
+    const center = { x: device.position.x + node.offset.x, y: device.position.y + node.offset.y }
+    assert.equal(wires.some((wire) => wire.kind === 'line' && (
+      Math.abs(wire.start.y - wire.end.y) < 1e-8
+        ? Math.abs(center.y - wire.start.y) < 1e-8 && center.x >= Math.min(wire.start.x, wire.end.x) &&
+          center.x <= Math.max(wire.start.x, wire.end.x)
+        : Math.abs(center.x - wire.start.x) < 1e-8 && center.y >= Math.min(wire.start.y, wire.end.y) &&
+          center.y <= Math.max(wire.start.y, wire.end.y)
+    )), false, `${device.name}: wire crosses the contact center`)
+    assert.ok(wires.some((wire) => wire.kind === 'line' &&
+      oneWireSymbolConnectionAnchors(device).some(({ point }) =>
+        [wire.start, wire.end].some((endpoint) => Math.hypot(endpoint.x - point.x, endpoint.y - point.y) < 1e-8))),
+    `${device.name}: no wire reaches a contact`)
+  }
+})
+
 test('keeps numbered row symbols close to the vertical circuit trunk', () => {
   const result = buildKamrailCircuitBundle({
     rail: {

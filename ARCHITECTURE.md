@@ -49,6 +49,7 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Source synchronization updates affected linked circuits without globally repacking rails or redistributing pages.
   Known generated legacy contacts are repaired against actual symbol ports without moving devices; orphaned
   automatic rail feeders are removed. These load-time repairs share the synchronization recovery point.
+  Appliance branch conductors stop at the SVG contact-dot edges instead of passing through their centers.
   Circuit packing never treats an upstream differential as an outgoing breaker or owns its supply branch.
   Stationary rail taps remain covered when the outgoing circuits are packed; the rail keeps its own center.
   Overflow pagination belongs to explicit import/generation, never generic history recording or a single-rail insertion.

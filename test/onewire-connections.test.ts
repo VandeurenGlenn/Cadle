@@ -273,9 +273,11 @@ test('anchors appliance feeds to their actual filled SVG connection dots', () =>
         x: shape.position.x + (cx - 17.2579 / 2) * sourceScale,
         y: shape.position.y + (cy - 17.2579 / 2) * sourceScale
       }
-      assert.ok(oneWireSymbolNodeInfo(shape.path, scale), name)
+      const node = oneWireSymbolNodeInfo(shape.path, scale)
+      const radius = node?.cutHalfWidth
+      assert.ok(typeof radius === 'number' && radius > 0, name)
       for (const { point } of oneWireSymbolConnectionAnchors(shape)) {
-        assert.ok(Math.hypot(point.x - expected.x, point.y - expected.y) < 1e-8, name)
+        assert.ok(Math.abs(Math.hypot(point.x - expected.x, point.y - expected.y) - radius) < 1e-8, name)
       }
     }
   }

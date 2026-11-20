@@ -2,6 +2,7 @@ import { drawingScaleLabel } from './drawing-scale.js'
 import type { Project } from '../../types.js'
 import { PAPER_WORLD_UNITS_PER_MM } from '../constants.js'
 import { pageLayout } from './page-layout.js'
+import { orderedProjectPages, projectPageNumber } from './page-numbering.js'
 
 export const PROJECT_LOGO_SHAPE_ID = 'project-logo'
 export const isProjectLogoVisible = (_project: Project | null): boolean => false
@@ -19,13 +20,9 @@ const formatDate = (): string =>
   new Intl.DateTimeFormat('nl-BE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date())
 
 const pageNumberLabel = (project: Project | null, currentPageKey: string, pageName: string): string => {
-  const orderedPages = Object.entries(project?.pages ?? {}).sort(([, a], [, b]) =>
-    (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.creationTime - b.creationTime
-  )
+  const orderedPages = orderedProjectPages(project)
   if (!orderedPages.length) return '1/1'
-  let index = orderedPages.findIndex(([key]) => key === currentPageKey)
-  if (index < 0 && pageName.trim()) index = orderedPages.findIndex(([, page]) => page.name === pageName)
-  return `${Math.max(0, index) + 1}/${orderedPages.length}`
+  return `${projectPageNumber(project, currentPageKey, pageName)}/${orderedPages.length}`
 }
 
 export const getProjectTitleBlockData = (project: Project | null, _pageName: string): ProjectTitleBlockData => ({

@@ -85,6 +85,7 @@ import {
   isProjectLogoVisible,
   PROJECT_LOGO_SHAPE_ID
 } from './layout/project-title-block.js'
+import { oneWireDestinationPageNumber } from './layout/page-numbering.js'
 import { buildIntroPageSvg } from './intro-page.js'
 import {
   analyzeCircuitSchedule,
@@ -3798,7 +3799,8 @@ export class CadleApp extends LiteElement {
       const topologyPage = Boolean(topology) && pageIndex === 0
       const circuitPageIndex = topology ? pageIndex - 1 : pageIndex
       const totalPageCount = layoutPlan.pageCount + (topology ? 1 : 0)
-      const electricalSheetNumber = (layoutPageIndex: number) => layoutPageIndex + (topology ? 2 : 1)
+      const electricalSheetNumber = (layoutPageIndex: number) =>
+        oneWireDestinationPageNumber(this.#project, layoutPageIndex, Boolean(topology))
       const destinationSheetLabels = this.#oneWireController.destinationSheetLabels(
         layoutPlan.placements,
         electricalSheetNumber

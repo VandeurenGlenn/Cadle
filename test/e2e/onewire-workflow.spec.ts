@@ -21,7 +21,16 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   const project = await shell.evaluate((element) => (element as AppShell).project!)
   project.uuid = randomUUID()
   project.name = 'Bewerkbare schema-opbouw'
-  project.pages = { [groundKey]: project.pages[groundKey] }
+  project.pages = {
+    [groundKey]: { ...project.pages[groundKey], order: 1 },
+    [randomUUID()]: {
+      creationTime: project.pages[groundKey].creationTime + 1,
+      name: 'Kringentabel',
+      pageType: 'circuit-schedule',
+      order: 2,
+      schema: { version: 'native-svg-1', objects: [] }
+    }
+  }
   delete project.oneWirePrompt
   delete project.oneWireTopology
   await page.goto('/#!/projects')
@@ -69,6 +78,7 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   plan.mainDifferentialPoles = 4
   await dialog.locator('.json-review summary').click()
   await json.fill(JSON.stringify(plan))
+  await expect(dialog.locator('custom-button[label="Beschrijving opnieuw analyseren"]')).toHaveCount(1)
   await dialog.locator('custom-button[label="Structuur toepassen"]').click()
   await expect(dialog).not.toHaveAttribute('data-open')
   const saved = () => shell.evaluate((element) => (element as AppShell).project!)
@@ -87,6 +97,7 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
   await expect(description).toHaveValue(prompt)
   expect(JSON.parse(await json.inputValue())).toEqual(plan)
+  await expect(dialog.locator('custom-button[label="Beschrijving opnieuw analyseren"]')).toHaveCount(0)
   await description.fill('Niet bewaren')
   await description.press('Escape')
   await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
@@ -109,9 +120,11 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await dialog.locator('custom-button[label="Structuur toepassen"]').click()
   await expect(dialog).not.toHaveAttribute('data-open')
   await shell.evaluate((element) => (element as AppShell).openOneWirePromptDialog())
-  await expect(dialog.locator('.preview [role="status"]')).toContainText('mist de bijkomende differentieel')
-  expect(JSON.parse(await json.inputValue()).additionalDifferentials).toBeUndefined()
-  await dialog.locator('custom-button[label="Beschrijving opnieuw analyseren"]').click()
+  await expect(dialog.locator('.preview [role="status"]')).toHaveCount(0)
+  expect(JSON.parse(await json.inputValue()).additionalDifferentials).toEqual([
+    { count: 1, ratedCurrentA: 40, sensitivityMa: 30, rcdType: 'A', purpose: 'consumers' }
+  ])
+  await expect(dialog.locator('.preview-header')).toContainText('Beschrijving bijgewerkt')
   const preview = dialog.locator('.preview')
   await expect(preview.locator('.supply-flow .flow-step strong')).toHaveText([
     'Inkomende kabel', 'Hoofdschakelaar', 'kWh-meter', 'Kabel meter → kast', 'Hoofddifferentieel'
@@ -156,6 +169,7 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   expect(topology.find((shape) => shape.sourceLink?.role === 'meter-cable-label')).toMatchObject({
     text: '4x16 mm² XVB'
   })
+  expect(topology.some((shape) => shape.kind === 'text' && shape.text === 'NAAR VERBRUIKERS · BLAD E4')).toBe(true)
   expect(topology.find((shape) => shape.sourceLink?.role === 'additional-differential-consumers-1')).toMatchObject({
     electrical: { breakerCurrentA: 40, rcdSensitivityMa: 30, rcdType: 'A' }
   })

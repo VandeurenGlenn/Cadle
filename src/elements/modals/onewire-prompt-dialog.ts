@@ -49,7 +49,14 @@ export class OneWirePromptDialog extends LiteElement {
       return
     }
     const parsed = parseOneWirePrompt(prompt)
-    const plan = savedPlan ?? parsed.plan
+    const missingSavedDifferentials = Boolean(
+      savedPlan && parsed.plan.additionalDifferentials?.length && !savedPlan.additionalDifferentials?.length
+    )
+    const plan = savedPlan
+      ? missingSavedDifferentials
+        ? { ...savedPlan, additionalDifferentials: parsed.plan.additionalDifferentials }
+        : savedPlan
+      : parsed.plan
     this.interpretedPlan = plan
     this.interpretationWarnings = parsed.warnings
     this.topologyJson = JSON.stringify(plan, null, 2)
@@ -57,7 +64,7 @@ export class OneWirePromptDialog extends LiteElement {
     this.#jsonManuallyEdited = false
     const sequence = ++this.#interpretationSequence
     if (savedPlan) {
-      this.modelStatus = 'Opgeslagen structuur'
+      this.modelStatus = missingSavedDifferentials ? 'Beschrijving bijgewerkt' : 'Opgeslagen structuur'
       return
     }
     this.modelStatus = 'Lokaal model laden…'
@@ -253,14 +260,14 @@ export class OneWirePromptDialog extends LiteElement {
                 Kies hieronder <strong>Beschrijving opnieuw analyseren</strong> om de structuur bij te werken.</p>
             ` : ''}
             ${interpreted ? this.#topologyPreview(interpreted) : html`<p>Beschrijf eerst de installatie.</p>`}
-            <div class="preview-actions">
+            ${this.#jsonManuallyEdited ? html`<div class="preview-actions">
               <custom-button
                 type="text"
                 label="Beschrijving opnieuw analyseren"
                 title="Vervangt de lokale JSON-correcties door een nieuwe interpretatie van de beschrijving."
                 ?disabled=${!value.trim()}
                 @click=${() => this.#syncJsonFromPrompt()}></custom-button>
-            </div>
+            </div>` : ''}
           </section>
           <details class="json-review">
             <summary>Gestructureerde JSON controleren of corrigeren</summary>

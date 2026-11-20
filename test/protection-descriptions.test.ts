@@ -6,7 +6,7 @@ import { updateSelectionProperties } from '../src/editor/interaction/selection-p
 import { createNativeSelectionChangedPayload } from '../src/editor/interaction/selection-payload.ts'
 import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
 import { oneWireTopologyDescriptions } from '../src/editor/layout/protection-descriptions.ts'
-import { protectionDescriptionLayout } from '../src/editor/layout/protection-label-layout.ts'
+import { protectionAnnotationLayout, protectionDescriptionLayout, protectionLabelLayout } from '../src/editor/layout/protection-label-layout.ts'
 import { symbolTextPresentation } from '../src/editor/symbol-metadata.ts'
 
 const plan = { version: 1 as const, residualBreaker: false, solar: false, consumers: true,
@@ -59,4 +59,28 @@ test('edits the device name without losing ratings, moves it with the device and
   assert.doesNotMatch(symbolTextPresentation(main).annotations, /onewire-device-description/)
   const custom = buildOneWireTopology(plan, rail, nextId, { descriptionsByRole: oneWireTopologyDescriptions(renamed) })
   assert.equal((custom.find((shape) => shape.sourceLink?.role === 'main-differential') as SymbolShape).symbolTextOverrides?.description, 'Algemeen <A&B>')
+})
+
+test('places the residual-breaker pole label slightly lower and closer to the symbol', () => {
+  const topology = buildOneWireTopology({ ...plan, mainDifferentialPoles: 4 }, rail, nextId)
+  const device = topology.find((shape) => shape.sourceLink?.role === 'main-differential') as SymbolShape
+  const base = protectionLabelLayout(device)!
+  const position = protectionAnnotationLayout(device)!.poles
+  const presentation = symbolTextPresentation(device)
+
+  assert.equal(position.x, base.leftX + 6)
+  assert.equal(position.y, base.centerY + 15)
+  assert.match(presentation.annotations, new RegExp(`x="${position.x}" y="${position.y}" text-anchor="end"[^>]*>4P<`))
+})
+
+test('uses the same adjusted pole-label position for an automaat', () => {
+  const topology = buildOneWireTopology({ ...plan, mainSwitchPoles: 4 }, rail, nextId)
+  const device = topology.find((shape) => shape.sourceLink?.role === 'main-switch') as SymbolShape
+  const base = protectionLabelLayout(device)!
+  const position = protectionAnnotationLayout(device)!.poles
+  const presentation = symbolTextPresentation(device)
+
+  assert.equal(position.x, base.leftX + 6)
+  assert.equal(position.y, base.centerY + 15)
+  assert.match(presentation.annotations, new RegExp(`x="${position.x}" y="${position.y}" text-anchor="end"[^>]*>4P<`))
 })

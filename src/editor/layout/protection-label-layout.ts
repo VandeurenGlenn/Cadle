@@ -87,7 +87,10 @@ export const protectionAnnotationLayout = (shape: SymbolShape) => {
   if (!layout) return null
   const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
   return {
-    poles: { x: layout.leftX, y: layout.centerY + 5 },
+    poles: {
+      x: layout.leftX + 6,
+      y: layout.centerY + 15
+    },
     current: { x: layout.rightX, y: layout.centerY + (residual ? 12 : 5) },
     residual: { x: layout.rightX, y: layout.centerY - 12 },
     type: { x: layout.rightX, y: layout.centerY + 12 },

@@ -4,6 +4,7 @@
   height: 100%;
   min-height: 0;
 }
+
 custom-selector {
   flex: 1 1 auto;
   min-height: 0;
@@ -14,10 +15,7 @@ custom-selector {
   padding: var(--cadle-space-2);
   box-sizing: border-box;
 }
-/* Tighter, calmer drawer items. Lite-elements ships them at 54px with
-         a pill radius + secondary-container at-rest tint via the selector;
-         override both so the resting state has zero tint and the row reads
-         as a list, not a stack of pills. */
+
 custom-drawer-item {
   min-height: 36px !important;
   max-height: 36px !important;
@@ -31,73 +29,183 @@ custom-drawer-item {
     background-color var(--cadle-motion-fast),
     color var(--cadle-motion-fast);
 }
+
 custom-drawer-item:hover {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
 }
+
 custom-drawer-item.custom-selected {
   background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
   color: var(--md-sys-color-on-surface);
 }
+
 custom-drawer-item:focus-visible {
   outline: none;
   box-shadow: var(--cadle-focus-ring);
 }
-.input-container {
+
+.page-add-area {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: 100%;
-  padding: var(--cadle-space-2) var(--cadle-space-3);
-  align-items: center;
-  gap: var(--cadle-space-2);
+  padding: var(--cadle-space-3);
   border-top: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container);
 }
-.page-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  pointer-events: none;
-  opacity: 0;
-  outline: none;
+
+.add-page {
+  display: flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--cadle-space-2) var(--cadle-space-3);
   border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-md);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: var(--cadle-radius-sm);
-  padding: var(--cadle-space-2) var(--cadle-space-3);
+  font: var(--cadle-navigation-font);
+  text-align: left;
+  cursor: pointer;
   transition:
-    opacity var(--cadle-motion-fast),
+    background-color var(--cadle-motion-fast),
     border-color var(--cadle-motion-fast),
     box-shadow var(--cadle-motion-fast);
 }
 
-.page-type-select {
-  flex: 0 0 132px;
-  min-width: 116px;
-  pointer-events: none;
-  opacity: 0;
-  outline: none;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface);
-  color: var(--md-sys-color-on-surface);
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: var(--cadle-radius-sm);
-  padding: var(--cadle-space-2) var(--cadle-space-3);
-  transition:
-    opacity var(--cadle-motion-fast),
-    border-color var(--cadle-motion-fast),
-    box-shadow var(--cadle-motion-fast);
-}
-
-:host([addingPage]) .page-input {
-  pointer-events: auto;
-  opacity: 1;
+.add-page:hover {
   border-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 7%, var(--md-sys-color-surface));
+}
+
+.add-page:focus-visible,
+.page-add-form button:focus-visible,
+.page-input:focus-visible,
+.page-type-select:focus-visible {
+  outline: none;
   box-shadow: var(--cadle-focus-ring);
 }
 
-:host([addingPage]) .page-type-select {
-  pointer-events: auto;
-  opacity: 1;
+.add-mark {
+  display: grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  color: var(--md-sys-color-primary);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.page-add-form {
+  display: grid;
+  gap: var(--cadle-space-3);
+  padding: var(--cadle-space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-md);
+  background: var(--md-sys-color-surface);
+  box-shadow: 0 8px 22px color-mix(in srgb, #000 16%, transparent);
+}
+
+.page-add-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+  min-width: 0;
+}
+
+.page-add-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.page-add-heading strong {
+  color: var(--md-sys-color-on-surface);
+  font: var(--cadle-navigation-font);
+}
+
+.page-add-heading small,
+.page-field > span {
+  color: var(--md-sys-color-on-surface-variant);
+  font: 500 11px/16px var(--cadle-font-sans);
+}
+
+.page-add-heading small {
+  line-height: 1.35;
+}
+
+.page-field {
+  display: grid;
+  gap: var(--cadle-space-1);
+}
+
+.page-input,
+.page-type-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: var(--cadle-space-2) var(--cadle-space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--cadle-radius-sm);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  font: 400 12px/18px var(--cadle-font-sans);
+  transition:
+    background-color var(--cadle-motion-fast),
+    border-color var(--cadle-motion-fast),
+    box-shadow var(--cadle-motion-fast);
+}
+
+.page-input::placeholder {
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.75;
+}
+
+.page-input:focus,
+.page-type-select:focus {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-surface);
+}
+
+.page-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cadle-space-2);
+  padding-top: var(--cadle-space-1);
+}
+
+.page-add-actions button {
+  min-height: 36px;
+  padding: 0 var(--cadle-space-3);
+  border: 0;
+  border-radius: var(--cadle-radius-sm);
+  font: var(--cadle-navigation-font);
+  cursor: pointer;
+  transition:
+    background-color var(--cadle-motion-fast),
+    color var(--cadle-motion-fast);
+}
+
+.cancel-page {
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.cancel-page:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 7%, transparent);
+  color: var(--md-sys-color-on-surface);
+}
+
+.confirm-page {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.confirm-page:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 88%, #000);
 }

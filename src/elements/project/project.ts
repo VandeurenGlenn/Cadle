@@ -31,11 +31,11 @@ export class ProjectElement extends LiteElement {
   @query('.page-input')
   accessor pageInput!: HTMLInputElement
 
-  @query('.page-type-select')
-  accessor pageTypeSelect!: HTMLSelectElement
-
   @property({ type: String })
   accessor newPageType: PageType = 'groundplan'
+
+  @property({ type: String })
+  accessor newPageName = ''
 
   onChange(name: string): void {
     if (name === 'loadedPage') {
@@ -47,62 +47,74 @@ export class ProjectElement extends LiteElement {
   }
 
   set addingPage(value: boolean) {
-    if (value !== this.addingPage)
-      if (value) {
-        this.pageInput.value = ''
-        this.newPageType = 'groundplan'
-        if (this.pageTypeSelect) this.pageTypeSelect.value = this.newPageType
-        this.setAttribute('addingPage', '')
-        this.pageInput.focus()
-      } else {
-        this.removeAttribute('addingPage')
-        this.handleInput()
-      }
-
+    if (value === this.addingPage) return
+    if (value) {
+      this.newPageName = ''
+      this.newPageType = 'groundplan'
+      this.setAttribute('addingPage', '')
+    } else {
+      this.removeAttribute('addingPage')
+      this.newPageName = ''
+    }
     this.requestRender()
+    if (value) requestAnimationFrame(() => this.pageInput?.focus())
   }
 
   #shouldUseOneWirePageType(pageName: string): boolean {
-    return /\bone[-\s]?wire\b|\beendraads\b/i.test(pageName)
+    return /\bone[-\s]?wire\b|\beendraads?(?:chema)?\b/i.test(pageName)
   }
 
   #onPageInput = (event: Event) => {
     const target = event.currentTarget as HTMLInputElement | null
     const pageName = target?.value ?? ''
-    if (!this.#shouldUseOneWirePageType(pageName)) return
-
-    this.newPageType = 'onewire'
-    if (this.pageTypeSelect) this.pageTypeSelect.value = 'onewire'
+    this.newPageName = pageName
+    if (this.#shouldUseOneWirePageType(pageName)) this.newPageType = 'onewire'
   }
 
-  async handleInput() {
-    const page: string = this.pageInput.value
-    if (page.length > 0 && this.projectKey) {
-      if (this.#shouldUseOneWirePageType(page)) {
-        this.newPageType = 'onewire'
-        if (this.pageTypeSelect) this.pageTypeSelect.value = 'onewire'
-      }
-      const pageType = (this.pageTypeSelect?.value as PageType) || this.newPageType || 'groundplan'
-      await addPage(this.projectKey, page, { version: '6.0.0', objects: [] }, pageType)
+  #defaultPageName(pageType: PageType) {
+    const baseName = pageType === 'onewire'
+      ? 'One-wire diagram'
+      : pageType === 'circuit-schedule'
+        ? 'Circuit overview'
+        : 'Groundplan'
+    const existing = new Set(this.#orderedPages.map(([, page]) => page.name.trim().toLocaleLowerCase()))
+    let name = baseName
+    for (let suffix = 2; existing.has(name.toLocaleLowerCase()); suffix += 1) {
+      name = `${baseName} ${suffix}`
+    }
+    return name
+  }
+
+  async handleInput(): Promise<boolean> {
+    if (!this.projectKey) return false
+    const typedName = this.newPageName.trim()
+    if (this.#shouldUseOneWirePageType(typedName)) this.newPageType = 'onewire'
+    const pageName = typedName || this.#defaultPageName(this.newPageType)
+    try {
+      await addPage(this.projectKey, pageName, { version: '6.0.0', objects: [] }, this.newPageType)
       this.project = await getProjectData(this.projectKey)
       cadleShell.project = this.project
-      this.pageInput.value = ''
+      this.newPageName = ''
+      return true
+    } catch (error) {
+      console.error('Pagina toevoegen mislukt.', error)
+      globalThis.alert('De pagina kon niet worden toegevoegd. Probeer opnieuw.')
+      return false
     }
   }
 
   @listen('keydown')
   async onKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
-      this.addingPage = false
+      if (this.addingPage) {
+        event.preventDefault()
+        this.addingPage = false
+      }
       const menu = this.shadowRoot?.querySelector('context-menu') as { open?: boolean } | null
-      const addPageButton = this.shadowRoot?.querySelector('.add-page') as { selected?: boolean } | null
       if (menu) menu.open = false
-      if (addPageButton) addPageButton.selected = false
-    } else if (event.key === 'Enter') {
-      await this.handleInput()
-      this.addingPage = false
-      const addPageButton = this.shadowRoot?.querySelector('.add-page') as { selected?: boolean } | null
-      if (addPageButton) addPageButton.selected = false
+    } else if (event.key === 'Enter' && this.addingPage) {
+      event.preventDefault()
+      if (await this.handleInput()) this.addingPage = false
     }
   }
 
@@ -231,31 +243,63 @@ export class ProjectElement extends LiteElement {
         attr-for-selected="data-project">
         ${projectTemplate}
       </custom-selector>
-      <flex-row class="input-container">
-        <input
-          class="page-input"
-          @input=${this.#onPageInput} />
-        <select
-          class="page-type-select"
-          .value=${this.newPageType}
-          @change=${(event: Event) => {
-            const target = event.currentTarget as HTMLSelectElement | null
-            const value = target?.value === 'onewire'
-              ? 'onewire'
-              : target?.value === 'circuit-schedule'
-                ? 'circuit-schedule'
-                : 'groundplan'
-            this.newPageType = value
-          }}>
-          <option value="groundplan">Groundplan</option>
-          <option value="onewire">One-wire</option>
-          <option value="circuit-schedule">Circuit overview</option>
-        </select>
-        <custom-icon-button
-          class="add-page"
-          .icon="${this.addingPage ? 'check' : 'add'}"
-          @click=${() => (this.addingPage = !this.addingPage)}></custom-icon-button>
-      </flex-row>
+      <section class="page-add-area">
+        ${this.addingPage ? html`
+          <div class="page-add-form">
+            <header class="page-add-heading">
+              <span class="add-mark" aria-hidden="true">+</span>
+              <div>
+                <strong>Nieuwe pagina</strong>
+                <small>Een naam wordt automatisch gekozen als je dit veld leeg laat.</small>
+              </div>
+            </header>
+            <label class="page-field">
+              <span>Naam</span>
+              <input
+                class="page-input"
+                aria-label="Paginanaam"
+                autocomplete="off"
+                placeholder="Bijv. Verdieping"
+                .value=${this.newPageName}
+                @input=${this.#onPageInput} />
+            </label>
+            <label class="page-field">
+              <span>Type</span>
+              <select
+                class="page-type-select"
+                aria-label="Paginatype"
+                .value=${this.newPageType}
+                @change=${(event: Event) => {
+                  const target = event.currentTarget as HTMLSelectElement | null
+                  this.newPageType = target?.value === 'onewire'
+                    ? 'onewire'
+                    : target?.value === 'circuit-schedule'
+                      ? 'circuit-schedule'
+                      : 'groundplan'
+                }}>
+                <option value="groundplan">Grondplan</option>
+                <option value="onewire">Eendraadschema</option>
+                <option value="circuit-schedule">Kringentabel</option>
+              </select>
+            </label>
+            <div class="page-add-actions">
+              <button type="button" class="cancel-page" @click=${() => (this.addingPage = false)}>Annuleren</button>
+              <button type="button" class="confirm-page" @click=${async () => {
+                if (await this.handleInput()) this.addingPage = false
+              }}>Pagina toevoegen</button>
+            </div>
+          </div>
+        ` : html`
+          <button
+            type="button"
+            class="add-page"
+            aria-label="Nieuwe pagina"
+            @click=${() => (this.addingPage = true)}>
+            <span class="add-mark" aria-hidden="true">+</span>
+            <span>Pagina toevoegen</span>
+          </button>
+        `}
+      </section>
       <context-menu>
         <custom-list-item
           type="menu"

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
+import { phaseConfigurationLabelForPoles } from '../src/editor/model/electrical.ts'
 
 test('keeps distributor and Belgian supply configuration in the project profile', () => {
   const profile = normalizeElectricalProfile({
@@ -41,4 +42,11 @@ test('keeps supply and phase defaults electrically consistent', () => {
 
   assert.equal(singlePhase.phaseConfiguration, 'L1+N')
   assert.equal(threePhase.phaseConfiguration, 'three-phase')
+})
+
+test('does not label a two-pole device with all three phases', () => {
+  assert.equal(phaseConfigurationLabelForPoles(2, 'L1+L2+L3+N', 'left'), '')
+  assert.equal(phaseConfigurationLabelForPoles(2, 'L1+N', 'left'), 'N-L1')
+  assert.equal(phaseConfigurationLabelForPoles(3, 'L1+L2+L3+N', 'left'), 'L1-L2-L3')
+  assert.equal(phaseConfigurationLabelForPoles(4, 'L1+N', 'left'), '')
 })

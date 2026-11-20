@@ -72,9 +72,9 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('secondary-busbar'))
   assert.ok(roles.has('residual-breaker'))
   assert.ok(roles.has('solar-branch'))
+  assert.equal(roles.has('solar-meter'), false)
   assert.ok(roles.has('solar-inverter'))
   assert.ok(roles.has('solar-breaker'))
-  assert.ok(roles.has('solar-meter'))
   assert.ok(roles.has('solar-panels'))
   assert.ok(roles.has('residual-to-rail'))
   assert.ok(roles.has('residual-outgoing'))
@@ -83,7 +83,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-3'))
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
-  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v35:')))
+  assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v36:')))
   for (const shape of shapes) {
     if (shape.kind === 'line') {
       assert.equal(shape.strokeWidth, shape.sourceLink?.role === 'secondary-busbar' ? 4 : 2)
@@ -151,9 +151,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   const meterCaptionBounds = oneWireLayoutBounds(meterCaption)
   assert.ok(meterCaptionBounds.y > mainTitle.y)
   assert.ok(meterCaptionBounds.y + meterCaptionBounds.height < meterTopY)
-  const solarMeter = shapes.find((shape) => shape.sourceLink?.role === 'solar-meter')
-  assert.ok(solarMeter?.kind === 'symbol')
-  assert.equal(solarMeter.scale * 24 / 8, 8)
+  assert.equal(shapes.some((shape) => shape.sourceLink?.role === 'solar-meter'), false)
   assert.ok(solar?.kind === 'symbol' && solar.position.y < busY)
   assert.ok(solarPanels?.kind === 'symbol')
   assert.equal(solarPanels.scale, oneWireSymbolScaleFor(solarPanels.path)! * 2)
@@ -182,10 +180,8 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     ['residual-to-rail', 'end', 'residual-breaker', 'bottom'],
     ['residual-outgoing', 'start', 'residual-breaker', 'top'],
     ['solar-branch', 'end', 'solar-breaker', 'bottom'],
-    ['solar-breaker-to-meter', 'start', 'solar-breaker', 'top'],
-    ['solar-breaker-to-meter', 'end', 'solar-meter', 'bottom'],
-    ['solar-meter-to-inverter', 'start', 'solar-meter', 'top'],
-    ['solar-meter-to-inverter', 'end', 'solar-inverter', 'bottom'],
+    ['solar-breaker-to-inverter', 'start', 'solar-breaker', 'top'],
+    ['solar-breaker-to-inverter', 'end', 'solar-inverter', 'bottom'],
     ['solar-inverter-to-panels', 'start', 'solar-inverter', 'top'],
     ['solar-inverter-to-panels', 'end', 'solar-panels', 'bottom'],
     ['additional-differential-ev-2-outgoing', 'end', 'ev-load', 'bottom']
@@ -264,6 +260,28 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     assert.deepEqual(flows[0].from, flows[1].to)
     assert.deepEqual(flows[0].to, flows[1].from)
   }
+})
+
+test('hides an incompatible three-phase label on the two-pole PV breaker', () => {
+  const shapes = buildOneWireTopology(
+    {
+      version: 1,
+      residualBreaker: false,
+      solar: true,
+      solarBreakerPoles: 2,
+      consumers: false
+    },
+    { start: { x: 80, y: 700 }, end: { x: 920, y: 700 } },
+    ids(),
+    { phaseConfiguration: 'L1+L2+L3+N' }
+  )
+
+  const solarBreaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
+  assert.ok(solarBreaker?.kind === 'symbol')
+  assert.equal(solarBreaker.electrical?.poles, 2)
+  assert.equal(solarBreaker.symbolTextOverrides?.phase, '')
+  assert.ok(shapes.some((shape) => shape.sourceLink?.role === 'solar-breaker-to-inverter'))
+  assert.equal(shapes.some((shape) => shape.sourceLink?.role === 'solar-meter'), false)
 })
 
 test('places one consumer differential as an outgoing branch on the distribution rail', () => {

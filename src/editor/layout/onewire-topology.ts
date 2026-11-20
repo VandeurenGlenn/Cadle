@@ -8,7 +8,7 @@ import { setProtectionDescription } from './protection-descriptions.js'
 import { spaceOneWireTopologyAnnotations } from './onewire-topology-annotations.js'
 import { meterCableLabel } from './connection-label-presentation.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
-import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabel, rcdTypeFromLabel, rcdTypeLabel, shouldShowPhaseLabel } from '../model/electrical.js'
+import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabelForPoles, rcdTypeFromLabel, rcdTypeLabel } from '../model/electrical.js'
 
 const KWH_PATH = 'symbols/Consumption appliances/kWh meter.svg'
 const RCD_PATH = 'symbols/Protection devices/Residual-current circuit breaker.svg'
@@ -22,7 +22,7 @@ const KWH_SCALE = oneWireSymbolScaleFor(KWH_PATH) ?? 1.35
 const EARTH_SCALE = oneWireSymbolScaleFor(EARTH_PATH) ?? 1.35
 const INVERTER_SCALE = oneWireSymbolScaleFor(INVERTER_PATH) ?? 1.35
 const SOLAR_PANEL_SCALE = (oneWireSymbolScaleFor(SOLAR_PANEL_PATH) ?? 1.35) * 2
-const TOPOLOGY_GEOMETRY_VERSION = 35
+const TOPOLOGY_GEOMETRY_VERSION = 36
 
 export const oneWireTopologyRcdTypes = (shapes: readonly Shape[]) => Object.fromEntries(shapes.flatMap((shape) => {
   if (shape.kind !== 'symbol' || !shape.sourceLink?.role || !/^board:main:topology:/.test(shape.generationKey ?? '')) return []
@@ -159,7 +159,7 @@ export const buildOneWireTopology = (
     shape.symbolTextOverrides = {
       ...(shape.symbolTextOverrides ?? {}),
       poles: `${poles}P`,
-      phase: shouldShowPhaseLabel(poles, true) ? phaseConfigurationLabel(phaseConfiguration, neutralPosition) : '',
+      phase: phaseConfigurationLabelForPoles(poles, phaseConfiguration, neutralPosition),
       'rated-current': ratedCurrentA ? `${breakerCurve ?? ''}${ratedCurrentA}A` : '',
       ...(shape.path === RCD_PATH ? { 'residual-current': sensitivityMa ? `${sensitivityMa}mA` : '', 'rcd-type': rcdTypeLabel(rcdType) } : {})
     }
@@ -255,9 +255,7 @@ export const buildOneWireTopology = (
   mainSwitch.symbolTextOverrides = {
     ...(mainSwitch.symbolTextOverrides ?? {}),
     poles: `${mainSwitchPoles}P`,
-    phase: shouldShowPhaseLabel(mainSwitchPoles, true)
-      ? phaseConfigurationLabel(mainSwitchPhaseConfiguration, mainSwitchNeutralPosition)
-      : '',
+    phase: phaseConfigurationLabelForPoles(mainSwitchPoles, mainSwitchPhaseConfiguration, mainSwitchNeutralPosition),
     'rated-current': plan.mainSwitch?.ratedCurrentA ? `${plan.mainSwitch.ratedCurrentA}A` : ''
   }
   shapes.push(meter, mainDifferential, mainSwitch)
@@ -527,10 +525,7 @@ export const buildOneWireTopology = (
       neutralPosition: plan.solarBreakerNeutralPosition
     })
     const breakerTop = terminalPoint(solarBreaker, 'top')
-    const solarMeterBottom = { x: solarTap.x, y: breakerTop.y - 34 }
-    const solarMeter = symbolAtTerminal('solar-meter', 'PV kWh meter', KWH_PATH, KWH_SCALE, 'bottom', solarMeterBottom)
-    const solarMeterTop = terminalPoint(solarMeter, 'top')
-    const inverterBottom = { x: solarTap.x, y: solarMeterTop.y - 34 }
+    const inverterBottom = { x: solarTap.x, y: breakerTop.y - 34 }
     const inverter = symbolAtTerminal(
       'solar-inverter',
       'PV inverter',
@@ -551,9 +546,7 @@ export const buildOneWireTopology = (
     )
     shapes.push(line('solar-branch', solarTap.x, solarTap.y, breakerBottom.x, breakerBottom.y))
     shapes.push(solarBreaker)
-    shapes.push(line('solar-breaker-to-meter', breakerTop.x, breakerTop.y, solarMeterBottom.x, solarMeterBottom.y))
-    shapes.push(solarMeter)
-    shapes.push(line('solar-meter-to-inverter', solarMeterTop.x, solarMeterTop.y, inverterBottom.x, inverterBottom.y))
+    shapes.push(line('solar-breaker-to-inverter', breakerTop.x, breakerTop.y, inverterBottom.x, inverterBottom.y))
     shapes.push(inverter)
     shapes.push(line('solar-inverter-to-panels', inverterTop.x, inverterTop.y, panelBottom.x, panelBottom.y))
     shapes.push(panels)

@@ -101,6 +101,17 @@ export const shouldShowPhaseLabel = (
   showPhaseLabel: boolean | undefined
 ): boolean => poles !== 4 && showPhaseLabel !== false
 
+export const phaseConfigurationLabelForPoles = (
+  poles: number | undefined,
+  phase: ElectricalPhaseConfiguration | undefined,
+  neutralPosition: 'left' | 'right' = 'right'
+): string => {
+  if (poles === 4) return ''
+  const isThreePhase = phase === 'three-phase' || phase === 'L1+L2+L3+N'
+  if (isThreePhase) return poles === 3 ? 'L1-L2-L3' : ''
+  return phaseConfigurationLabel(phase, neutralPosition)
+}
+
 export const breakerCurrentLabel = (
   current: number | string,
   curve?: ElectricalDeviceMetadata['breakerCurve']

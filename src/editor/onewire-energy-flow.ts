@@ -25,15 +25,13 @@ const FORWARD_ROLES = new Set([
 const REVERSE_ROLES = new Set([
   'grid-incoming',
   'solar-branch',
-  'solar-breaker-to-meter',
-  'solar-meter-to-inverter',
+  'solar-breaker-to-inverter',
   'solar-inverter-to-panels'
 ])
 
 const GENERATOR_ROLES = new Set([
   'solar-branch',
-  'solar-breaker-to-meter',
-  'solar-meter-to-inverter',
+  'solar-breaker-to-inverter',
   'solar-inverter-to-panels'
 ])
 

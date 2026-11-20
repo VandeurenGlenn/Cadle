@@ -129,6 +129,7 @@ const ONE_WIRE_TECHNICAL_LABEL_SCALE = PROTECTION_TEXT_SIZE / 18
 const ONE_WIRE_LABEL_WEIGHT = 500
 const ONE_WIRE_TECHNICAL_LABEL_WEIGHT = PROTECTION_TEXT_WEIGHT
 const ONE_WIRE_BREAKER_RAIL_GAP = 40
+export const ONE_WIRE_ROW_COMPONENT_SCALE = 0.85
 
 export const oneWirePhaseLabelText = (
   phase: OneWireBundleOptions['phaseConfiguration'] | undefined,
@@ -525,7 +526,7 @@ export const buildOneWireRowSection = (
   const rowSymbolSpecs: RowSymbolSpec[] = orderedEntries.map((entry) => {
     const fallback = deps.oneWireComponentSymbol(entry.kind)
     const component = { name: entry.sourceName ?? fallback.name, path: entry.sourcePath ?? fallback.path }
-    const scale = deps.oneWireSymbolScale(component.path, entry.kind)
+    const scale = deps.oneWireSymbolScale(component.path, entry.kind) * ONE_WIRE_ROW_COMPONENT_SCALE
     const inlineRotation = oneWireSymbolRotationFor(component.path)
     const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
     const rotation = placeDirectlyOnTrunk && isSocket ? (inlineRotation ?? 0) - 90 : inlineRotation

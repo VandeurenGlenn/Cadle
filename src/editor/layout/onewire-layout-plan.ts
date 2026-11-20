@@ -5,8 +5,9 @@ export type OneWireFamilyDemand = {
   railId?: string
   requiredWidth?: number
 }
-export const ONE_WIRE_LAYOUT_VERSION = 106
+export const ONE_WIRE_LAYOUT_VERSION = 107
 export const ONE_WIRE_FAMILY_GAP = 10
+const ONE_WIRE_COMPACT_FAMILY_GAPS = [ONE_WIRE_FAMILY_GAP, 8, 6, 4, 2] as const
 export const ONE_WIRE_COLUMN_GAP_X = 60
 export const ONE_WIRE_RAIL_END_PADDING = 20
 export const ONE_WIRE_MIN_RAIL_LENGTH = 240
@@ -200,9 +201,10 @@ export const planOneWireLayout = (
   const placements: OneWireFamilyPlacement[] = []
   const occupiedWidths: number[] = []
   const occupiedSlots: number[] = []
+  const pageGaps: number[] = []
   const measured = new Map<OneWireFamilyPlacement, OneWireFamilyBounds>()
-  const packedBounds = (bounds: OneWireFamilyBounds[]) => {
-    const geometry = packOneWireFamilyBounds(bounds, 0)
+  const packedBounds = (bounds: OneWireFamilyBounds[], gap = ONE_WIRE_FAMILY_GAP) => {
+    const geometry = packOneWireFamilyBounds(bounds, 0, gap)
     const xs = bounds.flatMap((item) => {
       const dx = geometry.familyXs.get(item.family)! - item.anchorX
       return [item.minX + dx, item.maxX + dx]
@@ -236,15 +238,26 @@ export const planOneWireLayout = (
       )
       let pageIndex = previousChunkPage + 1
       if (circuitStart === 0) pageIndex = railStartPage
-      const widthOnPage = (page: number) => bounds
-        ? packedBounds([...placements.filter((item) => item.pageIndex === page).map((item) => measured.get(item)!), bounds]).width
-        : (occupiedWidths[page] ?? 0) + ((occupiedWidths[page] ?? 0) > 0 ? ONE_WIRE_FAMILY_GAP : 0) + requiredWidth
+      const pagePlacements = (page: number) => placements
+        .filter((item) => item.pageIndex === page)
+      const widthOnPage = (page: number, gap: number) => bounds
+        ? packedBounds([...pagePlacements(page).map((item) => measured.get(item)!), bounds], gap).width
+        : (occupiedWidths[page] ?? 0) + ((occupiedWidths[page] ?? 0) > 0 ? gap : 0) + requiredWidth
+      const fittingGap = (page: number): number | undefined => {
+        const existing = pagePlacements(page)
+        if (!existing.length) return ONE_WIRE_FAMILY_GAP
+        const candidates = bounds
+          ? ONE_WIRE_COMPACT_FAMILY_GAPS.filter((gap) => gap <= (pageGaps[page] ?? ONE_WIRE_FAMILY_GAP))
+          : [ONE_WIRE_FAMILY_GAP]
+        return candidates.find((gap) => widthOnPage(page, gap) <= options.usableWidth)
+      }
       while (
         (occupiedWidths[pageIndex] ?? 0) > 0 &&
-        widthOnPage(pageIndex) > options.usableWidth
+        fittingGap(pageIndex) === undefined
       ) {
         pageIndex += 1
       }
+      const pageGap = fittingGap(pageIndex) ?? ONE_WIRE_FAMILY_GAP
       const slotIndex = occupiedSlots[pageIndex] ?? 0
       const placement: OneWireFamilyPlacement = {
         family: demand.family,
@@ -258,10 +271,11 @@ export const planOneWireLayout = (
         centerOffset: 0,
         requiredWidth
       }
-      const occupiedWidth = widthOnPage(pageIndex)
+      const occupiedWidth = widthOnPage(pageIndex, pageGap)
       placements.push(placement)
       if (bounds) measured.set(placement, bounds)
       occupiedWidths[pageIndex] = occupiedWidth
+      pageGaps[pageIndex] = Math.min(pageGaps[pageIndex] ?? pageGap, pageGap)
       occupiedSlots[pageIndex] = slotIndex + 1
       railPages.set(destinationKey, pageIndex)
       previousChunkPage = pageIndex
@@ -274,7 +288,8 @@ export const planOneWireLayout = (
     const pagePlacements = placements.filter((placement) => placement.pageIndex === pageIndex)
     const usedWidth = occupiedWidths[pageIndex] ?? 0
     if (options.measureFamily) {
-      const packed = packedBounds(pagePlacements.map((placement) => measured.get(placement)!))
+      const packed = packedBounds(pagePlacements.map((placement) => measured.get(placement)!),
+        pageGaps[pageIndex] ?? ONE_WIRE_FAMILY_GAP)
       const offsetX = Math.max(0, (options.usableWidth - packed.width) / 2) - packed.left
       for (const placement of pagePlacements) {
         placement.anchorOffset = packed.geometry.familyXs.get(placement.family)! + offsetX

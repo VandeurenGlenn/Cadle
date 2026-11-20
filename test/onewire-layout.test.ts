@@ -8,6 +8,7 @@ import {
   buildOneWireBreakerSection,
   buildOneWireRowSection,
   ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+  ONE_WIRE_ROW_COMPONENT_SCALE,
   oneWireCableLabelText,
   oneWirePhaseLabelText,
   oneWireProtectionSymbolPath
@@ -50,6 +51,26 @@ test('normalizes ground-plan protection symbols to their one-wire variants', () 
   assert.equal(oneWireSymbolScaleFor('symbols/Socket outlets/Wall outlet with grounding.svg')! * 24 / 8, 6)
   assert.equal(oneWireSymbolScaleFor('symbols/Consumption appliances/Lighting.svg')! * 24 / 8, 4.5)
   assert.equal(ONE_WIRE_SOCKET_SYMBOL_PATH, 'symbols/Socket outlets/Wall outlet with grounding.svg')
+})
+
+test('keeps protection sizing but slightly reduces one-wire row devices', () => {
+  const switchPath = 'symbols/Switches/Switch general symbol.svg'
+  const outletPath = 'symbols/Socket outlets/Wall outlet with grounding.svg'
+  const row = buildOneWireRowSection(0, ['A1', [
+    { bindingId: 'A1', kind: 'switch', sourcePath: switchPath },
+    { bindingId: 'A1', kind: 'load', sourcePath: outletPath }
+  ]], 700, 400, {
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: () => ({ name: 'Switch', path: switchPath }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })
+  const devices = row.shapes.filter((shape) => shape.kind === 'symbol')
+  assert.deepEqual(devices.map((shape) => shape.scale), [
+    oneWireSymbolScaleFor(switchPath)! * 0.85,
+    oneWireSymbolScaleFor(outletPath)! * 0.85
+  ])
 })
 
 test('defines stable nodes and relative sizes for every one-wire switch symbol', () => {
@@ -844,7 +865,7 @@ test('enlarges boxed appliances and terminates single and numbered feeds on thei
       assert.ok(result)
       const device = result.shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'load-0')
       assert.ok(device?.kind === 'symbol')
-      assert.equal(device.scale * 24 / 8, 9)
+      assert.equal(device.scale * 24 / 8, 9 * ONE_WIRE_ROW_COMPONENT_SCALE)
       const sourceScale = device.scale * 24 / 100
       const contact = rowCount === 1
         ? { x: device.position.x + (left + width / 2 - 50) * sourceScale,

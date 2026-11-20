@@ -291,6 +291,31 @@ test('does not backfill an earlier sheet with circuits after a wider family', ()
   ])
 })
 
+test('tightens family gaps only as needed to fit measured circuits on one sheet', () => {
+  const measureFamily = (family: string) => ({
+    family,
+    anchorX: 0,
+    minX: 0,
+    maxX: 100,
+    ink: [{ x: 0, y: 0, width: 100, height: 100 }]
+  })
+  const plan = planOneWireLayout(
+    ['A', 'D', 'Q'].map((family) => ({ family, circuitCount: 1 })),
+    { usableWidth: 338, usableHeight: 700, measureFamily }
+  )
+
+  assert.equal(plan.pageCount, 1)
+  assert.deepEqual(plan.placements.map(({ family, pageIndex }) => ({ family, pageIndex })), [
+    { family: 'A', pageIndex: 0 },
+    { family: 'D', pageIndex: 0 },
+    { family: 'Q', pageIndex: 0 }
+  ])
+  assert.equal(
+    (plan.placements[1].anchorOffset ?? 0) - (plan.placements[0].anchorOffset ?? 0),
+    108
+  )
+})
+
 test('keeps cabinet rows on separate continuation pages', () => {
   const plan = planOneWireLayout(
     [

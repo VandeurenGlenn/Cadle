@@ -57,6 +57,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Sheet planning measures generated circuit ink and uses the same overlap-aware family packing as the final drawing,
   rather than reserving estimated column widths. Circuit busbars sit as low as the printable area and their labels allow;
   multi-column families compare balanced and height-filled columns using overlapping ink, without shrinking symbols.
+  Circuit-row switches and loads use a modestly reduced optical size; breaker and protection symbols keep their rated scale.
+  If measured family ink narrowly exceeds printable width, the inter-family gap contracts in small steps before a
+  continuation sheet is added; symbol scale and non-overlap constraints are preserved.
   Horizontal packing uses the printable width directly rather than adding a second inset inside the print margins.
   automatic layout centers horizontally, never vertically. Generated sheet-reference captions are omitted.
   Cleanup requires every generated object to be represented on a used sheet; manual, locked or unrecognized

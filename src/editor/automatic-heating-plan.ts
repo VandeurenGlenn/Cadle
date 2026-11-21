@@ -25,7 +25,7 @@ import { heatingAccessDistances } from './heating-access-distances.js'
 import { heatingObstacleBounds } from './heating-openings.js'
 import { heatingPointClearance, heatingEntryTangentConflict } from './heating-clearance.js'
 import { repairHeatingCoverageLoops } from './heating-coverage-repair.js'
-import { selectHeatingDoorEntries } from './heating-door-entry-selection.js'
+import { selectHeatingDoorEntries, type HeatingDoorEntrySelectionCache } from './heating-door-entry-selection.js'
 
 import { buildHeatingSpiralFields, heatingPairedEntries, heatingRectangleVariants, openHeatingTurns, type HeatingSpiralField } from './heating-spiral.js'
 export { openHeatingTurns } from './heating-spiral.js'
@@ -68,7 +68,7 @@ const checkHeatingDeadline = (budget: HeatingWorkBudget) => {
 }
 const heatingFeedReservations = new WeakMap<HeatingWorkBudget, { key: string; grid: HeatingGrid; wallCells?: ReadonlySet<number> }>()
 const heatingAreaFieldsCache = new WeakMap<HeatingWorkBudget, { key: string; corridor?: Uint8Array;
-  result: ReturnType<typeof buildHeatingAreaFields> }>()
+  result: ReturnType<typeof buildHeatingAreaFields>; selection: HeatingDoorEntrySelectionCache }>()
 class HeatingFieldAllocationFailure extends Error {
   constructor(message: string, readonly roomKey?: string) { super(message) }
 }
@@ -697,7 +697,9 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
   }
   budget.onProgress?.({ phase: 'circuits', attempt })
   if (budget.sourceScene && budget.roomTargets) {
-    const key = JSON.stringify([settings, [...budget.roomTargets], budget.areaTargetsFixed, budget.allocationVariant ?? 0, [...budget.entryVariants ?? []], [...budget.fieldEntryVariants ?? []], budget.measuredLeads])
+    const fieldKey = () => JSON.stringify([settings, [...budget.roomTargets!], budget.areaTargetsFixed, budget.allocationVariant ?? 0,
+      [...budget.entryVariants ?? []], [...budget.fieldEntryVariants ?? []], budget.measuredLeads])
+    const key = fieldKey()
     const cached = heatingAreaFieldsCache.get(budget)
     const result = cached?.key === key && cached.corridor === fieldGrid.feedCorridor ? cached.result : buildHeatingAreaFields(fieldGrid, budget.sourceScene, settings, scale, position, {
       fieldEntryVariants: budget.fieldEntryVariants, measuredLeads: budget.measuredLeads, allocationVariant: budget.allocationVariant, entryVariants: budget.entryVariants, targets: budget.roomTargets, omitted: unheated, leads: budget.leadDistances,
@@ -712,13 +714,22 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
       throw new HeatingFieldAllocationFailure(`${result.failedRoom}: geen geldig doorlopend legvlak gevonden. ${result.failureDetail ?? ''}`.trim(), result.failedRoomKey ?? (room ? heatingRoomKey(room) : undefined))
     }
     budget.allocationAlternatives = Math.max(budget.allocationAlternatives ?? 1, result.allocationAlternatives ?? 1)
-    heatingAreaFieldsCache.set(budget, { key, corridor: fieldGrid.feedCorridor, result })
-    const jobs = settings.connectionMode === 'zone' && budget.connectionZone
+    const selection = cached?.result === result ? cached.selection : {}
+    heatingAreaFieldsCache.set(budget, { key, corridor: fieldGrid.feedCorridor, result, selection })
+    // A changed allocation rebuilds the feed corridor before it is routed.
+    // Defer entrance searches until that final corridor is available.
+    const sameAllocation = budget.areaTargetsFixed || !result.targets ||
+      (result.targets.size === budget.roomTargets.size &&
+        [...result.targets].every(([room, count]) => budget.roomTargets!.get(room) === count))
+    const jobs = sameAllocation && settings.connectionMode === 'zone' && budget.connectionZone
       ? selectHeatingDoorEntries(result.jobs, nativeFloor, budget.sourceScene, position, settings, scale,
-        { variants: budget.fieldEntryVariants ??= new Map(), sourceRadiusMm: Math.max(500, budget.connectionZone.radiusMm),
+        { cache: selection, variants: budget.fieldEntryVariants ??= new Map(), sourceRadiusMm: Math.max(500, budget.connectionZone.radiusMm),
           wallCells: heatingPermittedWalls(budget), checkpoint: () => checkHeatingDeadline(budget) })
-      : [...result.jobs]
-    return { jobs: jobs as CircuitJob[], occupied: new Set(jobs.flatMap((job) => job.cells)), initialFieldCount: jobs.length, combiningFinished: true }
+      : result.jobs
+    // The selected variants change entrances within these same partitions.
+    // Keep the fields under the resulting key when the connection work pauses.
+    heatingAreaFieldsCache.set(budget, { key: fieldKey(), corridor: fieldGrid.feedCorridor, result, selection })
+    return { jobs: jobs.map((job) => ({ ...job })), occupied: new Set(jobs.flatMap((job) => job.cells)), initialFieldCount: jobs.length, combiningFinished: true }
   }
   const rooms = [...grid.rooms].sort((a, b) => {
     const distance = (r: typeof a) => { const p = grid.point(r.minY * grid.width + r.minX), q = grid.point(r.maxY * grid.width + r.maxX); return Math.abs((p.x + q.x) / 2 - position.x) + Math.abs((p.y + q.y) / 2 - position.y) }

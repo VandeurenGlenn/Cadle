@@ -61,6 +61,10 @@ const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capac
   allowWallPassages: !process.argv.includes('--doors-only'), ...(option('max-length', '') ? { design: { maxCircuitLengthM: Number(option('max-length', '100')) } } : {}) }
 if (new Set(roomTargets.map(([room]) => room)).size !== roomTargets.length || roomTargets.reduce((sum, [, count]) => sum + count, 0) > settings.capacity)
   throw new Error('Room targets must have unique keys and fit the requested physical capacity.')
+// Measured leads belong to this exact floor and design. Unlike route hints,
+// they cannot be re-audited against another drawing before allocation.
+const floorKey = createHash('sha256').update(bytes).update(JSON.stringify({ scale, settings, source })).digest('hex')
+const warmLeads = warm?.allocationFeedback?.floorKey === floorKey ? warm.allocationFeedback.measuredLeads : undefined
 const hash = createHash('sha256').update(bytes).update(JSON.stringify({ scale, settings, source, timeout, slices, mode, captureBundle }))
 if (resume) hash.update(JSON.stringify(resume))
 if (warmBytes) hash.update(warmBytes)
@@ -108,7 +112,7 @@ if (mode !== 'manual') {
   const areaParts = {}
   const start = performance.now()
   try {
-    const budget = { session: {}, measuredLeads: resume?.measuredLeads ?? resumeBundle?.measuredLeads,
+    const budget = { session: {}, measuredLeads: resume?.measuredLeads ?? resumeBundle?.measuredLeads ?? warmLeads,
         ...(roomTargets.length ? { roomTargets: new Map(roomTargets) } : {}),
         allocationVariant, entryVariants: new Map(entryVariants), fieldEntryVariants: new Map(resume?.fieldEntryVariants ?? resumeBundle?.fieldEntryVariants ?? []), pauseOnDeadline: slices > 1, routes: 600, deadline: Date.now() + timeout,
         onFeedReservations(grid, nativeFloor, targets) {
@@ -204,12 +208,13 @@ if (mode !== 'manual') {
           { x: 80, y: 80, width: (document.worldWidth ?? 2376) - 160, height: (document.worldHeight ?? 1680) - 160 }, 0, 0, budget)
         break
       } catch (error) {
-        if (budget.session.work?.connectionRefinement) {
+        if (budget.session.work?.connectionRefinement && existsSync(`${output}.bundle.json`)) {
           const checkpoint = budget.session.work.connectionRefinement
           const bundle = JSON.parse(readFileSync(`${output}.bundle.json`, 'utf8'))
           if (JSON.stringify(bundle.coils.map((coil) => heatingPipeGeometry(coil).points)) === checkpoint.key)
             writeFileSync(`${output}.routing-checkpoint.json`, JSON.stringify({ fingerprint: key, key: checkpoint.key, bundle, allocationVariant: bundle.allocationVariant,
             entryVariants: bundle.entryVariants, fieldEntryVariants: bundle.fieldEntryVariants, measuredLeads: bundle.measuredLeads,
+            allocationFeedback: { floorKey, measuredLeads: budget.session.work.measuredLeads },
             state: { ...checkpoint.state, fineGrid: undefined } }))
         }
         if (!(error instanceof HeatingPlanningPaused) || slice + 1 === slices) throw error

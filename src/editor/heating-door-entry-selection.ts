@@ -11,22 +11,66 @@ import { heatingEntryTangentConflict, retractHeatingFeedEntries } from './heatin
 import { checkHeatingPlan } from './heating-checks.js'
 import { heatingCurveWallConflict } from './heating-routing.js'
 import { heatingSourceShortcutRooms } from './heating-wall-policy.js'
-import { heatingObstacleBounds } from './heating-openings.js'
+import { heatingDoorSymbolThreshold, heatingObstacleBounds, isHeatingDoorSymbol } from './heating-openings.js'
 import { shapeBounds } from './model/model.js'
 import { heatingDesignLimits } from './heating-design.js'
+
+type SelectionInput = {
+  context: string
+  masks: (Uint8Array | Int32Array)[]
+  input: string
+  requested: string
+}
+export type HeatingDoorEntrySelectionCache = {
+  completed?: SelectionInput & { output: string; variants: [string, number][]; jobs: HeatingSpiralField[] }
+}
+type SelectionWork = SelectionInput & { next: number; jobs: HeatingSpiralField[]; variants: Map<string, number> }
+const interruptedSelections = new WeakMap<HeatingDoorEntrySelectionCache, SelectionWork>()
 
 /** Prefer a witnessed room-door entry before searching the whole building.
  * A negative bounded local search remains a fallback, never an impossibility
  * proof. Only the original partition's validated inlet variants are considered. */
 export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], grid: HeatingGrid, scene: readonly Shape[],
   source: Point, settings: HeatingAreaSettings, scale: number, options: {
-    variants: Map<string, number>; checkpoint: () => void; sourceRadiusMm?: number; wallCells?: ReadonlySet<number>;
+    cache?: HeatingDoorEntrySelectionCache; variants: Map<string, number>; checkpoint: () => void; sourceRadiusMm?: number; wallCells?: ReadonlySet<number>;
   }): HeatingSpiralField[] => {
-  const jobs = input.map((job) => ({ ...job })), checkpoint = options.checkpoint
+  const checkpoint = options.checkpoint
+  checkpoint()
+  const obstacles = heatingObstacleBounds(scene, shapeBounds)
+  const cache = options.cache
+  const masks = [grid.wall, grid.door, grid.obstacle, grid.room]
+  const inputKey = cache ? JSON.stringify(input) : ''
+  const requested = cache ? JSON.stringify([...options.variants]) : ''
+  const context = cache ? JSON.stringify([
+    grid.origin, grid.step, grid.width, grid.height, grid.rooms.map((room) => [room.id, heatingRoomKey(room)]),
+    source, scale, settings, options.sourceRadiusMm, [...options.wallCells ?? []], obstacles,
+    scene.flatMap<unknown[]>((shape) => {
+      if (shape.hidden) return []
+      if (shape.kind === 'wall' || shape.kind === 'door') return [[shape.kind, shape.start, shape.end, shape.strokeWidth]]
+      return isHeatingDoorSymbol(shape) ? [['door-symbol', heatingDoorSymbolThreshold(shape)]] : []
+    }),
+  ]) : ''
+  const sameContext = (saved: SelectionInput) => saved.context === context &&
+    masks.every((mask, index) => mask.length === saved.masks[index].length && mask.every((value, cell) => value === saved.masks[index][cell]))
+  const hit = cache?.completed
+  if (hit && (hit.input === inputKey && hit.requested === requested ||
+    (hit.input === inputKey || hit.output === inputKey) && JSON.stringify(hit.variants) === requested) && sameContext(hit)) {
+    for (const [key, variant] of hit.variants) options.variants.set(key, variant)
+    return structuredClone(hit.jobs)
+  }
+  let work = cache && interruptedSelections.get(cache)
+  if (!work || work.input !== inputKey || work.requested !== requested || !sameContext(work)) {
+    work = {
+      context, masks: cache ? masks.map((mask) => mask.slice()) : [], input: inputKey, requested,
+      next: 0, jobs: cache ? structuredClone([...input]) : input.map((job) => ({ ...job })), variants: new Map(options.variants),
+    }
+    if (cache) interruptedSelections.set(cache, work)
+  }
+  const { jobs, variants } = work
   const limits = heatingDesignLimits(settings.diameterMm, settings.design)
   const pipe = (job: HeatingSpiralField, index: number) => createHeatingPipe(`door-choice-${index}`, job.points!,
     { ...heatingPipeData(scale), ...settings, automatic: true, circuitId: `door-choice-${index}`, pipeRole: 'loop' })
-  const coils = jobs.map(pipe), obstacles = heatingObstacleBounds(scene, shapeBounds)
+  const coils = jobs.map(pipe)
   const shortcutRooms = heatingSourceShortcutRooms(grid, source, options.wallCells ?? new Set(), scale)
   const raster = (points: readonly Point[]) => {
     const result: number[] = []
@@ -39,8 +83,9 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     }
     return result
   }
-  for (let index = 0; index < jobs.length; index++) {
+  for (; work.next < jobs.length; work.next++) {
     checkpoint()
+    const index = work.next
     const original = jobs[index]
     // Joining another room changes the complete curve. Its former standalone
     // entry variants must never replace the joined circuit and discard a room.
@@ -70,7 +115,7 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     // Keep an existing good entrance; this preserves work in other rooms.
     if (guard(coils[index]) !== null) continue
     const seen = new Set([heatingConnectionEntryKey(original.points)])
-    const minimum = Math.max(original.entryVariant ?? 0, options.variants.get(original.entryKey) ?? 0)
+    const minimum = Math.max(original.entryVariant ?? 0, variants.get(original.entryKey) ?? 0)
     // A saved value is the requested next (or already proved) variant. Resume
     // must retry that value, while skipping the unchanged original entrance.
     for (let variant = Math.max((original.entryVariant ?? 0) + 1, minimum); variant < 8; variant++) {
@@ -93,9 +138,17 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
       const witness = guard(proposed)
       if (!witness?.length) continue
       jobs[index] = candidate; coils[index] = proposed
-      options.variants.set(original.entryKey, variant)
+      variants.set(original.entryKey, variant)
       break
     }
   }
+  if (cache) {
+    cache.completed = {
+      context, masks: work.masks, input: inputKey, output: JSON.stringify(jobs),
+      requested, variants: [...variants], jobs: structuredClone(jobs),
+    }
+    interruptedSelections.delete(cache)
+  }
+  for (const [key, variant] of variants) options.variants.set(key, variant)
   return jobs
 }

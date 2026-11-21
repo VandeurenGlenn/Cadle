@@ -137,9 +137,9 @@ const segmentIndex = (segments: readonly { a: Point; b: Point }[], reach: number
 
 /** Both callers get the same rounded geometry and the same rejection rules.
  * An unsuccessful area never turns into extra, unrequested circuits. */
-const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, scale: number,
-  checkpoint: () => void = () => {}, trace?: HeatingAreaTrace): HeatingAreaLoop | null => {
-  if (!area.boundaries.length) return null
+const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSettings, scale: number,
+  checkpoint: () => void = () => {}, trace?: HeatingAreaTrace): HeatingAreaLoop[] => {
+  if (!area.boundaries.length) return []
   const pitch = drawingUnitsForMetres(settings.spacingMm / 1000, scale)
   const radius = drawingUnitsForMetres(heatingDesignLimits(settings.diameterMm, settings.design).minBendRadiusMm / 1000, scale)
   const diameter = drawingUnitsForMetres(settings.diameterMm / 1000, scale)
@@ -153,7 +153,7 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
     rings.push(clockwise(inset.boundaries[0]))
   }
   if (trace) trace.rings = rings.length
-  if (!initial.boundaries.length) return null
+  if (!initial.boundaries.length) return []
   const physical = area.clearance ? { boundaries: area.clearance.boundaries, entry: area.entry } : area
   const boundary = physical.boundaries.flatMap((path) => path.map((a, i) => [a, path[(i + 1) % path.length]] as const))
   const physicalEdge = area.clearance?.edge ?? edge
@@ -258,15 +258,14 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
     if (!best || acceptable && !previousAcceptable || acceptable && previousAcceptable && entryDistance(points) < entryDistance(best.points) - 1e-6 ||
       !acceptable && !previousAcceptable && result.gapRatio < best.gapRatio - .001) best = result
   }
-  const selected = () => {
-    if (!best) return null
+  const rankedVariants = () => {
+    if (!best) return []
     const bestKey = physicalEntryKey(best.points)
     // Variant zero is the chosen best inlet. Start alternatives after that
     // exact physical inlet; its place in the quality-sorted pool may differ.
-    const variants = [best, ...[...entries.values()]
+    return [best, ...[...entries.values()]
       .filter((loop) => physicalEntryKey(loop.points) !== bestKey && loop.gapRatio <= Math.max(.02, best!.gapRatio + .001))
       .sort((a, b) => entryDistance(a.points) - entryDistance(b.points))]
-    return variants[(settings.entryVariant ?? 0) % variants.length]
   }
   // Rectangles retain the established, audited centre turn. Irregular areas
   // use complete inset outlines, rather than independent rectangle fragments.
@@ -285,7 +284,7 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
         const field = rectangularHeatingField(w, h, { ...settings, returnToEntrySide: true }, scale, checkpoint, axis)
         if (field) for (const flipX of [false, true]) for (const flipY of [false, true]) evaluate(field.points.map((p) => ({ x: b.x + offset.x + (flipX ? w - p.x : p.x), y: b.y + offset.y + (flipY ? h - p.y : p.y) })), field.pattern)
       }
-      if (best?.gapRatio < .02) return selected()
+      if (best?.gapRatio < .02) return rankedVariants()
     }
     }
   }
@@ -532,10 +531,10 @@ const buildHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, 
       }
     }
   }
-  return selected()
+  return rankedVariants()
 }
 
-const areaLoopCache = new Map<string, { loop: HeatingAreaLoop | null; trace: HeatingAreaTrace }>()
+const areaLoopCache = new Map<string, { variants: HeatingAreaLoop[]; trace: HeatingAreaTrace }>()
 /** Translation-independent, bounded cache for pointer moves, inspectors and
  * exports. Cached arrays are copied so an automatic route cannot alter a preview. */
 export const generateHeatingAreaLoop = (area: HeatingArea, settings: HeatingAreaSettings, scale: number,
@@ -549,15 +548,16 @@ export const generateHeatingAreaLoop = (area: HeatingArea, settings: HeatingArea
       ...(area.clearance.layingBoundaries ? { layingBoundaries: area.clearance.layingBoundaries.map((ring) => ring.map(shift)) } : {}),
       ...(area.clearance.entryBoundaries ? { entryBoundaries: area.clearance.entryBoundaries.map((ring) => ring.map(shift)) } : {}),
       ...(area.clearance.coverageStep !== undefined ? { coverageStep: area.clearance.coverageStep } : {}) } } : {}) }
-  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, scale, settings.entryVariant ?? 0])
+  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, scale])
   let cached = areaLoopCache.get(key)
   if (!cached) {
-    const details: HeatingAreaTrace = {}, loop = buildHeatingAreaLoop(normalized, settings, scale, checkpoint, details)
-    cached = { loop, trace: details }; areaLoopCache.set(key, cached)
+    const details: HeatingAreaTrace = {}, variants = buildHeatingAreaLoopVariants(normalized, settings, scale, checkpoint, details)
+    cached = { variants, trace: details }; areaLoopCache.set(key, cached)
     if (areaLoopCache.size > 128) areaLoopCache.delete(areaLoopCache.keys().next().value!)
   }
   if (trace) Object.assign(trace, cached.trace, { ...(cached.trace.point ? { point: { x: cached.trace.point.x + origin.x, y: cached.trace.point.y + origin.y } } : {}) })
-  return cached.loop ? { ...cached.loop, points: cached.loop.points.map((p) => ({ x: p.x + origin.x, y: p.y + origin.y })) } : null
+  const loop = cached.variants[(settings.entryVariant ?? 0) % cached.variants.length]
+  return loop ? { ...loop, points: loop.points.map((p) => ({ x: p.x + origin.x, y: p.y + origin.y })) } : null
 }
 
 type AreaPartition = { areas: HeatingArea[]; score: number }

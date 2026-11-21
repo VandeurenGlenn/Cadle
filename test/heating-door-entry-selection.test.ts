@@ -173,3 +173,19 @@ test('door-entry selection propagates a pause without changing source jobs or co
   assert.equal(JSON.stringify(jobs), before)
   assert.equal(variants.size, 0)
 })
+
+
+test('a pause between fields resumes at the pending field', () => {
+  const fields = jobs.slice(1, 4)
+  const cache: HeatingDoorEntrySelectionCache = {}, variants = new Map<string, number>()
+  const pause = new Error('pause before the third field')
+  let checkpoints = 0
+  assert.throws(() => selectHeatingDoorEntries(fields, native, scene, source, settings, scale,
+    { cache, variants, checkpoint: () => { if (++checkpoints === 4) throw pause } }), (error) => error === pause)
+  assert.deepEqual(cache, {})
+  checkpoints = 0
+  const result = selectHeatingDoorEntries(fields, native, scene, source, settings, scale,
+    { cache, variants, checkpoint: () => { checkpoints++ } })
+  assert.deepEqual(result, fields)
+  assert.equal(checkpoints, 2, 'the entry checkpoint and only the pending field run on resume')
+})

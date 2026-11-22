@@ -15,6 +15,7 @@ import { routeDoorAdaptedHeatingFeeds, type HeatingDoorAdapterWork } from './hea
 import { heatingDoorSymbolThreshold, isHeatingDoorSymbol } from './heating-openings.js'
 import { heatingFeedGrid } from './heating-feed-grid.js'
 import { heatingEntrySealsOtherLaunch } from './heating-entry-enclosure.js'
+import { alignHeatingFlowLegs, shiftHeatingInletLane, smoothHeatingFlowLanes } from './heating-flow-lanes.js'
 import { heatingSourceShortcutRooms } from './heating-wall-policy.js'
 import { heatingCurveWallConflict, heatingPathPoints, heatingRouteCorridor, heatingSharedDoors, heatingWallAllowed, routeHeating, simplifyHeatingPath, type HeatingRoutingOptions, type HeatingGrid } from './heating-routing.js'
 
@@ -24,7 +25,7 @@ type RefinementSnapshot = { paths: number[][]; points: Point[][]; sources: numbe
   failures: { goal: number; reason: string; point?: Point; detail?: string }[] }
 type PriorityNode = { routes: RefinementSnapshot; edges: [number, number][]; errors: number; cost: number; safeGoals: number; conflict?: [number, number] }
 type SeedWork = { strategy?: string; order: number[]; next: number; routes: RefinementSnapshot }
-type PriorityWork = { rootDone: number; rootPolicy?: string; root?: RefinementSnapshot; queue: PriorityNode[]; seen: string[]; expanded: number;
+type PriorityWork = { rootDone: number; rootPolicy?: string; laneSeed?: RefinementSnapshot | null; root?: RefinementSnapshot; queue: PriorityNode[]; seen: string[]; expanded: number;
   bestSeed?: { routes: RefinementSnapshot; completed: number; blocked: number };
   seedPolicy?: string; seeded?: boolean; pendingSeeds?: SeedWork[]; triedSeeds?: string[]; seed?: SeedWork;
   active?: { node: PriorityNode; branch: number; candidate?: RefinementSnapshot; edges?: [number, number][]; affected?: number[]; next?: number }; solution?: RefinementSnapshot }
@@ -57,6 +58,7 @@ export type HeatingConnectionRefinementState = { fineGrid?: HeatingGrid; priorit
 export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly { source: number; cells: number[] }[],
   sourceStubs: number[][], targetStubs: number[][], coils: RectShape[], settings: Settings, scale: DrawingScale,
   options: { scene?: readonly Shape[]; nativeFloor?: HeatingGrid; nativeWallCells?: ReadonlySet<number>; fineGrid?: boolean; state?: HeatingConnectionRefinementState; routeOptions?: Pick<HeatingRoutingOptions, 'wallEntryPenalty' | 'manifoldAccess' | 'preferredDoors'>; sourcePosition?: Point; sourceRadiusMm?: number; permittedWallCells: ReadonlySet<number>; obstacles?: readonly Box[]; preserved?: readonly RectShape[];
+    entryWitnesses?: ReadonlyMap<string, RectShape[]>;
     checkpoint?: () => void; onProgress?: (completed: number, prepared?: number, routeAttempt?: number) => void;
     /** Inspect a physically proved independent pair before routing later roots.
      * Returning false requests repartitioning from its measured lead lengths. */
@@ -266,7 +268,7 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
     return createHeatingPipe(`pending-entry-${i}`, [entry, end], { ...data, automatic: false,
       circuitId: coils[Math.floor(i / 2)].heating!.circuitId, pipeRole: 'supply' })
   }
-  const routeGoal = (goal: number) => {
+  const routeGoal = (goal: number, shortSource?: { fine: ReadonlySet<number>; native: ReadonlySet<number> }) => {
     checkpoint()
     const fastSeed = coils.length >= 4 && Boolean(state.priority?.seed) && refined.length < Math.ceil(coils.length / 3) * 2
     const head = endpoints[goal], headRoot = grid.index(head), snapped = grid.point(headRoot)
@@ -275,10 +277,11 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
       point: (cell) => { const p = grid.point(cell); return { x: p.x + delta.x, y: p.y + delta.y } },
       index: (p) => grid.index({ x: p.x - delta.x, y: p.y - delta.y }) }
     const targetRoom = grid.room[headRoot]
-    const wallAccess = roomWalls(targetRoom), walls = { ...baseWalls, permittedWallCells: wallAccess.fine }
+    const wallAccess = shortSource ?? roomWalls(targetRoom)
+    const walls = { ...baseWalls, permittedWallCells: wallAccess.fine, ...(shortSource ? { wallEntryPenalty: 0 } : {}) }
     const fixed = refined.map((i) => envelopes[i])
     const partner = goal ^ 1, paired = refined.includes(partner)
-    const partnerDoors = paired && targetRoom === grid.room[grid.index(endpoints[partner])] ? heatingSharedDoors(grid, paths[partner]) : undefined
+    const partnerDoors = !shortSource && paired && targetRoom === grid.room[grid.index(endpoints[partner])] ? heatingSharedDoors(grid, paths[partner]) : undefined
     const pairWidth = Math.max(drawingUnitsForMetres(.4, scale),
       Math.hypot(head.x - endpoints[partner].x, head.y - endpoints[partner].y) + radius * 2)
     const pairedCorridor = paired ? heatingRouteCorridor(grid, paths[partner], Math.ceil(pairWidth / grid.step)) : undefined
@@ -288,7 +291,7 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
       if (i === goal || refined.includes(i) || Math.floor(i / 2) !== Math.floor(goal / 2)) return []
       return [approach(i)]
     })
-    const key = JSON.stringify(['source-lanes-heuristic-v6', fastSeed, sourceLanes?.[Math.floor(goal / 2)], searchWeight, goal, false, options.sourcePosition ? sources[goal] : sources, paths[goal], paired ? paths[partner] : null,
+    const key = JSON.stringify(['source-lanes-heuristic-v6', fastSeed, sourceLanes?.[Math.floor(goal / 2)], searchWeight, goal, Boolean(shortSource), options.sourcePosition ? sources[goal] : sources, paths[goal], paired ? paths[partner] : null,
       fixed.map((pipe) => [pipe.heating!.circuitId, pipe.heating!.bendRadiusMm, heatingPipeGeometry(pipe).points])])
     const cache = state.routeWork ??= []
     let work = cache.find((entry) => entry.key === key)
@@ -388,7 +391,7 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
       if (!connected) { failures.push({ goal, reason: 'disconnected', point: head }); return false }
     }
     const corridor = pairedCorridor ?? heatingRouteCorridor(grid, paths[goal], radiusCells * 2)
-    const cellPenalty = Float32Array.from(grid.wall, (_, cell) => corridor.has(cell) ? 0 : 2)
+    const cellPenalty = shortSource ? undefined : Float32Array.from(grid.wall, (_, cell) => corridor.has(cell) ? 0 : 2)
     let failure: typeof failures[number] = work.failure ?? { goal, reason: 'source-blocked' }
     const bendChoices = [...new Set((coils.length >= 4 ? [limits.minBendRadiusMm] : [limits.minBendRadiusMm, limits.minBendRadiusMm + settings.spacingMm,
       limits.minBendRadiusMm + 20, limits.minBendRadiusMm + 40, limits.minBendRadiusMm * 2, limits.minBendRadiusMm * 3]).map((value) => Math.ceil(value / (grid.step * scale / 8)) * grid.step * scale / 8))]
@@ -484,6 +487,32 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
   const installPair = (circuit: number, vertices: Point[][], bendRadii = [radii[circuit * 2], radii[circuit * 2 + 1]]) => {
     for (let i = 0; i < 2; i++) installGoal(circuit * 2 + i, vertices[i], bendRadii[i])
   }
+  const shortenAtSourceWall = (circuit: number) => {
+    if (!options.sourcePosition || !sourceShortcuts.size) return
+    const pair = [circuit * 2, circuit * 2 + 1], target = nativeFloor.room[nativeFloor.index(endpoints[pair[0]])]
+    const completeM = () => (geometryFor(coils[circuit]).length + pair.reduce((sum, goal) => sum + geometryFor(envelopes[goal]).length, 0)) * scale / 8000 + limits.allowanceM
+    if (!sourceShortcuts.has(target) || completeM() < limits.maxCircuitLengthM) return
+    const source = options.sourcePosition
+    const native = new Set([...nativeWalls].filter((cell) =>
+      heatingSourceShortcutRooms(nativeFloor, source, new Set([cell]), scale).has(target)))
+    if (!native.size) return
+    const fine = options.nativeFloor
+      ? new Set([...options.permittedWallCells].filter((cell) => native.has(nativeFloor.index(grid.point(cell)))))
+      : native
+    const before = snapshot()
+    try {
+      for (const goal of [...pair].sort((a, b) => geometryFor(envelopes[b]).length - geometryFor(envelopes[a]).length)) {
+        restore(before)
+        refined.splice(0, refined.length, ...refined.filter((i) => i !== goal))
+        if (!refined.includes(goal ^ 1)) refined.push(goal ^ 1)
+        if (routeGoal(goal, { fine, native }) && completeM() < limits.maxCircuitLengthM) return
+      }
+      restore(before)
+    } catch (error) {
+      restore(before)
+      throw error
+    }
+  }
   const preparedPairAccepted = (circuit: number) => {
     if (!options.onPreparedPair) return true
     const goals = [circuit * 2, circuit * 2 + 1]
@@ -517,7 +546,10 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
     let adapter = adapters.find((value) => value.key === contextKey)
     if (!adapter) { adapter = { key: contextKey, work: {} }; adapters.push(adapter); if (adapters.length > 32) adapters.shift() }
     const entries = state.doorEntries ??= [], entryKey = `${circuit}:${adapterEntryContext}`
-    const hint = entries.find((entry) => entry.key === entryKey)?.pipes
+    const witness = options.entryWitnesses?.get(heatingConnectionEntryKey(geometryFor(coils[circuit]).points))
+    const hint = entries.find((entry) => entry.key === entryKey)?.pipes ?? witness?.map((pipe) => ({
+      ...pipe, heating: { ...pipe.heating!, circuitId: coils[circuit].heating!.circuitId }
+    }))
     let adapted: ReturnType<typeof routeDoorAdaptedHeatingFeeds>
     try { adapted = routeDoorAdaptedHeatingFeeds(grid, options.scene, coils[circuit], coils, fixed, settings, scale, {
       source: options.sourcePosition, sourceRadiusMm: options.sourceRadiusMm ?? 1500,
@@ -643,16 +675,49 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
       if (independentTried) return false
       independentTried = true
       const first = paths[pair[0]].length >= paths[pair[1]].length ? pair : [...pair].reverse()
+      const independent = new Map<number, { points: Point[]; radius: number }>()
+      const retainsOtherEntries = (candidate: RectShape[]) => !options.sourcePosition ||
+        !heatingEntrySealsOtherLaunch(coils[circuit], candidate,
+          [...coils, ...(options.preserved ?? []), ...before.refined.map((goal) => envelopes[goal])], settings, scale, {
+            grid, nativeFloor, nativeWallCells: nativeWalls, permittedWallCells: options.permittedWallCells,
+            source: options.sourcePosition, sourceRadiusMm: options.sourceRadiusMm, obstacles: options.obstacles,
+            checkpoint, baseline: baselineFor(nativeWalls) })
       try {
         for (const sequence of [first, [...first].reverse()]) {
           restore(before)
-          if (routeGoal(sequence[0]) && routeGoal(sequence[1]) && (!options.sourcePosition ||
-            !heatingEntrySealsOtherLaunch(coils[circuit], pair.map((goal) => envelopes[goal]),
-              [...coils, ...(options.preserved ?? []), ...before.refined.map((goal) => envelopes[goal])], settings, scale, {
-                grid, nativeFloor, nativeWallCells: nativeWalls, permittedWallCells: options.permittedWallCells,
-                source: options.sourcePosition, sourceRadiusMm: options.sourceRadiusMm, obstacles: options.obstacles,
-                checkpoint, baseline: baselineFor(nativeWalls) }))) return true
+          const goal = sequence[0]
+          if (routeGoal(goal)) {
+            independent.set(goal, { points: points[goal], radius: radii[goal] })
+            if (routeGoal(sequence[1]) && retainsOtherEntries(pair.map((id) => envelopes[id]))) return true
+          }
           rejected = failures.slice(before.failures.length)
+        }
+        restore(before)
+        // Two legal one-leg approaches can land on the same side of a tight
+        // apron. Move their straight runs before rejecting the complete inlet.
+        if (options.sourcePosition && independent.size === 2) {
+          const fixed = [...coils, ...options.preserved ?? [], ...refined.map((goal) => envelopes[goal])]
+          const candidates = pair.map((goal) => {
+            const leg = independent.get(goal)!
+            const access = { allowWalls: true, permittedWallCells: roomWalls(nativeFloor.room[nativeFloor.index(endpoints[goal])]).native }
+            const usesDoorOnly = !heatingCurveWallConflict(nativeFloor, geometryFor(tube(leg.points, goal, leg.radius)).pieces, {})
+            return [leg.points, ...shiftHeatingInletLane(leg.points, radius, grid.step)].flatMap((vertices) => {
+              checkpoint()
+              const pipe = tube(vertices, goal, leg.radius), geometry = geometryFor(pipe)
+              const wall = heatingCurveWallConflict(nativeFloor, geometry.pieces, usesDoorOnly ? {} : access)
+              return sourceEnd(vertices[0]) && !wall && !auditHeatingPlan([...fixed, pipe], [], settings.design, [...options.obstacles ?? []],
+                { focusPipeIds: new Set([pipe.id]), stopOnConflict: true, checkpoint }).errors ? [{ vertices, pipe }] : []
+            })
+          })
+          const lengths = geometryFor(coils[circuit]).length
+          for (const a of candidates[0]) for (const b of candidates[1]) {
+            const feeds = [a.pipe, b.pipe]
+            if ((lengths + geometryFor(a.pipe).length + geometryFor(b.pipe).length) * scale / 8000 + limits.allowanceM > limits.maxCircuitLengthM ||
+              auditHeatingPlan(feeds, [], settings.design, [], { stopOnConflict: true, checkpoint }).errors ||
+              !retainsOtherEntries(feeds)) continue
+            installPair(circuit, [a.vertices, b.vertices], pair.map((goal) => independent.get(goal)!.radius))
+            return true
+          }
         }
       } catch (error) { restore(before); throw error }
       restore(before)
@@ -833,7 +898,7 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
           bendRadiusMm: search.root.bendRadiusMm.slice(circle * 2, circle * 2 + 2) })
         state.warmPairs = cached.slice(-32)
       }
-      search.rootDone = 0; search.root = undefined; search.seedPolicy = undefined
+      search.rootDone = 0; search.root = undefined; search.laneSeed = undefined; search.seedPolicy = undefined
       search.seeded = false; search.seed = undefined; search.queue = []; search.active = undefined
       search.rootPolicy = 'paired-corridors-v3'
     }
@@ -861,8 +926,19 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
         let reused = false
         if (warm && options.sourcePosition && warm.points.length === 2 && warm.points.every((p) => p.length >= 2 && sourceEnd(p[0]))) {
           const candidates = warm.points.map((p, i) => tube(p, circle * 2 + i, warm.bendRadiusMm[i]))
-          reused = coherent(candidates) && !candidates.some((pipe) => heatingPipeGeometry(pipe).bends.some((bend) => bend.radiusMm < limits.minBendRadiusMm - .1) ||
-            heatingCurveWallConflict(nativeFloor, heatingPipeGeometry(pipe).pieces, { allowWalls: true, permittedWallCells: nativeWalls })) &&
+          const hostRoom = nativeFloor.room[nativeFloor.index(currentPoints[0])]
+          // A room adjoining the source can use its authorised wall opening
+          // for one leg and an existing door for the other. Recheck both
+          // complete curves before allowing this exception to the shared path.
+          const usesSourceOpening = sourceShortcuts.has(hostRoom) && candidates.some((pipe) => {
+            const crossing = heatingCurveWallConflict(nativeFloor, geometryFor(pipe).pieces, {})
+            if (!crossing) return false
+            const cell = nativeFloor.index(crossing)
+            return nativeWalls.has(cell) &&
+              heatingSourceShortcutRooms(nativeFloor, options.sourcePosition!, new Set([cell]), scale).has(hostRoom)
+          })
+          reused = (coherent(candidates) || usesSourceOpening) && !candidates.some((pipe) => geometryFor(pipe).bends.some((bend) => bend.radiusMm < limits.minBendRadiusMm - .1) ||
+            heatingCurveWallConflict(nativeFloor, geometryFor(pipe).pieces, { allowWalls: true, permittedWallCells: nativeWalls })) &&
             !auditHeatingPlan([...coils, ...(options.preserved ?? []), ...candidates], [], settings.design, [...options.obstacles ?? []],
               { focusPipeIds: new Set(candidates.map((pipe) => pipe.id)), stopOnConflict: true, checkpoint }).errors &&
             !heatingEntrySealsOtherLaunch(coils[circle], candidates, [...coils, ...(options.preserved ?? [])], settings, scale, {
@@ -871,6 +947,7 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
           if (reused) installPair(circle, warm.points, warm.bendRadiusMm)
         }
         if (!reused && !connectPair(circle)) return { paths, points, sources, bendRadiusMm: radii, refined: [], failures }
+        shortenAtSourceWall(circle)
         if (!preparedPairAccepted(circle)) return { paths, points, sources, bendRadiusMm: radii, refined, failures }
         search.root = snapshot(); search.rootDone = circle + 1
         options.onProgress?.(0, search.rootDone, state.routeAttempts ?? 0)
@@ -886,11 +963,92 @@ export const refineHeatingConnectionBundle = (grid: HeatingGrid, flows: readonly
           safeGoals: coils.filter((coil) => !errors.some((issue) => issue.circuits.includes(coil.heating!.circuitId!))).length * 2, cost: envelopes.reduce((sum, pipe) => sum + heatingPipeGeometry(pipe).length, 0),
           ...(conflict?.length === 2 && conflict.every((id) => id >= 0) ? { conflict: conflict as [number, number] } : {}) }
       }
+      if (options.sourcePosition && coils.length >= 4 && search.laneSeed === undefined) {
+        // Independently rounded roots tend to crowd the same threshold. Test
+        // the lanes together so moving one tube can open space for its neighbour.
+        const root = search.root!
+        const fixed = [...coils, ...(options.preserved ?? [])]
+        const guides = flows.map((flow, goal) => simplifyHeatingPath([
+          ...sourceStubs[flow.source].slice(0, -1), ...flow.cells, ...targetStubs[goal].slice(0, -1).reverse()
+        ].map(grid.point)))
+        const variants = guides.map((guide, goal) => {
+          const original = tube(root.points[goal], goal, root.bendRadiusMm[goal]), result = [original]
+          const out = roomWalls(nativeFloor.room[nativeFloor.index(endpoints[goal])])
+          const exact = exactEnd(guide, endpoints[goal])
+          const candidates = [
+            ...[0, -radius, radius].map((offset) => smoothHeatingFlowLanes(exact, radius, offset)),
+            ...alignHeatingFlowLegs(root.points[goal], guide, radius, grid.step)
+          ]
+          const tried = new Set([JSON.stringify(root.points[goal])])
+          const room = nativeFloor.room[nativeFloor.index(root.points[goal][0])]
+          const doorOnly = !heatingCurveWallConflict(nativeFloor, geometryFor(original).pieces, { permittedWallCells: new Set() })
+          for (const vertices of candidates) {
+            checkpoint()
+            if (result.length >= 8) break
+            const p = vertices[0], cell = nativeFloor.index(p), key = JSON.stringify(vertices)
+            if (tried.has(key) || !sourceEnd(p) || nativeFloor.room[cell] !== room) continue
+            tried.add(key)
+            const candidate = tube(vertices, goal, root.bendRadiusMm[goal]), geometry = geometryFor(candidate)
+            const incoming = geometry.points.at(-2)!, next = geometryFor(coils[goal >> 1]).points.at(goal % 2 ? -2 : 1)!
+            const end = endpoints[goal], ux = end.x - incoming.x, uy = end.y - incoming.y
+            const vx = next.x - end.x, vy = next.y - end.y
+            if (ux * vx + uy * vy < .999 * Math.hypot(ux, uy) * Math.hypot(vx, vy) ||
+              heatingCurveWallConflict(nativeFloor, geometry.pieces, doorOnly ? {} : { allowWalls: true, permittedWallCells: out.native }) ||
+              auditHeatingPlan([...fixed, candidate], [], settings.design, [...(options.obstacles ?? [])],
+                { focusPipeIds: new Set([candidate.id]), stopOnConflict: true, checkpoint }).errors) continue
+            result.push(candidate)
+          }
+          return result
+        })
+        const pairCache = new Map<number, boolean>()
+        const clash = (a: number, choiceA: number, b: number, choiceB: number) => {
+          if (a > b) return clash(b, choiceB, a, choiceA)
+          const key = (a * 8 + choiceA) * (variants.length * 8) + b * 8 + choiceB
+          let value = pairCache.get(key)
+          if (value === undefined) {
+            value = !!auditHeatingPlan([variants[a][choiceA], variants[b][choiceB]], [], settings.design, [],
+              { stopOnConflict: true, checkpoint }).errors
+            pairCache.set(key, value)
+          }
+          return value
+        }
+        const chosen = variants.map(() => 0)
+        for (let pass = 0; pass < 3; pass++) {
+          let changes = 0
+          for (let i = 0; i < variants.length; i++) {
+            const goal = pass % 2 ? variants.length - i - 1 : i
+            const partner = goal ^ 1
+            const fixedLength = geometryFor(coils[goal >> 1]).length + geometryFor(variants[partner][chosen[partner]]).length
+            const score = (choice: number) => chosen.reduce((sum, other, j) =>
+              sum + (j !== goal && clash(goal, choice, j, other) ? 1 : 0), 0)
+            let best = score(chosen[goal]), selected = chosen[goal]
+            for (let choice = 0; choice < variants[goal].length; choice++) {
+              if (choice === chosen[goal] || clash(goal, choice, partner, chosen[partner]) ||
+                (geometryFor(variants[goal][choice]).length + fixedLength) * scale / 8000 + limits.allowanceM > limits.maxCircuitLengthM + .05) continue
+              const count = score(choice)
+              if (count < best) { selected = choice; best = count }
+            }
+            if (selected !== chosen[goal]) { changes++; chosen[goal] = selected }
+          }
+          if (!changes) break
+        }
+        if (chosen.some(Boolean)) {
+          restore(root)
+          const originalErrors = assess([]).errors
+          chosen.forEach((choice, goal) => {
+            if (choice) installGoal(goal, geometryFor(variants[goal][choice]).points, root.bendRadiusMm[goal])
+          })
+          const candidate = assess([])
+          search.laneSeed = candidate.errors < originalErrors ? candidate.routes : null
+          if (!candidate.errors) search.solution = candidate.routes
+          else restore(root)
+        } else search.laneSeed = null
+      }
       if (!search.solution && search.seedPolicy !== 'native-room-local-order-v17') {
         const warm = search.bestSeed
         search.seedPolicy = 'native-room-local-order-v17'; search.seeded = false; search.seed = undefined
         search.triedSeeds = []; search.pendingSeeds = seedOrders.map((order) => ({ order, next: 0,
-          routes: { ...search.root!, refined: [], failures: [] } }))
+          routes: { ...(search.laneSeed ?? search.root!), refined: [], failures: [] } }))
         if (warm) {
           const goals = new Set(warm.routes.refined)
           const completed = [...new Set(warm.routes.refined.map((goal) => goal >> 1))]

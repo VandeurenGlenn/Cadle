@@ -274,6 +274,22 @@ export const heatingRouteCorridor = (grid: HeatingGrid, path: readonly number[],
 export const heatingWallAllowed = (grid: HeatingGrid, cell: number, options: HeatingRoutingOptions) =>
   !grid.wall[cell] || Boolean(grid.door[cell]) || Boolean(options.allowWalls && (!options.permittedWallCells || options.permittedWallCells.has(cell)))
 
+/** Check the straight launch at each end before a connection search. */
+export const heatingRasterTangentConflict = (grid: HeatingGrid, points: readonly Point[],
+  radius: number, access: HeatingRoutingOptions): Point | undefined => {
+  const steps = Math.max(1, Math.ceil(radius / grid.step * 2))
+  for (const [head, next] of [[points[0], points[1]], [points.at(-1)!, points.at(-2)!]]) {
+    const length = Math.hypot(head.x - next.x, head.y - next.y)
+    if (!length) return head
+    for (let n = 1; n <= steps; n++) {
+      const reach = radius * n / steps / length
+      const point = { x: head.x + (head.x - next.x) * reach, y: head.y + (head.y - next.y) * reach }
+      const cell = grid.index(point)
+      if (cell < 0 || grid.obstacle[cell] || !heatingWallAllowed(grid, cell, access)) return point
+    }
+  }
+}
+
 /** Rounding a square route must not cut through a jamb or an unapproved wall. */
 export const heatingCurveWallConflict = (grid: HeatingGrid, pieces: readonly { a: Point; b: Point }[], options: HeatingRoutingOptions): Point | undefined => {
   for (const piece of pieces) {

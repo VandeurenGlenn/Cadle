@@ -14,7 +14,7 @@ import { joinHeatingZoneFields } from './heating-zone-join.js'
 type Bounds = { x: number; y: number; width: number; height: number }
 export type HeatingArea = { boundaries: Point[][]; entry: Point;
   clearance?: { boundaries: Point[][]; edge: number; bounds: Bounds; layingBoundaries?: Point[][]; entryBoundaries?: Point[][]; coverageStep?: number } }
-export type HeatingAreaSettings = { entryVariant?: number; diameterMm: number; spacingMm: number; edgeMm?: number; design?: HeatingDesignInputs }
+export type HeatingAreaSettings = { preferSpiral?: boolean; entryVariant?: number; diameterMm: number; spacingMm: number; edgeMm?: number; design?: HeatingDesignInputs }
 export type HeatingAreaLoop = { points: Point[]; pattern: 'spiral' | 'meander' | 'mixed'; lengthM: number; gapRatio: number }
 export type HeatingAreaTrace = { rings?: number; fields?: number; candidates?: number; rejected?: Record<string, number>; point?: Point; message?: string }
 const precision = 1000
@@ -221,6 +221,16 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
     return JSON.stringify([entrySignature(points[0], points[1]), entrySignature(points.at(-1)!, points.at(-2)!) ]
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
   }
+  const patternRank = (loop: HeatingAreaLoop) => settings.preferSpiral && loop.pattern !== 'spiral' ? 1 : 0
+  const compareLoops = (a: HeatingAreaLoop, b: HeatingAreaLoop) => {
+    const aAcceptable = a.gapRatio <= .02, bAcceptable = b.gapRatio <= .02
+    if (aAcceptable !== bAcceptable) return aAcceptable ? -1 : 1
+    if (!aAcceptable) {
+      if (Math.abs(a.gapRatio - b.gapRatio) <= .001) return patternRank(a) - patternRank(b)
+      return a.gapRatio - b.gapRatio
+    }
+    return patternRank(a) - patternRank(b) || entryDistance(a.points) - entryDistance(b.points)
+  }
   const evaluate = (raw: Point[], pattern: HeatingAreaLoop['pattern'], repaired = false) => {
     checkpoint()
     if (trace) trace.candidates = (trace.candidates ?? 0) + 1
@@ -253,10 +263,9 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
     const result = { points, pattern, lengthM: geometry.length * scale / 8000, gapRatio: gaps / Math.max(1, samples.length) }
     const entryKey = physicalEntryKey(points)
     const previous = entries.get(entryKey)
-    if (!previous || result.gapRatio < previous.gapRatio) entries.set(entryKey, result)
-    const acceptable = result.gapRatio <= .02, previousAcceptable = best && best.gapRatio <= .02
-    if (!best || acceptable && !previousAcceptable || acceptable && previousAcceptable && entryDistance(points) < entryDistance(best.points) - 1e-6 ||
-      !acceptable && !previousAcceptable && result.gapRatio < best.gapRatio - .001) best = result
+    if (!previous || (settings.preferSpiral ? compareLoops(result, previous) < -1e-7 : result.gapRatio < previous.gapRatio))
+      entries.set(entryKey, result)
+    if (!best || compareLoops(result, best) < (result.gapRatio > .02 ? -.001 : -1e-6)) best = result
   }
   const rankedVariants = () => {
     if (!best) return []
@@ -265,7 +274,7 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
     // exact physical inlet; its place in the quality-sorted pool may differ.
     return [best, ...[...entries.values()]
       .filter((loop) => physicalEntryKey(loop.points) !== bestKey && loop.gapRatio <= Math.max(.02, best!.gapRatio + .001))
-      .sort((a, b) => entryDistance(a.points) - entryDistance(b.points))]
+      .sort((a, b) => patternRank(a) - patternRank(b) || entryDistance(a.points) - entryDistance(b.points))]
   }
   // Rectangles retain the established, audited centre turn. Irregular areas
   // use complete inset outlines, rather than independent rectangle fragments.
@@ -319,7 +328,7 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
       }
     }
   }
-  if ((!best || best.gapRatio > .02 || entryDistance(best.points) > radius * 8) && initial.boundaries.length === 1) {
+  if ((!best || best.gapRatio > .02 || !settings.preferSpiral && entryDistance(best.points) > radius * 8) && initial.boundaries.length === 1) {
     // A U-shaped area can lose its connecting neck during inward offsets.
     // A bounded monotone sweep plus one outer return keeps it a single tube.
     // Also compare this fallback when a complete spiral can only enter far
@@ -422,7 +431,7 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
       evaluate([...path, ...alternatives[0].points.slice(1)].map(inverse), 'mixed')
     }
   }
-  if (!best || best.gapRatio > .05) {
+  if (!best || best.gapRatio > .05 || (settings.preferSpiral && best.pattern !== 'spiral')) {
     // A neck can split inset contours into pockets. Fill those pockets locally,
     // then splice them into the same tube; they never become extra circuits.
     const rows = [...new Set(initial.boundaries.flat().map((p) => p.y))].sort((a, b) => a - b)
@@ -505,7 +514,9 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
       // returns, so their connector cuts cannot consume the same straight leg.
       const join = (choices: readonly Point[][][]) => joinHeatingZoneFields(choices, heatingAreaBounds(initial), [], pitch, radius, valid,
         (points) => patterns.get(points) ?? 'spiral', { timeMs: 750, auditLimit: 256, checkpoint, prepare: (points) => openHeatingTurns(compact(points), radius, diameter) })
-      const joined = join(fields)
+      const spiralFields = settings.preferSpiral ? fields.map((variants) => variants.filter((points) => patterns.get(points) === 'spiral')) : []
+      const joined = spiralFields.length && spiralFields.every((variants) => variants.length)
+        ? join(spiralFields) ?? join(fields) : join(fields)
       if (joined) evaluate(joined.points, joined.pattern)
       if (!best || best.gapRatio > .02) {
         // A tiny threshold pocket may fit a local return but no pair of splice
@@ -548,7 +559,7 @@ export const generateHeatingAreaLoop = (area: HeatingArea, settings: HeatingArea
       ...(area.clearance.layingBoundaries ? { layingBoundaries: area.clearance.layingBoundaries.map((ring) => ring.map(shift)) } : {}),
       ...(area.clearance.entryBoundaries ? { entryBoundaries: area.clearance.entryBoundaries.map((ring) => ring.map(shift)) } : {}),
       ...(area.clearance.coverageStep !== undefined ? { coverageStep: area.clearance.coverageStep } : {}) } } : {}) }
-  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, scale])
+  const key = JSON.stringify([normalized, settings.diameterMm, settings.spacingMm, settings.edgeMm ?? 100, settings.design, settings.preferSpiral, scale])
   let cached = areaLoopCache.get(key)
   if (!cached) {
     const details: HeatingAreaTrace = {}, variants = buildHeatingAreaLoopVariants(normalized, settings, scale, checkpoint, details)

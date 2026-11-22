@@ -8,7 +8,7 @@ import { heatingSchedule } from '../src/editor/heating-plan.ts'
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
 import { buildHeatingGrid, heatingCurveWallConflict, heatingSourceRoom } from '../src/editor/heating-routing.ts'
 import { heatingInternalWallCells } from '../src/editor/heating-wall-policy.ts'
-import { heatingObstacleBounds } from '../src/editor/heating-openings.ts'
+import { heatingDoorSymbolThreshold, heatingObstacleBounds, isHeatingDoorSymbol } from '../src/editor/heating-openings.ts'
 import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
 import { measureHeatingCoverage, heatingRoomKey } from '../src/editor/heating-coverage.ts'
 
@@ -34,13 +34,53 @@ const obstacles = heatingObstacleBounds(scene, shapeBounds)
 // Inspect physical tubes without a manifold exemption, then independently
 // check continuity/length/capacity with the actual manifold metadata present.
 const audit = checkHeatingPlan(pipes, [], settings.design, obstacles)
-const scheduleAudit = checkHeatingPlan([...pipes, owner], rows, settings.design, obstacles)
+const scheduleAudit = checkHeatingPlan(shapes, rows, settings.design, obstacles)
 const errors = [...audit.issues, ...scheduleAudit.issues].filter((issue, i, all) => issue.severity === 'error' &&
   all.findIndex((other) => JSON.stringify(other) === JSON.stringify(issue)) === i)
 const permittedWallCells = heatingInternalWallCells(grid, scale)
 const markers = shapes.filter((shape) => shape.generationKey?.startsWith('heating-penetration:')).map((shape) => ({
   x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 }))
 const feeds = pipes.filter((pipe) => pipe.heating.pipeRole !== 'loop')
+const openings = scene.flatMap((shape) => {
+  if (shape.hidden) return []
+  const threshold = isHeatingDoorSymbol(shape) ? heatingDoorSymbolThreshold(shape) :
+    shape.kind === 'door' || shape.kind === 'gate' ? shape : undefined
+  return threshold ? [{ id: shape.id, start: threshold.start, end: threshold.end }] : []
+})
+const crossesOpening = (curve, opening) => {
+  const dx = opening.end.x - opening.start.x, dy = opening.end.y - opening.start.y
+  const length2 = dx * dx + dy * dy
+  if (length2 === 0 || !curve.pieces.length) return false
+  const side = (p) => dx * (p.y - opening.start.y) - dy * (p.x - opening.start.x)
+  const onUsableOpening = (p) => {
+    const along = (p.x - opening.start.x) * dx + (p.y - opening.start.y) * dy
+    return along > 0 && along < length2 && Boolean(grid.door[grid.index(p)])
+  }
+  // Samples can land exactly on a threshold. Count them only when the tube
+  // continues onto the opposite side, so touching it is not a passage.
+  let previous, sign = 0, onThreshold = false, reachedOpening = false
+  for (const p of [curve.pieces[0].a, ...curve.pieces.map((piece) => piece.b)]) {
+    const offset = side(p)
+    if (Math.abs(offset) < 1e-7) {
+      onThreshold = true
+      reachedOpening ||= onUsableOpening(p)
+      continue
+    }
+    if (sign && Math.sign(offset) !== sign) {
+      if (onThreshold && reachedOpening) return true
+      if (!onThreshold) {
+        const from = side(previous), t = from / (from - offset)
+        if (onUsableOpening({ x: previous.x + t * (p.x - previous.x), y: previous.y + t * (p.y - previous.y) })) return true
+      }
+    }
+    previous = p
+    sign = Math.sign(offset)
+    onThreshold = reachedOpening = false
+  }
+  return false
+}
+const feedChecks = new Map()
+
 // Recompute coverage from the original architecture and actual rounded tubes.
 // Saved owner metadata must not hide an omitted room or retain stale coverage
 // after a loop has been improved without changing its feeds.
@@ -52,17 +92,25 @@ for (const pipe of pipes) {
   const curve = geometry.get(pipe)
   const wall = heatingCurveWallConflict(grid, curve.pieces, { allowWalls: true, permittedWallCells })
   if (wall) problems.push({ circuit: pipe.heating.circuitId, reason: 'forbidden-wall', point: wall })
+  const usedMarkers = new Set()
   for (const piece of curve.pieces) {
     const steps = Math.max(1, Math.ceil(Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y) / (grid.step / 2)))
     for (let i = 0; i <= steps; i++) {
       const p = { x: piece.a.x + (piece.b.x - piece.a.x) * i / steps, y: piece.a.y + (piece.b.y - piece.a.y) * i / steps }
       const cell = grid.index(p)
-      if (cell >= 0 && grid.wall[cell] && !grid.door[cell] &&
-        !markers.some((marker) => Math.hypot(marker.x - p.x, marker.y - p.y) <= 200 * 8 / scale)) {
+      if (cell < 0 || !grid.wall[cell] || grid.door[cell]) continue
+      const match = markers.findIndex((marker) => Math.hypot(marker.x - p.x, marker.y - p.y) <= 200 * 8 / scale)
+      if (match < 0) {
         problems.push({ circuit: pipe.heating.circuitId, reason: 'unmarked-wall-passage', point: p }); break
       }
+      usedMarkers.add(match)
     }
   }
+  if (pipe.heating.pipeRole !== 'loop') feedChecks.set(pipe, {
+    role: pipe.heating.pipeRole,
+    doorIds: openings.filter((opening) => crossesOpening(curve, opening)).map((opening) => opening.id),
+    wallPassages: [...usedMarkers].map((index) => markers[index]),
+  })
 }
 for (const pipe of feeds) {
   const points = geometry.get(pipe).points, p = pipe.heating.pipeRole === 'supply' ? points[0] : points.at(-1)
@@ -82,6 +130,10 @@ const result = { sourceSha256: createHash('sha256').update(bytes).digest('hex'),
   geometryErrors: errors.length, geometryIssues: errors, nativeSceneProblems: problems, wallPassages: markers.length,
   sourceEnds: feeds.length, maximumDrawnCircuitM: Math.max(...rows.map((row) => row.totalM)),
   maximumCuttingLengthM: Math.max(...rows.map((row) => row.cutM ?? row.totalM)),
+  circuitChecks: rows.map((row) => ({
+    id: row.id, room: row.room, loopM: row.loopM, supplyM: row.supplyM, returnM: row.returnM, cutM: row.cutM ?? row.totalM,
+    connections: feeds.filter((pipe) => pipe.heating.circuitId === row.id).map((pipe) => feedChecks.get(pipe)),
+  })),
   cuttingReserveM: settings.design?.allowanceM ?? 0, designReviews: owner.heating.audit?.issues.filter((issue) => issue.severity === 'review') ?? [] }
 result.coverage = { rooms: coverage.rooms, gapM2: coverage.rooms.reduce((sum, room) => sum + room.gapM2, 0),
   eligibleM2: coverage.rooms.reduce((sum, room) => sum + room.eligibleM2, 0), roomsRequiringReview: coverageProblems.map((room) => room.key) }

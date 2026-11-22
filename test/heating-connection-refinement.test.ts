@@ -9,6 +9,7 @@ import { createHeatingPipe, heatingPipeData } from '../src/editor/heating-pipe.t
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
 import { heatingPointClearance } from '../src/editor/heating-clearance.ts'
 import { sanitizeHeating } from '../src/editor/heating-plan.ts'
+import { alignHeatingFlowLegs, smoothHeatingFlowLanes } from '../src/editor/heating-flow-lanes.ts'
 import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
 
 test('overlapping loose source lanes are repaired locally without rerouting valid room approaches', () => {
@@ -214,4 +215,23 @@ test('improving coil interiors reuses safe unchanged entrances without searching
   const feeds = result.points.map((p, goal) => createHeatingPipe(`coverage-feed-${goal}`, p,
     { ...data, circuitId: `C${goal >> 1}`, pipeRole: 'supply' }))
   assert.equal(checkHeatingPlan([...after, ...feeds], []).errors, 0)
+})
+
+
+test('flow lane suggestions preserve coil tangents and round short jogs at R80', () => {
+  const guide = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 3.2 }, { x: 80, y: 3.2 }]
+  const rounded = smoothHeatingFlowLanes(guide, 6.4, 0)
+  const pipe = createHeatingPipe('lane', rounded, { ...heatingPipeData(100), automatic: true, circuitId: 'lane' })
+  const curve = heatingPipeGeometry(pipe)
+  assert.deepEqual(curve.points[0], guide[0])
+  assert.deepEqual(curve.points.at(-1), guide.at(-1))
+  assert.equal(curve.bends.length, 2)
+  assert.ok(curve.bends.every((bend) => bend.radiusMm >= 79.9))
+  assert.deepEqual(guide[1], { x: 40, y: 0 })
+
+  const route = [{ x: 2, y: 0 }, { x: 2, y: 30 }, { x: 50, y: 30 }, { x: 50, y: 40 }]
+  const lanes = [{ x: 4, y: 0 }, { x: 4, y: 32 }, { x: 50, y: 32 }, { x: 50, y: 40 }]
+  const candidates = [...alignHeatingFlowLegs(route, lanes, 6.4, 1.6)]
+  assert.ok(candidates.some((points) => points[0].x === 4 && points[1].x === 4))
+  assert.ok(candidates.every((points) => points.at(-1)!.x === 50 && points.at(-2)!.x === 50))
 })

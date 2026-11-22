@@ -47,6 +47,7 @@ const entryVariants = resume?.entryVariants ?? option('entry-variants', '').spli
 })
 const allocationVariant = Number(option('allocation-variant', resume?.allocationVariant ?? '0'))
 if (!Number.isInteger(allocationVariant) || allocationVariant < 0) throw new Error('Use a non-negative --allocation-variant integer.')
+const fixedRoomTargets = process.argv.includes('--fixed-room-targets')
 const roomTargets = option('room-targets', '').split(',').filter(Boolean).map((value) => {
   const [room, count] = value.split(':')
   if (!room || !Number.isInteger(Number(count)) || Number(count) < 1 || Number(count) > 24)
@@ -61,6 +62,8 @@ const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capac
   allowWallPassages: !process.argv.includes('--doors-only'), ...(option('max-length', '') ? { design: { maxCircuitLengthM: Number(option('max-length', '100')) } } : {}) }
 if (new Set(roomTargets.map(([room]) => room)).size !== roomTargets.length || roomTargets.reduce((sum, [, count]) => sum + count, 0) > settings.capacity)
   throw new Error('Room targets must have unique keys and fit the requested physical capacity.')
+if (fixedRoomTargets && !roomTargets.length) throw new Error('--fixed-room-targets requires --room-targets.')
+const requestedTargets = new Map(roomTargets)
 // Measured leads belong to this exact floor and design. Unlike route hints,
 // they cannot be re-audited against another drawing before allocation.
 const floorKey = createHash('sha256').update(bytes).update(JSON.stringify({ scale, settings, source })).digest('hex')
@@ -70,7 +73,7 @@ if (resume) hash.update(JSON.stringify(resume))
 if (warmBytes) hash.update(warmBytes)
 hash.update(JSON.stringify(entryVariants))
 hash.update(JSON.stringify(allocationVariant))
-hash.update(JSON.stringify(roomTargets))
+hash.update(JSON.stringify({ roomTargets, fixedRoomTargets }))
 // Include dependencies as well as the planner. A geometry/model or lockfile
 // change invalidates the cache; unchanged investigations reuse their evidence.
 const fingerprint = (folder) => {
@@ -113,9 +116,13 @@ if (mode !== 'manual') {
   const start = performance.now()
   try {
     const budget = { session: {}, measuredLeads: resume?.measuredLeads ?? resumeBundle?.measuredLeads ?? warmLeads,
-        ...(roomTargets.length ? { roomTargets: new Map(roomTargets) } : {}),
+        ...(roomTargets.length ? { roomTargets: new Map(roomTargets), areaTargetsFixed: fixedRoomTargets } : {}),
         allocationVariant, entryVariants: new Map(entryVariants), fieldEntryVariants: new Map(resume?.fieldEntryVariants ?? resumeBundle?.fieldEntryVariants ?? []), pauseOnDeadline: slices > 1, routes: 600, deadline: Date.now() + timeout,
         onFeedReservations(grid, nativeFloor, targets) {
+          if (fixedRoomTargets && (targets.size !== requestedTargets.size ||
+            [...targets].some(([key, count]) => requestedTargets.get(key) !== count)))
+            throw new Error('De gekozen vaste kringverdeling moet worden gewijzigd om verder te rekenen.')
+
           if (!captureBundle) return
           const encode = (array) => array && Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString('base64')
           writeFileSync(`${output}.reserved-feeds.json`, JSON.stringify({ fingerprint: key, source, settings, scale, targets: [...targets], nativeRooms: nativeFloor.rooms,

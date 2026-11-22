@@ -13,6 +13,7 @@ import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
 import { generateHeatingAreaLoop } from '../src/editor/heating-area-kernel.ts'
 import { retractHeatingFeedEntries } from '../src/editor/heating-clearance.ts'
 import { heatingFieldEntryGuards } from '../src/editor/heating-field-entry-guards.ts'
+import { heatingConnectionEntryKey } from '../src/editor/heating-connection-refinement.ts'
 import { selectHeatingDoorEntries, type HeatingDoorEntrySelectionCache } from '../src/editor/heating-door-entry-selection.ts'
 import { routeDoorAdaptedHeatingFeeds } from '../src/editor/heating-door-adapter.ts'
 
@@ -60,9 +61,12 @@ test('a stranded real R6 entry chooses a witnessed inlet without changing the tw
     'the chosen inlet still meets the original partition coverage bound')
 
   const coils = pipesFor(selected), permitted = new Set<number>(shared.permittedWallCells)
+  const witness = cache.witnesses?.get(heatingConnectionEntryKey(selected[0].points!))
+  assert.equal(witness?.length, 2)
   const pair = routeDoorAdaptedHeatingFeeds(native, scene, coils[0], coils, [], settings, scale, {
     source, sourceRadiusMm: 1500, nativeFloor: native, nativeWallCells: permitted, permittedWallCells: permitted,
     obstacles, work: {}, searchKey: 'selected-real-r6-entry', checkpoint,
+    localHint: witness?.map((pipe) => ({ ...pipe, heating: { ...pipe.heating!, circuitId: coils[0].heating!.circuitId } })),
   })
   assert.ok(pair, 'the positive local entry also admits a full connection to the real source')
   const ports = heatingPipeGeometry(coils[0]).points

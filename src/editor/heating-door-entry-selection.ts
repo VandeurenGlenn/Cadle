@@ -1,4 +1,4 @@
-import type { Point, Shape } from './model/types.js'
+import type { Point, RectShape, Shape } from './model/types.js'
 import type { HeatingGrid } from './heating-routing.js'
 import type { HeatingSpiralField } from './heating-spiral.js'
 import { generateHeatingAreaLoop, type HeatingAreaSettings } from './heating-area-kernel.js'
@@ -9,7 +9,7 @@ import { createHeatingPipe, heatingPipeData } from './heating-pipe.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingEntryTangentConflict, retractHeatingFeedEntries } from './heating-clearance.js'
 import { checkHeatingPlan } from './heating-checks.js'
-import { heatingCurveWallConflict } from './heating-routing.js'
+import { heatingCurveWallConflict, heatingRasterTangentConflict } from './heating-routing.js'
 import { heatingSourceShortcutRooms } from './heating-wall-policy.js'
 import { heatingDoorSymbolThreshold, heatingObstacleBounds, isHeatingDoorSymbol } from './heating-openings.js'
 import { shapeBounds } from './model/model.js'
@@ -23,8 +23,9 @@ type SelectionInput = {
 }
 export type HeatingDoorEntrySelectionCache = {
   completed?: SelectionInput & { output: string; variants: [string, number][]; jobs: HeatingSpiralField[] }
+  witnesses?: ReadonlyMap<string, RectShape[]>
 }
-type SelectionWork = SelectionInput & { next: number; jobs: HeatingSpiralField[]; variants: Map<string, number> }
+type SelectionWork = SelectionInput & { next: number; jobs: HeatingSpiralField[]; variants: Map<string, number>; witnesses: Map<string, RectShape[]> }
 const interruptedSelections = new WeakMap<HeatingDoorEntrySelectionCache, SelectionWork>()
 
 /** Prefer a witnessed room-door entry before searching the whole building.
@@ -62,7 +63,7 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
   if (!work || work.input !== inputKey || work.requested !== requested || !sameContext(work)) {
     work = {
       context, masks: cache ? masks.map((mask) => mask.slice()) : [], input: inputKey, requested,
-      next: 0, jobs: cache ? structuredClone([...input]) : input.map((job) => ({ ...job })), variants: new Map(options.variants),
+      next: 0, jobs: cache ? structuredClone([...input]) : input.map((job) => ({ ...job })), variants: new Map(options.variants), witnesses: new Map(),
     }
     if (cache) interruptedSelections.set(cache, work)
   }
@@ -72,6 +73,35 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     { ...heatingPipeData(scale), ...settings, automatic: true, circuitId: `door-choice-${index}`, pipeRole: 'loop' })
   const coils = jobs.map(pipe)
   const shortcutRooms = heatingSourceShortcutRooms(grid, source, options.wallCells ?? new Set(), scale)
+  const radius = limits.minBendRadiusMm * 8 / scale
+  const doors = scene.flatMap((shape) => {
+    if (shape.hidden) return []
+    if (shape.kind === 'door' || shape.kind === 'gate') return [shape]
+    return isHeatingDoorSymbol(shape) ? [heatingDoorSymbolThreshold(shape)] : []
+  })
+  // A spiral can start along its straight perimeter run opposite a door.
+  // The connected feeds and the full native floor are measured together later.
+  const doorSideStarts = (points: Point[]) => {
+    const first = points[0], last = points.at(-1)!
+    const next = points[1], previous = points.at(-2)!
+    return doors.flatMap(({ start, end }) => {
+      const axis = Math.abs(start.x - end.x) < 1e-6 ? 'y' : Math.abs(start.y - end.y) < 1e-6 ? 'x' : undefined
+      if (!axis) return []
+      const across = axis === 'x' ? 'y' : 'x'
+      if (Math.abs(first[across] - next[across]) > 1e-6 || Math.abs(last[across] - previous[across]) > 1e-6 ||
+        Math.max(Math.abs(first[across] - start[across]), Math.abs(last[across] - start[across])) > radius * 5) return []
+      const middle = (start[axis] + end[axis]) / 2
+      const fits = (head: Point, following: Point) => {
+        const direction = Math.sign(following[axis] - head[axis]), advance = (middle - head[axis]) * direction
+        return advance > radius && advance <= radius * 12 && (following[axis] - middle) * direction >= radius * 2
+      }
+      if (!fits(first, next) || !fits(last, previous)) return []
+      return [points.map((point, i) => i === 0 || i === points.length - 1 ? { ...point, [axis]: middle } : point)]
+    })
+  }
+  const tangentAccess = { allowWalls: Boolean(options.wallCells?.size), permittedWallCells: options.wallCells }
+  const tangentAvailable = (coil: ReturnType<typeof pipe>) =>
+    !heatingRasterTangentConflict(grid, heatingPipeGeometry(coil).points, radius, tangentAccess)
   const raster = (points: readonly Point[]) => {
     const result: number[] = []
     for (let i = 0; i < points.length; i++) {
@@ -95,7 +125,7 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     // The authorised source-wall opening is also a valid room entry. Do not
     // force an adjacent field to prove a long doorway detour before the
     // physical source router can use that already selected short passage.
-    if ([...roomIds].some((room) => shortcutRooms.has(room))) continue
+    const sourceShortcut = [...roomIds].some((room) => shortcutRooms.has(room))
     const guard = (candidate: typeof coils[number]) => {
       const bodyM = heatingPipeGeometry(candidate).length * scale / 8000
       return heatingFieldEntryGuards(grid, scene, candidate,
@@ -113,36 +143,46 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
           } })
     }
     // Keep an existing good entrance; this preserves work in other rooms.
-    if (guard(coils[index]) !== null) continue
+    if (tangentAvailable(coils[index])) {
+      const witness = sourceShortcut ? undefined : guard(coils[index])
+      if (witness?.length) work.witnesses.set(heatingConnectionEntryKey(original.points), witness)
+      if (witness !== null) continue
+    }
     const seen = new Set([heatingConnectionEntryKey(original.points)])
     const minimum = Math.max(original.entryVariant ?? 0, variants.get(original.entryKey) ?? 0)
     // A saved value is the requested next (or already proved) variant. Resume
     // must retry that value, while skipping the unchanged original entrance.
-    for (let variant = Math.max((original.entryVariant ?? 0) + 1, minimum); variant < 8; variant++) {
+    const initialVariant = original.entrySettings.preferSpiral ? original.entryVariant ?? 0 : (original.entryVariant ?? 0) + 1
+    variants: for (let variant = Math.max(initialVariant, minimum); variant < 8; variant++) {
       checkpoint()
       const loop = generateHeatingAreaLoop(original.entryArea,
         { ...original.entrySettings, entryVariant: variant }, scale, checkpoint)
       if (!loop || loop.gapRatio > (original.entryMaxGapRatio ?? .02) + 1e-7) continue
-      const points = retractHeatingFeedEntries(loop.points, settings.diameterMm, settings.spacingMm, scale, limits.minBendRadiusMm)
-      const key = heatingConnectionEntryKey(points)
-      if (seen.has(key)) continue
-      seen.add(key)
-      const candidate = { ...original, points, pattern: loop.pattern, cells: raster(points), entryVariant: variant }
-      const proposed = pipe(candidate, index), geometry = heatingPipeGeometry(proposed)
-      if (geometry.length * scale / 8000 + limits.allowanceM > limits.maxCircuitLengthM + .05 ||
-        heatingCurveWallConflict(grid, geometry.pieces, { permittedWallCells: new Set() })) continue
-      const others = coils.filter((_, i) => i !== index)
-      if (heatingEntryTangentConflict(proposed, others) || others.some((other) => heatingEntryTangentConflict(other, [proposed]))) continue
-      if (checkHeatingPlan([...others, proposed], [], settings.design, obstacles,
-        { focusPipeIds: new Set([proposed.id]), stopOnConflict: true, checkpoint }).errors) continue
-      const witness = guard(proposed)
-      if (!witness?.length) continue
-      jobs[index] = candidate; coils[index] = proposed
-      variants.set(original.entryKey, variant)
-      break
+      const paths = original.entrySettings.preferSpiral && loop.pattern === 'spiral' && !sourceShortcut ? doorSideStarts(loop.points) : []
+      paths.push(retractHeatingFeedEntries(loop.points, settings.diameterMm, settings.spacingMm, scale, limits.minBendRadiusMm))
+      for (const points of paths) {
+        const key = heatingConnectionEntryKey(points)
+        if (seen.has(key)) continue
+        seen.add(key)
+        const candidate = { ...original, points, pattern: loop.pattern, cells: raster(points), entryVariant: variant }
+        const proposed = pipe(candidate, index), geometry = heatingPipeGeometry(proposed)
+        if (!tangentAvailable(proposed) || geometry.length * scale / 8000 + limits.allowanceM > limits.maxCircuitLengthM + .05 ||
+          heatingCurveWallConflict(grid, geometry.pieces, { permittedWallCells: new Set() })) continue
+        const others = coils.filter((_, i) => i !== index)
+        if (heatingEntryTangentConflict(proposed, others) || others.some((other) => heatingEntryTangentConflict(other, [proposed]))) continue
+        if (checkHeatingPlan([...others, proposed], [], settings.design, obstacles,
+          { focusPipeIds: new Set([proposed.id]), stopOnConflict: true, checkpoint }).errors) continue
+        const witness = sourceShortcut ? undefined : guard(proposed)
+        if (!sourceShortcut && !witness?.length) continue
+        if (witness?.length) work.witnesses.set(key, witness)
+        jobs[index] = candidate; coils[index] = proposed
+        variants.set(original.entryKey, variant)
+        break variants
+      }
     }
   }
   if (cache) {
+    cache.witnesses = work.witnesses
     cache.completed = {
       context, masks: work.masks, input: inputKey, output: JSON.stringify(jobs),
       requested, variants: [...variants], jobs: structuredClone(jobs),

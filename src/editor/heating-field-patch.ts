@@ -9,6 +9,7 @@ import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingPointClearance, heatingEntryTangentConflict } from './heating-clearance.js'
 import { checkHeatingPlan } from './heating-checks.js'
 import { heatingDesignLimits } from './heating-design.js'
+import { combineHeatingPatterns } from './heating-pattern.js'
 import { heatingSpliceWindows } from './heating-paired-splice.js'
 import { heatingFieldEntryGuards } from './heating-field-entry-guards.js'
 import { heatingAccessDistances } from './heating-access-distances.js'
@@ -138,7 +139,9 @@ const joinHeatingFieldPatchUncached = (jobs: HeatingSpiralField[], patch: Heatin
         if (originalPipes.some((other, i) => i !== index && i !== originalPipes.length - 1 && heatingEntryTangentConflict(other, [combined]))) continue
         if (checkHeatingPlan([...others, combined, ...guards ?? []], [], settings.design, obstacles,
           { focusPipeIds: new Set([combined.id]), stopOnConflict: true, checkpoint }).errors) continue
-        const candidate = { ...jobs[index], points, cells: raster(points), pattern: 'mixed' as const,
+        const hostPattern = jobs[index].pattern
+        const pattern = hostPattern && patch.pattern ? combineHeatingPatterns([hostPattern, patch.pattern]) : 'mixed'
+        const candidate = { ...jobs[index], points, cells: raster(points), pattern,
           entryArea: undefined, entrySettings: undefined,
           roomName: `${jobs[index].roomName} / ${patch.roomName}`, roomMembers: [...jobs[index].roomMembers ?? [], ...patch.roomMembers ?? []],
           areaM2: jobs[index].areaM2 + patch.areaM2 }

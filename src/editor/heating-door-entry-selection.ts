@@ -60,7 +60,9 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     return structuredClone(hit.jobs)
   }
   let work = cache && interruptedSelections.get(cache)
-  if (!work || work.input !== inputKey || work.requested !== requested || !sameContext(work)) {
+  const resumesWork = work && work.input === inputKey && sameContext(work) &&
+    JSON.stringify([...options.variants]) === JSON.stringify([...work.variants])
+  if (!resumesWork) {
     work = {
       context, masks: cache ? masks.map((mask) => mask.slice()) : [], input: inputKey, requested,
       next: 0, jobs: cache ? structuredClone([...input]) : input.map((job) => ({ ...job })), variants: new Map(options.variants), witnesses: new Map(),
@@ -176,7 +178,7 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
         if (!sourceShortcut && !witness?.length) continue
         if (witness?.length) work.witnesses.set(key, witness)
         jobs[index] = candidate; coils[index] = proposed
-        variants.set(original.entryKey, variant)
+        variants.set(original.entryKey, variant); options.variants.set(original.entryKey, variant)
         break variants
       }
     }

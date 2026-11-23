@@ -193,3 +193,20 @@ test('a pause between fields resumes at the pending field', () => {
   assert.deepEqual(result, fields)
   assert.equal(checkpoints, 2, 'the entry checkpoint and only the pending field run on resume')
 })
+
+test('resuming after a selected inlet keeps the completed fields and their variant', () => {
+  const cache: HeatingDoorEntrySelectionCache = {}, variants = new Map<string, number>()
+  const pause = new Error('pause after the first inlet was selected')
+  let paused = false
+  assert.throws(() => selectHeatingDoorEntries(jobs, native, scene, source, settings, scale,
+    { cache, variants, checkpoint: () => {
+      if (!paused && variants.has(original.entryKey!)) { paused = true; throw pause }
+    } }), (error) => error === pause)
+  assert.deepEqual([...variants], [[original.entryKey, 3]])
+
+  let checkpoints = 0
+  const result = selectHeatingDoorEntries(jobs, native, scene, source, settings, scale,
+    { cache, variants, checkpoint: () => { checkpoints++ } })
+  assert.equal(result[0].entryVariant, 3)
+  assert.equal(checkpoints, jobs.length, 'resume processes only the unvisited fields')
+})

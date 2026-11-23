@@ -725,11 +725,18 @@ export const planHeatingCircuits = (grid: HeatingGrid, settings: AutomaticHeatin
     const sameAllocation = fixedCounts || !result.targets ||
       (result.targets.size === budget.roomTargets.size &&
         [...result.targets].every(([room, count]) => budget.roomTargets!.get(room) === count))
-    const jobs = sameAllocation && settings.connectionMode === 'zone' && budget.connectionZone
-      ? selectHeatingDoorEntries(result.jobs, nativeFloor, budget.sourceScene, position, settings, scale,
-        { cache: selection, variants: budget.fieldEntryVariants ??= new Map(), sourceRadiusMm: Math.max(500, budget.connectionZone.radiusMm),
-          wallCells: heatingPermittedWalls(budget), checkpoint: () => checkHeatingDeadline(budget) })
-      : result.jobs
+    let jobs: HeatingSpiralField[]
+    try {
+      jobs = sameAllocation && settings.connectionMode === 'zone' && budget.connectionZone
+        ? selectHeatingDoorEntries(result.jobs, nativeFloor, budget.sourceScene, position, settings, scale,
+          { cache: selection, variants: budget.fieldEntryVariants ??= new Map(), sourceRadiusMm: Math.max(500, budget.connectionZone.radiusMm),
+            wallCells: heatingPermittedWalls(budget), checkpoint: () => checkHeatingDeadline(budget) })
+        : result.jobs
+    } catch (error) {
+      if (error instanceof HeatingPlanningPaused)
+        heatingAreaFieldsCache.set(budget, { key: fieldKey(), corridor: fieldGrid.feedCorridor, result, selection })
+      throw error
+    }
     // The selected variants change entrances within these same partitions.
     // Keep the fields under the resulting key when the connection work pauses.
     heatingAreaFieldsCache.set(budget, { key: fieldKey(), corridor: fieldGrid.feedCorridor, result, selection })

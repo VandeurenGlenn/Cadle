@@ -5,7 +5,7 @@ import { heatingRoomKey, heatingCoverageRadius, heatingWallDistances, measureHea
 import { rectangularHeatingArea, unionHeatingAreas, subtractHeatingAreas, intersectHeatingAreas, partitionHeatingArea, heatingAreaSurface, heatingAreaBounds, heatingAreaComponents, insetHeatingArea, generateHeatingAreaLoop, type HeatingAreaSettings, type HeatingArea, type HeatingAreaTrace } from './heating-area-kernel.js'
 import { heatingObstacleBounds } from './heating-openings.js'
 import { shapeBounds } from './model/model.js'
-import { simplifyHeatingPath } from './heating-routing.js'
+import { heatingCurveWallConflict, simplifyHeatingPath } from './heating-routing.js'
 import { heatingPipeData, createHeatingPipe } from './heating-pipe.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { heatingPointClearance, retractHeatingFeedEntries } from './heating-clearance.js'
@@ -120,6 +120,23 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
   const feedPipes = options.reserveFeeds ? (grid.feedPaths ?? []).map((cells, i) => createHeatingPipe(`reserved-feed-${i}`,
     simplifyHeatingPath(cells.map(native.point)), { ...heatingPipeData(scale), ...settings, automatic: false,
       pipeRole: 'supply', circuitId: `reserved-feed-${i}` })) : []
+  const partitionCoverageAccepted = (candidate: ReturnType<typeof partitionHeatingArea>, roomId: number) =>
+    Boolean(candidate?.loops.every((loop, index) => loop.gapRatio * heatingAreaSurface(candidate.areas[index]) * (scale / 8000) ** 2 <=
+      Math.max(.05, roomCoverageBudgets.get(roomId) ?? .05)))
+  const clearOfReservedGeometry = (points: Point[], jobs: readonly HeatingSpiralField[]) => {
+    const geometry = heatingPipeGeometry(pipe(points, 'field-clearance'))
+    const existing = [...feedPipes, ...jobs.map((job, i) => pipe(job.points!, `field-existing-${i}`))]
+    const feedClearance = heatingPointClearance(existing, settings.diameterMm, scale, { solids: fixtureEnvelopes })
+    if (heatingCurveWallConflict(native, geometry.pieces, { checkpoint, permittedWallCells: new Set() })) return false
+    return geometry.pieces.every((piece) => {
+      const samples = Math.max(1, Math.ceil(Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y) / (native.step / 2)))
+      for (let i = 0; i <= samples; i++) if (!feedClearance({
+        x: piece.a.x + (piece.b.x - piece.a.x) * i / samples,
+        y: piece.a.y + (piece.b.y - piece.a.y) * i / samples
+      })) return false
+      return true
+    })
+  }
   const feedCoverageRadiusMm = heatingCoverageRadius(settings.spacingMm, scale, native.step) * scale / 8
   const notFeedCovered = feedPipes.length ? heatingPointClearance(feedPipes,
     Math.max(0, feedCoverageRadiusMm * 2 - settings.diameterMm), scale) : () => true
@@ -267,26 +284,55 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
             // Another allocation can retain this fragment's coil count while
             // adding transit tubes to a different fragment of the same room.
             const key = JSON.stringify([parts.indexOf(part), assigned[i], partSettings.edgeMm,
-              partSettings.entryVariant, partitionVariant])
+              partSettings.entryVariant, partitionVariant, preparedFeeds && part.eligible < 2.5 ? jobs.map((job) => job.points) : undefined])
             if (!layouts.has(key)) {
               const cacheKey = JSON.stringify([part.area, part.centreFloor, assigned[i], partSettings, partitionVariant, scale, source,
                 options.measuredLeads?.filter((sample) => sample.roomId === part.room.id), [...options.fieldEntryVariants ?? []]])
+              const entry = part.area.entry
+              const doorEntry = native.door[native.index(entry)]
               if (!partitions.has(cacheKey)) {
                 // Use the actual room doorway for inlet orientation. The
                 // length lower bound cannot see the other heating fields;
                 // its nearest corner may face a sealed internal seam.
-                const entry = part.area.entry
-                const doorEntry = native.door[native.index(entry)]
                 partitions.set(cacheKey, partitionHeatingArea(part.area, assigned[i], partSettings, scale,
-                  { checkpoint, centreFloor: part.centreFloor, coverageBudgetM2: roomCoverageBudgets.get(part.room.id), leadM: lead, entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants: options.fieldEntryVariants,
+                  { checkpoint, centreFloor: part.centreFloor, coverageBudgetM2: roomCoverageBudgets.get(part.room.id), leadM: lead,
+                    entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants: options.fieldEntryVariants,
                     onRejectedArea: options.onRejectedPart && ((area, trace) => options.onRejectedPart!(part.room.name, area, trace)) }))
                 if (partitions.size > 128) partitions.delete(partitions.keys().next().value!)
               }
-              layouts.set(key, partitions.get(cacheKey)!)
+              let partition = partitions.get(cacheKey)!
+              const feedInsetDominates = part.centreFloor &&
+                heatingAreaSurface(part.centreFloor) < heatingAreaSurface(part.area) * .8
+              if (preparedFeeds && part.eligible >= 1.5 && part.eligible < 2.5 && assigned[i] === 1 &&
+                partitionVariant === 0 && partSettings.entryVariant === 0 && feedInsetDominates &&
+                !partitionCoverageAccepted(partition, part.room.id)) {
+                const relaxedKey = JSON.stringify([cacheKey, 'feed-clearance-fallback'])
+                if (!partitions.has(relaxedKey)) {
+                  // Keep the wall/fixture inset, but let the real feed clearance
+                  // decide whether a narrow pocket can use the space beside its bundle.
+                  const relaxed = partitionHeatingArea(part.area, assigned[i], partSettings, scale,
+                    { checkpoint, coverageBudgetM2: roomCoverageBudgets.get(part.room.id), leadM: lead,
+                      entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants: options.fieldEntryVariants,
+                      onRejectedArea: options.onRejectedPart && ((area, trace) => options.onRejectedPart!(part.room.name, area, trace)) })
+                  partitions.set(relaxedKey, partitionCoverageAccepted(relaxed, part.room.id) ? relaxed : null)
+                }
+                const relaxed = partitions.get(relaxedKey)
+                if (partitionCoverageAccepted(relaxed, part.room.id)) {
+                  const fallbackJobs: HeatingSpiralField[] = []
+                  for (const [index, loop] of relaxed!.loops.entries()) {
+                    const candidate = jobFor(part, loop.points, loop.pattern,
+                      heatingAreaSurface(relaxed!.areas[index]) * (scale / 8000) ** 2)
+                    if (!clearOfReservedGeometry(candidate.points!, [...jobs, ...fallbackJobs])) break
+                    fallbackJobs.push(candidate)
+                  }
+                  if (fallbackJobs.length === relaxed!.loops.length) partition = relaxed
+                }
+                if (partitions.size > 128) partitions.delete(partitions.keys().next().value!)
+              }
+              layouts.set(key, partition)
             }
             const result = layouts.get(key)
-            if (!result || result.loops.some((loop, index) => loop.gapRatio * heatingAreaSurface(result.areas[index]) * (scale / 8000) ** 2 >
-              Math.max(.05, roomCoverageBudgets.get(part.room.id) ?? .05))) {
+            if (!partitionCoverageAccepted(result, part.room.id)) {
               options.onRejectedPart?.(part.room.name, part.centreFloor ?? part.area,
                 { message: result ? `coverage: ${result.loops.map((loop) => loop.gapRatio).join(', ')}` : 'No connected partition within the requested circuit count.' })
               failureDetail = `${part.room.name}: legvlak van ${part.eligible.toFixed(1)} m² past niet met voldoende dekking in ${assigned[i]} kringen.`

@@ -11,7 +11,7 @@ import { translateShape } from '../src/editor/interaction/shape-transforms.ts'
 import { updateSelectionProperties } from '../src/editor/interaction/selection-properties.ts'
 import { createNativeSelectionChangedPayload } from '../src/editor/interaction/selection-payload.ts'
 import { PAPER_PRESETS } from '../src/editor/constants.ts'
-import type { LineShape, RectShape } from '../src/editor/model/types.ts'
+import type { LineShape, RectShape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
 
 for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral'] as const) {
   test(`${variant} resizes with the pointer and retains its geometry after saving and scaling`, () => {
@@ -56,6 +56,31 @@ test('quarter-turn stairs have two perpendicular flights instead of a rectangula
   assert.match(turning.outline, /L 200 80 L 80 80 L 80 300/)
   assert.notEqual(turning.arrow, straight.arrow)
   assert.match(turning.arrow, /L 40 40 L 180 40/)
+})
+
+test('renders stairs beneath symbols and text labels regardless of document order', () => {
+  const stair: RectShape = {
+    id: 'stair', kind: 'rect', variant: 'stairs-straight',
+    start: { x: 0, y: 0 }, end: { x: 200, y: 400 }
+  }
+  const symbol: SymbolShape = {
+    id: 'symbol', kind: 'symbol', path: 'symbols/test.svg', name: 'Test',
+    position: { x: 100, y: 200 }, scale: 1
+  }
+  const label: TextShape = {
+    id: 'label', kind: 'text', position: { x: 100, y: 220 }, text: 'Symbol label'
+  }
+  const markup = buildSvgDocument({
+    shapes: [label, symbol, stair],
+    selectedShape: null,
+    paper: PAPER_PRESETS['a4-landscape'],
+    worldWidth: 1000,
+    worldHeight: 1000
+  })
+
+  const stairIndex = markup.indexOf('data-shape-id="stair"')
+  assert.ok(stairIndex < markup.indexOf('data-shape-id="symbol"'))
+  assert.ok(stairIndex < markup.indexOf('data-shape-id="label"'))
 })
 
 test('double-quarter-turn stairs have three flights, two winding corners and an open centre', () => {

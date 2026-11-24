@@ -596,8 +596,11 @@ export const buildSvgDocument = (options: {
 
   const wallOpeningCuts = buildWallOpeningCuts(options.shapes, '#ffffff')
   const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall')) + wallJunctionMarkup(options.shapes, options.monochrome)
+  const stairMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant)))
   const nonSymbolMarkup = groupedMarkup(
-    options.shapes.filter((shape) => shape.kind !== 'wall' && shape.kind !== 'symbol')
+    options.shapes.filter((shape) =>
+      shape.kind !== 'wall' && shape.kind !== 'symbol' &&
+      !(shape.kind === 'rect' && isStairVariant(shape.variant)))
   )
   const symbolMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'symbol'))
   const labelMarkup = roomLabelsMarkup(options.shapes) + bindingLabelsMarkup(options.shapes)
@@ -623,7 +626,7 @@ export const buildSvgDocument = (options: {
     options.printMargin,
     options.drawingScale
   )
-  const markup = `${wallMarkup}${wallOpeningCuts}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
+  const markup = `${wallMarkup}${wallOpeningCuts}${stairMarkup}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
   const exportStyle = options.monochrome ? EXPORT_STYLE_BLOCK_MONO : EXPORT_STYLE_BLOCK
   const defs = `<style><![CDATA[${exportStyle}]]></style>`
   return `

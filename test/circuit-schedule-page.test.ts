@@ -170,6 +170,70 @@ test('includes the configured residual breaker with its actual cabinet, rating a
   assert.equal(refreshCircuitScheduleItems(project, items).filter((item) => item.kind === 'residual-breaker').length, 1)
 })
 
+test('includes unlabelled one-wire breakers in the schedule and reserves their module width', () => {
+  const project = projectFixture()
+  const breaker: Shape = {
+    id: 'unlabelled-breaker',
+    kind: 'symbol',
+    name: 'Automaat',
+    path: 'symbols/Protection devices/Automaat.svg',
+    position: { x: 800, y: 1200 },
+    scale: 3,
+    electrical: {
+      role: 'protection',
+      breakerCurrentA: 16,
+      breakerCurve: 'B',
+      poles: 2,
+      cableConductors: 3,
+      cableSectionMm2: 2.5,
+      cableType: 'VOB',
+      hasProtectiveConductor: true
+    }
+  }
+  project.pages.schematic = {
+    name: 'Eendraads',
+    creationTime: 1,
+    pageType: 'onewire',
+    schema: schematicSchema([breaker])
+  }
+
+  const items = circuitScheduleEditorItems(project, analysis([]))
+  const unlabelled = items.find((item) => item.kind === 'breaker')!
+  assert.equal(unlabelled.title, 'Automaat zonder kring')
+  assert.equal(unlabelled.subtitle, 'Geen kring · 2P · B16A')
+  assert.equal(unlabelled.modules, 2)
+  assert.equal(unlabelled.cable, '3G2.5 mm² VOB')
+  assert.deepEqual(unlabelled.sourceShapes, [{ pageKey: 'schematic', shapeId: breaker.id }])
+  assert.equal(packCircuitCabinetRows(items.map((item) => ({ ...item, gapBefore: 0 })), 18)[0].used, 2)
+  assert.match(buildCircuitScheduleSvgs(project, analysis([])).join(''), />AUT<\/text>/)
+})
+
+test('accounts for the main switch, residual breaker and PV breaker in cabinet module layout', () => {
+  const project = projectFixture()
+  project.oneWireTopology = {
+    version: 1,
+    consumers: true,
+    solar: true,
+    solarBreakerRatedCurrentA: 32,
+    solarBreakerPoles: 2,
+    mainSwitch: { ratedCurrentA: 40 },
+    mainSwitchPoles: 2,
+    residualBreaker: true,
+    residualBreakerRatedCurrentA: 40,
+    residualBreakerPoles: 4
+  }
+
+  const items = circuitScheduleEditorItems(project, analysis([]))
+  assert.equal(items.find((item) => item.kind === 'switch')?.modules, 2)
+  assert.equal(items.find((item) => item.kind === 'residual-breaker')?.modules, 4)
+  assert.equal(items.find((item) => item.id.startsWith('PV:'))?.modules, 2)
+  const cabinet = packCircuitCabinetRows(items.map((item) => ({ ...item, gapBefore: 0 })), 18)
+  assert.equal(cabinet[0].used, 8)
+  const labels = cabinet[0].cells.map(({ item }) => item.id).map((id) =>
+    id.startsWith('SW:') ? 'INT' : id.startsWith('REM:') ? 'REM' : id.startsWith('PV:') ? 'PV' : id)
+  assert.deepEqual(labels, ['INT', 'REM', 'PV'])
+})
+
 test('recognizes schematic-only residual breakers and counts their versioned copies once without including ordinary breakers', () => {
   const project = projectFixture()
   project.oneWireTopology = { version: 1, consumers: true, solar: false, residualBreaker: true,
@@ -185,7 +249,8 @@ test('recognizes schematic-only residual breakers and counts their versioned cop
   project.pages.old = { name: 'Vervolg', creationTime: 2, pageType: 'onewire', schema: schematicSchema([copy]) }
   const before = structuredClone(project)
   const items = refreshCircuitScheduleItems(project, [])
-  assert.equal(items.length, 2)
+  assert.equal(items.filter((item) => item.kind === 'switch').length, 1)
+  assert.equal(items.filter((item) => item.kind === 'breaker').length, 0)
   const remautomaat = items.filter((item) => item.kind === 'residual-breaker')
   assert.equal(remautomaat.length, 1)
   assert.equal(remautomaat[0].sourceShapes!.length, 2)

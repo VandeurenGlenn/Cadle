@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ensureOneWirePage, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../src/data/page-operations.ts'
+import { ensureOneWirePage, explicitLinkedPageKey, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../src/data/page-operations.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 import { clonePageSchema } from '../src/data/page-schema.ts'
 import type { Project, UUID } from '../src/types.ts'
@@ -60,11 +60,101 @@ test('creates and returns a one-wire page when the project has none', async () =
       }
       return pageKey
     },
-    getProjectData: async () => project
+    getProjectData: async () => project,
+    setProjectData: async () => {}
   })
 
   assert.equal(result?.pageKey, pageKey)
   assert.equal(result?.project.pages[pageKey]?.pageType, 'onewire')
+})
+
+test('creates a separate one-wire page when another building already owns the existing diagram', async () => {
+  const projectKey = 'project' as UUID
+  const newPageKey = 'building-b-wire' as UUID
+  const project = {
+    pages: {
+      buildingA: { creationTime: 1, name: 'Gebouw A', pageType: 'groundplan',
+        schema: { version: 'native-svg-1', objects: [] }, linkedOneWirePageKey: 'building-a-wire' },
+      buildingB: { creationTime: 2, name: 'Gebouw B', pageType: 'groundplan',
+        schema: { version: 'native-svg-1', objects: [] } },
+      'building-a-wire': { creationTime: 3, name: 'Schema A', pageType: 'onewire',
+        schema: { version: 'native-svg-1', objects: [] } }
+    }
+  } as Project
+  let savedProject: Project | undefined
+  const result = await ensureOneWirePage(projectKey, project, {
+    addPage: async (_key, name, schema, pageType) => {
+      project.pages[newPageKey] = { creationTime: 4, name, pageType, schema }
+      return newPageKey
+    },
+    getProjectData: async () => project,
+    setProjectData: async (_key, updated) => { savedProject = updated }
+  }, 'buildingB')
+
+  assert.equal(result?.pageKey, newPageKey)
+  assert.equal(result?.project.pages.buildingB.linkedOneWirePageKey, newPageKey)
+  assert.equal(result?.project.pages.buildingA.linkedOneWirePageKey, 'building-a-wire')
+  assert.equal(savedProject?.pages.buildingB.linkedOneWirePageKey, newPageKey)
+})
+
+test('links legacy overflow sheets to the building root when adopting an old diagram', async () => {
+  const projectKey = 'project' as UUID
+  const project = {
+    pages: {
+      building: { creationTime: 1, name: 'Gebouw', pageType: 'groundplan',
+        schema: { version: 'native-svg-1', objects: [] } },
+      root: { creationTime: 2, name: 'One-wire diagram', pageType: 'onewire',
+        schema: { version: 'native-svg-1', objects: [] } },
+      overflow: { creationTime: 3, name: 'One-wire diagram 2', pageType: 'onewire',
+        schema: { version: 'native-svg-1', objects: [] } }
+    }
+  } as Project
+  let savedProject: Project | undefined
+  const result = await ensureOneWirePage(projectKey, project, {
+    addPage: async () => { throw new Error('an existing root should be reused') },
+    getProjectData: async () => project,
+    setProjectData: async (_key, updated) => { savedProject = updated }
+  }, 'building')
+
+  assert.equal(result?.pageKey, 'root')
+  assert.equal(savedProject?.pages.building.linkedOneWirePageKey, 'root')
+  assert.equal(savedProject?.pages.overflow.oneWireOverflowOf, 'root')
+  assert.deepEqual(oneWireGenerationPageKeys(savedProject!, 'root'), ['root', 'overflow'])
+})
+
+test('resolves explicit ground-plan and one-wire page links without changing legacy auto-link behavior', () => {
+  const project = {
+    pages: {
+      plot: { name: 'Perceel', pageType: 'groundplan' },
+      buildingA: { name: 'Gebouw A', pageType: 'groundplan', linkedOneWirePageKey: 'buildingAWire' },
+      buildingB: { name: 'Gebouw B', pageType: 'groundplan', linkedOneWirePageKey: null },
+      buildingAWire: { name: 'Schema gebouw A', pageType: 'onewire' },
+      buildingBWire: { name: 'Schema gebouw B', pageType: 'onewire' },
+      legacyBuilding: { name: 'Oud grondplan', pageType: 'groundplan' }
+    }
+  } as Project
+
+  assert.equal(explicitLinkedPageKey(project, 'buildingA'), 'buildingAWire')
+  assert.equal(explicitLinkedPageKey(project, 'buildingB'), '')
+  assert.equal(explicitLinkedPageKey(project, 'buildingAWire'), 'buildingA')
+  assert.equal(explicitLinkedPageKey(project, 'buildingBWire'), null)
+  assert.equal(explicitLinkedPageKey(project, 'legacyBuilding'), null)
+})
+
+test('groups one-wire overflow sheets only with their linked building diagram', () => {
+  const project = {
+    pages: {
+      buildingA: { name: 'Gebouw A', pageType: 'groundplan', linkedOneWirePageKey: 'wireA' },
+      buildingB: { name: 'Gebouw B', pageType: 'groundplan', linkedOneWirePageKey: 'wireB' },
+      wireA: { name: 'Schema A', pageType: 'onewire' },
+      wireAOverflow: { name: 'Schema A · vervolg 1', pageType: 'onewire', oneWireOverflowOf: 'wireA' },
+      wireB: { name: 'Schema B', pageType: 'onewire' },
+      wireBOldOverflow: { name: 'Schema B · vervolg 1', pageType: 'onewire', oneWireOverflowOf: 'wireB' }
+    }
+  } as Project
+
+  assert.deepEqual(oneWireGenerationPageKeys(project, 'wireA'), ['wireA', 'wireAOverflow'])
+  assert.equal(explicitLinkedPageKey(project, 'wireBOldOverflow'), 'buildingB')
 })
 
 test('only removes obsolete automatic sheets whose complete content is represented on retained sheets', () => {

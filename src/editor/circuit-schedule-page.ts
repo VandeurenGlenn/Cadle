@@ -1,9 +1,10 @@
 import { cableLabelText } from './model/cable-designation.js'
-import type { CircuitScheduleLayout, ElectricalProjectProfile, Project, ProjectCircuitSpecification } from '../types.js'
+import type { CircuitScheduleLayout, ElectricalProjectProfile, Project, ProjectCircuitSpecification, UUID } from '../types.js'
 import { analyzeCircuits, bindingParts, inferCircuitRole, type CircuitAnalysis, type CircuitGroup } from './circuit-analysis.js'
 import type { Shape } from './model/types.js'
 import { sanitizeConnection } from './model/electrical-connection.js'
 import { nativeStateForProjectPage } from './model/document-state.js'
+import { explicitLinkedPageKey } from '../data/page-operations.js'
 import { connectedOneWireRails, isOneWireDistributionProtection } from './interaction/connected-conductors.js'
 import { oneWireSymbolConnectionAnchors } from './layout/onewire-connections.js'
 import { orderedOneWireDifferentials } from './layout/onewire-topology.js'
@@ -21,8 +22,11 @@ export const analyzeCircuitSchedule = (
   const additional: Shape[] = []
   const seen = new Set<string>()
   for (const shape of oneWireShapes) {
-    if (shape.hidden || !shape.bindingId) continue
-    const binding = bindingParts(shape.bindingId)
+    if (shape.hidden) continue
+    const bindingId = shape.bindingId ?? (shape.kind === 'symbol' && shape.sourceLink?.kind === 'board' &&
+      shape.sourceLink.role === 'breaker' ? shape.sourceLink.id : undefined)
+    if (!bindingId) continue
+    const binding = bindingParts(bindingId)
     if (!binding || knownFamilies.has(binding.family)) continue
     const key = `${binding.bindingId}:${shape.generationKey ??
       (shape.sourceLink?.kind === 'device' ? shape.sourceLink.id : shape.id)}`
@@ -69,7 +73,7 @@ export const analyzeCircuitSchedule = (
       }
     }
     // Generated group IDs describe rows, not logical devices on a floor plan.
-    additional.push({ ...shape, groupId: shape.groupId?.startsWith('onewire-') ? undefined : shape.groupId })
+    additional.push({ ...shape, bindingId, groupId: shape.groupId?.startsWith('onewire-') ? undefined : shape.groupId })
   }
   if (!additional.length) return floorPlan
   for (const family of Object.keys(inferred)) {
@@ -135,7 +139,7 @@ export type CircuitScheduleEditorItem = {
   boardId: string
   title: string
   subtitle: string
-  kind: 'differential' | 'residual-breaker' | 'circuit'
+  kind: 'differential' | 'residual-breaker' | 'breaker' | 'switch' | 'circuit'
   modules: number
   cable?: string
   railId?: string
@@ -151,7 +155,11 @@ export type CircuitScheduleEditorItem = {
 }
 
 export const circuitScheduleItemLabel = (id: string): string =>
-  id.startsWith('DIFF:') ? 'DIFF' : id.startsWith('REM:') ? 'REM' : id
+  id.startsWith('DIFF:') ? 'DIFF'
+    : id.startsWith('REM:') ? 'REM'
+      : id.startsWith('AUT:') ? 'AUT'
+        : id.startsWith('SW:') ? 'INT'
+          : id.startsWith('PV:') ? 'PV' : id
 
 const circuitCategory = (type: CircuitGroup['specification']['circuitType']): string => {
   switch (type) {
@@ -245,6 +253,69 @@ const differentialRows = (project: Project | null): ScheduleCircuit[] => {
   })
 }
 
+const unlabelledBreakerRows = (project: Project | null): ScheduleCircuit[] => {
+  if (!project) return []
+  const rows = new Map<string, ScheduleCircuit>()
+  for (const [pageKey, page] of Object.entries(project.pages ?? {})) {
+    if (page.pageType !== 'onewire') continue
+    const buildingScope = explicitLinkedPageKey(project, pageKey) ?? 'legacy'
+    const shapes = nativeStateForProjectPage(project, pageKey as UUID)?.shapes ?? []
+    for (const shape of shapes) {
+      if (shape.kind !== 'symbol' || shape.hidden || inferCircuitRole(shape) !== 'protection' ||
+        isOneWireDistributionProtection(shape)) continue
+      const topologyRole = /^board:.+:topology:(?:v\d+:)?(main-switch|main-differential|additional-differential-[a-z]+-\d+|residual-breaker|solar-breaker)$/
+        .exec(shape.generationKey ?? '')?.[1]
+      const role = shape.sourceLink?.role ?? topologyRole ?? ''
+      if (/^(?:main-switch|main-differential|additional-differential-|residual-breaker|solar-breaker|earth)/.test(role)) continue
+      const sourceBinding = shape.bindingId ?? (role === 'breaker' && shape.sourceLink?.kind === 'board'
+        ? shape.sourceLink.id : '')
+      if (bindingParts(sourceBinding)) continue
+
+      const identity = shape.generationKey
+        ? `${buildingScope}:${shape.generationKey}`
+        : `${pageKey}:${shape.id}`
+      const id = `AUT:${identity}`
+      const previous = rows.get(id)
+      if (previous) {
+        previous.sourceShapes?.push({ pageKey, shapeId: shape.id })
+        continue
+      }
+      const electrical = shape.electrical
+      const overrides = shape.symbolTextOverrides ?? {}
+      const current = electrical?.breakerCurrentA ?? electrical?.ratedCurrentA ??
+        Number.parseFloat((overrides['rated-current'] ?? '').replace(/^[BCD]/, ''))
+      const poles = electrical?.poles ?? Number.parseInt(overrides.poles ?? overrides['desc:nP'] ?? '', 10)
+      const curve = electrical?.breakerCurve ?? /^[BCD]/.exec(overrides['rated-current'] ?? '')?.[0]
+      const conductors = electrical?.cableConductors
+      const section = electrical?.cableSectionMm2
+      const cable = conductors && section
+        ? cableLabelText({
+            conductors,
+            sectionMm2: section,
+            cableType: electrical.cableType,
+            fireClass: electrical.cableFireClass,
+            hasProtectiveConductor: electrical.hasProtectiveConductor
+          }, electrical.hasProtectiveConductor ? undefined : 'x')
+        : ''
+      rows.set(id, {
+        id,
+        boardId: electrical?.boardId ?? 'unassigned',
+        railId: electrical?.railId,
+        protection: `${curve ?? ''}${Number.isFinite(current) ? `${current}A` : '? A'}`,
+        poles: Number.isFinite(poles) ? `${poles}P` : '? P',
+        cable,
+        consumers: [],
+        note: 'Geen kring gekoppeld',
+        rooms: [],
+        category: overrides.description?.trim() || 'Automaat zonder kring',
+        modules: Number.isFinite(poles) ? Math.max(1, poles) : 2,
+        sourceShapes: [{ pageKey, shapeId: shape.id }]
+      })
+    }
+  }
+  return [...rows.values()]
+}
+
 const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCircuit, 'id' | 'boardId' | 'railId'>[]): ScheduleCircuit[] => {
   const rows = differentialRows(project)
   if (!project) return rows
@@ -254,6 +325,12 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
     board.additionalDifferentials?.filter((item) => item.matchExistingSources === false)
       .map((item) => `DIFF:${board.id}:${item.id}`) ?? []))
   const mainBoardId = project.electricalProfile?.boards?.[0]?.id ?? 'main'
+  if (plan?.mainSwitch) {
+    const poles = plan.mainSwitchPoles ?? project.electricalProfile?.defaultPoles ?? 2
+    rows.push({ id: `SW:${mainBoardId}:main-switch`, boardId: mainBoardId,
+      protection: `${plan.mainSwitch.ratedCurrentA}A`, poles: `${poles}P`, cable: '', consumers: [], rooms: [],
+      category: 'Hoofdschakelaar', modules: Math.max(1, poles) })
+  }
   if (plan?.mainDifferential && !rows.some((row) => row.boardId === mainBoardId && row.mainDifferential)) {
     rows.push({ id: `DIFF:${mainBoardId}:MAIN`, boardId: mainBoardId, mainDifferential: true,
       protection: `${plan.mainDifferential.ratedCurrentA}A / ${plan.mainDifferential.sensitivityMa}mA`,
@@ -269,6 +346,12 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
     rows.push({ id: residualId, boardId: mainBoardId, protection: `C${plan.residualBreakerRatedCurrentA ?? 40}A`,
       poles: `${poles}P`, cable: '', consumers: [], rooms: [], category: 'Remautomaat',
       note: 'Voedingsbeveiliging', modules: poles })
+  }
+  if (plan?.solar && plan.solarBreakerRatedCurrentA) {
+    const poles = plan.solarBreakerPoles ?? project.electricalProfile?.defaultPoles ?? 2
+    rows.push({ id: `PV:${mainBoardId}:solar-breaker`, boardId: mainBoardId,
+      protection: `C${plan.solarBreakerRatedCurrentA}A`, poles: `${poles}P`, cable: '', consumers: [], rooms: [],
+      category: 'PV-automaat', modules: Math.max(1, poles) })
   }
   const ordered = plan ? orderedOneWireDifferentials(plan) : []
   const roles = new Map<string, ScheduleCircuit>()
@@ -302,13 +385,16 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
     return shapes.flatMap((shape) => {
       if (shape.kind !== 'symbol' || shape.hidden) return []
       const identity = shape.generationKey ?? `${pageKey}:${shape.id}`
-      const topology = /^board:(.+):topology:(?:v\d+:)?(main-differential|additional-differential-[a-z]+-\d+|residual-breaker)$/.exec(shape.generationKey ?? '')
+      const topology = /^board:(.+):topology:(?:v\d+:)?(main-switch|main-differential|additional-differential-[a-z]+-\d+|residual-breaker|solar-breaker)$/.exec(shape.generationKey ?? '')
       const role = shape.sourceLink?.role ?? topology?.[2]
-      if (role !== 'residual-breaker' && !isOneWireDistributionProtection(shape)) return []
-      const sourceIdentity = topology ? `board:${topology[1]}:topology:${topology[2]}`
-        : shape.generationKey ?? (shape.sourceLink?.kind === 'board' &&
+      if (!['main-switch', 'solar-breaker', 'residual-breaker'].includes(role ?? '') &&
+        role !== 'main-differential' && !role?.startsWith('additional-differential-') &&
+        !isOneWireDistributionProtection(shape)) return []
+      const buildingScope = explicitLinkedPageKey(project, pageKey) ?? 'legacy'
+      const sourceIdentity = topology ? `${buildingScope}:board:${topology[1]}:topology:${topology[2]}`
+        : `${buildingScope}:${shape.generationKey ?? (shape.sourceLink?.kind === 'board' &&
           /^(main-differential|additional-differential-[a-z]+-\d+|residual-breaker)$/.test(role ?? '')
-          ? `board:${shape.sourceLink.id}:topology:${role}` : identity)
+          ? `board:${shape.sourceLink.id}:topology:${role}` : identity)}`
       const top = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === 'top')
       const rails = top ? connectedOneWireRails(shapes, top.point) : []
       const supplied = rails.flatMap((rail) => shapes.filter((item) => item.kind === 'symbol' && item.oneWireRailId === rail.id &&
@@ -329,7 +415,7 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
       const railIds = new Set(destinations.map((item) => item.railId))
       const sourceBoardId = shape.sourceLink?.kind === 'board' ? shape.sourceLink.id : topology?.[1]
       const boardId = shape.electrical?.boardId ?? (boardIds.size === 1 ? [...boardIds][0] : undefined) ??
-        (role === 'main-differential' || role === 'residual-breaker'
+        (role === 'main-differential' || role === 'main-switch' || role === 'solar-breaker' || role === 'residual-breaker'
           ? sourceBoardId === 'main' ? mainBoardId : sourceBoardId : undefined)
       const railId = shape.electrical?.railId ?? (railIds.size === 1 ? [...railIds][0] : undefined)
       return [{ pageKey, shape, identity, sourceIdentity, role, boardId, railId, supplied }]
@@ -361,7 +447,11 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
       continue
     }
     const residual = role === 'residual-breaker'
+    const mainSwitch = role === 'main-switch'
+    const solarBreaker = role === 'solar-breaker'
     let row = residual ? rows.find((item) => item.id === residualId)
+      : mainSwitch ? rows.find((item) => item.id === `SW:${boardId ?? mainBoardId}:main-switch`)
+        : solarBreaker ? rows.find((item) => item.id === `PV:${boardId ?? mainBoardId}:solar-breaker`)
       : role === 'main-differential' ? rows.find((item) => item.mainDifferential && item.boardId === (boardId ?? mainBoardId))
         : role ? roles.get(role) : undefined
     const values = shape.symbolTextOverrides ?? {}
@@ -376,12 +466,16 @@ const scheduleProtections = (project: Project | null, circuits: Pick<ScheduleCir
       if (matches.length === 1) row = matches[0]
     }
     if (!row) {
-      const id = `${residual ? 'REM' : 'DIFF'}:${boardId ?? 'unassigned'}:${identity}`
+      const prefix = residual ? 'REM' : mainSwitch ? 'SW' : solarBreaker ? 'PV' : 'DIFF'
+      const id = `${prefix}:${boardId ?? 'unassigned'}:${identity}`
       row = { id: rows.some((item) => item.id === id) ? `${id}:${pageKey}:${shape.id}` : id, boardId: boardId ?? 'unassigned', railId,
-        mainDifferential: role === 'main-differential', protection: residual ? '? A'
+        mainDifferential: role === 'main-differential',
+        protection: residual || mainSwitch || solarBreaker ? `${Number.isFinite(current) ? `${current}A` : '? A'}`
           : `${Number.isFinite(current) ? `${current}A` : '? A'} / ${Number.isFinite(sensitivity) ? `${sensitivity}mA` : '? mA'}`,
-        poles: Number.isFinite(poles) ? `${poles}P` : '? P', cable: residual ? '' : shape.electrical?.rcdType ?? values['rcd-type'] ?? '',
-        consumers: [], rooms: [], category: residual ? 'Remautomaat' : 'Differentieel (eendraads)',
+        poles: Number.isFinite(poles) ? `${poles}P` : '? P',
+        cable: residual || mainSwitch || solarBreaker ? '' : shape.electrical?.rcdType ?? values['rcd-type'] ?? '',
+        consumers: [], rooms: [], category: residual ? 'Remautomaat'
+          : mainSwitch ? 'Hoofdschakelaar' : solarBreaker ? 'PV-automaat' : 'Differentieel (eendraads)',
         ...(residual ? { note: 'Voedingsbeveiliging' } : {}),
         modules: Number.isFinite(poles) ? poles : 2 }
       rows.push(row)
@@ -428,12 +522,15 @@ export const circuitScheduleEditorItems = (
 ): CircuitScheduleEditorItem[] => {
   const circuits = circuitScheduleRows(analysis)
   const protections = scheduleProtections(project, circuits)
-  return scheduleEditorItemsForRows([...protections, ...circuits])
+  return scheduleEditorItemsForRows([...protections, ...unlabelledBreakerRows(project), ...circuits])
 }
 
 const scheduleEditorItemsForRows = (rows: readonly ScheduleCircuit[]): CircuitScheduleEditorItem[] => {
   const items: CircuitScheduleEditorItem[] = rows.map((row) => {
-    const kind = row.id.startsWith('REM:') ? 'residual-breaker' : row.id.startsWith('DIFF:') ? 'differential' : 'circuit'
+    const kind = row.id.startsWith('REM:') ? 'residual-breaker'
+      : row.id.startsWith('DIFF:') ? 'differential'
+        : row.id.startsWith('AUT:') || row.id.startsWith('PV:') ? 'breaker'
+          : row.id.startsWith('SW:') ? 'switch' : 'circuit'
     return {
       id: row.id,
       boardId: row.boardId,
@@ -445,10 +542,10 @@ const scheduleEditorItemsForRows = (rows: readonly ScheduleCircuit[]): CircuitSc
       topologyMain: row.topologyMain,
       sourceShapes: row.sourceShapes,
       title: row.category || row.id,
-      subtitle: `${kind === 'circuit' ? `${row.id} · ` : ''}${row.poles} · ${row.protection}${kind === 'differential' && row.cable ? ` · ${row.cable}` : ''}`,
+      subtitle: `${kind === 'circuit' ? `${row.id} · ` : row.id.startsWith('AUT:') ? 'Geen kring · ' : ''}${row.poles} · ${row.protection}${kind === 'differential' && row.cable ? ` · ${row.cable}` : ''}`,
       kind,
       modules: row.modules,
-      ...(kind === 'circuit' ? { cable: row.cable } : {})
+      ...(kind === 'circuit' || kind === 'breaker' ? { cable: row.cable } : {})
     }
   })
   return linkCircuitScheduleProtections(items)
@@ -458,7 +555,10 @@ export const refreshCircuitScheduleItems = (
   project: Project, items: readonly CircuitScheduleEditorItem[]
 ): CircuitScheduleEditorItem[] => {
   const circuits = items.filter((item) => item.kind === 'circuit')
-  return linkCircuitScheduleProtections([...scheduleEditorItemsForRows(scheduleProtections(project, circuits)), ...circuits])
+  return linkCircuitScheduleProtections([
+    ...scheduleEditorItemsForRows([...scheduleProtections(project, circuits), ...unlabelledBreakerRows(project)]),
+    ...circuits
+  ])
 }
 
 export const cabinetModulesPerRow = (layout: CircuitScheduleLayout, boardId: string): 18 | 24 =>
@@ -552,7 +652,7 @@ const scheduleBoards = (project: Project | null, rows: readonly ScheduleCircuit[
 
 export const buildCircuitScheduleSvgs = (project: Project | null, analysis: CircuitAnalysis): string[] => {
   const circuits = circuitScheduleRows(analysis)
-  const rows = [...scheduleProtections(project, circuits), ...circuits]
+  const rows = [...scheduleProtections(project, circuits), ...unlabelledBreakerRows(project), ...circuits]
   for (const item of scheduleEditorItemsForRows(rows).filter((item) => item.kind === 'differential')) {
     const row = rows.find((row) => row.id === item.id)!
     row.note = item.circuits?.length ? `Voedt: ${item.circuits.join(', ')}` : item.assignmentWarning
@@ -582,7 +682,7 @@ export const buildCircuitScheduleSvgs = (project: Project | null, analysis: Circ
       ${scheduleTableHeader()}
       ${circuits.map((entry, rowIndex) => scheduleTableRow(entry.circuit, rowIndex)).join('')}
       ${text(8, 291, 'Automatisch gegenereerd uit de kringgegevens van het project', { size: 2.2, fill: '#8b7e76' })}
-      ${text(202, 291, `${circuits.filter((entry) => !entry.circuit.id.startsWith('DIFF:')).length} kringen`, { size: 2.2, weight: 600, anchor: 'end', fill: '#8b7e76' })}
+      ${text(202, 291, `${circuits.filter((entry) => !/^(?:DIFF|REM|AUT|SW|PV):/.test(entry.circuit.id)).length} kringen`, { size: 2.2, weight: 600, anchor: 'end', fill: '#8b7e76' })}
     </svg>`
   })
 }

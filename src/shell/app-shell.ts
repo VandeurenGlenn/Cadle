@@ -40,7 +40,7 @@ import {
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from '../api/project.js'
 import { circuitTemplates } from '../templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from '../editor/circuit-analysis.js'
-import { ensureOneWirePage, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../data/page-operations.js'
+import { ensureOneWirePage, explicitLinkedPageKey, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../data/page-operations.js'
 import type { Shape } from '../editor/model/types.js'
 import { clonePageSchema } from '../data/page-schema.js'
 import { downloadBom, downloadDataUrl } from '../editor/export/export-commands.js'
@@ -82,7 +82,7 @@ type NativeAppElement = HTMLElement & {
   redo?: () => void
   exportA4PNG?: (orientation?: A4Orientation | 'auto') => Promise<A4ExportResult>
   exportProjectPdf?: (filename?: string) => Promise<void>
-  analyzeBindings?: () => CircuitAnalysis
+  analyzeBindings?: (sourcePageKey?: string) => CircuitAnalysis
   getBOMRows?: () => BomRow[]
   getCircuitScheduleEditorItems?: () => CircuitScheduleEditorItem[]
   autoNameElectrical?: (lightingCircuitCount: number) => { labeled: number; circuitCount: number; message: string }
@@ -201,6 +201,10 @@ export class AppShell extends LiteElement {
   }
 
   get linkedPageKey(): string {
+    if (this.project) {
+      const explicitLink = explicitLinkedPageKey(this.project, this.currentPageKey)
+      if (explicitLink !== null) return explicitLink
+    }
     const currentType = this.currentPage?.pageType
     const targetType = currentType === 'groundplan' ? 'onewire' : currentType === 'onewire' ? 'groundplan' : null
     if (!targetType) return ''
@@ -226,6 +230,22 @@ export class AppShell extends LiteElement {
       if (circuitPage) return circuitPage[0]
     }
     return this.projectPageEntries.find(([, page]) => page.pageType === targetType)?.[0] ?? ''
+  }
+
+  #buildingSettingsPageKey(): string | undefined {
+    if (!this.project || !this.currentPageKey) return undefined
+    const page = this.project.pages[this.currentPageKey]
+    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) return this.currentPageKey
+    if (page?.pageType === 'onewire') {
+      const linkedPageKey = explicitLinkedPageKey(this.project, this.currentPageKey)
+      return linkedPageKey || undefined
+    }
+    return undefined
+  }
+
+  #buildingSettingsPage() {
+    const key = this.#buildingSettingsPageKey()
+    return key ? this.project?.pages[key] : undefined
   }
 
   get projectPageCount(): number {
@@ -488,6 +508,36 @@ export class AppShell extends LiteElement {
   #toggleSplitView = () => {
     if (!this.linkedPageKey) return
     this.splitViewOpen = !this.splitViewOpen
+  }
+
+  #onGroundplanOneWirePageChange = async (event: Event) => {
+    const currentPageKey = this.currentPageKey
+    const currentPage = this.currentPage
+    const selectedKey = (event.currentTarget as HTMLSelectElement).value
+    if (!this.projectKey || !this.project || !currentPageKey || currentPage?.pageType !== 'groundplan') return
+    if (selectedKey && selectedKey !== 'auto' && this.project.pages[selectedKey]?.pageType !== 'onewire') return
+
+    try {
+      await this.savePage()
+      const project = await getProjectData(this.projectKey)
+      const page = project.pages[currentPageKey]
+      if (!page || page.pageType !== 'groundplan') return
+      const updatedPage = { ...page }
+      if (selectedKey === 'auto') delete updatedPage.linkedOneWirePageKey
+      else if (!selectedKey) updatedPage.linkedOneWirePageKey = null
+      else updatedPage.linkedOneWirePageKey = selectedKey as UUID
+      project.pages[currentPageKey] = updatedPage
+      await setProjectData(this.projectKey, project)
+      this.project = project
+      if (!this.linkedPageKey) this.splitViewOpen = false
+    } catch (error) {
+      console.error('Eendraadschema koppelen mislukt.', error)
+      globalThis.alert('De koppeling kon niet worden opgeslagen. Probeer opnieuw.')
+      const select = event.currentTarget as HTMLSelectElement
+      select.value = currentPage.linkedOneWirePageKey === undefined
+        ? 'auto'
+        : currentPage.linkedOneWirePageKey ?? ''
+    }
   }
 
   #selectedObjectId = ''
@@ -828,15 +878,32 @@ export class AppShell extends LiteElement {
     }
     const topology = validation.value
     const previous = this.project
-    this.project = {
-      ...this.project,
-      oneWirePrompt: detail.prompt,
-      oneWireTopology: topology,
-      ...(topology.gridProtectionCurrentA ? { mainFuseA: topology.gridProtectionCurrentA } : {})
+    const settingsPageKey = this.#buildingSettingsPageKey()
+    const settingsPage = settingsPageKey ? this.project.pages[settingsPageKey] : undefined
+    if (settingsPageKey && settingsPage) {
+      this.project = {
+        ...this.project,
+        pages: {
+          ...this.project.pages,
+          [settingsPageKey]: {
+            ...settingsPage,
+            oneWirePrompt: detail.prompt,
+            oneWireTopology: topology,
+            ...(topology.gridProtectionCurrentA ? { mainFuseA: topology.gridProtectionCurrentA } : {})
+          }
+        }
+      }
+    } else {
+      this.project = {
+        ...this.project,
+        oneWirePrompt: detail.prompt,
+        oneWireTopology: topology,
+        ...(topology.gridProtectionCurrentA ? { mainFuseA: topology.gridProtectionCurrentA } : {})
+      }
     }
     const mainDifferential = topology.mainDifferential
     if (mainDifferential) {
-      const profile = this.project.electricalProfile ?? {
+      const profile = settingsPage?.electricalProfile ?? this.project.electricalProfile ?? {
         standard: 'AREI' as const,
         edition: 'Book 1 (current edition)',
         distributor: '',
@@ -863,7 +930,14 @@ export class AppShell extends LiteElement {
               : board
           )
         : profile.boards
-      this.project.electricalProfile = { ...profile, boards }
+      if (settingsPageKey && this.project.pages[settingsPageKey]) {
+        this.project.pages[settingsPageKey] = {
+          ...this.project.pages[settingsPageKey],
+          electricalProfile: { ...profile, boards }
+        }
+      } else {
+        this.project.electricalProfile = { ...profile, boards }
+      }
     }
     try {
       await setProjectData(this.projectKey, this.project)
@@ -1678,7 +1752,8 @@ export class AppShell extends LiteElement {
     }
     this.project = await getProjectData(this.projectKey)
 
-    const report = nativeApp?.analyzeBindings?.() ?? null
+    const buildingPageKey = this.#buildingSettingsPageKey()
+    const report = nativeApp?.analyzeBindings?.(buildingPageKey) ?? null
     const preflight = evaluateOneWirePreflight(report)
     if (preflight.ready === false) {
       if (report) {
@@ -1689,7 +1764,9 @@ export class AppShell extends LiteElement {
       }
       return
     }
-    if (!this.project.oneWireTopology?.mainDifferential) {
+    const topology = (buildingPageKey ? this.project.pages[buildingPageKey]?.oneWireTopology : undefined) ??
+      this.project.oneWireTopology
+    if (!topology?.mainDifferential) {
       this.openOneWirePromptDialog()
       return
     }
@@ -1697,7 +1774,7 @@ export class AppShell extends LiteElement {
     let oneWirePage: Awaited<ReturnType<typeof ensureOneWirePage>>
     try {
       await nativeApp?.createRecoveryPoint?.('Vóór eendraads opnieuw indelen')
-      oneWirePage = await ensureOneWirePage(this.projectKey, this.project)
+      oneWirePage = await ensureOneWirePage(this.projectKey, this.project, undefined, buildingPageKey)
     } catch (error) {
       console.error('Failed to create the one-wire page.', error)
       globalThis.alert('The one-wire page could not be created. Please try again.')
@@ -1726,16 +1803,21 @@ export class AppShell extends LiteElement {
 
     await activeApp.flushPendingSave?.()
     for (let pageIndex = 1; pageIndex < result.pageCount; pageIndex += 1) {
-      const pageName = `One-wire diagram ${pageIndex + 1}`
+      const pageName = `${this.project.pages[oneWirePage.pageKey]?.name ?? 'One-wire diagram'} · vervolg ${pageIndex}`
       let overflowPageKey = Object.entries(this.project.pages).find(
-        ([, page]) => page.pageType === 'onewire' && page.name === pageName
+        ([, page]) => page.pageType === 'onewire' &&
+          page.oneWireOverflowOf === oneWirePage.pageKey && page.name === pageName
       )?.[0]
       if (!overflowPageKey) {
-        await addPage(this.projectKey, pageName, { version: 'native-svg-1', objects: [] }, 'onewire')
+        const newPageKey = await addPage(
+          this.projectKey, pageName, { version: 'native-svg-1', objects: [] }, 'onewire'
+        )
         this.project = await getProjectData(this.projectKey)
-        overflowPageKey = Object.entries(this.project.pages).find(
-          ([, page]) => page.pageType === 'onewire' && page.name === pageName
-        )?.[0]
+        if (this.project.pages[newPageKey]?.pageType === 'onewire') {
+          this.project.pages[newPageKey].oneWireOverflowOf = oneWirePage.pageKey as UUID
+          await setProjectData(this.projectKey, this.project)
+          overflowPageKey = newPageKey
+        }
       }
       if (!overflowPageKey) {
         globalThis.alert(`The one-wire page “${pageName}” could not be created. Existing sheets were kept.`)
@@ -1930,6 +2012,15 @@ export class AppShell extends LiteElement {
     if (this.activeRoute !== 'editor/model') return this.#lightweightRouteTemplate()
     const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
     const linkedPageKey = this.linkedPageKey
+    const oneWirePageOptions = this.projectPageEntries
+      .filter(([, page]) => page.pageType === 'onewire' && !page.oneWireOverflowOf)
+      .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+    const showOneWirePageLink = this.currentPage?.pageType === 'groundplan' &&
+      !this.currentPage.heatingPlanOf && !this.currentPage.heatingScheduleOf &&
+      oneWirePageOptions.length > 0
+    const oneWirePageLinkValue = this.currentPage?.linkedOneWirePageKey === undefined
+      ? 'auto'
+      : this.currentPage.linkedOneWirePageKey ?? ''
 
     return html`
       ${this.#appNotices()}
@@ -2000,8 +2091,8 @@ export class AppShell extends LiteElement {
           this.projects = await getProjects()
         }}></project-share-dialog>
       <onewire-prompt-dialog
-        .prompt=${this.project?.oneWirePrompt ?? ''}
-        .topology=${this.project?.oneWireTopology}
+        .prompt=${this.#buildingSettingsPage()?.oneWirePrompt ?? this.project?.oneWirePrompt ?? ''}
+        .topology=${this.#buildingSettingsPage()?.oneWireTopology ?? this.project?.oneWireTopology}
         .open=${this.oneWirePromptDialogOpen}
         @close=${() => (this.oneWirePromptDialogOpen = false)}
         @apply-topology=${(
@@ -2107,6 +2198,20 @@ export class AppShell extends LiteElement {
                       ? 'One-wire'
                       : 'Floor plan'}</span
                 >
+                ${showOneWirePageLink ? html`
+                  <label class="page-link-control">
+                    <span>Schema</span>
+                    <select
+                      aria-label="Eendraadschema voor dit gebouw"
+                      .value=${oneWirePageLinkValue}
+                      @change=${this.#onGroundplanOneWirePageChange}>
+                      <option value="auto">Automatisch</option>
+                      <option value="">Niet gekoppeld</option>
+                      ${oneWirePageOptions.map(([pageKey, page]) =>
+                        html`<option value=${pageKey}>${page.name}</option>`)}
+                    </select>
+                  </label>
+                ` : ''}
                 <button
                   class="settings-navigation"
                   type="button"

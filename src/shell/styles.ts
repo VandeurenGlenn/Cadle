@@ -293,6 +293,32 @@ export const shellStyles = css`
     color: var(--md-sys-color-on-surface-variant);
     font: 500 11px var(--cadle-font-sans);
   }
+  .page-link-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 230px;
+    min-width: 0;
+    color: var(--md-sys-color-on-surface-variant);
+    font: 500 11px var(--cadle-font-sans);
+  }
+  .page-link-control span { flex: 0 0 auto; }
+  .page-link-control select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 8px;
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface-container);
+    font: inherit;
+  }
+  .page-link-control select:focus-visible {
+    outline: none;
+    box-shadow: var(--cadle-focus-ring);
+  }
   .center-stage-toolbar {
     display: flex;
     align-items: center;
@@ -613,6 +639,8 @@ export const shellStyles = css`
 
     .editor-context-bar { gap: 6px; padding: 0 6px; }
     .drawing-project, .context-separator, .drawing-kind { display: none; }
+    .page-link-control { flex-basis: 132px; }
+    .page-link-control span { display: none; }
     .center-stage-toolbar { padding: 6px; }
 
     .mobile-drawer-backdrop {

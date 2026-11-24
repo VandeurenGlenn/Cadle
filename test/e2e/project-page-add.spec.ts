@@ -57,6 +57,18 @@ test('adds pages quickly with automatic names, type detection and cancel support
     const created = Object.values((element as AppShell).project!.pages).find((entry) => entry.name === 'Eendraadschema')
     return created?.pageType
   })).toBe('onewire')
+  const oneWireKey = await shell.evaluate((element) =>
+    Object.entries((element as AppShell).project!.pages).find(([, entry]) => entry.name === 'Eendraadschema')?.[0])
+  const linkSelect = page.getByRole('combobox', { name: 'Eendraadschema voor dit gebouw' })
+  await expect(linkSelect).toBeVisible()
+  await linkSelect.selectOption(oneWireKey!)
+  await expect.poll(() => shell.evaluate((element) => {
+    const appShell = element as AppShell
+    return appShell.project?.pages[appShell.currentPageKey]?.linkedOneWirePageKey
+  })).toBe(oneWireKey)
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).linkedPageKey)).toBe(oneWireKey)
+  await linkSelect.selectOption('')
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).linkedPageKey)).toBe('')
 
   await pagePane.getByRole('button', { name: 'Nieuwe pagina' }).click()
   await pagePane.getByRole('textbox', { name: 'Paginanaam' }).fill('Niet bewaren')

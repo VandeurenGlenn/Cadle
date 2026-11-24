@@ -11,9 +11,14 @@ import { heatingInternalWallCells } from '../src/editor/heating-wall-policy.ts'
 import { heatingDoorSymbolThreshold, heatingObstacleBounds, isHeatingDoorSymbol } from '../src/editor/heating-openings.ts'
 import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
 import { measureHeatingCoverage, heatingRoomKey } from '../src/editor/heating-coverage.ts'
+import { segmentDistance } from '../src/editor/heating-distance.ts'
 
-if (process.argv.length < 4 || process.argv.length > 5 || process.argv.length === 5 && process.argv[4] !== '--require-coverage')
-  throw new Error('Use original.json generated.json [--require-coverage]')
+const flags = new Set(process.argv.slice(4))
+const coverageEdge = [...flags].find((flag) => flag.startsWith('--coverage-edge='))
+const coverageEdgeMm = coverageEdge ? Number(coverageEdge.slice('--coverage-edge='.length)) : undefined
+if (process.argv.length < 4 || [...flags].some((flag) => flag !== '--require-coverage' && flag !== '--strict-clearance' && flag !== coverageEdge) ||
+  coverageEdgeMm !== undefined && (!Number.isFinite(coverageEdgeMm) || coverageEdgeMm < 0 || coverageEdgeMm > 1000))
+  throw new Error('Use original.json generated.json [--require-coverage] [--strict-clearance] [--coverage-edge=0..1000]')
 const bytes = readFileSync(process.argv[2]), original = JSON.parse(bytes)
 const generated = JSON.parse(readFileSync(process.argv[3], 'utf8'))
 const scene = sanitizeShapes(original.shapes ?? original), shapes = sanitizeShapes(generated.shapes ?? generated)
@@ -33,8 +38,9 @@ const geometry = new Map(pipes.map((pipe) => [pipe, heatingPipeGeometry(pipe)]))
 const obstacles = heatingObstacleBounds(scene, shapeBounds)
 // Inspect physical tubes without a manifold exemption, then independently
 // check continuity/length/capacity with the actual manifold metadata present.
-const audit = checkHeatingPlan(pipes, [], settings.design, obstacles)
-const scheduleAudit = checkHeatingPlan(shapes, rows, settings.design, obstacles)
+const strictTubeClearance = flags.has('--strict-clearance')
+const audit = checkHeatingPlan(pipes, [], settings.design, obstacles, { strictTubeClearance })
+const scheduleAudit = checkHeatingPlan(shapes, rows, settings.design, obstacles, { strictTubeClearance })
 const errors = [...audit.issues, ...scheduleAudit.issues].filter((issue, i, all) => issue.severity === 'error' &&
   all.findIndex((other) => JSON.stringify(other) === JSON.stringify(issue)) === i)
 const permittedWallCells = heatingInternalWallCells(grid, scale)
@@ -47,6 +53,40 @@ const openings = scene.flatMap((shape) => {
     shape.kind === 'door' || shape.kind === 'gate' ? shape : undefined
   return threshold ? [{ id: shape.id, start: threshold.start, end: threshold.end }] : []
 })
+const solidWalls = scene.flatMap((shape) => {
+  if (shape.hidden || shape.kind !== 'wall') return []
+  const { start, end } = shape, width = (shape.strokeWidth ?? 6) / 2
+  const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy)
+  if (!length) return []
+  const at = (p) => ((p.x - start.x) * dx + (p.y - start.y) * dy) / length
+  const across = (p) => Math.abs((p.x - start.x) * dy - (p.y - start.y) * dx) / length
+  const point = (d) => ({ x: start.x + d / length * dx, y: start.y + d / length * dy })
+  const gaps = openings.filter((door) => across(door.start) <= width && across(door.end) <= width)
+    .map(({ start: a, end: b }) => [Math.max(0, Math.min(at(a), at(b))), Math.min(length, Math.max(at(a), at(b)))])
+    .filter(([a, b]) => a < b).sort((a, b) => a[0] - b[0])
+  const segments = []
+  let through = 0
+  for (const [a, b] of [...gaps, [length, length]]) {
+    if (a > through) segments.push({ a: point(through), b: point(a), width })
+    through = Math.max(through, b)
+  }
+  return segments
+})
+const separation = (a, b, c, d) => {
+  const x = b.x - a.x, y = b.y - a.y, u = d.x - c.x, v = d.y - c.y
+  const det = x * v - y * u
+  if (Math.abs(det) > 1e-10) {
+    const t = ((c.x - a.x) * v - (c.y - a.y) * u) / det, s = ((c.x - a.x) * y - (c.y - a.y) * x) / det
+    if (t >= 0 && t <= 1 && s >= 0 && s <= 1) return 0
+  }
+  return Math.min(segmentDistance(a, c, d), segmentDistance(b, c, d), segmentDistance(c, a, b), segmentDistance(d, a, b))
+}
+const wallClearanceMm = (pipe) => {
+  let clearance = Infinity
+  for (const piece of geometry.get(pipe).pieces) for (const segment of solidWalls)
+    clearance = Math.min(clearance, separation(piece.a, piece.b, segment.a, segment.b) - segment.width)
+  return clearance === Infinity ? undefined : +Math.max(0, clearance * scale / 8 - pipe.heating.diameterMm / 2).toFixed(1)
+}
 const crossesOpening = (curve, opening) => {
   const dx = opening.end.x - opening.start.x, dy = opening.end.y - opening.start.y
   const length2 = dx * dx + dy * dy
@@ -86,7 +126,8 @@ const feedChecks = new Map()
 // after a loop has been improved without changing its feeds.
 const coverageGrid = { ...grid, rooms: grid.rooms.filter((room) =>
   !settings.excludedRoomKeys?.includes(heatingRoomKey(room)) && (settings.heatSourceRoom !== false || room.id !== sourceRoom)) }
-const coverage = measureHeatingCoverage(coverageGrid, pipes, scale, settings.spacingMm, settings.edgeMm ?? 100, () => {}, false).coverage
+const evaluationEdge = coverageEdgeMm ?? settings.edgeMm ?? 100
+const coverage = measureHeatingCoverage(coverageGrid, pipes, scale, settings.spacingMm, evaluationEdge, () => {}, false).coverage
 const coverageProblems = coverage.rooms.filter((room) => room.gapM2 > Math.max(.05, room.eligibleM2 * .02))
 for (const pipe of pipes) {
   const curve = geometry.get(pipe)
@@ -125,9 +166,12 @@ for (const row of rows) {
 const result = { sourceSha256: createHash('sha256').update(bytes).digest('hex'), circuits: rows.length,
   pipeDiametersMm: [...new Set(pipes.map((pipe) => pipe.heating.diameterMm))],
   nominalSpacingsMm: [...new Set(pipes.map((pipe) => pipe.heating.spacingMm))],
+  designWallSetbackMm: settings.edgeMm,
+  loopWallClearanceMm: Object.fromEntries(pipes.filter((pipe) => pipe.heating.pipeRole === 'loop')
+    .map((pipe) => [pipe.heating.circuitId, wallClearanceMm(pipe)])),
   minimumBendRadiusMm: Math.min(...[...geometry.values()].flatMap((curve) => curve.bends.map((bend) => bend.radiusMm))),
   originalShapes: scene.length, originalDrawingProblems,
-  geometryErrors: errors.length, geometryIssues: errors, nativeSceneProblems: problems, wallPassages: markers.length,
+  strictTubeClearance, geometryErrors: errors.length, geometryIssues: errors, nativeSceneProblems: problems, wallPassages: markers.length,
   sourceEnds: feeds.length, maximumDrawnCircuitM: Math.max(...rows.map((row) => row.totalM)),
   maximumCuttingLengthM: Math.max(...rows.map((row) => row.cutM ?? row.totalM)),
   circuitChecks: rows.map((row) => ({
@@ -135,7 +179,7 @@ const result = { sourceSha256: createHash('sha256').update(bytes).digest('hex'),
     connections: feeds.filter((pipe) => pipe.heating.circuitId === row.id).map((pipe) => feedChecks.get(pipe)),
   })),
   cuttingReserveM: settings.design?.allowanceM ?? 0, designReviews: owner.heating.audit?.issues.filter((issue) => issue.severity === 'review') ?? [] }
-result.coverage = { rooms: coverage.rooms, gapM2: coverage.rooms.reduce((sum, room) => sum + room.gapM2, 0),
+result.coverage = { evaluationEdgeMm: evaluationEdge, rooms: coverage.rooms, gapM2: coverage.rooms.reduce((sum, room) => sum + room.gapM2, 0),
   eligibleM2: coverage.rooms.reduce((sum, room) => sum + room.eligibleM2, 0), roomsRequiringReview: coverageProblems.map((room) => room.key) }
 console.log(JSON.stringify(result, null, 2))
-if (originalDrawingProblems.length || errors.length || problems.length || process.argv.includes('--require-coverage') && coverageProblems.length) process.exitCode = 1
+if (originalDrawingProblems.length || errors.length || problems.length || flags.has('--require-coverage') && coverageProblems.length) process.exitCode = 1

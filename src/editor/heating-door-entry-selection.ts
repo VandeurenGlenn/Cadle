@@ -54,8 +54,10 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
   const sameContext = (saved: SelectionInput) => saved.context === context &&
     masks.every((mask, index) => mask.length === saved.masks[index].length && mask.every((value, cell) => value === saved.masks[index][cell]))
   const hit = cache?.completed
+  const sameFloor = hit && sameContext(hit)
+  const priorWitnesses = sameFloor ? cache?.witnesses : undefined
   if (hit && (hit.input === inputKey && hit.requested === requested ||
-    (hit.input === inputKey || hit.output === inputKey) && JSON.stringify(hit.variants) === requested) && sameContext(hit)) {
+    (hit.input === inputKey || hit.output === inputKey) && JSON.stringify(hit.variants) === requested) && sameFloor) {
     for (const [key, variant] of hit.variants) options.variants.set(key, variant)
     return structuredClone(hit.jobs)
   }
@@ -129,20 +131,31 @@ export const selectHeatingDoorEntries = (input: readonly HeatingSpiralField[], g
     // physical source router can use that already selected short passage.
     const sourceShortcut = [...roomIds].some((room) => shortcutRooms.has(room))
     const guard = (candidate: typeof coils[number]) => {
-      const bodyM = heatingPipeGeometry(candidate).length * scale / 8000
-      return heatingFieldEntryGuards(grid, scene, candidate,
-        coils.map((coil, i) => i === index ? candidate : coil), roomIds, source, settings, scale, { obstacles, checkpoint,
-          acceptPair: (pair) => {
-            const minimumM = pair.reduce((sum, pipe) => {
-              const curve = heatingPipeGeometry(pipe), end = curve.points.at(-1)!
-              // These candidates run from the coil to the door. Both real
-              // tails count, plus an optimistic straight leader to the source
-              // zone. A long local detour must not become an impossible inlet.
-              return sum + curve.length * scale / 8000 + Math.max(0,
-                Math.hypot(end.x - source.x, end.y - source.y) * scale / 8000 - (options.sourceRadiusMm ?? 1500) / 1000)
-            }, bodyM + limits.allowanceM)
-            return minimumM <= limits.maxCircuitLengthM + .05
-          } })
+      const body = heatingPipeGeometry(candidate)
+      const layout = coils.map((coil, i) => i === index ? candidate : coil)
+      const acceptPair = (pair: readonly RectShape[], provisional = false) => {
+        const minimumM = pair.reduce((sum, pipe) => {
+          const curve = heatingPipeGeometry(pipe)
+          const end = provisional || pipe.heating!.pipeRole === 'return' ? curve.points.at(-1)! : curve.points[0]
+          // The local approach and an optimistic leader both count towards
+          // the length before this inlet can be selected.
+          return sum + curve.length * scale / 8000 + Math.max(0,
+            Math.hypot(end.x - source.x, end.y - source.y) * scale / 8000 - (options.sourceRadiusMm ?? 1500) / 1000)
+        }, body.length * scale / 8000 + limits.allowanceM)
+        return minimumM <= limits.maxCircuitLengthM + .05
+      }
+      const known = priorWitnesses?.get(heatingConnectionEntryKey(body.points))?.map((pipe) => ({
+        ...pipe, heating: { ...pipe.heating!, circuitId: candidate.heating!.circuitId }
+      }))
+      if (known?.length && acceptPair(known) && !checkHeatingPlan([...layout, ...known], [], settings.design, obstacles,
+        { focusPipeIds: new Set(known.map((pipe) => pipe.id)), stopOnConflict: true, checkpoint }).errors &&
+        layout.every((coil) => coil === candidate || !heatingEntryTangentConflict(coil, known))) return known
+      return heatingFieldEntryGuards(grid, scene, candidate, layout, roomIds, source, settings, scale, {
+        obstacles, checkpoint,
+        // The guard callback receives both provisional pipes oriented from
+        // the coil towards the opening.
+        acceptPair: (pair) => acceptPair(pair, true)
+      })
     }
     // Keep an existing good entrance; this preserves work in other rooms.
     if (tangentAvailable(coils[index])) {

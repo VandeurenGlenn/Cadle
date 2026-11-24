@@ -9,8 +9,28 @@ import { createHeatingPipe, heatingPipeData } from '../src/editor/heating-pipe.t
 import { heatingPipeGeometry } from '../src/editor/heating-geometry.ts'
 import { heatingPointClearance } from '../src/editor/heating-clearance.ts'
 import { sanitizeHeating } from '../src/editor/heating-plan.ts'
-import { alignHeatingFlowLegs, smoothHeatingFlowLanes } from '../src/editor/heating-flow-lanes.ts'
+import { alignHeatingFlowLegs, alignHeatingFlowTrunk, roundHeatingFlowInlet, smoothHeatingFlowLanes } from '../src/editor/heating-flow-lanes.ts'
 import { checkHeatingPlan } from '../src/editor/heating-checks.ts'
+import { selectHeatingLanePairs } from '../src/editor/heating-lane-selection.ts'
+
+test('two conflicting circuit pairs can move together while a clear circuit stays put', () => {
+  const choices = selectHeatingLanePairs([[[0, 0], [1, 1]], [[0, 0], [1, 1]], [[0, 0], [1, 1]]],
+    (i, a, j, b) => i < 2 && j < 2 && (!a[0] || !b[0]))
+  assert.deepEqual(choices, [[1, 1], [1, 1], [0, 0]])
+})
+
+test('two short raster jogs become an R80 inlet without changing the terminal tangent', () => {
+  const route = [{ x: 0, y: 0 }, { x: 0, y: 60 }, { x: 1.6, y: 60 },
+    { x: 1.6, y: 71.2 }, { x: 15.2, y: 71.2 }, { x: 15.2, y: 75 }]
+  const variants = [...roundHeatingFlowInlet(smoothHeatingFlowLanes(route, 6.4, 0), 6.4)]
+  assert.ok(variants.some((points) => {
+    const pipe = createHeatingPipe('inlet', points, { ...heatingPipeData(100), automatic: true, circuitId: 'VV02', bendRadiusMm: 80 })
+    const geometry = heatingPipeGeometry(pipe)
+    return geometry.bends.length === 2 && geometry.bends.every((bend) => bend.radiusMm >= 79.9) &&
+      geometry.points.at(-2)?.x === 15.2 && geometry.points.at(-2)!.y < 75 &&
+      geometry.points.at(-1)?.y === 75
+  }))
+})
 
 test('overlapping loose source lanes are repaired locally without rerouting valid room approaches', () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/heating-loose-source-tails.json', import.meta.url), 'utf8')) as {
@@ -234,4 +254,10 @@ test('flow lane suggestions preserve coil tangents and round short jogs at R80',
   const candidates = [...alignHeatingFlowLegs(route, lanes, 6.4, 1.6)]
   assert.ok(candidates.some((points) => points[0].x === 4 && points[1].x === 4))
   assert.ok(candidates.every((points) => points.at(-1)!.x === 50 && points.at(-2)!.x === 50))
+
+  const rooted = [{ x: 2, y: 0 }, { x: 2, y: 30 }, { x: 100, y: 30 }, { x: 100, y: 60 }, { x: 120, y: 60 }]
+  const assigned = [{ x: 5, y: 0 }, { x: 5, y: 28 }, { x: 100, y: 28 }]
+  const trunk = [...alignHeatingFlowTrunk(rooted, assigned, 6.4, 1.6)]
+  assert.ok(trunk.some((points) => points[1].x === 5 && points[2].y === 28))
+  assert.ok(trunk.every((points) => points.at(-1) === rooted.at(-1) && points.at(-2)!.y === 60))
 })

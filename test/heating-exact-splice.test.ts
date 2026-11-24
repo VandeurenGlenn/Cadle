@@ -38,3 +38,21 @@ test('three fractional pockets retain real R80 turns through successive merges',
   assert.ok(result, 'all three pockets form one continuous physically valid tube')
   assert.ok(heatingPipeGeometry(make(result.points, 'result')).bends.every((bend) => bend.radiusMm >= 79.9))
 })
+
+test('a perpendicular spiral joins a straight run through its open ports', () => {
+  const settings = { diameterMm: 16, spacingMm: 100, design: { minBendRadiusMm: 80 } }
+  const host = [{ x: 0, y: 120 }, { x: 200, y: 120 }]
+  const spiral = rectangularHeatingSpiral(96, 112, settings, 100, undefined, 'y')!
+    .map((p) => ({ x: p.x + 40, y: 112 - p.y }))
+  // Include a retained elbow so the host also has distinct entry and exit legs.
+  const path = [{ x: 0, y: 140 }, ...host]
+  const proposals = [...exactHeatingSpliceCandidates(path, spiral, 8, 6.4, undefined, true)]
+  const points = proposals.find((p) => p.includes(spiral[0]) && p.includes(spiral.at(-1)!))
+  assert.ok(points)
+  assert.deepEqual(points[0], path[0])
+  assert.deepEqual(points.at(-1), path.at(-1))
+  const pipe = createHeatingPipe('joined', openHeatingTurns(points, 6.4, 1.28),
+    { ...heatingPipeData(100), ...settings, automatic: true, circuitId: 'J', pipeRole: 'loop' })
+  assert.equal(checkHeatingPlan([pipe], [], settings.design).errors, 0)
+  assert.ok(heatingPipeGeometry(pipe).bends.every((bend) => bend.radiusMm >= 79.9))
+})

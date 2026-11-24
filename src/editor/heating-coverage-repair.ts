@@ -7,6 +7,7 @@ import { generateHeatingAreaLoop, rectangularHeatingArea } from './heating-area-
 import { heatingPipeGeometry } from './heating-geometry.js'
 import { createHeatingPipe } from './heating-pipe.js'
 import { heatingDesignLimits } from './heating-design.js'
+import { combineHeatingPatterns } from './heating-pattern.js'
 import { heatingPointClearance } from './heating-clearance.js'
 import { heatingSpliceWindows } from './heating-paired-splice.js'
 import { checkHeatingPlan } from './heating-checks.js'
@@ -323,7 +324,6 @@ export const repairHeatingCoverageLoops = (native: HeatingGrid, input: readonly 
             const coverage = measureHeatingCoverage(native, updated, scale, settings.spacingMm, settings.edgeMm ?? 100, checkpoint, false).coverage
             const reduction = gapM2(result.coverage) - gapM2(coverage), cellM2 = (native.step * scale / 8000) ** 2
             if (reduction < cellM2 / 2 || coverage.rooms.some((room) => room.gapM2 > (result.coverage.rooms.find((r) => r.key === room.key)?.gapM2 ?? 0) + cellM2 / 2)) { reject('run-coverage'); continue }
-            if (candidate.heating!.pipeRole === 'loop') candidate.heating!.pattern = 'mixed'
             const acceptedPatch = { circuitId: data.circuitId!, roomKey: box.roomKey, bounds: box,
               gapReductionM2: reduction, addedM: (geometry.length - original.length) * scale / 8000 }
             result.pipes = updated; result.coverage = coverage; result.acceptedPatches.push(acceptedPatch)
@@ -426,7 +426,7 @@ export const repairHeatingCoverageLoops = (native: HeatingGrid, input: readonly 
               if (!valid) continue
               const points = simplifyHeatingPath([...before, ...bridges[0].slice(1, -1), ...body, ...bridges[1].slice(1, -1), ...after])
               const candidate = pipe(host, points)
-              candidate.heating!.pattern = 'mixed'
+              candidate.heating!.pattern = combineHeatingPatterns([data.pattern, patch.pattern])
               const geometry = geometryFor(candidate)
               if (!samePorts(original, geometry.points)) { reject('ports'); continue }
               if (heatingCurveWallConflict(native, geometry.pieces, { permittedWallCells: new Set() })) { reject('wall'); continue }

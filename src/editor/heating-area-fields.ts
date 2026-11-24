@@ -64,7 +64,13 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
     onParts?: (group: string, parts: { room: string; areaM2: number; boundaries: Point[][] }[]) => void;
     onRejectedPart?: (room: string, area: HeatingArea, trace?: HeatingAreaTrace) => void;
     onRoom?: (name: string, completed: number, total: number) => void }): HeatingAreaFieldsResult => {
-  const native = options.nativeGrid ?? grid, obstacles = heatingObstacleBounds(scene, shapeBounds), checkpoint = options.checkpoint
+  const native = options.nativeGrid ?? grid, obstacles = heatingObstacleBounds(scene, shapeBounds)
+  const balanceLimit = Symbol('balance-alternatives')
+  let balanceDeadline = Number.POSITIVE_INFINITY
+  const checkpoint = () => {
+    options.checkpoint()
+    if (Date.now() >= balanceDeadline) throw balanceLimit
+  }
   const limits = heatingDesignLimits(settings.diameterMm, settings.design), capacity = options.capacity ?? [...options.targets.values()].reduce((a, b) => a + b, 0)
   const preferredMaxM = options.preferredMaxM ?? limits.maxCircuitLengthM
   const wallDistances = heatingWallDistances(native), edgeCells = (settings.edgeMm ?? 100) * 8 / scale / native.step
@@ -87,6 +93,13 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
   const partitionContext = options.leads ?? native.wall
   let partitions = areaPartitions.get(partitionContext)
   if (!partitions) { partitions = new Map(); areaPartitions.set(partitionContext, partitions) }
+  const changedEntries = [...options.fieldEntryVariants ?? []].flatMap(([key, variant]) => {
+    try {
+      const boundaries = JSON.parse(key) as Point[][]
+      const bounds = heatingAreaBounds({ boundaries, entry: source })
+      return Number.isFinite(bounds.x) && Number.isFinite(bounds.y) ? [{ key, variant, bounds }] : []
+    } catch { return [] }
+  })
   const lead = (p: Point) => {
     const cell = native.index(p), distance = cell >= 0 ? options.leads?.[cell] : -1
     // Four-neighbour grid distance is a square-guide estimate, not a lower
@@ -162,6 +175,10 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
     joinHeatingFieldPatch(jobs, patch, native, scene, settings, scale, { source, feedPipes, checkpoint, obstacles, completeM, raster,
       reserveFeeds: options.reserveFeeds, feedCorridor: grid.feedCorridor })
   type Proposal = { jobs: HeatingSpiralField[]; count: number; maxM: number; key: string; gapM2: number; reviewM2: number }
+  const overPreferred = (length: number) => Math.max(0, length - preferredMaxM)
+  const compareProposal = (a: Proposal, b: Proposal) => a.reviewM2 - b.reviewM2 ||
+    a.jobs.filter((job) => job.pattern !== 'spiral').length - b.jobs.filter((job) => job.pattern !== 'spiral').length ||
+    overPreferred(a.maxM) - overPreferred(b.maxM) || a.gapM2 - b.gapM2 || a.maxM - b.maxM
   const groups: Proposal[][] = []
   let completed = 0
   for (const group of grid.rooms) {
@@ -250,7 +267,8 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
       // A spare authorised circuit is preferable to chaining remote pockets.
       // Only search physical two-leg splices if this allocation cannot fit.
       if (!options.allowPatchJoining) separateChoices = separateChoices.filter((choice) => choice.length === small.length)
-      for (const separate of separateChoices) {
+      let completeAlternatives = 0
+      try { for (const separate of separateChoices) {
         const dedicated = [...large, ...separate], allocation = dedicated.map(() => 1)
         for (let n = dedicated.length; n < count; n++) {
           let next = 0
@@ -286,8 +304,17 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
             const key = JSON.stringify([parts.indexOf(part), assigned[i], partSettings.edgeMm,
               partSettings.entryVariant, partitionVariant, preparedFeeds && part.eligible < 2.5 ? jobs.map((job) => job.points) : undefined])
             if (!layouts.has(key)) {
+              const bounds = heatingAreaBounds(part.area)
+              // Inlet changes in another room leave this partition and its
+              // cached thermal geometry valid. Include the half-pitch apron
+              // used by the partitioner around its field boundaries.
+              const apron = settings.spacingMm * 4 / scale
+              const fieldEntryVariants = new Map(changedEntries.filter(({ bounds: entry }) =>
+                entry.x >= bounds.x - apron && entry.y >= bounds.y - apron &&
+                entry.x + entry.width <= bounds.x + bounds.width + apron &&
+                entry.y + entry.height <= bounds.y + bounds.height + apron).map(({ key, variant }) => [key, variant]))
               const cacheKey = JSON.stringify([part.area, part.centreFloor, assigned[i], partSettings, partitionVariant, scale, source,
-                options.measuredLeads?.filter((sample) => sample.roomId === part.room.id), [...options.fieldEntryVariants ?? []]])
+                options.measuredLeads?.filter((sample) => sample.roomId === part.room.id), [...fieldEntryVariants]])
               const entry = part.area.entry
               const doorEntry = native.door[native.index(entry)]
               if (!partitions.has(cacheKey)) {
@@ -296,7 +323,7 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
                 // its nearest corner may face a sealed internal seam.
                 partitions.set(cacheKey, partitionHeatingArea(part.area, assigned[i], partSettings, scale,
                   { checkpoint, centreFloor: part.centreFloor, coverageBudgetM2: roomCoverageBudgets.get(part.room.id), leadM: lead,
-                    entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants: options.fieldEntryVariants,
+                    entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants,
                     onRejectedArea: options.onRejectedPart && ((area, trace) => options.onRejectedPart!(part.room.name, area, trace)) }))
                 if (partitions.size > 128) partitions.delete(partitions.keys().next().value!)
               }
@@ -312,7 +339,7 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
                   // decide whether a narrow pocket can use the space beside its bundle.
                   const relaxed = partitionHeatingArea(part.area, assigned[i], partSettings, scale,
                     { checkpoint, coverageBudgetM2: roomCoverageBudgets.get(part.room.id), leadM: lead,
-                      entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants: options.fieldEntryVariants,
+                      entryPoint: doorEntry ? entry : undefined, variant: partitionVariant, fieldEntryVariants,
                       onRejectedArea: options.onRejectedPart && ((area, trace) => options.onRejectedPart!(part.room.name, area, trace)) })
                   partitions.set(relaxedKey, partitionCoverageAccepted(relaxed, part.room.id) ? relaxed : null)
                 }
@@ -375,11 +402,15 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
             proposals.push({ jobs, count, maxM: Math.max(...jobs.map(completeM)), key: heatingRoomKey(group),
               gapM2: preparedFeeds ? coverage.rooms.reduce((sum, room) => sum + room.gapM2, 0) : 0,
               reviewM2: preparedFeeds ? coverage.rooms.reduce((sum, room) => sum + Math.max(0, room.gapM2 - Math.max(.05, room.eligibleM2 * .02)), 0) : 0 })
-            if (proposals.at(-1)!.maxM <= limits.maxCircuitLengthM + .05) break
+            const proposal = proposals.at(-1)!
+            if (++completeAlternatives >= 3 || proposal.reviewM2 <= 1e-7 && proposal.maxM <= preferredMaxM + .05) break
+            if (completeAlternatives === 1) balanceDeadline = Date.now() + 1500
           }
         }
-        if (proposals.some((proposal) => proposal.count === count && proposal.maxM <= limits.maxCircuitLengthM + .05)) break
-      }
+        if (completeAlternatives >= 3 || proposals.some((proposal) => proposal.count === count &&
+          proposal.reviewM2 <= 1e-7 && proposal.maxM <= preferredMaxM + .05)) break
+      } } catch (error) { if (error !== balanceLimit) throw error }
+      finally { balanceDeadline = Number.POSITIVE_INFINITY }
     }
     if (!proposals.length) {
       if (!options.allowPatchJoining) return buildHeatingAreaFields(grid, scene, settings, scale, source, { ...options, allowPatchJoining: true })
@@ -388,8 +419,7 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
     const bestByCount = new Map<number, Proposal>()
     for (const proposal of proposals) {
       const previous = bestByCount.get(proposal.count)
-      if (!previous || proposal.reviewM2 < previous.reviewM2 - 1e-7 || Math.abs(proposal.reviewM2 - previous.reviewM2) < 1e-7 &&
-        (proposal.gapM2 < previous.gapM2 - 1e-7 || Math.abs(proposal.gapM2 - previous.gapM2) < 1e-7 && proposal.maxM < previous.maxM)) bestByCount.set(proposal.count, proposal)
+      if (!previous || compareProposal(proposal, previous) < 0) bestByCount.set(proposal.count, proposal)
     }
     groups.push([...bestByCount.values()]); completed++; options.onRoom?.(group.name, completed, grid.rooms.length)
   }
@@ -399,7 +429,9 @@ export const buildHeatingAreaFields = (grid: HeatingGrid, scene: readonly Shape[
       jobs: [...state.jobs, ...proposal.jobs], count: state.count + proposal.count, maxM: Math.max(state.maxM, proposal.maxM),
       reviewM2: state.reviewM2 + proposal.reviewM2, gapM2: state.gapM2 + proposal.gapM2,
       targets: new Map([...state.targets, [proposal.key, proposal.count] as const]) }])).sort((a, b) =>
-        a.reviewM2 - b.reviewM2 || a.gapM2 - b.gapM2 || Math.max(0, a.maxM - preferredMaxM) - Math.max(0, b.maxM - preferredMaxM) || a.count - b.count || a.maxM - b.maxM)
+        a.reviewM2 - b.reviewM2 ||
+        a.jobs.filter((job) => job.pattern !== 'spiral').length - b.jobs.filter((job) => job.pattern !== 'spiral').length ||
+        overPreferred(a.maxM) - overPreferred(b.maxM) || a.gapM2 - b.gapM2 || a.count - b.count || a.maxM - b.maxM)
     const seen = new Set<string>(), retained = new Map<number, number>()
     states = candidates.filter((state) => {
       const signature = JSON.stringify([...state.targets])

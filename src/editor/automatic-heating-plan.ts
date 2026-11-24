@@ -923,7 +923,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   const isConnectionZone = settings.connectionMode === 'zone'
   const zone = isConnectionZone ? budget.connectionZone ??= heatingConnectionZone(template, scene, position, settings.capacity, settings.diameterMm, limits.minBendRadiusMm, scale,
-    { preferDoor: true }) : undefined
+    { preferDoor: true, sourcePassage: budget.plannedPassages?.find((passage) => passage.rooms.includes(sourceRoomId)) }) : undefined
   if (settings.manifoldSide === 'auto') {
     const size = automaticManifoldSize(settings.capacity, scale, template.step), centre = { x: position.x + size.width / 2, y: position.y + size.height / 2 }
     const doors = sourceRegion?.cells.filter((cell) => template.door[cell]) ?? []
@@ -1461,6 +1461,8 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       for (const cell of stub.slice(0, -1)) { blocked[cell] = 1; immutable.add(cell) }
     }
     const sources = sourceStubs.map((stub) => stub.at(-1)!), goals = targetStubs.map((stub) => stub.at(-1)!)
+    const doorSourceIndices = sourceStubs.flatMap((stub, index) =>
+      stub.some((cell) => grid.wall[cell] && !grid.door[cell]) ? [] : [index])
     for (const cell of [...sources, ...goals]) if (blocked[cell]) { budget.onRouteFailure?.('bundle-overlap', grid.point(cell), 'Rechte aansluitingen overlappen elkaar.'); return null }
     budget.onBundleGrid?.({ grid, blocked, sourceStubs, targetStubs, permittedWallCells: wallAccess.permittedWallCells, coils, jobs,
       feedPaths: heatingFeedReservations.get(budget)?.grid.feedPaths })
@@ -1469,7 +1471,8 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
       if (budget.routes < goals.length) return null
       budget.routes -= goals.length
       const blockedGoals = new Set<number>()
-      const doorPaths = routeHeatingBundle(grid, sources, goals, blocked, { checkpoint })
+      const doorPaths = routeHeatingBundle(grid, doorSourceIndices.map((index) => sources[index]), goals, blocked, { checkpoint })
+        ?.map((path) => ({ ...path, source: doorSourceIndices[path.source] }))
       const paths = doorPaths ?? routeHeatingBundle(grid, sources, goals, blocked, { ...wallAccess, checkpoint, onBlocked: (targets) => targets.forEach((target) => { blockedGoals.add(target); const index = Math.floor(target / 2); budget.patternFallbackRooms?.add(jobs[index].roomKey ?? jobs[index].roomName); budget.onRouteFailure?.('bundle-entry', grid.point(goals[target]), `${common[index].circuitId}: ${target % 2 ? 'retour' : 'aanvoer'} niet bereikbaar`) }) }, (done) =>
         budget.onProgress?.({ phase: 'connections', circuits: jobs.length, completedCircuits: Math.floor(done / 2), attempt: lengthPass * 8 + mergeVariant + 1 }))
       if (!paths) {
@@ -1825,7 +1828,7 @@ const generateHeatingAttempt = (scene: readonly Shape[], position: Point, settin
   }
   budget.onProgress?.({ phase: 'checks', circuits: rows.length })
   const audit = checkHeatingPlan([...scene, ...shapes], rows, settings.design,
-    heatingObstacleBounds(scene, shapeBounds), { checkpoint, geometryFor })
+    heatingObstacleBounds(scene, shapeBounds), { checkpoint, geometryFor, strictTubeClearance: true })
   for (const shape of shapes) if (shape.heating?.kind === 'pipe' && !preserved.some((pipe) => pipe.id === shape.id)) {
     const point = heatingCurveWallConflict(grid, geometryFor(shape).pieces, wallAccess)
     if (point) throw new Error(`Geen geldig aansluittraject: ${shape.heating.circuitId} raakt een muur buiten een deur of toegestane doorvoer.`)

@@ -434,112 +434,137 @@ const buildHeatingAreaLoopVariants = (area: HeatingArea, settings: HeatingAreaSe
   if (!best || best.gapRatio > .05 || (settings.preferSpiral && best.pattern !== 'spiral')) {
     // A neck can split inset contours into pockets. Fill those pockets locally,
     // then splice them into the same tube; they never become extra circuits.
-    const rows = [...new Set(initial.boundaries.flat().map((p) => p.y))].sort((a, b) => a - b)
-    const rectangles: Bounds[] = []
-    for (let y = 1; y < rows.length; y++) {
-      const middle = (rows[y - 1] + rows[y]) / 2, xs: number[] = []
-      for (const ring of initial.boundaries) for (let i = 0; i < ring.length; i++) {
-        const a = ring[i], b = ring[(i + 1) % ring.length]
-        if ((a.y > middle) !== (b.y > middle)) xs.push(a.x + (b.x - a.x) * (middle - a.y) / (b.y - a.y))
+    const splitFields = (axis: 'x' | 'y') => {
+      const across = axis === 'x' ? 'y' : 'x'
+      const cuts = [...new Set(initial.boundaries.flat().map((p) => p[axis]))].sort((a, b) => a - b)
+      const strips: { start: number; end: number; low: number; high: number }[] = []
+      for (let i = 1; i < cuts.length; i++) {
+        const middle = (cuts[i - 1] + cuts[i]) / 2, intersections: number[] = []
+        for (const ring of initial.boundaries) for (let j = 0; j < ring.length; j++) {
+          const a = ring[j], b = ring[(j + 1) % ring.length]
+          if ((a[axis] > middle) !== (b[axis] > middle)) intersections.push(a[across] +
+            (b[across] - a[across]) * (middle - a[axis]) / (b[axis] - a[axis]))
+        }
+        intersections.sort((a, b) => a - b)
+        for (let j = 1; j < intersections.length; j += 2) {
+          const low = intersections[j - 1], high = intersections[j]
+          const previous = strips.find((strip) => Math.abs(strip.low - low) < 1e-6 &&
+            Math.abs(strip.high - high) < 1e-6 && Math.abs(strip.end - cuts[i - 1]) < 1e-6)
+          if (previous) previous.end = cuts[i]
+          else strips.push({ start: cuts[i - 1], end: cuts[i], low, high })
+        }
       }
-      xs.sort((a, b) => a - b)
-      for (let x = 1; x < xs.length; x += 2) {
-        const previous = rectangles.find((r) => Math.abs(r.x - xs[x - 1]) < 1e-6 && Math.abs(r.width - xs[x] + xs[x - 1]) < 1e-6 && Math.abs(r.y + r.height - rows[y - 1]) < 1e-6)
-        if (previous) previous.height += rows[y] - rows[y - 1]
-        else rectangles.push({ x: xs[x - 1], y: rows[y - 1], width: xs[x] - xs[x - 1], height: rows[y] - rows[y - 1] })
-      }
+      return strips.map(({ start, end, low, high }): Bounds => axis === 'y'
+        ? { x: low, y: start, width: high - low, height: end - start }
+        : { x: start, y: low, width: end - start, height: high - low })
     }
-    const fields: Point[][][] = [], patterns = new WeakMap<Point[], HeatingAreaLoop['pattern']>(), inletUsability = new WeakMap<Point[], boolean>()
-    const initialEdges = initial.boundaries.flatMap((ring) => ring.map((a, i) => ({ a, b: ring[(i + 1) % ring.length] })))
-    const onInitialEdge = segmentIndex(initialEdges, 1e-5, pitch)
-    const border = (a: Point, b: Point) => [0, .25, .5, .75, 1].every((t) =>
-      onInitialEdge({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, 1e-5, true))
-    for (const r of rectangles) {
-      const variants: Point[][] = []
-      // Physical offsets and partition half-pitch seams are already present in
-      // initial. Only an internal rectangle-to-rectangle cut needs padding;
-      // padding the outside again creates a 150–200 mm unheated seam.
-      const l = border({ x: r.x, y: r.y }, { x: r.x, y: r.y + r.height }) ? 0 : pitch / 2
-      const rr = border({ x: r.x + r.width, y: r.y }, { x: r.x + r.width, y: r.y + r.height }) ? 0 : pitch / 2
-      const t = border({ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }) ? 0 : pitch / 2
-      const bb = border({ x: r.x, y: r.y + r.height }, { x: r.x + r.width, y: r.y + r.height }) ? 0 : pitch / 2
-      const fw = Math.floor((r.width - pitch) / pitch) * pitch, fh = Math.floor((r.height - pitch) / pitch) * pitch
-      const sizes = [{ w: r.width - l - rr, h: r.height - t - bb, x: r.x + l, y: r.y + t },
-        { w: r.width - pitch, h: r.height - pitch, x: r.x + pitch / 2, y: r.y + pitch / 2 },
-        { w: fw, h: fh, x: r.x + (r.width - fw) / 2, y: r.y + (r.height - fh) / 2 }]
-      const seen = new Set<string>()
-      for (const size of sizes) {
-        const { w, h } = size, key = JSON.stringify(size)
-        if (w <= 0 || h <= 0 || seen.has(key)) continue
-        seen.add(key)
-        for (const axis of ['x', 'y'] as const) {
-          const field = rectangularHeatingField(w, h, { ...settings, returnToEntrySide: true }, scale, checkpoint, axis)
-          // A shallow threshold can yield only one straight stroke. It has no
-          // paired side to splice into a coil; forcing it into the join makes
-          // an otherwise usable room fail with a reduced-radius connector.
-          // The original floor remains in the coverage samples and final audit.
-          if (!field || !heatingPairedEntries(field.points, settings.spacingMm, scale)) continue
-          for (const flipX of [false, true]) for (const flipY of [false, true]) {
-            const points = field.points.map((p) => ({ x: size.x + (flipX ? w - p.x : p.x), y: size.y + (flipY ? h - p.y : p.y) }))
-            patterns.set(points, field.pattern); variants.push(points)
+    const layouts = [splitFields('y')]
+    if (settings.preferSpiral) {
+      const alternative = splitFields('x')
+      const key = (rectangles: Bounds[]) => rectangles.map((box) => JSON.stringify(box)).sort().join()
+      if (key(alternative) !== key(layouts[0])) layouts.push(alternative)
+    }
+    const considerFields = (rectangles: Bounds[], spiralOnly: boolean) => {
+      const consider = (points: Point[], pattern: HeatingAreaLoop['pattern']) => {
+        if (!spiralOnly || pattern === 'spiral') evaluate(points, pattern)
+      }
+      const fields: Point[][][] = [], patterns = new WeakMap<Point[], HeatingAreaLoop['pattern']>(), inletUsability = new WeakMap<Point[], boolean>()
+      const initialEdges = initial.boundaries.flatMap((ring) => ring.map((a, i) => ({ a, b: ring[(i + 1) % ring.length] })))
+      const onInitialEdge = segmentIndex(initialEdges, 1e-5, pitch)
+      const border = (a: Point, b: Point) => [0, .25, .5, .75, 1].every((t) =>
+        onInitialEdge({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, 1e-5, true))
+      for (const r of rectangles) {
+        const variants: Point[][] = []
+        // Physical offsets and partition half-pitch seams are already present in
+        // initial. Only an internal rectangle-to-rectangle cut needs padding;
+        // padding the outside again creates a 150–200 mm unheated seam.
+        const l = border({ x: r.x, y: r.y }, { x: r.x, y: r.y + r.height }) ? 0 : pitch / 2
+        const rr = border({ x: r.x + r.width, y: r.y }, { x: r.x + r.width, y: r.y + r.height }) ? 0 : pitch / 2
+        const t = border({ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }) ? 0 : pitch / 2
+        const bb = border({ x: r.x, y: r.y + r.height }, { x: r.x + r.width, y: r.y + r.height }) ? 0 : pitch / 2
+        const fw = Math.floor((r.width - pitch) / pitch) * pitch, fh = Math.floor((r.height - pitch) / pitch) * pitch
+        const sizes = [{ w: r.width - l - rr, h: r.height - t - bb, x: r.x + l, y: r.y + t },
+          { w: r.width - pitch, h: r.height - pitch, x: r.x + pitch / 2, y: r.y + pitch / 2 },
+          { w: fw, h: fh, x: r.x + (r.width - fw) / 2, y: r.y + (r.height - fh) / 2 }]
+        const seen = new Set<string>()
+        for (const size of sizes) {
+          const { w, h } = size, key = JSON.stringify(size)
+          if (w <= 0 || h <= 0 || seen.has(key)) continue
+          seen.add(key)
+          for (const axis of ['x', 'y'] as const) {
+            const field = rectangularHeatingField(w, h, { ...settings, returnToEntrySide: true }, scale, checkpoint, axis)
+            // A shallow threshold can yield only one straight stroke. It has no
+            // paired side to splice into a coil; forcing it into the join makes
+            // an otherwise usable room fail with a reduced-radius connector.
+            // The original floor remains in the coverage samples and final audit.
+            if (!field || !heatingPairedEntries(field.points, settings.spacingMm, scale)) continue
+            for (const flipX of [false, true]) for (const flipY of [false, true]) {
+              const points = field.points.map((p) => ({ x: size.x + (flipX ? w - p.x : p.x), y: size.y + (flipY ? h - p.y : p.y) }))
+              patterns.set(points, field.pattern); variants.push(points)
+            }
           }
         }
-      }
-      for (const points of variants) {
-        const geometry = heatingPipeGeometry(make(openHeatingTurns(compact(points), radius, diameter)))
-        inletUsability.set(points, inletClear(geometry.points, geometry.pieces, false))
-      }
-      if (variants.length) fields.push(variants.sort((a, b) => Number(inletUsability.get(b)) - Number(inletUsability.get(a)) || entryDistance(a) - entryDistance(b)))
-    }
-    fields.sort((a, b) => Number(inletUsability.get(b[0])) - Number(inletUsability.get(a[0])) || entryDistance(a[0]) - entryDistance(b[0]))
-    if (trace) trace.fields = fields.length
-    const oneComponent = heatingAreaComponents(initial).length === 1
-    if (oneComponent && fields.length === 1) for (const points of fields[0]) evaluate(points, patterns.get(points) ?? 'spiral')
-    if (fields.length > 1 && fields.length <= 12) {
-      const valid = (raw: Point[], remaining: readonly Point[][]) => {
-        const pipes = [raw, ...remaining].map((points, i) => {
-          const pipe = make(openHeatingTurns(compact(points), radius, diameter))
-          pipe.id = `area-join-${i}`; pipe.heating.circuitId = pipe.id
-          return pipe
-        })
-        const geometry = heatingPipeGeometry(pipes[0])
-        for (const piece of geometry.pieces) for (const fraction of [0, .25, .5, .75, 1]) {
-          if (!inside({ x: piece.a.x + (piece.b.x - piece.a.x) * fraction, y: piece.a.y + (piece.b.y - piece.a.y) * fraction })) { reject('join-clearance'); return false }
+        for (const points of variants) {
+          const geometry = heatingPipeGeometry(make(openHeatingTurns(compact(points), radius, diameter)))
+          inletUsability.set(points, inletClear(geometry.points, geometry.pieces, false))
         }
-        const audit = checkHeatingPlan(pipes, [], settings.design, [], { stopOnConflict: true, checkpoint })
-        if (audit.errors) { reject(`join-${audit.issues[0]?.code}`, audit.issues[0]?.point); if (trace) trace.message = audit.issues[0]?.message }
-        return !audit.errors && (remaining.length > 0 || inletClear(geometry.points, geometry.pieces))
+        if (variants.length) fields.push(variants.sort((a, b) => Number(inletUsability.get(b)) - Number(inletUsability.get(a)) || entryDistance(a) - entryDistance(b)))
       }
-      // Later splices must see the real tangent controls of earlier widened
-      // returns, so their connector cuts cannot consume the same straight leg.
-      const join = (choices: readonly Point[][][]) => joinHeatingZoneFields(choices, heatingAreaBounds(initial), [], pitch, radius, valid,
-        (points) => patterns.get(points) ?? 'spiral', { timeMs: 750, auditLimit: 256, checkpoint, prepare: (points) => openHeatingTurns(compact(points), radius, diameter) })
-      const spiralFields = settings.preferSpiral ? fields.map((variants) => variants.filter((points) => patterns.get(points) === 'spiral')) : []
-      const joined = spiralFields.length && spiralFields.every((variants) => variants.length)
-        ? join(spiralFields) ?? join(fields) : join(fields)
-      if (joined) evaluate(joined.points, joined.pattern)
-      if (!best || best.gapRatio > .02) {
-        // A tiny threshold pocket may fit a local return but no pair of splice
-        // connectors. Try the main fields too; the entire original floor is
-        // still sampled, so an uncovered pocket cannot silently disappear.
-        const main = fields.filter((variants) => {
+      fields.sort((a, b) => Number(inletUsability.get(b[0])) - Number(inletUsability.get(a[0])) || entryDistance(a[0]) - entryDistance(b[0]))
+      if (trace) trace.fields = fields.length
+      const oneComponent = heatingAreaComponents(initial).length === 1
+      if (oneComponent && fields.length === 1) for (const points of fields[0]) consider(points, patterns.get(points) ?? 'spiral')
+      if (fields.length > 1 && fields.length <= 12) {
+        const valid = (raw: Point[], remaining: readonly Point[][]) => {
+          const pipes = [raw, ...remaining].map((points, i) => {
+            const pipe = make(openHeatingTurns(compact(points), radius, diameter))
+            pipe.id = `area-join-${i}`; pipe.heating.circuitId = pipe.id
+            return pipe
+          })
+          const geometry = heatingPipeGeometry(pipes[0])
+          for (const piece of geometry.pieces) for (const fraction of [0, .25, .5, .75, 1]) {
+            if (!inside({ x: piece.a.x + (piece.b.x - piece.a.x) * fraction, y: piece.a.y + (piece.b.y - piece.a.y) * fraction })) { reject('join-clearance'); return false }
+          }
+          const audit = checkHeatingPlan(pipes, [], settings.design, [], { stopOnConflict: true, checkpoint })
+          if (audit.errors) { reject(`join-${audit.issues[0]?.code}`, audit.issues[0]?.point); if (trace) trace.message = audit.issues[0]?.message }
+          return !audit.errors && (remaining.length > 0 || inletClear(geometry.points, geometry.pieces))
+        }
+        // Later splices must see the real tangent controls of earlier widened
+        // returns, so their connector cuts cannot consume the same straight leg.
+        const join = (choices: readonly Point[][][]) => joinHeatingZoneFields(choices, heatingAreaBounds(initial), [], pitch, radius, valid,
+          (points) => patterns.get(points) ?? 'spiral', { timeMs: 750, auditLimit: 256, checkpoint,
+            allowPortSplice: spiralOnly, prepare: (points) => openHeatingTurns(compact(points), radius, diameter) })
+        const spiralFields = settings.preferSpiral ? fields.map((variants) => variants.filter((points) => patterns.get(points) === 'spiral')) : []
+        const spiral = spiralFields.length && spiralFields.every((variants) => variants.length) ? join(spiralFields) : null
+        const joined = spiral ?? (spiralOnly ? null : join(fields))
+        if (joined) consider(joined.points, joined.pattern)
+        if (!spiralOnly && (!best || best.gapRatio > .02)) {
+          // A tiny threshold pocket may fit a local return but no pair of splice
+          // connectors. Try the main fields too; the entire original floor is
+          // still sampled, so an uncovered pocket cannot silently disappear.
+          const main = fields.filter((variants) => {
+            const bounds = heatingAreaBounds({ boundaries: [variants[0]], entry: area.entry })
+            return bounds.width * bounds.height >= 4 * pitch * pitch
+          })
+          if (main.length && main.length < fields.length) {
+            const candidate = join(main)
+            if (candidate) consider(candidate.points, candidate.pattern)
+          }
+        }
+        // A narrow approach may be heated by the host or its transit pipes.
+        // Keep a real main-field alternative for that combined-area caller;
+        // its gap is still measured against every original sample, and the
+        // ordinary standalone coverage gate remains unchanged.
+        if (oneComponent && (!best || best.gapRatio > .05)) for (const variants of fields) {
           const bounds = heatingAreaBounds({ boundaries: [variants[0]], entry: area.entry })
-          return bounds.width * bounds.height >= 4 * pitch * pitch
-        })
-        if (main.length && main.length < fields.length) {
-          const candidate = join(main)
-          if (candidate) evaluate(candidate.points, candidate.pattern)
+          if (bounds.width * bounds.height < heatingAreaSurface(initial) * .5) continue
+          for (const points of variants) consider(points, patterns.get(points) ?? 'spiral')
         }
       }
-      // A narrow approach may be heated by the host or its transit pipes.
-      // Keep a real main-field alternative for that combined-area caller;
-      // its gap is still measured against every original sample, and the
-      // ordinary standalone coverage gate remains unchanged.
-      if (oneComponent && (!best || best.gapRatio > .05)) for (const variants of fields) {
-        const bounds = heatingAreaBounds({ boundaries: [variants[0]], entry: area.entry })
-        if (bounds.width * bounds.height < heatingAreaSurface(initial) * .5) continue
-        for (const points of variants) evaluate(points, patterns.get(points) ?? 'spiral')
-      }
+    }
+    for (const [index, rectangles] of layouts.entries()) {
+      considerFields(rectangles, index > 0)
+      if (best?.pattern === 'spiral' && best.gapRatio <= .02) break
     }
   }
   return rankedVariants()

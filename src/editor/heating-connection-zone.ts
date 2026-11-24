@@ -1,10 +1,12 @@
 import type { Point, Shape } from './model/types.js'
 import { heatingSharedDoors, heatingSourceRoom, type HeatingGrid } from './heating-routing.js'
 
+type SourcePassage = { point: Point; normal: Point; cells: ReadonlySet<number>; rooms: readonly number[] }
+
 /** Open tails stay in the source room without assigning hardware ports.
  * Door-only routes may prefer its exit; wall-fed routes keep the source position. */
 export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape[], position: Point, capacity: number,
-  diameterMm: number, radiusMm: number, scale: number, options: { preferDoor?: boolean } = {}) => {
+  diameterMm: number, radiusMm: number, scale: number, options: { preferDoor?: boolean; sourcePassage?: SourcePassage } = {}) => {
   const centre = grid.index(position)
   if (centre < 0 || grid.obstacle[centre]) throw new Error('Kies een vrije verdelerpositie.')
   const sourceRegion = heatingSourceRoom(grid, position)
@@ -15,6 +17,30 @@ export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape
   // margin is narrower than two R80 bends and couples the reserved trunk to
   // an artificially tight source box. This changes space, never group count.
   const width = Math.ceil(Math.max(600, capacity * 75 + 2 * radiusMm + diameterMm) / cellMm), halfHeight = Math.ceil(150 / cellMm)
+  const shortcut: number[][] = []
+  const opening = options.sourcePassage
+  const sourceHasDoor = sourceRegion?.cells.some((cell) => grid.door[cell])
+  if (sourceHasDoor && opening?.rooms.includes(sourceRoom)) {
+    const { point, normal, cells, rooms } = opening
+    const otherRoom = rooms.find((room) => room !== sourceRoom)
+    const at = (side: number, lane: number) => grid.index({
+      x: point.x + (side * normal.x - lane * normal.y) * grid.step,
+      y: point.y + (side * normal.y + lane * normal.x) * grid.step
+    })
+    const direction = grid.room[at(-apron * 3, 0)] === sourceRoom ? 1 : -1
+    const clearance = Math.max(apron, separation)
+    for (const lane of [0, separation, -separation]) {
+      const route = Array.from({ length: clearance * 4 + 1 }, (_, n) => at(direction * (n - clearance * 2), lane))
+      const firstWall = route.findIndex((cell) => cell >= 0 && cells.has(cell))
+      const exit = firstWall < 1 ? -1 : route.findIndex((cell, i) => i > firstWall && grid.room[cell] === otherRoom)
+      if (exit < 0) continue
+      const start = Math.max(0, firstWall - apron)
+      const stub = route.slice(start, exit + 1)
+      if (grid.room[stub[0]] === sourceRoom && stub.every((cell) => cell >= 0 && !grid.obstacle[cell] &&
+        (grid.wall[cell] ? cells.has(cell) : grid.room[cell] === sourceRoom || grid.room[cell] === otherRoom))) shortcut.push(stub)
+      if (shortcut.length === 2) break
+    }
+  }
   const boxes = [
     { left: cx, right: cx + width, top: cy - halfHeight, bottom: cy + halfHeight },
     { left: cx - width, right: cx, top: cy - halfHeight, bottom: cy + halfHeight },
@@ -65,7 +91,10 @@ export const heatingConnectionZone = (grid: HeatingGrid, _shapes: readonly Shape
     if (stubs.length < capacity * 2) continue
     const a = grid.point(box.top * grid.width + box.left), b = grid.point(box.bottom * grid.width + box.right)
     const bounds = { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y }
-    return { stubs, interior, reserved, bounds, radiusMm: Math.ceil(Math.max(...stubs.map(([cell]) => {
+    // Only add a complete pair at the approved passage. Remote circuits
+    // still use the door fan and retain their own room-specific wall access.
+    const allStubs = shortcut.length === 2 ? [...stubs, ...shortcut] : stubs
+    return { stubs: allStubs, interior, reserved, bounds, radiusMm: Math.ceil(Math.max(...allStubs.map(([cell]) => {
       const p = grid.point(cell); return Math.hypot(p.x - position.x, p.y - position.y) * scale / 8
     })) / 50) * 50 }
   }

@@ -1494,7 +1494,7 @@ export class AppShell extends LiteElement {
     ;(await this.#nativeAppForPage(pageKey))?.startAutomaticHeatingPlan?.({
       diameterMm,
       spacingMm,
-      edgeMm: 100,
+      edgeMm: 120,
       capacity: 12,
       connectionMode: 'zone',
       shareSmallRooms: true,

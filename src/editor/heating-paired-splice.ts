@@ -5,7 +5,7 @@ export type HeatingSpliceWindow = { before: Point[]; after: Point[]; distance: n
 /** Insert a facing field without quantizing its existing bends. The closure
  * and both new bridges remain proposals until the caller audits real curves. */
 export function* exactHeatingSpliceCandidates(a: readonly Point[], b: readonly Point[], pitch: number,
-  radius: number, checkpoint: () => void = () => {}): Generator<Point[]> {
+  radius: number, checkpoint: () => void = () => {}, allowPortSplice = false): Generator<Point[]> {
   if (a.length < 3 || b.length < 3) return
   const first = b[0], last = b.at(-1)!, head = b[1], tail = b.at(-2)!
   const close = Math.hypot(first.x - last.x, first.y - last.y)
@@ -45,7 +45,28 @@ export function* exactHeatingSpliceCandidates(a: readonly Point[], b: readonly P
     const detour = x.sign === y.sign ? [...b.slice(0, y.index)].reverse().concat([...b.slice(y.index)].reverse()) :
       [...b.slice(y.index), ...b.slice(0, y.index)]
     yield [...a.slice(0, x.index), af, bf, ...detour, bt, at, ...a.slice(x.index)]
-    if (++count >= 16) return
+    if (++count >= 16) break
+  }
+  // A field facing a straight run can be inserted at its two open ends.
+  // Closing that field into a loop first consumes space for an extra U-turn.
+  if (!allowPortSplice) return
+  const portAxis = Math.abs(ax) < 1e-7 ? 'y' : Math.abs(ay) < 1e-7 ? 'x' : undefined
+  if (portAxis && Math.abs(first[portAxis] - last[portAxis]) < 1e-7) {
+    const along = portAxis === 'x' ? 'y' : 'x'
+    const direction = Math.sign(head[portAxis] - first[portAxis])
+    for (let i = 1; i < a.length; i++) {
+      checkpoint()
+      const start = a[i - 1], end = a[i]
+      if (Math.abs(start[portAxis] - end[portAxis]) > 1e-7) continue
+      const gap = (first[portAxis] - start[portAxis]) * direction
+      if (gap < radius - 1e-7 || gap > pitch * 2 + 1e-7) continue
+      if (Math.min(first[along], last[along]) < Math.min(start[along], end[along]) + radius * 2 ||
+        Math.max(first[along], last[along]) > Math.max(start[along], end[along]) - radius * 2) continue
+      const field = (end[along] - start[along]) * (last[along] - first[along]) > 0 ? b : [...b].reverse()
+      const entry = { ...field[0], [portAxis]: start[portAxis] }
+      const exit = { ...field.at(-1)!, [portAxis]: start[portAxis] }
+      yield [...a.slice(0, i), entry, ...field, exit, ...a.slice(i)]
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import type { Point, RectShape, Shape } from './model/types.js'
 import type { HeatingGrid } from './heating-routing.js'
 import type { HeatingSpiralField } from './heating-spiral.js'
 import type { HeatingAreaSettings } from './heating-area-kernel.js'
-import { heatingRoomKey } from './heating-coverage.js'
+import { heatingRoomKey, heatingWallDistances } from './heating-coverage.js'
 import { routeHeating, heatingPathPoints, simplifyHeatingPath, heatingCurveWallConflict } from './heating-routing.js'
 import { heatingPipeData, createHeatingPipe } from './heating-pipe.js'
 import { heatingPipeGeometry } from './heating-geometry.js'
@@ -14,12 +14,28 @@ import { heatingSpliceWindows } from './heating-paired-splice.js'
 import { heatingFieldEntryGuards } from './heating-field-entry-guards.js'
 import { heatingAccessDistances } from './heating-access-distances.js'
 
+const wallCosts = new WeakMap<HeatingGrid, Map<number, Float32Array>>()
+const heatingBridgeWallCost = (grid: HeatingGrid, setbackMm: number, scale: number) => {
+  const setback = setbackMm * 8 / scale / grid.step
+  let cache = wallCosts.get(grid)
+  if (!cache) { cache = new Map(); wallCosts.set(grid, cache) }
+  let costs = cache.get(setback)
+  if (!costs) {
+    const solid = grid.wall.map((value, cell) => grid.door[cell] ? 0 : value)
+    const distance = heatingWallDistances({ ...grid, wall: solid })
+    costs = Float32Array.from(distance, (value, cell) => grid.door[cell] ? 0 : Math.max(0, setback - value) * 3)
+    cache.set(setback, costs)
+  }
+  return costs
+}
+
 const joinHeatingFieldPatchUncached = (jobs: HeatingSpiralField[], patch: HeatingSpiralField,
   native: HeatingGrid, scene: readonly Shape[], settings: HeatingAreaSettings, scale: number,
   options: { source: Point; feedPipes: RectShape[]; checkpoint: () => void; obstacles: { x: number; y: number; width: number; height: number }[];
     completeM: (job: HeatingSpiralField) => number; raster: (points: readonly Point[]) => number[]; reserveFeeds?: boolean; feedCorridor?: Uint8Array }): boolean => {
   const { source, feedPipes, checkpoint, obstacles, completeM, raster } = options
   const limits = heatingDesignLimits(settings.diameterMm, settings.design)
+  const cellPenalty = settings.edgeMm ? heatingBridgeWallCost(native, settings.edgeMm, scale) : undefined
   const pipe = (points: Point[], id: string) => createHeatingPipe(id, points,
     { ...heatingPipeData(scale), ...settings, automatic: true, pipeRole: 'loop', circuitId: id })
   const exact = (points: Point[], at: Point, start: boolean) => {
@@ -124,9 +140,22 @@ const joinHeatingFieldPatchUncached = (jobs: HeatingSpiralField[], patch: Heatin
               // authoritative when the actual guide geometry is available.
               (!options.reserveFeeds || feedPipes.length > 0 || !options.feedCorridor?.[native.index(p)])
           }
-          const path = routeHeating(native, native.index(leg.from), native.index(leg.to), {
+          const routing = {
             radiusCells: Math.ceil(2 * radius / native.step), startDirection: leg.direction, endDirection: leg.endDirection,
-            preferArcs: true, continuousTurns: true, pointFree, permittedWallCells: new Set(), checkpoint })
+            preferArcs: true, continuousTurns: true, pointFree, permittedWallCells: new Set<number>(), checkpoint
+          }
+          const start = native.index(leg.from), end = native.index(leg.to)
+          let path: number[] | null = null
+          if (cellPenalty) {
+            // Probe for a wider connection first. If it needs a full search,
+            // preserve the original search budget and doorway alternatives.
+            const edgeProbe = Symbol('heating-bridge-wall-probe'), deadline = Date.now() + 60
+            try {
+              path = routeHeating(native, start, end, { ...routing, cellPenalty, arcOnly: true,
+                checkpoint: () => { checkpoint(); if (Date.now() >= deadline) throw edgeProbe } })
+            } catch (error) { if (error !== edgeProbe) throw error }
+          }
+          path ??= routeHeating(native, start, end, routing)
           if (!path) { valid = false; break }
           const bridge = exact(exact(heatingPathPoints(native, path), leg.from, true), leg.to, false)
           bridges[n] = bridge; routed.push(pipe(bridge, `splice-leg-${n}`))

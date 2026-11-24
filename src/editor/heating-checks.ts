@@ -37,7 +37,7 @@ const separation = (a: Point, b: Point, c: Point, d: Point) => {
 
 export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly HeatingScheduleRow[], design?: HeatingDesignInputs,
   obstacles: Box[] = [], options: { focusPipeIds?: ReadonlySet<string>; checkpoint?: () => void;
-    geometryFor?: typeof heatingPipeGeometry; stopOnConflict?: boolean } = {}): HeatingAudit => {
+    geometryFor?: typeof heatingPipeGeometry; stopOnConflict?: boolean; strictTubeClearance?: boolean } = {}): HeatingAudit => {
   const pipes = shapes.filter((s): s is RectShape => s.kind === 'rect' && s.heating?.kind === 'pipe' && Boolean(s.heating.circuitId))
   const issues: HeatingCheck[] = [], seen = new Set<string>()
   const add = (key: string, issue: HeatingCheck) => { if (!seen.has(key)) { seen.add(key); issues.push(issue) } }
@@ -45,6 +45,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
     reviews: issues.filter((i) => i.severity === 'review').length })
   const manifold = shapes.find((s) => s.kind === 'rect' && s.heating?.kind === 'manifold') as RectShape | undefined
   const scale = manifold?.heating?.drawingScale ?? pipes[0]?.heating?.drawingScale ?? 100
+  const clearanceTolerance = options.strictTubeClearance ? 1e-7 : 8 / scale
   const inManifoldZone = (p: Point) => manifold && manifold.heating?.connectionMode !== 'zone' && p.x >= Math.min(manifold.start.x, manifold.end.x) - 1600 / scale &&
     p.x <= Math.max(manifold.start.x, manifold.end.x) + 1600 / scale && p.y >= Math.min(manifold.start.y, manifold.end.y) - 1600 / scale &&
     p.y <= Math.max(manifold.start.y, manifold.end.y) + 1600 / scale
@@ -103,7 +104,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
         const minimum = (first.diameterMm + second.diameterMm) * 4 / scale
         const dx = Math.max(0, Math.min(a.a.x, a.b.x) - Math.max(b.a.x, b.b.x), Math.min(b.a.x, b.b.x) - Math.max(a.a.x, a.b.x))
         const dy = Math.max(0, Math.min(a.a.y, a.b.y) - Math.max(b.a.y, b.b.y), Math.min(b.a.y, b.b.y) - Math.max(a.a.y, a.b.y))
-        if (Math.hypot(dx, dy) + 8 / scale >= minimum) continue
+        if (Math.hypot(dx, dy) + clearanceTolerance >= minimum) continue
         const distance = separation(a.a, a.b, b.a, b.b)
         if (other.pipe === i) {
           const pa = project(distance.point, a.a, a.b), pb = project(distance.point, b.a, b.b)
@@ -112,7 +113,7 @@ export const checkHeatingPlan = (shapes: readonly Shape[], rows: readonly Heatin
           // fillet introduces more than one primitive between them. This is not a crossing.
           if (Math.abs(alongA - alongB) < minimum * 2.5) continue
         }
-        if (distance.distance + 8 / scale >= minimum) continue
+        if (distance.distance + clearanceTolerance >= minimum) continue
         const sameCircuit = first.circuitId === second.circuitId
         const endsA = [geometries[other.pipe].points[0], geometries[other.pipe].points.at(-1)!]
         const endsB = [geometries[i].points[0], geometries[i].points.at(-1)!]

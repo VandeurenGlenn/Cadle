@@ -13,7 +13,7 @@ const compact = (points: readonly Point[]) => points.filter((p, i, all) => !i ||
 export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Bounds, obstacles: readonly Bounds[],
   spacing: number, radius: number, valid: (points: Point[], remaining: readonly Point[][]) => boolean,
   patternFor: (points: Point[]) => HeatingPattern = () => 'spiral',
-  options: { timeMs?: number; auditLimit?: number; checkpoint?: () => void; prepare?: (points: Point[]) => Point[] } = {}): { points: Point[]; pattern: HeatingPattern } | null => {
+  options: { timeMs?: number; auditLimit?: number; checkpoint?: () => void; prepare?: (points: Point[]) => Point[]; allowPortSplice?: boolean } = {}): { points: Point[]; pattern: HeatingPattern } | null => {
   if (fields.length < 2) return fields[0]?.[0] ? { points: fields[0][0], pattern: patternFor(fields[0][0]) } : null
   if (fields.length > 24) return null
   const stop = Symbol('manual-zone-work-limit'), deadline = Date.now() + (options.timeMs ?? 300), auditLimit = options.auditLimit ?? 96
@@ -106,7 +106,7 @@ export const joinHeatingZoneFields = (fields: readonly Point[][][], bounds: Boun
           if (audits >= stateLimit) break variants
           // Keep exact fractional bends when fields have different raster
           // phases. Rounding every retained corner can shrink an R80 to R74.
-          for (const raw of exactHeatingSpliceCandidates(av, bv, spacing, radius, checkpoint)) {
+          for (const raw of exactHeatingSpliceCandidates(av, bv, spacing, radius, checkpoint, options.allowPortSplice)) {
             if (alternatives.length >= 8 || audits >= stateLimit) break
             const candidate = prepare(compact(raw))
             if (safe(candidate, a, b)) { patterns.set(candidate, combineHeatingPatterns([patterns.get(av), patterns.get(bv)])); alternatives.push(candidate) }

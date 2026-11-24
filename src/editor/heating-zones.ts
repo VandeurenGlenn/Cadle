@@ -69,12 +69,15 @@ export const reserveHeatingFeedPairs = (grid: HeatingGrid, original: HeatingGrid
   onProgress?.(0, goals.length)
   let blockedGoal = 0
   const endpoints = stubs.map((stub) => stub.at(-1)!)
+  const doors = stubs.flatMap((stub, index) =>
+    stub.some((cell) => original.wall[cell] && !original.door[cell]) ? [] : [index])
   const progress = (done: number) => onProgress?.(done, goals.length)
   // Reserve the actual door network before laying any coils. Cheap wall
   // shortcuts otherwise leave the source door with no usable transit corridor.
   let routeWalls: ReadonlySet<number> = new Set()
-  let paths = routeHeatingBundle(grid, endpoints, goals, blocked,
+  let paths = routeHeatingBundle(grid, doors.map((index) => endpoints[index]), goals, blocked,
     { checkpoint, cellPenalty, onBlocked: (indices) => { blockedGoal = indices[0] ?? 0 } }, progress)
+    ?.map((path) => ({ ...path, source: doors[path.source] })) ?? null
   if (!paths && permittedWallCells.size) {
     routeWalls = permittedWallCells
     paths = routeHeatingBundle(grid, endpoints, goals, blocked,

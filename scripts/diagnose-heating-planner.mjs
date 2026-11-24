@@ -56,7 +56,10 @@ const roomTargets = option('room-targets', '').split(',').filter(Boolean).map((v
 })
 const bytes = readFileSync(input), document = JSON.parse(bytes), shapes = sanitizeShapes(document.shapes ?? document)
 const scale = document.drawingScale ?? 100
+const edgeMm = Number(option('edge', '100'))
+if (!Number.isFinite(edgeMm) || edgeMm < 0 || edgeMm > 1000) throw new Error('Use --edge=0..1000 (millimetres).')
 const settings = { connectionMode: 'zone', diameterMm: 16, spacingMm: 100, capacity: Number(option('capacity', '12')),
+  ...(edgeMm === 100 ? {} : { edgeMm }),
   shareSmallRooms: true, heatSourceRoom: false, allowExtraCircuit: process.argv.includes('--extra'), allowLongerCircuits: process.argv.includes('--longer'),
   ...(option('exclude-rooms', '') ? { excludedRoomKeys: option('exclude-rooms', '').split(',') } : {}),
   allowWallPassages: !process.argv.includes('--doors-only'), ...(option('max-length', '') ? { design: { maxCircuitLengthM: Number(option('max-length', '100')) } } : {}) }

@@ -198,6 +198,24 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   }))
 })
 
+test('defaults a 32 A PV breaker to 3G4 and lets its cable settings override that default', () => {
+  let id = 0
+  const shapes = buildSolarInstallation({ ...installation, breakerCurrentA: 32 }, 'rail',
+    { x: 300, y: 800 }, () => `pv32-${++id}`)
+  const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  const cableLabel = shapes.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
+  assert.equal(breaker.electrical?.cableSectionMm2, 4)
+  assert.equal(breaker.electrical?.cableConductors, 3)
+  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, 'PV-kabel AC:\n3G4 mm²')
+
+  const adjusted = updateSolarInstallationCable(shapes, {
+    ...breaker,
+    electrical: { ...breaker.electrical!, cableSectionMm2: 6, cableConductors: 3 }
+  })
+  const adjustedLabel = adjusted.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
+  assert.equal(adjustedLabel?.kind === 'text' ? adjustedLabel.text : undefined, 'PV-kabel AC:\n3G6 mm²')
+})
+
 test('keeps readable annotations clear of every device above and below a kamrail', () => {
   for (const direction of ['top', 'bottom'] as const) {
     let id = 0

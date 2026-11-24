@@ -199,7 +199,8 @@ import {
   type CircuitGroup,
   type BomRow
 } from './circuit-analysis.js'
-import { defaultHasProtectiveConductor } from './circuit-defaults.js'
+import { circuitDefaults, defaultHasProtectiveConductor } from './circuit-defaults.js'
+import { defaultPvCableForBreaker } from './solar-installation.js'
 import { ViewportController } from './controllers/viewport-controller.js'
 import { ToolController } from './controllers/tool-controller.js'
 import { CanvasDocumentController } from './controllers/canvas-document-controller.js'
@@ -821,6 +822,43 @@ export class CadleApp extends LiteElement {
           else delete topology.solarBreakerManufacturer
           if (neutralPosition) topology.solarBreakerNeutralPosition = neutralPosition
           else delete topology.solarBreakerNeutralPosition
+          const cableEdited = ['cableSectionMm2', 'cableConductors', 'cableType', 'cableFireClass',
+            'hasProtectiveConductor'].some((field) => field in payload.electrical) ||
+            ('breakerCurrentA' in payload.electrical && Boolean(defaultPvCableForBreaker(ratedCurrentA)))
+          if (cableEdited) {
+            const electrical = updatedProtection.electrical!
+            const existingCable = topology.solarCable
+            const defaultCable = defaultPvCableForBreaker(topology.solarBreakerRatedCurrentA)
+            const sectionMm2 = electrical.cableSectionMm2 ?? defaultCable?.sectionMm2
+            if (sectionMm2) {
+              const defaults = circuitDefaults(electrical.circuitType)
+              const cableType = electrical.cableType === 'none' ? 'other'
+                : electrical.cableType ?? existingCable?.cableType ?? defaultCable?.cableType ?? defaults.cableType
+              topology.solarCable = {
+                conductors: electrical.cableConductors ?? existingCable?.conductors ?? defaultCable?.conductors ?? defaults.cableConductors,
+                sectionMm2,
+                cableType,
+                ...(electrical.cableFireClass?.trim() || existingCable?.fireClass
+                  ? { fireClass: electrical.cableFireClass?.trim() || existingCable?.fireClass } : {})
+              }
+            } else delete topology.solarCable
+            const solarCable = topology.solarCable ?? defaultPvCableForBreaker(topology.solarBreakerRatedCurrentA)
+            this.#document.shapes = presentConnectionLabels(this.#document.shapes.map((shape) => {
+              if (shape.kind !== 'line' || shape.sourceLink?.role !== 'solar-breaker-to-inverter' ||
+                !shape.connection) return shape
+              return {
+                ...shape,
+                connection: {
+                  ...shape.connection,
+                  conductors: solarCable?.conductors,
+                  sectionMm2: solarCable?.sectionMm2,
+                  cableType: solarCable?.cableType,
+                  fireClass: topology.solarCable?.fireClass,
+                  hasProtectiveConductor: solarCable ? solarCable.conductors !== 4 : undefined
+                }
+              }
+            }))
+          }
         } else {
           const additionalMatch = /^additional-differential-(?:consumers|ev|other)-(\d+)$/.exec(role)
           if (additionalMatch && topology.additionalDifferentials) {

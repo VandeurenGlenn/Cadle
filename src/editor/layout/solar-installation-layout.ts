@@ -1,4 +1,4 @@
-import type { SolarInstallation, SolarPanel } from '../solar-installation.js'
+import { defaultPvCableForBreaker, type SolarInstallation, type SolarPanel } from '../solar-installation.js'
 import type { LineShape, Point, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './onewire-connections.js'
 import { oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
@@ -34,9 +34,12 @@ export const buildSolarInstallation = (
       electrical: { role: 'load', oneWireEligible: true, solar: installation }
     }
     if (/Automaat\.svg$/.test(path) && installation.kind !== 'panels') {
+      const defaultCable = defaultPvCableForBreaker(installation.breakerCurrentA)
       shape.electrical = { ...shape.electrical!, role: 'protection', breakerCurrentA: installation.breakerCurrentA,
         breakerCurve: 'C', poles: installation.phases === 3 ? 4 : 2,
-        phaseConfiguration: installation.phases === 3 ? 'L1+L2+L3+N' : 'L1+N' }
+        phaseConfiguration: installation.phases === 3 ? 'L1+L2+L3+N' : 'L1+N',
+        ...(defaultCable ? { cableConductors: defaultCable.conductors, cableSectionMm2: defaultCable.sectionMm2,
+          hasProtectiveConductor: true, cableType: 'none' as const } : {}) }
       shape.symbolTextOverrides = { 'rated-current': `C${installation.breakerCurrentA}A`,
         poles: `${shape.electrical.poles}P`, phase: '', 'residual-current': '' }
     }
@@ -104,14 +107,17 @@ export const buildSolarInstallation = (
         ...solarElectricalLines(panel)].filter(Boolean).join('\n'),
       `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`)
   }
-  return shapes
+  const solarBreaker = shapes.find((shape): shape is SymbolShape =>
+    shape.kind === 'symbol' && shape.name === 'PV automaat')
+  return solarBreaker ? updateSolarInstallationCable(shapes, solarBreaker) : shapes
 }
 
 export const updateSolarInstallationCable = (shapes: readonly Shape[], breaker: SymbolShape): Shape[] => {
   const electrical = breaker.electrical
   const defaults = circuitDefaults(electrical?.circuitType)
-  const sectionMm2 = electrical?.cableSectionMm2
-  const conductors = sectionMm2 ? electrical?.cableConductors ?? defaults.cableConductors : undefined
+  const defaultCable = defaultPvCableForBreaker(electrical?.breakerCurrentA)
+  const sectionMm2 = electrical?.cableSectionMm2 ?? defaultCable?.sectionMm2
+  const conductors = sectionMm2 ? electrical?.cableConductors ?? defaultCable?.conductors ?? defaults.cableConductors : undefined
   return presentConnectionLabels(shapes.map((shape) => {
     if (shape.kind !== 'line' || shape.sourceLink?.role !== 'solar-ac-cable' ||
       shape.sourceLink.id !== breaker.id || !shape.connection) return shape
@@ -121,7 +127,7 @@ export const updateSolarInstallationCable = (shapes: readonly Shape[], breaker: 
         ...shape.connection,
         conductors,
         sectionMm2,
-        cableType: sectionMm2 ? electrical?.cableType ?? defaults.cableType : undefined,
+        cableType: sectionMm2 ? electrical?.cableType ?? (defaultCable ? 'none' : defaults.cableType) : undefined,
         fireClass: sectionMm2 ? electrical?.cableFireClass : undefined,
         hasProtectiveConductor: sectionMm2
           ? electrical?.hasProtectiveConductor ?? defaultHasProtectiveConductor(conductors)

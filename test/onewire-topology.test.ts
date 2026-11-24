@@ -281,6 +281,18 @@ test('shows a PV cable placeholder or its supplied designation beside the invert
   assert.equal(specifiedLabel?.kind === 'text' ? specifiedLabel.text : undefined, 'PV-kabel:\n3G4 mm² XVB')
 })
 
+test('uses the 3G4 cable default for a 32 A PV breaker', () => {
+  const shapes = buildOneWireTopology(
+    { version: 1, residualBreaker: false, solar: true, solarBreakerRatedCurrentA: 32, consumers: false },
+    { start: { x: 80, y: 700 }, end: { x: 920, y: 700 } },
+    ids()
+  )
+  const breaker = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker')
+  const label = shapes.find((shape) => shape.sourceLink?.role === 'solar-cable-label')
+  assert.equal(breaker?.kind === 'symbol' ? breaker.electrical?.cableSectionMm2 : undefined, 4)
+  assert.equal(label?.kind === 'text' ? label.text : undefined, 'PV-kabel:\n3G4 mm²')
+})
+
 test('shows the project grid voltage beside the incoming connection', () => {
   const shapes = buildOneWireTopology({
     version: 1, consumers: true, solar: false, residualBreaker: false

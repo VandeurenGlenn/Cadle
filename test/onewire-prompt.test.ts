@@ -38,6 +38,25 @@ test('parses, previews and serializes the cable to the PV inverter', () => {
   assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(plan)).plan, plan)
 })
 
+test('defaults a 32 A topology PV breaker to 3G4 without a missing-cable warning', () => {
+  const parsed = parseOneWirePrompt(
+    'Hoofddifferentieel 63 A 300 mA. PV-automaat 32 A parallel na de hoofddifferentieel.'
+  )
+
+  assert.equal(parsed.plan.solarBreakerRatedCurrentA, 32)
+  assert.ok(parsed.warnings.every((warning) => !warning.includes('PV-kabel')))
+  assert.ok(oneWirePromptTree(parsed.plan).some((line) => line.includes('PV-kabel 3G4 mm²')))
+  assert.ok(oneWireTopologyPrompt(parsed.plan).includes('PV-kabel: 3G4 mm².'))
+})
+
+test('does not add a PV cable when serializing a plan without solar', () => {
+  const plan = parseOneWirePrompt(
+    'Hoofddifferentieel 63 A 300 mA. Geen zonnepanelen.'
+  ).plan
+
+  assert.ok(!oneWireTopologyPrompt({ ...plan, solarBreakerRatedCurrentA: 32 }).includes('PV-kabel'))
+})
+
 test('makes saved topology settings editable as a description without inventing absent equipment', () => {
   const plan = parseOneWirePrompt(
     'Inkomende kabel 5x10 mm² XVB. Hoofdzekering 40 A. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers. 2 extra diffs 40 A 30 mA voor verbruikers.'

@@ -2,6 +2,7 @@ import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite
 import '@vandeurenglenn/lite-elements/button.js'
 import styles from './onewire-prompt-dialog.css' with { type: 'css' }
 import { interpretOneWirePrompt, oneWireTopologyPrompt, parseOneWirePrompt } from '../../editor/onewire-prompt.js'
+import { defaultPvCableForBreaker } from '../../editor/solar-installation.js'
 import { cableLabelText } from '../../editor/model/cable-designation.js'
 import { validateOneWireTopology } from '../../editor/onewire-topology-schema.js'
 import type { OneWireTopologyPlan } from '../../types.js'
@@ -136,6 +137,7 @@ export class OneWirePromptDialog extends LiteElement {
 
   #topologyPreview(plan: OneWireTopologyPlan) {
     const differentials = plan.additionalDifferentials ?? []
+    const solarCable = plan.solarCable ?? defaultPvCableForBreaker(plan.solarBreakerRatedCurrentA)
     const hasConsumerBranch = plan.residualBreaker || plan.consumers || differentials.length > 0
     const step = (label: string, detail = '') => html`
       <li class="flow-step"><strong>${label}</strong>${detail ? html`<span>${detail}</span>` : ''}</li>
@@ -164,7 +166,7 @@ export class OneWirePromptDialog extends LiteElement {
                   plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P` : '',
                   plan.solarBreakerRatedCurrentA ? `${plan.solarBreakerRatedCurrentA} A` : ''
                 ].filter(Boolean).join(' '))}
-                ${step('PV-kabel', plan.solarCable ? cableLabelText(plan.solarCable) : 'Nog op te geven')}
+                ${step('PV-kabel', solarCable ? cableLabelText(solarCable) : 'Nog op te geven')}
                 ${step('Omvormer / zonnepanelen')}
               </ol>
             </section>

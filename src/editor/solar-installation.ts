@@ -31,6 +31,9 @@ export type SolarInstallation =
   | (SolarPanelArray & { kind: 'panels' })
   | (SolarInverter & { kind: 'inverter' })
 
+export const defaultPvCableForBreaker = (breakerCurrentA?: number) =>
+  breakerCurrentA === 32 ? { conductors: 3, sectionMm2: 4, cableType: 'other' as const } : undefined
+
 export const solarPanelFields = [
   { key: 'powerWp', label: 'Paneelvermogen STC (Wp)', pattern: /pmax|rated\s*peak\s*power|nominaal\s*vermogen/i },
   { key: 'vmpV', label: 'Vmp (V)', pattern: /vmp|maximum\s*power\s*voltage/i },

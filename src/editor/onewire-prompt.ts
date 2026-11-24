@@ -1,4 +1,5 @@
 import { cableLabelText } from './model/cable-designation.js'
+import { defaultPvCableForBreaker } from './solar-installation.js'
 import type { OneWireTopologyPlan } from '../types.js'
 import { validateOneWireTopology } from './onewire-topology-schema.js'
 import { assessOneWireCapacity } from './onewire-capacity.js'
@@ -36,7 +37,7 @@ const topologyWarnings = (plan: OneWireTopologyPlan, prompt = ''): string[] => {
   if (!plan.meterCable) {
     warnings.push('De kabel tussen kWh-meter en kast is nog niet opgegeven. Vermeld bijvoorbeeld “Kabel van kWh-meter naar kast: 4x10 mm² XVB”.')
   }
-  if (plan.solar && !plan.solarCable) {
+  if (plan.solar && !plan.solarCable && !defaultPvCableForBreaker(plan.solarBreakerRatedCurrentA)) {
     warnings.push('De PV-kabel is nog niet opgegeven. Vermeld bijvoorbeeld “PV-kabel 3G4 mm² XVB”.')
   }
   if (!plan.mainDifferential) {
@@ -315,10 +316,11 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
     ? `hoofddifferentieel ${plan.mainDifferential.ratedCurrentA} A / ${plan.mainDifferential.sensitivityMa} mA`
     : 'hoofddifferentieel'
   const mainSwitch = plan.mainSwitch ? `hoofdschakelaar ${plan.mainSwitch.ratedCurrentA} A` : 'hoofdschakelaar'
+  const solarCable = plan.solarCable ?? defaultPvCableForBreaker(plan.solarBreakerRatedCurrentA)
   return [
     `${cable} → ${mainSwitch} → kWh-meter → ${plan.meterCable ? `${cableLabelText(plan.meterCable, 'x')} → ` : ''}${differential}`,
     ...(plan.solar ? ['├─ zonnepanelen / omvormer'] : []),
-    ...(plan.solar ? [`│  └─ PV-kabel ${plan.solarCable ? cableLabelText(plan.solarCable) : 'nog op te geven'}`] : []),
+    ...(plan.solar ? [`│  └─ PV-kabel ${solarCable ? cableLabelText(solarCable) : 'nog op te geven'}`] : []),
     ...(plan.residualBreaker ? [
       `└─ remautomaat ${plan.residualBreakerRatedCurrentA ?? 40} A${plan.consumers ? ` → verbruikers${plan.additionalDifferentials?.length ? 'rail' : ''}` : ''}`
     ] : []),
@@ -339,24 +341,29 @@ export const oneWirePromptTree = (plan: OneWireTopologyPlan): string[] => {
   ]
 }
 
-export const oneWireTopologyPrompt = (plan: OneWireTopologyPlan): string => [
-  ...(plan.incomingCable ? [`Inkomende kabel ${cableLabelText(plan.incomingCable, 'x')}.`] : []),
-  ...(plan.meterCable ? [`Kabel van kWh-meter naar kast: ${cableLabelText(plan.meterCable, 'x')}.`] : []),
-  ...(plan.solarCable ? [`PV-kabel: ${cableLabelText(plan.solarCable)}.`] : []),
-  ...(plan.gridProtectionCurrentA ? [`Hoofdzekering ${plan.gridProtectionCurrentA} A.`] : []),
-  ...(plan.mainSwitch ? [`Hoofdschakelaar ${plan.mainSwitch.manufacturer ?? ''} ${plan.mainSwitch.ratedCurrentA} A.`] : []),
-  ...(plan.mainDifferential ? [
-    `Hoofddifferentieel ${plan.mainDifferential.manufacturer ?? ''} ${plan.mainDifferential.ratedCurrentA} A ${plan.mainDifferential.sensitivityMa} mA.`
-  ] : []),
-  plan.residualBreaker
-    ? `Remautomaat ${plan.residualBreakerManufacturer ?? ''}${plan.residualBreakerRatedCurrentA ? ` ${plan.residualBreakerRatedCurrentA} A` : ''}.`
-    : 'Geen remautomaat.',
-  plan.solar ? 'Zonnepanelen parallel na de hoofddifferentieel.' : 'Geen zonnepanelen.',
-  ...(plan.solar && plan.solarBreakerRatedCurrentA ? [
-    `PV-automaat ${plan.solarBreakerManufacturer ?? ''} ${plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P ` : ''}${plan.solarBreakerRatedCurrentA} A.`
-  ] : []),
-  plan.consumers ? 'Daarna de verbruikers.' : 'Geen verbruikers.',
-  ...(plan.additionalDifferentials ?? []).map((item) =>
-    `${item.count} extra diffs ${item.manufacturer ?? ''} ${item.ratedCurrentA ? `${item.ratedCurrentA} A ` : ''}${item.sensitivityMa} mA${item.rcdType ? ` type ${item.rcdType}` : ''} voor ${
-      item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'}.`)
-].join(' ').replace(/ {2,}/g, ' ')
+export const oneWireTopologyPrompt = (plan: OneWireTopologyPlan): string => {
+  const solarCable = plan.solar
+    ? plan.solarCable ?? defaultPvCableForBreaker(plan.solarBreakerRatedCurrentA)
+    : undefined
+  return [
+    ...(plan.incomingCable ? [`Inkomende kabel ${cableLabelText(plan.incomingCable, 'x')}.`] : []),
+    ...(plan.meterCable ? [`Kabel van kWh-meter naar kast: ${cableLabelText(plan.meterCable, 'x')}.`] : []),
+    ...(solarCable ? [`PV-kabel: ${cableLabelText(solarCable)}.`] : []),
+    ...(plan.gridProtectionCurrentA ? [`Hoofdzekering ${plan.gridProtectionCurrentA} A.`] : []),
+    ...(plan.mainSwitch ? [`Hoofdschakelaar ${plan.mainSwitch.manufacturer ?? ''} ${plan.mainSwitch.ratedCurrentA} A.`] : []),
+    ...(plan.mainDifferential ? [
+      `Hoofddifferentieel ${plan.mainDifferential.manufacturer ?? ''} ${plan.mainDifferential.ratedCurrentA} A ${plan.mainDifferential.sensitivityMa} mA.`
+    ] : []),
+    plan.residualBreaker
+      ? `Remautomaat ${plan.residualBreakerManufacturer ?? ''}${plan.residualBreakerRatedCurrentA ? ` ${plan.residualBreakerRatedCurrentA} A` : ''}.`
+      : 'Geen remautomaat.',
+    plan.solar ? 'Zonnepanelen parallel na de hoofddifferentieel.' : 'Geen zonnepanelen.',
+    ...(plan.solar && plan.solarBreakerRatedCurrentA ? [
+      `PV-automaat ${plan.solarBreakerManufacturer ?? ''} ${plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P ` : ''}${plan.solarBreakerRatedCurrentA} A.`
+    ] : []),
+    plan.consumers ? 'Daarna de verbruikers.' : 'Geen verbruikers.',
+    ...(plan.additionalDifferentials ?? []).map((item) =>
+      `${item.count} extra diffs ${item.manufacturer ?? ''} ${item.ratedCurrentA ? `${item.ratedCurrentA} A ` : ''}${item.sensitivityMa} mA${item.rcdType ? ` type ${item.rcdType}` : ''} voor ${
+        item.purpose === 'ev' ? 'EV' : item.purpose === 'consumers' ? 'verbruikers' : 'overig'}.`)
+  ].join(' ').replace(/ {2,}/g, ' ')
+}

@@ -9,6 +9,7 @@ import { spaceOneWireTopologyAnnotations } from './onewire-topology-annotations.
 import { meterCableLabel } from './connection-label-presentation.js'
 import { assessOneWireCapacity } from '../onewire-capacity.js'
 import { DEFAULT_RCD_TYPE, isRcdType, neutralPositionForManufacturer, phaseConfigurationLabelForPoles, rcdTypeFromLabel, rcdTypeLabel } from '../model/electrical.js'
+import { defaultPvCableForBreaker } from '../solar-installation.js'
 
 const KWH_PATH = 'symbols/Consumption appliances/kWh meter.svg'
 const RCD_PATH = 'symbols/Protection devices/Residual-current circuit breaker.svg'
@@ -65,6 +66,7 @@ export const buildOneWireTopology = (
 ): Shape[] => {
   const groupId = `onewire-topology-${nextId()}`
   const shapes: Shape[] = []
+  const solarCable = plan.solarCable ?? defaultPvCableForBreaker(plan.solarBreakerRatedCurrentA)
 
   // Every branch connects to an explicit tap on the busbar. Using a fraction
   // keeps the network connected when the busbar is moved or resized.
@@ -100,7 +102,7 @@ export const buildOneWireTopology = (
         stroke: '#000000',
         strokeWidth,
         ...(role !== 'secondary-busbar' ? { connection: role === 'solar-breaker-to-inverter'
-          ? { kind: 'cable' as const, ...(plan.solarCable ?? {}), labelOwner: 'solar' as const, showLabel: true }
+          ? { kind: 'cable' as const, ...(solarCable ?? {}), labelOwner: 'solar' as const, showLabel: true }
           : role === 'grid-incoming' && plan.incomingCable
           ? { kind: 'cable' as const, ...plan.incomingCable, labelOwner: 'topology' as const, showLabel: true }
           : role === 'incoming'
@@ -531,6 +533,13 @@ export const buildOneWireTopology = (
       manufacturer: plan.solarBreakerManufacturer,
       neutralPosition: plan.solarBreakerNeutralPosition
     })
+    if (solarCable && solarBreaker.electrical) solarBreaker.electrical = {
+      ...solarBreaker.electrical,
+      cableConductors: solarCable.conductors,
+      cableSectionMm2: solarCable.sectionMm2,
+      cableType: solarCable.cableType,
+      hasProtectiveConductor: solarCable.conductors !== 4
+    }
     const breakerTop = terminalPoint(solarBreaker, 'top')
     const inverterBottom = { x: solarTap.x, y: breakerTop.y - 34 }
     const inverter = symbolAtTerminal(
@@ -557,7 +566,7 @@ export const buildOneWireTopology = (
     shapes.push(inverter)
     const solarCableLabel = text(
       'solar-cable-label',
-      `PV-kabel:\n${plan.solarCable ? cableLabelText(plan.solarCable) : 'nog op te geven'}`,
+      `PV-kabel:\n${solarCable ? cableLabelText(solarCable) : 'nog op te geven'}`,
       breakerTop.x - 24,
       (breakerTop.y + inverterBottom.y) / 2
     )

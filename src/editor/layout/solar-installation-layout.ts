@@ -5,6 +5,8 @@ import { oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-sy
 import { paperTextScale } from './page-layout.js'
 import { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 import { isOneWireRailShape } from './onewire-regeneration.js'
+import { circuitDefaults, defaultHasProtectiveConductor } from '../circuit-defaults.js'
+import { presentConnectionLabels } from './connection-label-presentation.js'
 
 export const buildSolarInstallation = (
   installation: SolarInstallation,
@@ -17,6 +19,7 @@ export const buildSolarInstallation = (
   const shapes: Shape[] = []
   const disconnected = installation.kind === 'panels'
   let connection = tap
+  let solarBreakerId: string | undefined
   const text = (content: string, x: number, y: number): TextShape => ({
     id: nextId(), kind: 'text', text: content, position: { x, y }, scale: paperTextScale(2.5), groupId,
     ...(railId ? { oneWireRailId: railId } : {})
@@ -37,6 +40,7 @@ export const buildSolarInstallation = (
       shape.symbolTextOverrides = { 'rated-current': `C${installation.breakerCurrentA}A`,
         poles: `${shape.electrical.poles}P`, phase: '', 'residual-current': '' }
     }
+    if (name === 'PV automaat') solarBreakerId = shape.id
     const placed = positionOneWireSymbolForConnection(shape, connection, direction, undefined, 48)
     shape = placed.symbol
     const body = oneWireLayoutBounds(shape)
@@ -48,11 +52,29 @@ export const buildSolarInstallation = (
       for (const item of row) item.position.y += dy
       placed.connection.y += dy
     }
-    if (!disconnected) shapes.push({
-      id: nextId(), kind: 'line', start: { ...connection }, end: placed.connection, groupId, oneWireRailId: railId,
-      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH, connection: { kind: 'wire', showLabel: false },
-      energyFlow: 'reverse', energySource: 'generator'
-    })
+    if (!disconnected) {
+      const solarCable = name === 'Omvormer' && solarBreakerId
+      const cable: LineShape = {
+        id: nextId(), kind: 'line', start: { ...connection }, end: placed.connection, groupId, oneWireRailId: railId,
+        strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+        connection: solarCable
+          ? { kind: 'cable', labelOwner: 'solar-installation', showLabel: true }
+          : { kind: 'wire', showLabel: false },
+        ...(solarCable ? { sourceLink: { kind: 'device' as const, id: solarBreakerId, role: 'solar-ac-cable' } } : {}),
+        energyFlow: 'reverse', energySource: 'generator'
+      }
+      shapes.push(cable)
+      if (solarCable) {
+        const cableLabel = text(
+          'PV-kabel AC:\nnog op te geven',
+          connection.x - 72,
+          (connection.y + placed.connection.y) / 2
+        )
+        cableLabel.textAnchor = 'end'
+        cableLabel.sourceLink = { kind: 'device', id: solarBreakerId, role: 'solar-ac-cable-label' }
+        shapes.push(cableLabel)
+      }
+    }
     shapes.push(...row)
     const outgoing = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === direction)?.point
     if (!outgoing) return
@@ -83,6 +105,30 @@ export const buildSolarInstallation = (
       `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`)
   }
   return shapes
+}
+
+export const updateSolarInstallationCable = (shapes: readonly Shape[], breaker: SymbolShape): Shape[] => {
+  const electrical = breaker.electrical
+  const defaults = circuitDefaults(electrical?.circuitType)
+  const sectionMm2 = electrical?.cableSectionMm2
+  const conductors = sectionMm2 ? electrical?.cableConductors ?? defaults.cableConductors : undefined
+  return presentConnectionLabels(shapes.map((shape) => {
+    if (shape.kind !== 'line' || shape.sourceLink?.role !== 'solar-ac-cable' ||
+      shape.sourceLink.id !== breaker.id || !shape.connection) return shape
+    return {
+      ...shape,
+      connection: {
+        ...shape.connection,
+        conductors,
+        sectionMm2,
+        cableType: sectionMm2 ? electrical?.cableType ?? defaults.cableType : undefined,
+        fireClass: sectionMm2 ? electrical?.cableFireClass : undefined,
+        hasProtectiveConductor: sectionMm2
+          ? electrical?.hasProtectiveConductor ?? defaultHasProtectiveConductor(conductors)
+          : undefined
+      }
+    }
+  }))
 }
 
 const solarElectricalLines = (panel: SolarPanel) => [

@@ -37,6 +37,22 @@ test('meter-cable captions remain independent of grid EXVB captions through edit
   assert.equal(Boolean(label(upgraded, 'meter-cable-label').hidden), false)
 })
 
+test('PV cable captions follow the connection and survive topology regeneration', () => {
+  let id = 0
+  const plan = { version: 1 as const, residualBreaker: false, solar: true, consumers: false,
+    solarCable: { conductors: 3, sectionMm2: 4, cableType: 'XVB' as const } }
+  const build = () => buildOneWireTopology(plan,
+    { start: { x: 100, y: 500 }, end: { x: 900, y: 500 } }, () => `pv-${++id}`)
+  const shapes = build()
+  const connection = shapes.find((shape) => shape.sourceLink?.role === 'solar-breaker-to-inverter') as LineShape
+  connection.connection = { ...connection.connection!, sectionMm2: 6 }
+  plan.solarCable.sectionMm2 = 6
+  const regenerated = presentConnectionLabels(sanitizeShapes(reconcileGeneratedOneWire(shapes, build()).shapes))
+  const label = regenerated.find((shape) => shape.sourceLink?.role === 'solar-cable-label')
+  assert.equal(label?.kind === 'text' ? label.text : undefined, 'PV-kabel:\n3G6 mm² XVB')
+  assert.equal((regenerated.find((shape) => shape.id === connection.id) as LineShape).connection?.labelOwner, 'solar')
+})
+
 const cable = (): LineShape => ({ id: 'cable', kind: 'line', start: { x: 100, y: 200 }, end: { x: 500, y: 200 },
   stroke: '#000000', strokeWidth: 2, connection: connectionDefaults('cable') })
 

@@ -164,6 +164,7 @@ export class OneWirePromptDialog extends LiteElement {
                   plan.solarBreakerPoles ? `${plan.solarBreakerPoles}P` : '',
                   plan.solarBreakerRatedCurrentA ? `${plan.solarBreakerRatedCurrentA} A` : ''
                 ].filter(Boolean).join(' '))}
+                ${step('PV-kabel', plan.solarCable ? cableLabelText(plan.solarCable) : 'Nog op te geven')}
                 ${step('Omvormer / zonnepanelen')}
               </ol>
             </section>

@@ -16,7 +16,7 @@ export type ElectricalConnection = {
   hasProtectiveConductor?: boolean
   showLabel?: boolean
   offsetMm?: number
-  labelOwner?: 'circuit' | 'topology' | 'meter'
+  labelOwner?: 'circuit' | 'topology' | 'meter' | 'solar' | 'solar-installation'
   routing?: 'orthogonal'
   via?: Point[]
 }
@@ -49,7 +49,10 @@ export const sanitizeConnection = (value: unknown): ElectricalConnection | undef
   if (['none', 'VOB', 'XVB', 'XVB-Cca', 'XGB', 'XGB-Cca', 'EXVB', 'other'].includes(String(raw.cableType))) result.cableType = raw.cableType as ElectricalCableType
   if (typeof raw.hasProtectiveConductor === 'boolean') result.hasProtectiveConductor = raw.hasProtectiveConductor
   if (typeof raw.showLabel === 'boolean') result.showLabel = raw.showLabel
-  if (raw.labelOwner === 'circuit' || raw.labelOwner === 'topology' || raw.labelOwner === 'meter') result.labelOwner = raw.labelOwner
+  if (raw.labelOwner === 'circuit' || raw.labelOwner === 'topology' || raw.labelOwner === 'meter' ||
+    raw.labelOwner === 'solar' || raw.labelOwner === 'solar-installation') {
+    result.labelOwner = raw.labelOwner
+  }
   if (raw.routing === 'orthogonal') result.routing = 'orthogonal'
   if (Array.isArray(raw.via)) result.via = raw.via.slice(0, 1000).flatMap((point) => point &&
     typeof point.x === 'number' && Number.isFinite(point.x) && typeof point.y === 'number' && Number.isFinite(point.y)

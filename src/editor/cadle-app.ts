@@ -133,7 +133,7 @@ import {
 } from './layout/onewire-layout-plan.js'
 import { alignOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
-import { buildSolarInstallation, solarInstallationPlacement } from './layout/solar-installation-layout.js'
+import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -912,6 +912,11 @@ export class CadleApp extends LiteElement {
     })
     if (!nextShapes) return
     this.#document.shapes = this.#followOneWireConnections(this.#document.shapes, nextShapes)
+    const updatedSelected = nextShapes.find((shape) => shape.id === selectedShape?.id)
+    if (payload.electrical && updatedSelected?.kind === 'symbol' && updatedSelected.name === 'PV automaat' &&
+      updatedSelected.groupId?.startsWith('solar-installation-')) {
+      this.#document.shapes = updateSolarInstallationCable(this.#document.shapes, updatedSelected)
+    }
     if (payload.connection && Object.keys(payload.connection).every((key) => key === 'showLabel')) {
       this.#document.shapes = presentConnectionLabels(this.#document.shapes)
       this.#pushHistory()
@@ -946,6 +951,22 @@ export class CadleApp extends LiteElement {
           if ('fireClass' in payload.connection) cable.fireClass = connection.fireClass?.trim() || undefined
           if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
           this.#project.oneWireTopology[field] = cable
+          cadleShell.project = this.#project
+          void this.#persistProjectMetadata()
+        }
+      }
+      if (connection?.labelOwner === 'solar' && this.#project?.oneWireTopology) {
+        const cable = this.#project.oneWireTopology.solarCable ?? (
+          connection.conductors && connection.sectionMm2 && connection.cableType && connection.cableType !== 'none'
+            ? { conductors: connection.conductors, sectionMm2: connection.sectionMm2, cableType: connection.cableType }
+            : undefined
+        )
+        if (cable) {
+          if (connection.sectionMm2) cable.sectionMm2 = connection.sectionMm2
+          if (connection.conductors) cable.conductors = connection.conductors
+          if ('fireClass' in payload.connection) cable.fireClass = connection.fireClass?.trim() || undefined
+          if (connection.cableType && connection.cableType !== 'none') cable.cableType = connection.cableType
+          this.#project.oneWireTopology.solarCable = cable
           cadleShell.project = this.#project
           void this.#persistProjectMetadata()
         }

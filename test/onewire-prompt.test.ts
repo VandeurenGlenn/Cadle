@@ -27,6 +27,17 @@ test('recognizes an untyped cable leading to the main differential as the meter 
   assert.ok(oneWirePromptTree(plan)[0].includes('kWh-meter → 4x10 mm² → hoofddifferentieel'))
 })
 
+test('parses, previews and serializes the cable to the PV inverter', () => {
+  const { plan, warnings } = parseOneWirePrompt(
+    'Inkomende kabel 4x10 mm² EXVB. Hoofddifferentieel 40 A 300 mA. Zonnepanelen met PV-kabel 3G4 mm² XVB.'
+  )
+
+  assert.deepEqual(plan.solarCable, { conductors: 3, sectionMm2: 4, cableType: 'XVB' })
+  assert.ok(warnings.every((warning) => !warning.includes('PV-kabel')))
+  assert.ok(oneWirePromptTree(plan).some((line) => line.includes('PV-kabel 3G4 mm² XVB')))
+  assert.deepEqual(parseOneWirePrompt(oneWireTopologyPrompt(plan)).plan, plan)
+})
+
 test('makes saved topology settings editable as a description without inventing absent equipment', () => {
   const plan = parseOneWirePrompt(
     'Inkomende kabel 5x10 mm² XVB. Hoofdzekering 40 A. Hoofdschakelaar 63 A. Hoofddifferentieel 63 A 300 mA. Geen remautomaat. Geen zonnepanelen. Daarna de verbruikers. 2 extra diffs 40 A 30 mA voor verbruikers.'
@@ -56,6 +67,7 @@ test('parses a Dutch one-wire topology description with a parallel solar branch'
   assert.deepEqual(oneWirePromptTree(parsed.plan), [
     '4x10 mm² EXVB → hoofdschakelaar → kWh-meter → hoofddifferentieel 40 A / 300 mA',
     '├─ zonnepanelen / omvormer',
+    '│  └─ PV-kabel nog op te geven',
     '└─ remautomaat 40 A → verbruikers'
   ])
 })

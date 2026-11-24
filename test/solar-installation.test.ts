@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
   type SolarInstallation } from '../src/editor/solar-installation.ts'
-import { buildSolarInstallation, solarInstallationPlacement } from '../src/editor/layout/solar-installation-layout.ts'
+import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { sanitizeShapes, cloneShapes } from '../src/editor/model/model.ts'
 import type { LineShape, SymbolShape } from '../src/editor/model/types.ts'
@@ -169,6 +169,19 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   assert.match(labels, /2 string\(s\) van 6 panelen/)
   assert.match(labels, /Voc 34.77 V/)
   assert.match(labels, /INV-5000/)
+  assert.match(labels, /PV-kabel AC:\nnog op te geven/)
+  const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  const configured = updateSolarInstallationCable(shapes, {
+    ...breaker,
+    electrical: { ...breaker.electrical!, cableSectionMm2: 6, cableConductors: 3, cableType: 'XVB' }
+  })
+  const cable = configured.find((shape) => shape.sourceLink?.role === 'solar-ac-cable')
+  const cableLabel = configured.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
+  assert.equal(cable?.kind === 'line' ? cable.connection?.sectionMm2 : undefined, 6)
+  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, 'PV-kabel AC:\n3G6 mm² XVB')
+  const restored = sanitizeShapes(cloneShapes(configured))
+  const restoredCable = restored.find((shape) => shape.sourceLink?.role === 'solar-ac-cable')
+  assert.equal(restoredCable?.kind === 'line' ? restoredCable.connection?.labelOwner : undefined, 'solar-installation')
   assert.deepEqual(sanitizeShapes(cloneShapes(shapes)).filter((shape): shape is SymbolShape =>
     shape.kind === 'symbol').map((symbol) => symbol.electrical?.solar), symbols.map(() => installation))
   const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 200, y: 1000 }, end: { x: 800, y: 1000 } }

@@ -22,6 +22,7 @@ export const ONE_WIRE_TOPOLOGY_SCHEMA = {
     version: { const: 1 },
     incomingCable: cableSchema,
     meterCable: cableSchema,
+    solarCable: cableSchema,
     mainSwitch: {
       type: 'object',
       additionalProperties: false,
@@ -100,6 +101,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
     'version',
     'incomingCable',
     'meterCable',
+    'solarCable',
     'mainSwitch',
     'mainDifferential',
     'residualBreaker',
@@ -158,7 +160,7 @@ export const validateOneWireTopology = (input: unknown): OneWireTopologyValidati
     }
   }
 
-  for (const field of ['incomingCable', 'meterCable'] as const) {
+  for (const field of ['incomingCable', 'meterCable', 'solarCable'] as const) {
     const cable = value[field] === undefined ? null : record(value[field])
     if (value[field] !== undefined && !cable) errors.push(`${field} moet een object zijn.`)
     if (cable) {

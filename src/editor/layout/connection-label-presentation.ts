@@ -20,12 +20,18 @@ export const presentConnectionLabels = (shapes: readonly Shape[]): Shape[] => {
     if (shape.kind !== 'text') return shape
     const owner = shape.sourceLink?.role === 'cable-section' ? 'circuit'
       : shape.sourceLink?.role === 'incoming-cable-label' ? 'topology'
-      : shape.sourceLink?.role === 'meter-cable-label' ? 'meter' : null
+      : shape.sourceLink?.role === 'meter-cable-label' ? 'meter'
+      : shape.sourceLink?.role === 'solar-cable-label' ? 'solar'
+      : shape.sourceLink?.role === 'solar-ac-cable-label' ? 'solar-installation' : null
     if (!owner) return shape
     const connection = owners.get(key(shape, owner))
     if (!connection) return shape
     const text = connection.name?.trim() ? withCableFireClass(connection.name.trim(), connection.fireClass)
       : shape.sourceLink?.role === 'meter-cable-label' ? meterCableLabel(connection)
+      : owner === 'solar' ? `PV-kabel:\n${connection.conductors && connection.sectionMm2 && connection.cableType && connection.cableType !== 'none'
+        ? cableLabelText(connection) : 'nog op te geven'}`
+      : owner === 'solar-installation' ? `PV-kabel AC:\n${connection.conductors && connection.sectionMm2
+        ? cableLabelText(connection) : 'nog op te geven'}`
       : owner === 'topology' ? cableLabelText(connection, 'x') : cableLabelText(connection)
     const hidden = connection.showLabel === false
     return shape.text === text && Boolean(shape.hidden) === hidden ? shape : { ...shape, text, hidden }

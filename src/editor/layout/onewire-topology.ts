@@ -99,7 +99,9 @@ export const buildOneWireTopology = (
         end: { x: x2, y: y2 },
         stroke: '#000000',
         strokeWidth,
-        ...(role !== 'secondary-busbar' ? { connection: role === 'grid-incoming' && plan.incomingCable
+        ...(role !== 'secondary-busbar' ? { connection: role === 'solar-breaker-to-inverter'
+          ? { kind: 'cable' as const, ...(plan.solarCable ?? {}), labelOwner: 'solar' as const, showLabel: true }
+          : role === 'grid-incoming' && plan.incomingCable
           ? { kind: 'cable' as const, ...plan.incomingCable, labelOwner: 'topology' as const, showLabel: true }
           : role === 'incoming'
             ? { kind: 'cable' as const, ...plan.meterCable, labelOwner: 'meter' as const, showLabel: true }
@@ -553,6 +555,14 @@ export const buildOneWireTopology = (
     shapes.push(solarBreaker)
     shapes.push(line('solar-breaker-to-inverter', breakerTop.x, breakerTop.y, inverterBottom.x, inverterBottom.y))
     shapes.push(inverter)
+    const solarCableLabel = text(
+      'solar-cable-label',
+      `PV-kabel:\n${plan.solarCable ? cableLabelText(plan.solarCable) : 'nog op te geven'}`,
+      breakerTop.x - 24,
+      (breakerTop.y + inverterBottom.y) / 2
+    )
+    solarCableLabel.textAnchor = 'end'
+    shapes.push(solarCableLabel)
     shapes.push(line('solar-inverter-to-panels', inverterTop.x, inverterTop.y, panelBottom.x, panelBottom.y))
     shapes.push(panels)
   }

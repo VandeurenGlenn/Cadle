@@ -76,6 +76,7 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('solar-inverter'))
   assert.ok(roles.has('solar-breaker'))
   assert.ok(roles.has('solar-panels'))
+  assert.ok(roles.has('solar-cable-label'))
   assert.ok(roles.has('residual-to-rail'))
   assert.ok(roles.has('residual-outgoing'))
   assert.ok(roles.has('additional-differential-consumers-1'))
@@ -260,6 +261,24 @@ test('draws the solar branch beside the residual-breaker path after the main dif
     assert.deepEqual(flows[0].from, flows[1].to)
     assert.deepEqual(flows[0].to, flows[1].from)
   }
+})
+
+test('shows a PV cable placeholder or its supplied designation beside the inverter connection', () => {
+  const rail = { start: { x: 80, y: 700 }, end: { x: 920, y: 700 } }
+  const missing = buildOneWireTopology(
+    { version: 1, residualBreaker: false, solar: true, consumers: false }, rail, ids()
+  )
+  const missingLabel = missing.find((shape) => shape.sourceLink?.role === 'solar-cable-label')
+  const missingConnection = missing.find((shape) => shape.sourceLink?.role === 'solar-breaker-to-inverter')
+  assert.equal(missingLabel?.kind === 'text' ? missingLabel.text : undefined, 'PV-kabel:\nnog op te geven')
+  assert.equal(missingConnection?.kind === 'line' ? missingConnection.connection?.labelOwner : undefined, 'solar')
+
+  const specified = buildOneWireTopology(
+    { version: 1, residualBreaker: false, solar: true, consumers: false,
+      solarCable: { conductors: 3, sectionMm2: 4, cableType: 'XVB' } }, rail, ids()
+  )
+  const specifiedLabel = specified.find((shape) => shape.sourceLink?.role === 'solar-cable-label')
+  assert.equal(specifiedLabel?.kind === 'text' ? specifiedLabel.text : undefined, 'PV-kabel:\n3G4 mm² XVB')
 })
 
 test('shows the project grid voltage beside the incoming connection', () => {

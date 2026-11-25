@@ -602,6 +602,66 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await page.screenshot({ path: testInfo.outputPath('consumer-topology.png') })
 })
 
+test('starts a short generated rail close to its first breaker and keeps it after reload', async ({ page }) => {
+  const groundKey = randomUUID(), rootKey = randomUUID()
+  const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
+    { kind: 'cadle-native-svg-document', payload: { version: 2, paperLayoutVersion: 1,
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION, shapes, selectedId: null,
+      paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 } }
+  ] })
+  const project: Project = {
+    uuid: randomUUID(), creationTime: 1, name: 'Korte rail met twee kringen', company: '',
+    customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
+    address: { street: '', number: '', postalCode: '', city: '' },
+    oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
+    pages: {
+      [groundKey]: { name: 'Situatieplan', pageType: 'groundplan', creationTime: 1,
+        schema: document(['D', 'E'].map((family, index): Shape => ({
+          id: `load-${family}`, kind: 'symbol', name: 'Wall outlet with grounding',
+          path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', scale: 1,
+          position: { x: 200 + index * 120, y: 200 }, bindingId: `${family}1`,
+          electrical: { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: 1 }
+        }))) },
+      [rootKey]: { name: 'One-wire diagram', pageType: 'onewire', creationTime: 2, schema: document([]) }
+    }
+  }
+  await page.goto('/#!/projects')
+  await page.evaluate(async (value) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(value.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(content)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="Korte rail met twee kringen"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  const generated = await shell.evaluate((element) => (element as AppShell).project!)
+  const pageKey = Object.keys(generated.pages).find((key) => generated.pages[key].pageType === 'onewire' &&
+    nativeStateForProjectPage(generated, key)?.shapes.some((shape) => shape.sourceLink?.role === 'breaker'))!
+  const shapes = nativeStateForProjectPage(generated, pageKey)!.shapes
+  const rail = shapes.find((shape) => shape.kind === 'line' && shape.groupId?.startsWith('onewire-kamrail-'))
+  if (!rail || rail.kind !== 'line') throw new Error('Generated rail not found')
+  const breakers = shapes.filter((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')
+  expect(breakers).toHaveLength(2)
+  const firstX = Math.min(...breakers.map((breaker) =>
+    oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')!.point.x))
+  expect(firstX - rail.start.x).toBeCloseTo(20)
+  expect(rail.end.x - rail.start.x).toBeCloseTo(240)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), pageKey)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), groundKey)
+  const reloaded = await shell.evaluate((element) => (element as AppShell).project!)
+  expect(nativeStateForProjectPage(reloaded, pageKey)!.shapes).toEqual(shapes)
+})
+
 test('keeps generated circuits and the start of the rail away from the page edge', async ({ page }) => {
   const groundKey = randomUUID(), rootKey = randomUUID()
   const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
@@ -1222,7 +1282,7 @@ test('create, draw, bind, validate, generate, reload, and export one-wire projec
   expect(restoredGeometry.rails).toEqual(multiRailGeometry.rails)
 })
 
-test('inserts a breaker with balanced rail ends without shrinking the rail', async ({ page }) => {
+test('inserts a breaker near the rail start without moving or extending the rail unnecessarily', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
   await page.locator('project-element custom-drawer-item[data-project="00000000-0000-4000-8000-000000000104"]').click()
@@ -1282,7 +1342,7 @@ test('inserts a breaker with balanced rail ends without shrinking the rail', asy
     const point = line.ownerSVGElement?.createSVGPoint()
     if (!point) throw new Error('Missing SVG point factory.')
     point.x =
-      Number(line.getAttribute('x1')) + (Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))) * 0.84
+      Number(line.getAttribute('x1')) + (Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))) * 0.1
     point.y = Number(line.getAttribute('y1'))
     const screen = point.matrixTransform(line.getScreenCTM() ?? new DOMMatrix())
     return { x: screen.x, y: screen.y }
@@ -1319,9 +1379,9 @@ test('inserts a breaker with balanced rail ends without shrinking the rail', asy
       }))
   }, beforeShapeIds)
   const verticalLines = addedLines.filter((line) => line.x1 === line.x2)
-  expect(verticalLines).toHaveLength(2)
+  expect(verticalLines.length).toBeGreaterThanOrEqual(2)
   expect(verticalLines.some((line) => line.y1 === railBefore.y || line.y2 === railBefore.y)).toBe(true)
-  expect(verticalLines[0]?.x1).toBeCloseTo(verticalLines[1]?.x1 ?? Number.NaN)
+  for (const line of verticalLines) expect(line.x1).toBeCloseTo(verticalLines[0].x1)
 
   const railAfter = await rail.evaluate((line) => ({
     x1: Number(line.getAttribute('x1')),
@@ -1329,7 +1389,10 @@ test('inserts a breaker with balanced rail ends without shrinking the rail', asy
   }))
   expect(railAfter.x2 - railAfter.x1).toBeGreaterThanOrEqual(railBefore.x2 - railBefore.x1)
   const breakerAxis = verticalLines.find((line) => line.y1 === railBefore.y || line.y2 === railBefore.y)!.x1
-  expect(breakerAxis - railAfter.x1).toBeCloseTo(railAfter.x2 - breakerAxis)
+  expect(railAfter.x1).toBeCloseTo(railBefore.x1)
+  expect(railAfter.x2).toBeCloseTo(railBefore.x2)
+  expect(breakerAxis - railAfter.x1).toBeGreaterThanOrEqual(20)
+  expect(breakerAxis - railAfter.x1).toBeLessThanOrEqual(40)
 
   const existingSwitch = stage.locator('g[data-selected="true"]')
   const switchBounds = await existingSwitch.boundingBox()

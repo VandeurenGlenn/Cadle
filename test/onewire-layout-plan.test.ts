@@ -44,7 +44,8 @@ test('makes room for an inserted circuit using overlapping ink, without reorderi
 })
 
 test('keeps a single-breaker rail readable and preserves the existing length when requested', () => {
-  assert.deepEqual(oneWireRailSpanForAnchors([500]), { startX: 380, endX: 620 })
+  assert.deepEqual(oneWireRailSpanForAnchors([500]), { startX: 480, endX: 720 })
+  assert.deepEqual(oneWireRailSpanForAnchors([500, 600]), { startX: 480, endX: 720 })
   assert.deepEqual(oneWireRailSpanForAnchors([500], { startX: 100, endX: 900 }, true), {
     startX: 100,
     endX: 900

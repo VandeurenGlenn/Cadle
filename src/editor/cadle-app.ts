@@ -3449,7 +3449,10 @@ export class CadleApp extends LiteElement {
       }
       if (!anchorXs.length && emptyRailAnchorX !== undefined) anchorXs.push(emptyRailAnchorX)
       if (!anchorXs.length) return shape
-      const span = this.#oneWireController.railSpanForAnchors(anchorXs)
+      const span = preserveExisting && anchorXs.length
+        ? { startX: Math.min(...anchorXs) - ONE_WIRE_RAIL_END_PADDING,
+          endX: Math.max(...anchorXs) + ONE_WIRE_RAIL_END_PADDING }
+        : this.#oneWireController.railSpanForAnchors(anchorXs)
       if (!span) return shape
       const startX = preserveExisting ? Math.min(span.startX, shape.start.x, shape.end.x) : span.startX
       const endX = preserveExisting ? Math.max(span.endX, shape.start.x, shape.end.x) : span.endX
@@ -3589,8 +3592,9 @@ export class CadleApp extends LiteElement {
       }
       const centerX = (rail.start.x + rail.end.x) / 2
       const geometry = this.#oneWireController.packFamilies(familyBounds, centerX, familyGap)
-      // Keep the terminal span centered on its own rail, not on asymmetric annotations or the page.
-      const offsetX = centerX - (geometry.startX + geometry.endX) / 2
+      // Center the final rail, including any extra length reserved on its right.
+      const extraLength = Math.max(0, ONE_WIRE_MIN_RAIL_LENGTH - (geometry.endX - geometry.startX))
+      const offsetX = centerX - (geometry.startX + geometry.endX + extraLength) / 2
       railAnchors.forEach((anchor) => {
         const targetX = geometry.familyXs.get(anchor.id)
         if (typeof targetX === 'number') anchorOffsets.set(anchor.id, targetX + offsetX - anchor.x)

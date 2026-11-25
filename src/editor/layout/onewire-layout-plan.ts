@@ -110,9 +110,7 @@ export const oneWireRailSpanForAnchors = (
   let startX = firstAnchor - ONE_WIRE_RAIL_END_PADDING
   let endX = lastAnchor + ONE_WIRE_RAIL_END_PADDING
   if (endX - startX < ONE_WIRE_MIN_RAIL_LENGTH) {
-    const centerX = (firstAnchor + lastAnchor) / 2
-    startX = centerX - ONE_WIRE_MIN_RAIL_LENGTH / 2
-    endX = centerX + ONE_WIRE_MIN_RAIL_LENGTH / 2
+    endX = startX + ONE_WIRE_MIN_RAIL_LENGTH
   }
   if (preserveExisting && existingSpan) {
     const length = Math.max(endX - startX, Math.abs(existingSpan.endX - existingSpan.startX))

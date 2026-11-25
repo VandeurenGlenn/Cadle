@@ -132,8 +132,7 @@ test('keeps the rail start close to the first circuit when a fixed feeder is on 
   const breakers = shapes.filter((shape: SymbolShape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker') as SymbolShape[]
   const firstX = Math.min(...breakers.map((breaker) =>
     breaker.position.x + oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!.bottom.x))
-  expect(firstX - updatedRail.start.x).toBeLessThanOrEqual(120)
-  expect(firstX - updatedRail.start.x).toBeGreaterThanOrEqual(20 - 1e-6)
+  expect(firstX - updatedRail.start.x).toBeCloseTo(20)
   expect(firstX).toBeGreaterThan(pageLayout(2376, 1680).content.x + 96)
   expect(updatedRail.end.x - updatedFeeder.start.x).toBeCloseTo(20)
   expect(updatedFeeder.start.y).toBeCloseTo(updatedRail.start.y)

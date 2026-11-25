@@ -166,16 +166,21 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Driveway outlines are painted together beneath all paving surfaces, so overlapping routes and areas join
   without internal border lines in both editor and export, while retaining individually editable shapes.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
-  through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text
+  through a reviewable equipment form. Each component has its own manufacturer, model, datasheet PDF/image/text
   import and variant selection; importing one component never replaces the other component's specifications.
   `src/editor/solar-installation.ts` parses aligned STC datasheet columns without mixing in BNPI/NOCT values;
   the inverter parser reads nominal AC output, never recommended PV input or maximum/apparent output.
   Ambiguous or incomplete columns remain explicit for correction. Image recognition reuses the local OCR worker,
   normalizes light-on-grey table headers and leaves recognized text editable; ambiguous O/0 model suffixes are
   flagged instead of silently corrected. Multiple variants require an explicit choice.
-  Panel quantity, equal-string configuration and inverter/protection ratings are entered separately, never inferred
+  `src/editor/solar-datasheet-import.ts` reads PDF pages locally with PDF.js, preserving text-column positions.
+  Pages with no or very sparse selectable text reuse the image OCR path, with bounded raster dimensions and released page/canvas/worker resources.
+  Panel quantity, per-string panel counts and inverter/protection ratings are entered separately, never inferred
   from a panel datasheet. Reviewed specifications live in electrical metadata and ordinary schema text, preserving
-  them across history, reopening and SVG/PDF export. Legacy complete installations remain editable. Inverters
+  them across history, reopening and SVG/PDF export. Optional `panelsPerString` metadata supports unequal strings
+  whose positive integer counts must sum to the panel total; legacy equal-string data remains editable.
+  Changing the total or string count proposes a balanced distribution, after which each string is independently editable.
+  Legacy complete installations remain editable. Inverters
   connect through their breaker to the selected AC kamrail; standalone panels have no automatic AC connection
   and can be linked to an inverter's DC terminal using the connection tool. Placement uses actual terminals and free space without moving
   existing circuits; insufficient space is reported rather than silently placing equipment outside the print area.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
+import { distributeSolarPanels, normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
   type SolarInstallation } from '../src/editor/solar-installation.ts'
 import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
@@ -145,13 +145,41 @@ test('validates and serializes independent equipment without requiring or fabric
   assert.equal(sanitizeSolarInstallation({ kind: 'unknown' }), undefined)
 })
 
-test('rejects invalid quantities, unequal strings and implausible STC electrical values', () => {
+test('rejects invalid quantities, missing string distributions and implausible STC electrical values', () => {
   assert.equal(validateSolarInstallation(installation), null)
   for (const change of [{ panelCount: 0 }, { stringCount: 5 }, { panelCount: 1.5 }, { inverterPowerW: NaN }]) {
     assert.ok(validateSolarInstallation({ ...installation, ...change }))
   }
   assert.ok(validateSolarInstallation({ ...installation, panel: { ...installation.panel, vocV: 20 } }))
   assert.equal(sanitizeSolarInstallation({ ...installation, phases: 2 }), undefined)
+})
+
+test('supports 23 panels in strings of 11 and 12 through schema sanitization and schematic labels', () => {
+  const value = { ...installation, panelCount: 23, panelsPerString: [11, 12] }
+  assert.deepEqual(distributeSolarPanels(23, 2), [11, 12])
+  assert.equal(validateSolarInstallation(value), null)
+  const sanitized = sanitizeSolarInstallation(value)
+  assert.deepEqual(sanitized, value)
+  assert.notEqual(sanitized?.kind !== 'inverter' && sanitized?.panelsPerString, value.panelsPerString)
+  let id = 0
+  const shapes = buildSolarInstallation(value, 'rail', { x: 300, y: 1200 }, () => `unequal-${++id}`)
+  const restored = sanitizeShapes(cloneShapes(shapes))
+  assert.ok(restored.filter((shape) => shape.kind === 'symbol').every((shape) =>
+    shape.electrical?.solar?.kind !== 'inverter' && shape.electrical?.solar?.panelsPerString?.join(',') === '11,12'))
+  const labels = restored.filter((shape) => shape.kind === 'text').map((shape) => shape.text).join('\n')
+  assert.match(labels, /String 1: 11 panelen\nString 2: 12 panelen/)
+  assert.match(labels, /23 x 470 Wp = 10.81 kWp/)
+  assert.doesNotMatch(labels, /11\.5 panelen/)
+})
+
+test('rejects missing, mismatched and malformed per-string panel quantities without replacing them with defaults', () => {
+  for (const counts of [[], [23], [11, 11], [0, 23], [-1, 24], [11.5, 11.5], [NaN, 12], ['11', 12], null]) {
+    assert.equal(sanitizeSolarInstallation({ ...installation, panelCount: 23, panelsPerString: counts }), undefined)
+  }
+  assert.equal(sanitizeSolarInstallation({ ...installation, panelCount: 23 }), undefined)
+  assert.deepEqual(distributeSolarPanels(12, 3), [4, 4, 4])
+  assert.deepEqual(distributeSolarPanels(2, 3), [])
+  assert.deepEqual(distributeSolarPanels(10001, 2), [])
 })
 
 test('connects actual PV terminals, annotates STC quantities and preserves equipment through serialization', () => {

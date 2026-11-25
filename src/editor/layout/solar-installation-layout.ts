@@ -1,4 +1,4 @@
-import { defaultPvCableForBreaker, type SolarInstallation, type SolarPanel } from '../solar-installation.js'
+import { defaultPvCableForBreaker, solarStringPanelCounts, type SolarInstallation, type SolarPanel } from '../solar-installation.js'
 import type { LineShape, Point, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors, positionOneWireSymbolForConnection } from './onewire-connections.js'
 import { oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
@@ -102,8 +102,12 @@ export const buildSolarInstallation = (
   if (installation.kind !== 'inverter') {
     const panel = installation.panel
     const total = panel.powerWp * installation.panelCount / 1000
+    const counts = solarStringPanelCounts(installation)
+    const strings = counts.every((count) => count === counts[0])
+      ? `${installation.stringCount} string(s) van ${counts[0]} panelen`
+      : counts.map((count, index) => `String ${index + 1}: ${count} panelen`).join('\n')
     add('symbols/Photovoltaic devices (≠AREI)/Solar panel.svg', 'Zonnepanelen',
-      [panel.manufacturer, panel.model, `${installation.stringCount} string(s) van ${installation.panelCount / installation.stringCount} panelen`,
+      [panel.manufacturer, panel.model, strings,
         ...solarElectricalLines(panel)].filter(Boolean).join('\n'),
       `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`)
   }

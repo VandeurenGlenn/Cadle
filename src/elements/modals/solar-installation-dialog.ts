@@ -1,9 +1,9 @@
 import { LiteElement, customElement, html, property } from '@vandeurenglenn/lite'
 import baseStyles from './input-form-dialog.css' with { type: 'css' }
 import styles from './solar-installation-dialog.css' with { type: 'css' }
-import { normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, solarPanelFields, validateSolarInstallation,
+import { distributeSolarPanels, parseInverterDatasheet, parseSolarDatasheet, solarStringPanelCounts, solarPanelFields, validateSolarInstallation,
   type SolarInstallation, type SolarInverter, type SolarPanel, type SolarPanelArray } from '../../editor/solar-installation.js'
-import { createPdfScanOcrSession } from '../../editor/pdf-scan-ocr.js'
+import { readSolarDatasheet } from '../../editor/solar-datasheet-import.js'
 
 export type SolarInstallationRequest = {
   rails: { id: string; label: string }[]
@@ -17,6 +17,7 @@ type DatasheetKind = 'panels' | 'inverter'
 export class SolarInstallationDialog extends LiteElement {
   static styles = [baseStyles, styles]
   @property({ attribute: false }) accessor values: Record<string, string> = {}
+  @property({ attribute: false }) accessor stringPanels: string[] = ['1']
   @property({ attribute: false }) accessor panels: Partial<SolarPanel>[] = []
   @property({ attribute: false }) accessor inverters: Partial<SolarInverter>[] = []
   @property({ attribute: false }) accessor warnings: Record<DatasheetKind, string[]> = { panels: [], inverter: [] }
@@ -36,8 +37,9 @@ export class SolarInstallationDialog extends LiteElement {
     const previous = request.installation
     this.values = { railId: request.rails.some((rail) => rail.id === request.railId) ? request.railId! : request.rails[0]?.id ?? '',
       panelCount: '1', stringCount: '1', phases: '1', kind: previous?.kind ?? 'installation',
-      ...(previous ? Object.fromEntries(Object.entries(previous).filter(([key]) => key !== 'panel' && key !== 'kind').map(([key, value]) => [key, String(value)])) : {}),
+      ...(previous ? Object.fromEntries(Object.entries(previous).filter(([key]) => key !== 'panel' && key !== 'kind' && key !== 'panelsPerString').map(([key, value]) => [key, String(value)])) : {}),
       ...(previous && previous.kind !== 'inverter' ? Object.fromEntries(Object.entries(previous.panel).map(([key, value]) => [key, String(value)])) : {}) }
+    this.stringPanels = previous && previous.kind !== 'inverter' ? solarStringPanelCounts(previous).map(String) : ['1']
     this.panels = []
     this.inverters = []
     this.warnings = { panels: [], inverter: [] }
@@ -66,6 +68,7 @@ export class SolarInstallationDialog extends LiteElement {
     this.#request = { ...this.#request, installation: undefined }
     this.values = { kind, railId: this.#request.railId ?? this.#request.rails[0]?.id ?? '',
       panelCount: '1', stringCount: '1', phases: '1' }
+    this.stringPanels = ['1']
     this.panels = []
     this.inverters = []
     this.warnings = { panels: [], inverter: [] }
@@ -106,44 +109,26 @@ export class SolarInstallationDialog extends LiteElement {
       ...(inverter.phases ? { phases: String(inverter.phases) } : {}) }
   }
 
-  #readImage(event: Event, kind: DatasheetKind) {
+  #readFile(event: Event, kind: DatasheetKind) {
     const input = event.target as HTMLInputElement
     const file = input.files?.[0]
     input.value = ''
-    if (file) void this.#recognizeImage(file, kind)
+    if (file) void this.#recognizeDatasheet(file, kind)
   }
 
-  async #recognizeImage(file: File, kind: DatasheetKind) {
+  async #recognizeDatasheet(file: File, kind: DatasheetKind) {
     if (this.busy) return
     const sequence = ++this.#sequence
     this.busy = true
     this.error = ''
-    this.status = 'Afbeelding lokaal lezen…'
+    this.status = 'Datasheet lokaal lezen…'
     try {
-      const bitmap = await createImageBitmap(file)
-      const canvas = document.createElement('canvas')
-      const factor = Math.min(3, 2600 / bitmap.width, 3400 / bitmap.height)
-      canvas.width = Math.round(bitmap.width * factor)
-      canvas.height = Math.round(bitmap.height * factor)
-      try {
-        const context = canvas.getContext('2d')
-        if (!context) throw new Error('Afbeelding kan niet worden voorbereid.')
-        context.fillStyle = '#ffffff'
-        context.fillRect(0, 0, canvas.width, canvas.height)
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-        const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
-        normalizeSolarDatasheetHeaderContrast(pixels)
-        context.putImageData(pixels, 0, 0)
-      } finally { bitmap.close() }
-      const session = await createPdfScanOcrSession((_status, progress) => {
-        if (sequence === this.#sequence) this.status = `Afbeelding lokaal lezen… ${Math.round(progress * 20) * 5}%`
-      })
-      try {
-        const result = await session.recognize(canvas, canvas, 0)
-        if (sequence !== this.#sequence) return
-        this.#parse(solarDatasheetRows(result.texts), kind)
-        this.status = 'Herkenning klaar. Controleer de variant en alle waarden.'
-      } finally { await session.terminate() }
+      const text = await readSolarDatasheet(file, (status) => {
+        if (sequence === this.#sequence) this.status = status
+      }, () => sequence === this.#sequence)
+      if (sequence !== this.#sequence) return
+      this.#parse(text, kind)
+      this.status = 'Herkenning klaar. Controleer de variant en alle waarden.'
     } catch (error) {
       if (sequence === this.#sequence) this.error = `Lezen mislukt: ${error instanceof Error ? error.message : String(error)}. Je kunt de gegevens handmatig invullen.`
     } finally {
@@ -165,7 +150,8 @@ export class SolarInstallationDialog extends LiteElement {
       panel: { manufacturer: values.manufacturer?.trim() ?? '', model: values.model?.trim() ?? '', powerWp: Number(values.powerWp),
         ...Object.fromEntries(solarPanelFields.slice(1).filter(({ key }) => values[key]?.trim())
           .map(({ key }) => [key, Number(values[key].replace(',', '.'))])) },
-      panelCount: Number(values.panelCount), stringCount: Number(values.stringCount)
+      panelCount: Number(values.panelCount), stringCount: Number(values.stringCount),
+      panelsPerString: this.stringPanels.map(Number)
     }
     const inverter: SolarInverter = {
       inverterManufacturer: values.inverterManufacturer?.trim() ?? '', inverterModel: values.inverterModel?.trim() ?? '',
@@ -184,19 +170,25 @@ export class SolarInstallationDialog extends LiteElement {
     return html`<label><span>${label}</span><input name=${key} aria-label=${label}
       type=${numeric ? 'number' : 'text'} step=${integer ? '1' : 'any'} min=${numeric ? integer ? '1' : '0.001' : ''}
       ?required=${required} .value=${this.values[key] ?? ''}
-      @input=${(event: Event) => { this.values = { ...this.values, [key]: (event.target as HTMLInputElement).value } }} /></label>`
+      @input=${(event: Event) => {
+        this.values = { ...this.values, [key]: (event.target as HTMLInputElement).value }
+        if (key === 'panelCount' || key === 'stringCount') {
+          this.stringPanels = distributeSolarPanels(Number(this.values.panelCount), Number(this.values.stringCount)).map(String)
+          this.error = ''
+        }
+      }} /></label>`
   }
 
   #datasheet(kind: DatasheetKind) {
     const panel = kind === 'panels'
     const label = panel ? 'paneelfiche' : 'omvormerfiche'
     return html`
-      <label><span>Afbeelding van ${label}</span>
-        <input aria-label=${`Afbeelding van ${label}`} type="file" accept="image/*"
-          @change=${(event: Event) => this.#readImage(event, kind)} /></label>
+      <label><span>PDF of afbeelding van ${label}</span>
+        <input aria-label=${`PDF of afbeelding van ${label}`} type="file" accept="application/pdf,.pdf,image/*"
+          @change=${(event: Event) => this.#readFile(event, kind)} /></label>
       <small>Herkenning gebeurt lokaal, zonder upload. ${panel
         ? 'Alleen STC-waarden worden overgenomen.' : 'Nominaal AC-uitgangsvermogen is niet hetzelfde als aanbevolen DC-paneelvermogen.'}
-        Kies bij meerdere kolommen altijd je eigen variant.</small>
+        PDF-tekst wordt rechtstreeks gelezen; scans via tekstherkenning. Kies bij meerdere kolommen altijd je eigen variant.</small>
       <details><summary>Herkende tekst controleren of tekst plakken</summary>
         <textarea data-datasheet=${kind} aria-label=${`Tekst van ${label}`} rows="5" .value=${this.datasheetTexts[kind]}
           @input=${(event: Event) => { this.datasheetTexts = { ...this.datasheetTexts, [kind]: (event.target as HTMLTextAreaElement).value } }}></textarea>
@@ -213,16 +205,16 @@ export class SolarInstallationDialog extends LiteElement {
     return html`<form role="dialog" aria-modal="true" aria-labelledby="pv-title" @submit=${this.#submit}
       @paste=${(event: ClipboardEvent) => {
         event.stopPropagation()
-        const file = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith('image/'))
+        const file = [...(event.clipboardData?.files ?? [])].find((file) => file.type.startsWith('image/') || file.type === 'application/pdf')
         const target = event.target instanceof Element ? event.target.closest('[data-equipment]')?.getAttribute('data-equipment') : undefined
-        if (file) { event.preventDefault(); void this.#recognizeImage(file,
+        if (file) { event.preventDefault(); void this.#recognizeDatasheet(file,
           target === 'inverter' || (!target && this.values.kind === 'inverter') ? 'inverter' : 'panels') }
       }}
       @keydown=${(event: KeyboardEvent) => {
         event.stopPropagation()
         if (event.key === 'Escape') { event.preventDefault(); this.#close() }
       }}>
-      <header><h2 id="pv-title">Omvormer en zonnepanelen</h2><p>Voeg onderdelen apart of samen toe. Elk onderdeel heeft een eigen fabrikant en datasheet. Open of plak de foto in het juiste onderdeel.</p></header>
+      <header><h2 id="pv-title">Omvormer en zonnepanelen</h2><p>Voeg onderdelen apart of samen toe. Elk onderdeel heeft een eigen fabrikant en datasheet. Open een PDF of afbeelding, of plak een foto in het juiste onderdeel.</p></header>
       <label><span>Onderdeel</span><select aria-label="Onderdeel" ?disabled=${this.busy || Boolean(this.#request.installation)}
         @change=${(event: Event) => { this.values = { ...this.values, kind: (event.target as HTMLSelectElement).value }; this.error = '' }}>
         <option value="installation" .selected=${this.values.kind === 'installation'}>Omvormer en zonnepanelen</option>
@@ -244,8 +236,18 @@ export class SolarInstallationDialog extends LiteElement {
         ${this.#field('model', 'Paneelmodel', false, true)}
         ${solarPanelFields.map(({ key, label }) => this.#field(key, label, true, key === 'powerWp'))}
         ${this.#field('panelCount', 'Aantal panelen', true, true, true)}
-        ${this.#field('stringCount', 'Aantal gelijke strings', true, true, true)}
-      </div><p>Totaal DC: ${Number.isFinite(watts) && watts > 0 ? `${Number((watts / 1000).toFixed(3))} kWp` : '—'}</p>
+        ${this.#field('stringCount', 'Aantal strings', true, true, true)}
+      </div>
+      <div class="fields">${this.stringPanels.map((count, index) => html`
+        <label><span>String ${index + 1} – aantal panelen</span>
+          <input aria-label=${`String ${index + 1} – aantal panelen`} type="number" min="1" step="1" required
+            .value=${count} @input=${(event: Event) => {
+              this.stringPanels = this.stringPanels.map((value, item) => item === index ? (event.target as HTMLInputElement).value : value)
+              this.error = ''
+            }} /></label>`)}</div>
+      <small>Bij wijzigen van het totaal of het aantal strings wordt een nieuwe verdeling voorgesteld. Pas daarna elk stringaantal aan.</small>
+      <p>Verdeeld: ${this.stringPanels.reduce((sum, count) => sum + Number(count), 0)} / ${this.values.panelCount || '0'} panelen.
+        Totaal DC: ${Number.isFinite(watts) && watts > 0 ? `${Number((watts / 1000).toFixed(3))} kWp` : '—'}</p>
         ${this.values.kind === 'panels' ? html`<small>Panelen worden los geplaatst, niet op een AC-kamrail. Verbind de DC-aansluiting met de gewenste omvormer via Verbinding.</small>` : ''}
       </fieldset>` : ''}
       ${this.values.kind !== 'panels' ? html`<fieldset data-equipment="inverter" ?disabled=${this.busy}>

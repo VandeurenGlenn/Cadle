@@ -14,7 +14,19 @@ export type SolarPanelArray = {
   panel: SolarPanel
   panelCount: number
   stringCount: number
+  panelsPerString?: number[]
 }
+
+export const distributeSolarPanels = (panelCount: number, stringCount: number): number[] => {
+  if (!Number.isInteger(panelCount) || panelCount < 1 || panelCount > 10000 ||
+    !Number.isInteger(stringCount) || stringCount < 1 || stringCount > panelCount) return []
+  const base = Math.floor(panelCount / stringCount)
+  return Array.from({ length: stringCount }, (_, index) =>
+    base + (index >= stringCount - panelCount % stringCount ? 1 : 0))
+}
+
+export const solarStringPanelCounts = (array: SolarPanelArray): number[] =>
+  array.panelsPerString ?? Array.from({ length: array.stringCount }, () => array.panelCount / array.stringCount)
 
 export type SolarInverter = {
   inverterManufacturer: string
@@ -206,8 +218,17 @@ export const validateSolarInstallation = (value: SolarInstallation): string | nu
   if (value.kind !== 'inverter') {
     if (!value.panel.model.trim()) return 'Vul het paneelmodel in.'
     if (!Number.isInteger(value.panelCount) || value.panelCount < 1 || value.panelCount > 10000 ||
-      !Number.isInteger(value.stringCount) || value.stringCount < 1 || value.panelCount % value.stringCount !== 0) {
-      return 'Gebruik een positief aantal panelen en gelijke strings waarin alle panelen passen.'
+      !Number.isInteger(value.stringCount) || value.stringCount < 1 || value.stringCount > value.panelCount) {
+      return 'Gebruik een positief aantal panelen en maximaal één string per paneel.'
+    }
+    if (value.panelsPerString !== undefined) {
+      if (!Array.isArray(value.panelsPerString) || value.panelsPerString.length !== value.stringCount ||
+        value.panelsPerString.some((count) => !Number.isInteger(count) || count < 1) ||
+        value.panelsPerString.reduce((sum, count) => sum + count, 0) !== value.panelCount) {
+        return 'De aantallen per string moeten positieve gehele getallen zijn en samen gelijk zijn aan het aantal panelen.'
+      }
+    } else if (value.panelCount % value.stringCount !== 0) {
+      return 'Vul het aantal panelen per string in; de panelen zijn niet gelijk verdeeld.'
     }
     for (const { key } of solarPanelFields) {
       const number = value.panel[key]
@@ -239,7 +260,10 @@ export const sanitizeSolarInstallation = (input: unknown): SolarInstallation | u
     panels = { panel: { manufacturer: text(panel.manufacturer), model: text(panel.model), powerWp: number(panel.powerWp),
       ...Object.fromEntries(solarPanelFields.slice(1).filter(({ key }) => panel[key] !== undefined)
         .map(({ key }) => [key, number(panel[key])])) },
-      panelCount: number(raw.panelCount), stringCount: number(raw.stringCount) }
+      panelCount: number(raw.panelCount), stringCount: number(raw.stringCount),
+      ...(raw.panelsPerString !== undefined ? {
+        panelsPerString: Array.isArray(raw.panelsPerString) ? raw.panelsPerString.map(number) : []
+      } : {}) }
   }
   let inverter: SolarInverter | undefined
   if (raw.kind !== 'panels') {

@@ -6,6 +6,7 @@ import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { Shape } from '../../src/editor/model/types.ts'
 import { nativeStateForProjectPage } from '../../src/data/project-document.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { jsPDF } from 'jspdf'
 
 const openProject = async (page: Page, shapes: Shape[]) => {
   await page.setViewportSize({ width: 1600, height: 1100 })
@@ -45,6 +46,127 @@ const openProject = async (page: Page, shapes: Shape[]) => {
   return { app, shell, stored, pageKey }
 }
 
+test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23 panels', async ({ page }, testInfo) => {
+  const { app, stored, pageKey } = await openProject(page, [])
+  const trigger = page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })
+  await trigger.click()
+  const dialog = page.locator('solar-installation-dialog')
+  const panelInput = dialog.getByLabel('PDF of afbeelding van paneelfiche', { exact: true })
+  await panelInput.setInputFiles({ name: 'broken.pdf', mimeType: 'application/pdf', buffer: Buffer.from('not a PDF') })
+  await expect(dialog.getByRole('alert')).toContainText('Lezen mislukt')
+  await expect(panelInput).toBeEnabled()
+  const panels = new jsPDF({ unit: 'pt', format: 'a4' })
+  panels.setFontSize(12)
+  panels.text('Panel product brochure', 40, 40)
+  panels.addPage()
+  panels.text([
+    'SPECIFICATION (STC)',
+    'MODEL TYPE TEST470',
+    'Rated Peak Power-Pmax(Wp) 470',
+    'Maximum Power Voltage-Vmp(V) 29.55',
+    'Maximum Power Current-Imp(A) 15.91',
+    'Open Circuit Voltage-Voc(V) 34.77',
+    'Short Circuit Current-Isc(A) 16.90'
+  ], 40, 40)
+  await panelInput.setInputFiles({
+    name: 'panels.pdf', mimeType: 'application/pdf', buffer: Buffer.from(panels.output('arraybuffer'))
+  })
+  await expect(dialog.getByLabel('Paneelmodel', { exact: true })).toHaveValue('TEST470')
+  await expect(dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true })).toHaveValue('470')
+  await expect(dialog.getByLabel('Voc (V)', { exact: true })).toHaveValue('34.77')
+  const inverter = new jsPDF({ unit: 'pt', format: 'a4' })
+  inverter.setFontSize(12)
+  inverter.text([
+    'Manufacturer: TestInverter',
+    'Model INV-10000',
+    'Max input voltage 600 V',
+    'Number of MPPT trackers 2',
+    'Rated output power 10000 W',
+    'Rated output voltage 3 W/N + PE'
+  ], 40, 40)
+  await dialog.getByLabel('PDF of afbeelding van omvormerfiche', { exact: true }).setInputFiles({
+    name: 'inverter.pdf', mimeType: 'application/pdf', buffer: Buffer.from(inverter.output('arraybuffer'))
+  })
+  await expect(dialog.getByLabel('Omvormermodel', { exact: true })).toHaveValue('INV-10000')
+  await expect(dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true })).toHaveValue('10000')
+  await expect(dialog.getByLabel('Fasen omvormer', { exact: true })).toHaveValue('3')
+  await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('32')
+  await dialog.getByLabel('Aantal panelen', { exact: true }).fill('23')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('2')
+  const firstString = dialog.getByLabel('String 1 – aantal panelen', { exact: true })
+  const secondString = dialog.getByLabel('String 2 – aantal panelen', { exact: true })
+  await expect(firstString).toHaveValue('11')
+  await expect(secondString).toHaveValue('12')
+  await firstString.fill('10')
+  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('samen gelijk')
+  await firstString.fill('11')
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('pdf-pv-unequal-strings.png') })
+  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  const shapes = await stored()
+  expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect(shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toMatchObject({
+    electrical: { solar: { panelCount: 23, stringCount: 2, panelsPerString: [11, 12] } }
+  })
+  const svg = await app.evaluate((element) => (element as CadleApp).toSVG())
+  expect(svg).toContain('String 1: 11 panelen')
+  expect(svg).toContain('String 2: 12 panelen')
+  expect(svg).not.toContain('11.5 panelen')
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  await app.locator('text.shape-text').filter({ hasText: '23 x 470 Wp = 10.81 kWp' }).click()
+  await trigger.click()
+  await expect(firstString).toHaveValue('11')
+  await expect(secondString).toHaveValue('12')
+  await secondString.fill('13')
+  await firstString.fill('10')
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 13 panelen')
+  await app.evaluate((element) => (element as CadleApp).undo())
+  expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 12 panelen')
+})
+
+test('reads a scanned PDF datasheet using local OCR', async ({ page }) => {
+  await openProject(page, [])
+  const raster = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1190
+    canvas.height = 1684
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#000000'
+    context.font = '32px Arial'
+    for (const [index, line] of [
+      'SPECIFICATION (STC)',
+      'MODEL TYPE TEST470',
+      'Rated Peak Power-Pmax(Wp) 470',
+      'Maximum Power Voltage-Vmp(V) 29.55',
+      'Maximum Power Current-Imp(A) 15.91',
+      'Open Circuit Voltage-Voc(V) 34.77',
+      'Short Circuit Current-Isc(A) 16.90'
+    ].entries()) context.fillText(line, 60, 100 + index * 75)
+    return canvas.toDataURL('image/png')
+  })
+  const scan = new jsPDF({ unit: 'pt', format: 'a4' })
+  scan.addImage(raster, 'PNG', 0, 0, 595, 842)
+  scan.text('1', 570, 820)
+  await page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true }).click()
+  const dialog = page.locator('solar-installation-dialog')
+  await dialog.getByLabel('Onderdeel', { exact: true }).selectOption('panels')
+  await dialog.getByLabel('PDF of afbeelding van paneelfiche', { exact: true }).setInputFiles({
+    name: 'scanned-panels.pdf', mimeType: 'application/pdf', buffer: Buffer.from(scan.output('arraybuffer'))
+  })
+  await expect(dialog.getByRole('status')).toContainText('Herkenning klaar', { timeout: 30_000 })
+  await expect(dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true })).toHaveValue('470')
+  await expect(dialog.getByLabel('Voc (V)', { exact: true })).toHaveValue('34.77')
+  await dialog.getByRole('button', { name: 'Annuleren', exact: true }).click()
+})
+
 test('reviews a multivariant STC datasheet, adds and edits a connected PV installation without moving existing equipment', async ({ page }) => {
   const existing: Shape[] = [
     { id: 'rail', kind: 'line', start: { x: 200, y: 450 }, end: { x: 1400, y: 450 }, strokeWidth: 4, groupId: 'onewire-kamrail-existing' },
@@ -77,13 +199,14 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await expect(dialog.getByLabel('Voc (V)', { exact: true })).toHaveValue('34.77')
   await dialog.getByLabel('Merk panelen', { exact: true }).fill('OSDA')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('12')
-  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('5')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('5')
+  await dialog.getByLabel('String 1 – aantal panelen', { exact: true }).fill('1')
   await dialog.getByLabel('Omvormermodel', { exact: true }).fill('INV-5000')
   await dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true }).fill('5000')
   await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('25')
   await dialog.getByRole('button', { name: 'Toevoegen aan schema' }).click()
-  await expect(dialog.getByRole('alert')).toContainText('gelijke strings')
-  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('2')
+  await expect(dialog.getByRole('alert')).toContainText('samen gelijk')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('2')
   await dialog.getByRole('button', { name: 'Toevoegen aan schema' }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp = 5.64 kWp' })).toHaveCount(1)
@@ -94,7 +217,7 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await trigger.click()
   await expect(dialog.getByLabel('Paneelmodel', { exact: true })).toHaveValue('ODA470-24V-MHDBRz')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('18')
-  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('3')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('3')
   await dialog.getByRole('button', { name: 'Installatie bijwerken' }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   await expect(app.locator('text.shape-text').filter({ hasText: '18 x 470 Wp = 8.46 kWp' })).toHaveCount(1)
@@ -148,7 +271,7 @@ test('imports inverter and panel sheets independently, preserves different brand
   await trigger.click()
   const dialog = page.locator('solar-installation-dialog')
   await dialog.getByLabel('Onderdeel', { exact: true }).selectOption('inverter')
-  await expect(dialog.getByLabel('Afbeelding van paneelfiche', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('PDF of afbeelding van paneelfiche', { exact: true })).toHaveCount(0)
   await dialog.locator('fieldset[data-equipment="inverter"] summary').click()
   await dialog.getByLabel('Tekst van omvormerfiche', { exact: true }).fill(`Technical Specification SUN2000-12K- SUN2000-15K- SUN2000-17K- SUN2000-20K- SUN2000-25K-
 MB0 MB0 MB0 MB0 MB0
@@ -176,7 +299,7 @@ Rated output voltage 230 V AC/400 V AC; 3 W/N + PE`)
   await trigger.click()
   await dialog.getByRole('button', { name: 'Nieuw onderdeel toevoegen', exact: true }).click()
   await expect(dialog.getByLabel('Onderdeel', { exact: true })).toHaveValue('panels')
-  await expect(dialog.getByLabel('Afbeelding van omvormerfiche', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('PDF of afbeelding van omvormerfiche', { exact: true })).toHaveCount(0)
   await dialog.locator('fieldset[data-equipment="panels"] summary').click()
   await dialog.getByLabel('Tekst van paneelfiche', { exact: true }).fill(`SPECIFICATION (STC)
 MODEL TYPE ODA470-24V-MHDBRz
@@ -188,7 +311,7 @@ Short Circuit Current-Isc(A) 16.90`)
   await dialog.getByRole('button', { name: 'Paneeltekst verwerken', exact: true }).click()
   await dialog.getByLabel('Merk panelen', { exact: true }).fill('OSDA')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('12')
-  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('2')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('2')
   await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   const separate = await stored()
@@ -201,7 +324,7 @@ Short Circuit Current-Isc(A) 16.90`)
   await trigger.click()
   await expect(dialog.getByLabel('Merk panelen', { exact: true })).toHaveValue('OSDA')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('18')
-  await dialog.getByLabel('Aantal gelijke strings', { exact: true }).fill('3')
+  await dialog.getByLabel('Aantal strings', { exact: true }).fill('3')
   await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   const updated = await stored()

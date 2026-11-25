@@ -8,6 +8,83 @@ import { nativeStateForProjectPage } from '../../src/editor/model/document-state
 
 test.use({ hasTouch: true })
 
+test('resizes the project drawer without going below its default width', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const drawer = page.locator('#project-drawer')
+  const handle = page.getByRole('separator', { name: 'Breedte projectpaneel aanpassen' })
+  await expect(handle).toBeVisible()
+  const initial = (await drawer.boundingBox())!
+  expect(initial.width).toBe(224)
+
+  await page.mouse.move(initial.x + initial.width, initial.y + initial.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(initial.x + initial.width + 140, initial.y + initial.height / 2)
+  await page.mouse.up()
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(364)
+  await expect(handle).toHaveAttribute('aria-valuenow', '364')
+
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(364)
+  await handle.focus()
+  await handle.press('ArrowRight')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(380)
+  await handle.press('Home')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(224)
+  await handle.press('ArrowLeft')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(224)
+
+  const reset = (await drawer.boundingBox())!
+  await page.mouse.move(reset.x + reset.width, reset.y + reset.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(50, reset.y + reset.height / 2)
+  await page.mouse.up()
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(224)
+  await handle.press('End')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(1120)
+
+  await page.setViewportSize({ width: 900, height: 900 })
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(580)
+  await expect(handle).toHaveAttribute('aria-valuemax', '580')
+  await handle.press('Home')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(220)
+  await page.locator('.layout').evaluate((element) => element.setAttribute('data-circuit-schedule', 'true'))
+  await handle.press('Home')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(224)
+})
+
+test('keeps the mobile drawer usable and resizable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  await page.getByRole('button', { name: 'Open project menu' }).click()
+  const drawer = page.locator('#project-drawer')
+  const handle = page.getByRole('separator', { name: 'Breedte projectpaneel aanpassen' })
+  await expect(handle).toBeVisible()
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(321)
+  await expect.poll(async () => (await drawer.boundingBox())!.x).toBe(0)
+  const bounds = (await drawer.boundingBox())!
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart', touchPoints: [{ x: bounds.x + bounds.width - 3, y: bounds.y + bounds.height / 2 }]
+  })
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove', touchPoints: [{ x: bounds.x + bounds.width + 20, y: bounds.y + bounds.height / 2 }]
+  })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(344)
+  await handle.focus()
+  await handle.press('End')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(358)
+  await handle.press('Home')
+  await handle.press('ArrowLeft')
+  await expect.poll(async () => (await drawer.boundingBox())!.width).toBe(321)
+  await page.getByRole('button', { name: 'Close project menu' }).click({ position: { x: 380, y: 400 } })
+  await expect(drawer).toHaveAttribute('data-mobile-open', 'false')
+})
+
 test('links only chosen sheets and keeps the selected comparison sheet and view stable', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

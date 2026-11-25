@@ -133,6 +133,10 @@ declare global {
 export class AppShell extends LiteElement {
   static readonly LAST_OPEN_PROJECT_KEY_STORAGE = 'cadle.lastOpenProjectKey'
   static readonly LAST_OPEN_PAGE_KEY_STORAGE = 'cadle.lastOpenPageKey'
+  static readonly DRAWER_WIDTH_STORAGE = 'cadle.projectDrawerWidth'
+
+  #drawerWidth?: number
+  #drawerDrag?: { pointerId: number; startX: number; startWidth: number; previousWidth?: number }
 
   projectStore = projectStore
   symbol: string = ''
@@ -489,6 +493,95 @@ export class AppShell extends LiteElement {
 
   #closeMobileDrawer = () => {
     this.mobileDrawerOpen = false
+  }
+
+  #drawerLimits() {
+    const viewport = window.innerWidth
+    const mobile = viewport <= 720
+    const themedWidth = Number.parseFloat(getComputedStyle(this).getPropertyValue('--cadle-rail-left'))
+    const layout = this.shadowRoot?.querySelector<HTMLElement>('.layout')
+    const circuitSchedule = layout ? layout.dataset.circuitSchedule === 'true' : this.currentPage?.pageType === 'circuit-schedule'
+    let min = themedWidth || 224
+    if (mobile) min = Math.min(viewport * 0.86, 320) + 1
+    else if (!circuitSchedule && viewport <= 1024) min = 220
+    else if (!circuitSchedule && viewport <= 1280) min = 224
+    const layoutWidth = layout?.clientWidth ?? viewport
+    return { min, max: Math.max(min, mobile ? viewport - 32 : layoutWidth - 320) }
+  }
+
+  #drawerValue() {
+    const { min, max } = this.#drawerLimits()
+    return Math.max(min, Math.min(this.#drawerWidth ?? min, max))
+  }
+
+  #syncDrawerResizeHandle = () => {
+    const handle = this.shadowRoot?.querySelector<HTMLElement>('.drawer-resize-handle')
+    if (!handle) return
+    const { min, max } = this.#drawerLimits()
+    const drawer = this.shadowRoot?.querySelector<HTMLElement>('#project-drawer')
+    handle.setAttribute('aria-valuemin', String(Math.round(min)))
+    handle.setAttribute('aria-valuemax', String(Math.round(max)))
+    handle.setAttribute('aria-valuenow', String(Math.round(drawer?.getBoundingClientRect().width ?? this.#drawerValue())))
+  }
+
+  #setDrawerWidth(width?: number) {
+    this.#drawerWidth = width
+    if (width === undefined) this.style.removeProperty('--drawer-user-width')
+    else this.style.setProperty('--drawer-user-width', `${width}px`)
+    this.#syncDrawerResizeHandle()
+  }
+
+  #onDrawerPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || this.#drawerDrag) return
+    const handle = event.currentTarget as HTMLElement
+    const drawer = this.shadowRoot?.querySelector<HTMLElement>('#project-drawer')
+    if (!drawer) return
+    this.#drawerDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: drawer.getBoundingClientRect().width,
+      previousWidth: this.#drawerWidth
+    }
+    handle.setPointerCapture(event.pointerId)
+    event.preventDefault()
+  }
+
+  #onDrawerPointerMove = (event: PointerEvent) => {
+    const drag = this.#drawerDrag
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const { min, max } = this.#drawerLimits()
+    this.#setDrawerWidth(Math.max(min, Math.min(max, drag.startWidth + event.clientX - drag.startX)))
+  }
+
+  #onDrawerPointerEnd = (event: PointerEvent) => {
+    const drag = this.#drawerDrag
+    if (!drag || drag.pointerId !== event.pointerId) return
+    this.#drawerDrag = undefined
+    if (event.type === 'pointerup') {
+      if (this.#drawerWidth !== undefined) localStorage.setItem(AppShell.DRAWER_WIDTH_STORAGE, String(this.#drawerWidth))
+    } else {
+      this.#setDrawerWidth(drag.previousWidth)
+    }
+  }
+
+  #onDrawerKeyDown = (event: KeyboardEvent) => {
+    const { min, max } = this.#drawerLimits()
+    const current = this.#drawerValue()
+    let width: number
+    if (event.key === 'ArrowLeft') width = current - 16
+    else if (event.key === 'ArrowRight') width = current + 16
+    else if (event.key === 'Home') width = min
+    else if (event.key === 'End') width = max
+    else return
+    event.preventDefault()
+    width = Math.max(min, Math.min(max, width))
+    this.#setDrawerWidth(width)
+    localStorage.setItem(AppShell.DRAWER_WIDTH_STORAGE, String(width))
+  }
+
+  @listen('resize', { target: 'window' })
+  onDrawerViewportResize() {
+    this.#syncDrawerResizeHandle()
   }
 
   #openSymbolPicker = () => {
@@ -1326,6 +1419,8 @@ export class AppShell extends LiteElement {
   }
 
   async connectedCallback(): Promise<void> {
+    const storedDrawerWidth = Number(localStorage.getItem(AppShell.DRAWER_WIDTH_STORAGE))
+    if (Number.isFinite(storedDrawerWidth) && storedDrawerWidth > 0) this.#setDrawerWidth(storedDrawerWidth)
     if ('serviceWorker' in navigator && window.isSecureContext) {
       this.#serviceWorkerController = navigator.serviceWorker.controller
       navigator.serviceWorker.addEventListener('controllerchange', this.#onServiceWorkerControllerChange)
@@ -2244,6 +2339,22 @@ export class AppShell extends LiteElement {
               .manifest=${this.manifest}
               .project=${this.project}
               .catalog=${this.catalog}></project-pane>
+            <div
+              class="drawer-resize-handle"
+              role="separator"
+              tabindex="0"
+              aria-label="Breedte projectpaneel aanpassen"
+              aria-orientation="vertical"
+              aria-controls="project-drawer"
+              aria-valuemin=${Math.round(this.#drawerLimits().min)}
+              aria-valuemax=${Math.round(this.#drawerLimits().max)}
+              aria-valuenow=${Math.round(this.#drawerValue())}
+              @pointerdown=${this.#onDrawerPointerDown}
+              @pointermove=${this.#onDrawerPointerMove}
+              @pointerup=${this.#onDrawerPointerEnd}
+              @pointercancel=${this.#onDrawerPointerEnd}
+              @lostpointercapture=${this.#onDrawerPointerEnd}
+              @keydown=${this.#onDrawerKeyDown}></div>
           </aside>
           <main class="center-stage">
             <header

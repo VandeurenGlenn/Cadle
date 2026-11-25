@@ -71,9 +71,11 @@ export const shellStyles = css`
   }
 
   .layout {
+    --drawer-min-width: var(--cadle-rail-left, 224px);
+    --drawer-width: max(var(--drawer-min-width), min(var(--drawer-user-width, var(--drawer-min-width)), calc(100% - 320px)));
     display: grid;
     grid-template-columns:
-      var(--cadle-rail-left, 224px)
+      var(--drawer-width)
       minmax(0, 1fr);
     grid-template-rows: 1fr;
     width: 100%;
@@ -83,7 +85,7 @@ export const shellStyles = css`
   }
 
   .layout[data-circuit-schedule='true'] {
-    grid-template-columns: var(--cadle-rail-left, 224px) minmax(0, 1fr);
+    grid-template-columns: var(--drawer-width) minmax(0, 1fr);
   }
 
   .left-rail,
@@ -104,7 +106,42 @@ export const shellStyles = css`
   }
 
   .left-rail {
+    position: relative;
     border-right: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .drawer-resize-handle {
+    position: absolute;
+    z-index: 10040;
+    top: 0;
+    right: -6px;
+    bottom: 0;
+    width: 12px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .drawer-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 24px);
+    left: 5px;
+    width: 2px;
+    height: 48px;
+    border-radius: 2px;
+    background: var(--md-sys-color-outline);
+    opacity: 0.6;
+  }
+
+  .drawer-resize-handle:hover::after,
+  .drawer-resize-handle:focus-visible::after {
+    background: var(--md-sys-color-primary);
+    opacity: 1;
+  }
+
+  .drawer-resize-handle:focus-visible {
+    outline: none;
+    box-shadow: var(--cadle-focus-ring);
   }
 
   cadle-header project-actions {
@@ -118,7 +155,7 @@ export const shellStyles = css`
     top: calc(var(--cadle-editor-header-height, 92px) + var(--cadle-space-3));
     right: var(--cadle-space-3);
     bottom: var(--cadle-space-3);
-    width: min(var(--cadle-rail-right, 288px), calc(100% - var(--cadle-rail-left, 224px) - 48px));
+    width: min(var(--cadle-rail-right, 288px), calc(100% - var(--drawer-width) - 48px));
     overflow: hidden;
     visibility: hidden;
     opacity: 0;
@@ -661,30 +698,36 @@ export const shellStyles = css`
 
   @media (max-width: 1280px) {
     .layout {
-      grid-template-columns:
-        224px
-        minmax(0, 1fr);
+      --drawer-min-width: 224px;
     }
   }
 
   @media (max-width: 1024px) {
     .layout {
-      grid-template-columns:
-        220px
-        minmax(0, 1fr);
+      --drawer-min-width: 220px;
+    }
+  }
+
+  @media (min-width: 721px) {
+    .layout[data-circuit-schedule='true'] {
+      --drawer-min-width: var(--cadle-rail-left, 224px);
     }
   }
 
   @media (max-width: 720px) {
-    .layout {
+    .layout,
+    .layout[data-circuit-schedule='true'] {
+      --drawer-min-width: calc(min(86vw, 320px) + 1px);
+      --drawer-width: max(var(--drawer-min-width), min(var(--drawer-user-width, var(--drawer-min-width)), calc(100vw - 32px)));
       grid-template-columns: minmax(0, 1fr);
     }
 
     .left-rail {
       position: fixed;
+      box-sizing: border-box;
       z-index: 12020;
       inset: 0 auto var(--cadle-status-bar, 28px) 0;
-      width: min(86vw, 320px);
+      width: var(--drawer-width);
       transform: translateX(-102%);
       visibility: hidden;
       box-shadow: var(--cadle-elevation-3);

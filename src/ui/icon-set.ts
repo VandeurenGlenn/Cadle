@@ -51,6 +51,7 @@ export const iconSetTemplate = html`
       <span name="swap-horiz">@symbol-swap_horiz</span>
       <span name="share">@symbol-share</span>
       <span name="more_vert">@symbol-more_vert</span>
+      <span name="drag_indicator">@symbol-drag_indicator</span>
       <span name="keyboard_arrow_down">@symbol-keyboard_arrow_down</span>
       <span name="keyboard_arrow_up">@symbol-keyboard_arrow_up</span>
       <span name="arrow_upward">@symbol-arrow_upward</span>

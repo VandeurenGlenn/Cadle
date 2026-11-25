@@ -6,6 +6,7 @@ import {
   inferCircuitType,
   inferElectricalRole,
   isDistributionBoardDevice,
+  isJunctionBoxDevice,
   isEarthingDevice,
   neutralPositionForManufacturer,
   type ElectricalCircuitType
@@ -265,8 +266,9 @@ export const analyzeCircuits = (
       const protection = components.filter((entry) => entry.role === 'protection').length
       const junctions = components.filter((entry) => entry.role === 'junction').length
       const neutral = components.filter((entry) => entry.role === 'neutral').length
-      const hasDistributionBoard = components.some(
-        (component) => component.path && isDistributionBoardDevice(component.name, component.path)
+      const hasJunctionDevice = components.some(
+        (component) => component.path && (isDistributionBoardDevice(component.name, component.path) ||
+          isJunctionBoxDevice(component.name, component.path))
       )
       const explicitSpecification = circuitSpecifications[first.family] ?? circuitSpecifications[bindingId] ?? {}
       return {
@@ -279,17 +281,14 @@ export const analyzeCircuits = (
         protection,
         junctions,
         neutral,
-        ready: loads > 0 || protection > 0 || hasDistributionBoard,
+        ready: loads > 0 || protection > 0 || hasJunctionDevice,
         specification: suggestedSpecification(components, profile, explicitSpecification)
       }
     })
     .sort((left, right) => compareCircuitFamilies(left.family, right.family) || (left.number ?? 0) - (right.number ?? 0))
 
   for (const group of groups) {
-    const hasDistributionBoard = group.components.some(
-      (component) => component.path && isDistributionBoardDevice(component.name, component.path)
-    )
-    if (group.loads === 0 && group.protection === 0 && !hasDistributionBoard) {
+    if (!group.ready) {
       issues.push({
         bindingId: group.bindingId,
         severity: 'error',

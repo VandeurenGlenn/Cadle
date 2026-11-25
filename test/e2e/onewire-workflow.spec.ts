@@ -10,6 +10,7 @@ import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/e
 import { pageLayout } from '../../src/editor/layout/page-layout.ts'
 import { PAPER_PRESETS } from '../../src/editor/constants.ts'
 import { findConnectionIssues } from '../../src/editor/layout/connection-issues.ts'
+import { oneWireGenerationPageKeys } from '../../src/data/page-operations.ts'
 
 test('places differentials from the toolbar on rails and inline without adding a breaker', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -870,7 +871,7 @@ test('uses the printable width and consolidates old automatic sheets without los
   await expect.poll(async () => oneWireKeys(await saved())).toEqual(oneWireKeys(compact))
 })
 
-test('generates imported circuit breakers without junction boxes or obsolete breaker assets', async ({ page }) => {
+test('generates junction boxes and imported breakers with current assets', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
   const app = page.locator('cadle-app:not([read-only])')
@@ -886,7 +887,10 @@ test('generates imported circuit breakers without junction boxes or obsolete bre
           position: { x: 400, y: 400 }, width: 24, height: 24 },
         { id: 'legacy-junction', kind: 'image', name: 'Junction box',
           path: 'symbols/Electrical devices/Junction box.svg', bindingId: 'R1',
-          position: { x: 500, y: 400 }, width: 24, height: 24 }
+          position: { x: 500, y: 400 }, width: 24, height: 24 },
+        { id: 'small-junction', kind: 'symbol', name: 'Junction box small',
+          path: 'symbols/Electrical devices/Junction box small.svg', bindingId: 'S1',
+          position: { x: 600, y: 400 }, scale: 1 }
       ]
     }))
   })
@@ -898,12 +902,32 @@ test('generates imported circuit breakers without junction boxes or obsolete bre
   await page.locator('app-shell').evaluate((element: any) => element.generateAutoOneWireSchema())
   await expect.poll(() => page.locator('app-shell').evaluate((element: any) =>
     element.project?.pages?.[element.loadedPage]?.pageType)).toBe('onewire')
-  const generated = await app.evaluate((element: any) => element.generateAutoOneWire())
-  expect(generated.generated, generated.message).toBe(true)
-  await app.evaluate(async (element: any) => { await element.exportA4PNG() })
-  const markup = await app.evaluate((element: any) => element.toSVG())
-  expect(markup).not.toContain('Junction box')
-  expect(markup).not.toContain('Auto breaker.svg')
+  expect(await app.evaluate((element: any) => element.analyzeBindings().groups.map((group: { bindingId: string }) =>
+    group.bindingId))).toEqual(['R1', 'S1'])
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const project = await page.locator('app-shell').evaluate((element) => (element as AppShell).project!)
+  const schematic = await page.locator('app-shell').evaluate((element) => (element as AppShell).loadedPage)
+  const pages = oneWireGenerationPageKeys(project, schematic).map((key) => ({
+    key, shapes: nativeStateForProjectPage(project, key)!.shapes
+  }))
+  for (const id of ['legacy-junction', 'small-junction']) {
+    const sheet = pages.find(({ shapes }) => shapes.some((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === id))
+    expect(sheet).toBeDefined()
+    if (!sheet) throw new Error(`Missing sheet for ${id}`)
+    const box = sheet.shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === id)
+    expect(box?.kind).toBe('symbol')
+    if (!box || box.kind !== 'symbol') throw new Error(`Missing ${id}`)
+    await page.locator('app-shell').evaluate((element, key) => (element as AppShell).loadPage(key), sheet.key)
+    await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), sheet.key)).toBe(true)
+    const markup = await app.evaluate((element) => (element as CadleApp).toSVG())
+    expect(markup).toContain(`data-shape-id="${box.id}"`)
+    expect(markup).not.toContain('Auto breaker.svg')
+    const ports = oneWireSymbolConnectionAnchors(box)
+    expect(sheet.shapes.some((shape) => shape.kind === 'line' &&
+      (shape.bindingId === box.bindingId || shape.bindingId === box.bindingId?.replace(/\d+$/, '')) &&
+      [shape.start, shape.end].some((point) => ports.some(({ point: port }) =>
+        Math.hypot(point.x - port.x, point.y - port.y) < 0.01)))).toBe(true)
+  }
   await expect(app.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Automaat$/ }) }).first()).toBeVisible()
 })
 

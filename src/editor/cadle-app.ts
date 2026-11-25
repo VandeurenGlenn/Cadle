@@ -75,7 +75,7 @@ import type {
   Tool
 } from './model/types.js'
 import type { Project, UUID } from '../types.js'
-import { compareCircuitFamilies, electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
+import { compareCircuitFamilies, electricalMetadataFromCatalog, isDistributionBoardDevice, isJunctionBoxDevice } from './model/electrical.js'
 import { isSocketSymbol, socketCountFromKeyboardEvent, withSocketCount } from './socket-multiplicity.js'
 import {
   connectionDefaults,
@@ -4373,7 +4373,8 @@ export class CadleApp extends LiteElement {
             Boolean(component.path)) ||
           (component.role === 'junction' &&
             Boolean(component.path) &&
-            isDistributionBoardDevice(component.name, component.path))
+            (isDistributionBoardDevice(component.name, component.path) ||
+              isJunctionBoxDevice(component.name, component.path)))
       )
       if (drawable.length === 0) {
         entries.push({

@@ -158,13 +158,16 @@ export const isDistributionBoardDevice = (name: string, path: string): boolean =
     deviceSearchText(name, path)
   )
 
+export const isJunctionBoxDevice = (name: string, path: string): boolean =>
+  /junction[\s_-]*box|connection[\s_-]*box|lasdoos|aftakdoos/.test(deviceSearchText(name, path))
+
 export const inferElectricalRole = (name: string, path: string): ElectricalRole => {
   const searchable = deviceSearchText(name, path)
   if (isEarthingDevice(name, path)) return 'neutral'
   if (isDistributionBoardDevice(name, path)) return 'junction'
   if (/protection|automaat|breaker|fuse|differential|rcd/.test(searchable)) return 'protection'
   if (/switch|schakel|drukknop|push.?button|contactor|relais|relay/.test(searchable)) return 'switch'
-  if (/junction|lasdoos|connection box/.test(searchable)) return 'junction'
+  if (/junction/.test(searchable) || isJunctionBoxDevice(name, path)) return 'junction'
   if (
     /socket|outlet|stopcontact|consumption|lighting|lamp|light|spot|motor|heater|boiler|load|inverter|omvormer|photovolta|\bpv\b|solar/.test(
       searchable

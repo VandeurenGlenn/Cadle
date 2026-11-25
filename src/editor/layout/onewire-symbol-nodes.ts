@@ -64,6 +64,24 @@ const APPLIANCE_CONTACT_RADIUS = 2.26772
 
 const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
   {
+    match: /electrical devices\/junction box small\.svg$/i,
+    spec: {
+      viewBox: { width: 11.5786, height: 11.5786 },
+      node: { x: 5.78929, y: 5.78929 },
+      cutRadius: 5.66929,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
+    match: /electrical devices\/junction box\.svg$/i,
+    spec: {
+      viewBox: { width: 51.2636, height: 11.5786 },
+      node: { x: 24.49795, y: 5.78929 },
+      cutRadius: null,
+      oneWireScale: ONE_WIRE_DEFAULT_SCALE
+    }
+  },
+  {
     match: /data and communication\/utp rj45\.svg$/i,
     spec: {
       viewBox: { width: 100, height: 100 },

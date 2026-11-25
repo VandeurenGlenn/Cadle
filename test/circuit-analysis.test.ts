@@ -134,6 +134,19 @@ test('recognizes imported breakers and junction boxes instead of treating them a
   assert.deepEqual(analysis.groups[0].components.map(({ role }) => role), ['protection', 'junction'])
 })
 
+test('allows junction boxes as circuit points without counting them as loads', () => {
+  const analysis = analyzeCircuits([
+    symbol('small-box', 'A1', 'Junction box small', 'symbols/Electrical devices/Junction box small.svg'),
+    symbol('legacy-box', 'A2', 'Aftakdoos', 'symbols/custom.svg'),
+    { ...symbol('ignored-box', 'A3', 'Junction box', 'symbols/Electrical devices/Junction box.svg'),
+      electrical: { role: 'junction', oneWireEligible: false } }
+  ])
+  assert.equal(analysis.valid, true)
+  assert.deepEqual(analysis.groups.map((group) => [group.bindingId, group.junctions, group.loads, group.ready]), [
+    ['A1', 1, 0, true], ['A2', 1, 0, true]
+  ])
+})
+
 test('accepts a deliberately unloaded breaker circuit', () => {
   const analysis = analyzeCircuits([symbol('breaker', 'R1', 'Automaat', 'symbols/Protection devices/Automaat.svg')])
   assert.equal(analysis.valid, true)

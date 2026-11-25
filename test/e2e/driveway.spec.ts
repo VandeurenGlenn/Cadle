@@ -17,7 +17,11 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
       creationTime: 1, name: 'Situatieplan', pageType: 'groundplan',
       schema: { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
         version: 2, paperLayoutVersion: 1, selectedId: null, drawingScale: 100,
-        paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680, shapes: []
+        paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680, shapes: [{
+          id: 'driveway-light', kind: 'symbol', name: 'Lighting',
+          path: 'symbols/Consumption appliances/Lighting.svg',
+          position: { x: 560, y: 400 }, scale: 1.5, bindingId: 'A1'
+        }]
       } }] }
     } }
   }
@@ -35,6 +39,10 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
   await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click()
   const app = page.locator('cadle-app:not([read-only])')
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  await app.evaluate((element) => (element as CadleApp).exportA4PNG())
+  const label = app.locator('.binding-label[data-shape-id="driveway-light"] text')
+  await expect(label).toHaveText('A1')
+  const labelPosition = await label.evaluate((node) => ({ x: node.getAttribute('x'), y: node.getAttribute('y') }))
   const click = async (x: number, y: number) => {
     const p = await app.locator('.world').evaluate((world: SVGGElement, value) => {
       const result = new DOMPoint(value.x, value.y).matrixTransform(world.getScreenCTM()!)
@@ -58,22 +66,29 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
   await expect(surface).toHaveAttribute('stroke', 'url(#driveway-gravel)')
   await expect(surface).toHaveAttribute('stroke-width', '240')
   await expect(surface).toHaveAttribute('d', / Q /)
+  await expect(label).toHaveText('A1')
+  expect(await label.evaluate((node) => ({ x: node.getAttribute('x'), y: node.getAttribute('y') }))).toEqual(labelPosition)
   await page.screenshot({ path: testInfo.outputPath('driveway.png') })
   const material = page.locator('object-pane [data-driveway-material]')
   await material.selectOption('pavers')
   await expect(surface).toHaveAttribute('stroke', 'url(#driveway-pavers)')
+  await expect(label).toHaveText('A1')
   await material.selectOption('cobbles')
   await expect(surface).toHaveAttribute('stroke', 'url(#driveway-cobbles)')
+  await expect(label).toHaveText('A1')
   await page.locator('object-pane [data-driveway-curved]').selectOption('angular')
   await expect(surface).not.toHaveAttribute('d', / Q /)
   await app.evaluate((element) => (element as CadleApp).undo())
   await expect(surface).toHaveAttribute('d', / Q /)
   const exported = await app.evaluate((element) => (element as CadleApp).toSVG())
   expect(exported).toContain('stroke="url(#driveway-cobbles)"')
+  expect(exported).toMatch(/class="binding-label" data-shape-id="driveway-light"/)
+  expect(exported).toContain('>A1</text>')
   await app.evaluate((element) => (element as CadleApp).flushPendingSave())
   await page.reload()
   await page.locator('custom-button[label="Open"]').click()
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
   await expect(surface).toHaveAttribute('stroke', 'url(#driveway-cobbles)')
   await expect(surface).toHaveAttribute('d', / Q /)
+  await expect(label).toHaveText('A1')
 })

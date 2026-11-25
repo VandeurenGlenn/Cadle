@@ -7,7 +7,8 @@ import { createNativeSelectionChangedPayload } from '../src/editor/interaction/s
 import { updateSelectionProperties } from '../src/editor/interaction/selection-properties.ts'
 import { buildSvgDocument } from '../src/editor/export/svg-export.ts'
 import { PAPER_PRESETS } from '../src/editor/constants.ts'
-import type { RectShape } from '../src/editor/model/types.ts'
+import { bindingLabelsMarkup } from '../src/editor/svg-templates.ts'
+import type { RectShape, SymbolShape } from '../src/editor/model/types.ts'
 
 const points = [{ x: 100, y: 200 }, { x: 500, y: 200 }, { x: 500, y: 600 }]
 
@@ -46,4 +47,23 @@ test('driveway material and bends remain editable and export beneath walls and s
   })
   assert.match(mono, /stroke="#333333"/)
   assert.doesNotMatch(mono, /#c8b9ac|#625d56/)
+})
+
+test('driveway paving does not suppress or displace automatic circuit labels', () => {
+  const lamp: SymbolShape = {
+    id: 'lamp', kind: 'symbol', name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg',
+    position: { x: 300, y: 200 }, scale: 1.5, bindingId: 'A1'
+  }
+  const labels = bindingLabelsMarkup([lamp])
+  assert.match(labels, />A1<\/text>/)
+  for (const material of ['cobbles', 'gravel', 'pavers'] as const) {
+    const driveway = createDriveway('driveway', points, 240, material, true)
+    const shapes = [lamp, driveway]
+    assert.equal(bindingLabelsMarkup(shapes), labels)
+    const svg = buildSvgDocument({
+      shapes, selectedShape: null, paper: PAPER_PRESETS['a4-landscape'], worldWidth: 1000, worldHeight: 1000
+    })
+    assert.ok(svg.includes(labels))
+    assert.ok(svg.indexOf('data-shape-id="driveway"') < svg.indexOf('class="binding-label"'))
+  }
 })

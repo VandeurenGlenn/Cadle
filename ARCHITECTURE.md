@@ -150,6 +150,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   "Trapweergave" in Object properties can show the complete stair instead. Adjacent walls, hidden walls and endpoint
   touches do not cut stairs. Moving a wall or stair recalculates visibility without deleting or splitting the saved route.
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
+- Driveway paving is a background surface, not an obstacle for automatic circuit-label placement.
+  Labels retain their positions above the paving in both the editor and export.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
   through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text
   import and variant selection; importing one component never replaces the other component's specifications.

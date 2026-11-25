@@ -147,7 +147,7 @@ import {
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
 import { alignOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
-import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
+import { migrateOneWireBreakerPhaseLabels, placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
 import { buildSolarInstallation, preserveSolarBreakerSettings, preserveSolarTextPositions, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
@@ -1512,6 +1512,13 @@ export class CadleApp extends LiteElement {
       this.#printMargin = Math.max(DEFAULT_PRINT_MARGIN_MM, Math.min(50, parsed.printMargin))
     }
     const pageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
+    if (pageType === 'onewire') {
+      const migrated = migrateOneWireBreakerPhaseLabels(this.#document.shapes)
+      if (migrated.some((shape, index) => shape !== this.#document.shapes[index])) {
+        this.#document.shapes = migrated
+        this.#documentSizeMigrated = true
+      }
+    }
     const hasPlanScale = pageType === 'groundplan' && isDrawingScale(parsed.drawingScale)
     const target = paperWorldSize(this.#paperPreset)
     const previousWidth =

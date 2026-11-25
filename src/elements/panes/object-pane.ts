@@ -23,6 +23,7 @@ import { heatingScheduleTotals, heatingPatternLabel, type HeatingData, type Heat
 import type { CircuitOperationKind } from '../../editor/circuit-operations.js'
 import { neutralPositionForManufacturer, type ElectricalPhaseConfiguration } from '../../editor/model/electrical.js'
 import { CONNECTION_NAMES, connectionDefaults, type ConnectionKind, type ElectricalConnection } from '../../editor/model/electrical-connection.js'
+import type { ElectricalBoard } from '../../types.js'
 import '../header.js'
 import '@vandeurenglenn/flex-elements/it.js'
 import '@vandeurenglenn/lite-elements/icon-button.js'
@@ -34,6 +35,7 @@ const BREAKER_CURRENT_OPTIONS = [1, 2, 3, 4, 6, 10, 13, 16, 20, 25, 32, 40, 50, 
 
 @customElement('object-pane')
 export class ObjectPane extends LiteElement {
+  @property({ attribute: false }) accessor boards: ElectricalBoard[] = []
   @property({ attribute: false }) private accessor _nativeDimensions: { drawingScale?: number | null; length: number | null; width: number | null; height: number | null; strokeWidth: number | null } | null = null
   @property({ attribute: false }) private accessor _highlightedHeatingCircuit: string | null = null
   @property({ attribute: false }) private accessor _nativeRoomLabel: RoomLabelData | null = null
@@ -520,6 +522,27 @@ export class ObjectPane extends LiteElement {
     }
     this._nativeElectrical = { ...(this._nativeElectrical ?? {}), [field]: parsed ?? undefined }
     pubsub.publish('editor.object.update', { electrical: { [field]: parsed } })
+  }
+
+  #addBoard = async () => {
+    const selection = this.#bindingSelectionKey
+    const pageKey = globalThis.cadleShell.currentPageKey
+    const values = await globalThis.cadleShell.requestInput({
+      title: 'Kast toevoegen',
+      submitLabel: 'Kast toevoegen',
+      fields: [{ name: 'name', label: 'Naam van de kast', required: true, maxLength: 120 }],
+      validate: (input) => input.name?.trim() ? null : 'Vul een naam voor de kast in.'
+    })
+    if (!values || selection !== this.#bindingSelectionKey || pageKey !== globalThis.cadleShell.currentPageKey) return
+    try {
+      const id = await globalThis.cadleShell.addInspectorBoard(values.name)
+      if (this.isConnected && selection === this.#bindingSelectionKey && pageKey === globalThis.cadleShell.currentPageKey) {
+        this.#updateElectrical('boardId', id)
+      }
+    } catch (error) {
+      console.error('Kast toevoegen mislukt', error)
+      globalThis.alert('De kast kon niet worden toegevoegd. Probeer opnieuw.')
+    }
   }
 
   #updateManufacturer = (value: string) => {
@@ -1422,14 +1445,20 @@ ${this.#propertySection('circuit', 'Circuit', html`
 ${isProtectionDevice ? html`                    <div class="native-row">
                       <label
                         ><span class="native-label">Board</span
-                        ><input
-                          class="native-input"
-                          .value=${this.#effectiveElectrical().boardId ?? ''}
+                        ><select
+                          class="native-select"
+                          data-electrical-field="boardId"
                           @change=${(event: Event) =>
-                            this.#updateElectrical('boardId', (event.target as HTMLInputElement).value)}
-                          placeholder="main"
-                      /></label>
+                            this.#updateElectrical('boardId', (event.target as HTMLSelectElement).value)}>
+                          ${!this.#effectiveElectrical().boardId ? html`<option value="" selected>Verschillend / niet ingesteld</option>` : ''}
+                          ${this.#effectiveElectrical().boardId &&
+                          !this.boards.some((board) => board.id === this.#effectiveElectrical().boardId)
+                            ? html`<option value=${this.#effectiveElectrical().boardId!} selected>${this.#effectiveElectrical().boardId}</option>` : ''}
+                          ${this.boards.map((board) => html`<option value=${board.id}
+                            ?selected=${board.id === this.#effectiveElectrical().boardId}>${board.name}</option>`)}
+                        </select></label>
                     </div>
+                    <button type="button" class="native-button" @click=${this.#addBoard}>Kast toevoegen</button>
                     <label class="native-label">Rail</label
                     ><input
                       class="native-input"

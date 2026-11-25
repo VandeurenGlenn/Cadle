@@ -1,9 +1,9 @@
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from './onewire-connections.js'
 import { oneWireSymbolBounds, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
-import { protectionAnnotationLayout } from './protection-label-layout.js'
+import { protectionAnnotationLayout, protectionDescriptionLayout, protectionLabelLayout } from './protection-label-layout.js'
 import { connectionSegments } from '../model/electrical-connection.js'
-import { paperTextBounds } from './paper-text-layout.js'
+import { paperTextBounds, paperTextLineHeight } from './paper-text-layout.js'
 import type { BindingLabelSide } from './symbol-layout.js'
 import { nextShapeId } from '../model/model.js'
 import { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
@@ -11,6 +11,40 @@ import { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 export const isOneWireFamilyLabel = (shape: Shape): shape is TextShape =>
   shape.kind === 'text' && shape.sourceLink?.role === 'label' &&
   (shape.sourceLink.kind === 'board' || shape.sourceLink.kind === 'circuit')
+
+export const migrateOneWireBreakerPhaseLabels = (shapes: readonly Shape[]): Shape[] => {
+  const key = (shape: Shape) => JSON.stringify([shape.groupId, shape.oneWireRailId, shape.sourceLink?.kind, shape.sourceLink?.id])
+  const groups = new Map<string, { breakers: SymbolShape[]; currents: TextShape[] }>()
+  for (const shape of shapes) {
+    if (!shape.groupId || !shape.sourceLink) continue
+    const isBreaker = shape.kind === 'symbol' && shape.sourceLink.role === 'breaker'
+    const isCurrent = shape.kind === 'text' && shape.sourceLink.role === 'breaker-current'
+    if (!isBreaker && !isCurrent) continue
+    const id = key(shape)
+    const group = groups.get(id) ?? { breakers: [], currents: [] }
+    if (isBreaker) group.breakers.push(shape)
+    if (isCurrent) group.currents.push(shape)
+    groups.set(id, group)
+  }
+  return shapes.map((shape) => {
+    if (shape.kind !== 'text' || shape.sourceLink?.role !== 'breaker-phase' || !shape.groupId ||
+      shape.locked || shape.rotation || shape.flipX || shape.flipY ||
+      (shape.textAnchor && shape.textAnchor !== 'start')) return shape
+    const group = groups.get(key(shape))
+    if (group?.breakers.length !== 1 || group.currents.length !== 1) return shape
+    const breaker = group.breakers[0], current = group.currents[0]
+    if (breaker.rotation || breaker.flipX || breaker.flipY || current.rotation || current.flipX || current.flipY ||
+      (current.textAnchor && current.textAnchor !== 'start') || /residual-current circuit breaker\.svg$/i.test(breaker.path)) return shape
+    const layout = protectionLabelLayout(breaker)
+    if (!layout) return shape
+    const description = breaker.symbolTextOverrides?.description ? protectionDescriptionLayout(breaker) : null
+    const oldY = Math.max(layout.centerY + 33, description
+      ? description.y + Math.max(0, description.lines.length - 1) * description.lineHeight + 28 : 0)
+    if (Math.abs(shape.position.x - layout.rightX) > 0.01 || Math.abs(shape.position.y - oldY) > 0.01) return shape
+    return { ...shape, position: { x: current.position.x,
+      y: current.position.y + paperTextLineHeight(18 * (current.scale ?? 1)) } }
+  })
+}
 
 export const placeOneWireCountLabels = (shapes: readonly Shape[]): Shape[] => {
   if (!shapes.some((shape) => shape.sourceLink?.role === 'count-label')) return [...shapes]

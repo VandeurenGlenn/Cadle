@@ -466,10 +466,10 @@ test('attaches a composed breaker to a selected one-wire bus', () => {
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.rotation : null, -90)
   assert.equal(cableInstallationLabel?.kind === 'text' ? cableInstallationLabel.hidden : null, true)
   assert.ok(phase?.kind === 'text' && breaker?.kind === 'symbol')
-  const terminals = oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!
-  assert.ok(phase.position.x > 400)
-  assert.equal(phase.position.y, breaker.position.y + (terminals.top!.y + terminals.bottom!.y) / 2 + 33)
-  assert.ok(phase.position.y < 694)
+  const current = result.shapes.find((shape) => shape.sourceLink?.role === 'breaker-current')
+  assert.ok(current?.kind === 'text')
+  assert.equal(phase.position.x, current.position.x)
+  assert.equal(phase.position.y - current.position.y, 26)
   const labels = [
     ['poles', 'breaker-poles'], ['rated-current', 'breaker-current'], ['phase', 'breaker-phase']
   ].map(([key, role]) => ({ key, shape: result.shapes.find((shape) => shape.sourceLink?.role === role)! }))

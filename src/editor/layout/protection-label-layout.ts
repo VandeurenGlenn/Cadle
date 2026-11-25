@@ -35,14 +35,25 @@ export const protectionDescriptionLayout = (shape: SymbolShape) => {
     lineHeight: paperTextLineHeight(PROTECTION_TEXT_SIZE) }
 }
 
+const breakerCurrentPosition = (shape: SymbolShape, layout: NonNullable<ReturnType<typeof protectionLabelLayout>>) => {
+  const poleText = shape.symbolTextOverrides?.poles || shape.symbolTextOverrides?.['desc:nP'] ||
+    (shape.electrical?.poles ? `${shape.electrical.poles}P` : 'nP')
+  return { x: layout.leftX + 6 - paperTextWidth(poleText, PROTECTION_TEXT_SIZE),
+    y: layout.centerY + 15 + paperTextLineHeight(PROTECTION_TEXT_SIZE) }
+}
+
 export const protectionPhaseLabelLayout = (shape: SymbolShape) => {
   const layout = protectionLabelLayout(shape)
   if (!layout) return null
   const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
+  if (!residual) {
+    const current = breakerCurrentPosition(shape, layout)
+    return { x: current.x, y: current.y + paperTextLineHeight(PROTECTION_TEXT_SIZE) }
+  }
   const description = shape.symbolTextOverrides?.description ? protectionDescriptionLayout(shape) : null
   return {
     x: layout.rightX,
-    y: Math.max(layout.centerY + (residual ? 40 : 33), description
+    y: Math.max(layout.centerY + 40, description
       ? description.y + Math.max(0, description.lines.length - 1) * description.lineHeight + 28 : 0)
   }
 }
@@ -87,14 +98,11 @@ export const protectionAnnotationLayout = (shape: SymbolShape) => {
   if (!layout) return null
   const residual = /residual-current circuit breaker\.svg$/i.test(shape.path)
   const poles = { x: layout.leftX + 6, y: layout.centerY + 15 }
-  const poleText = shape.symbolTextOverrides?.poles || shape.symbolTextOverrides?.['desc:nP'] ||
-    (shape.electrical?.poles ? `${shape.electrical.poles}P` : 'nP')
   return {
     poles,
     current: residual
       ? { x: layout.rightX, y: layout.centerY + 12 }
-      : { x: poles.x - paperTextWidth(poleText, PROTECTION_TEXT_SIZE),
-          y: poles.y + paperTextLineHeight(PROTECTION_TEXT_SIZE) },
+      : breakerCurrentPosition(shape, layout),
     residual: { x: layout.rightX, y: layout.centerY - 12 },
     type: { x: layout.rightX, y: layout.centerY + 12 },
     phase: protectionPhaseLabelLayout(shape)!,

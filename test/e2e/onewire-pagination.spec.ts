@@ -4,13 +4,75 @@ import { buildSolarInstallation } from '../../src/editor/layout/solar-installati
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { protectionLabelLayout } from '../../src/editor/layout/protection-label-layout.ts'
 import { pageLayout } from '../../src/editor/layout/page-layout.ts'
+import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
 import type { LineShape, SymbolShape } from '../../src/editor/model/types.ts'
 import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { AppShell } from '../../src/shell/app-shell.ts'
 
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
+
+test('moves an existing breaker phase below the current without moving the circuit', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), root)).toBe(true)
+  const rail: LineShape = { id: 'phase-rail', kind: 'line', start: { x: 300, y: 1200 },
+    end: { x: 1000, y: 1200 }, groupId: 'onewire-kamrail-phase', strokeWidth: 4 }
+  const supply: LineShape = { id: 'phase-supply', kind: 'line', start: { x: 300, y: 1350 },
+    end: { x: 300, y: 1200 }, sourceLink: { kind: 'board', id: 'main', role: 'grid-incoming' } }
+  let sequence = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail, anchorX: 500, options: { family: 'D', amps: 20, autoIncludeFamily: true },
+    familyComponents: [{ bindingId: 'D1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Lighting.svg' }],
+    nextShapeId: () => `phase-test-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id }))
+  const breaker = bundle.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')!
+  const current = bundle.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-current')!
+  const phase = bundle.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-phase')!
+  if (breaker.kind !== 'symbol' || current.kind !== 'text' || phase.kind !== 'text') throw new Error('Missing breaker labels')
+  const old = protectionLabelLayout(breaker)!
+  const legacy = bundle.map((shape) => shape.id === phase.id
+    ? { ...phase, position: { x: old.rightX, y: old.centerY + 33 } } : shape)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'legacy-phase.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(state([rail, supply, ...legacy])))
+  })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const saved = await shell.evaluate((element) => (element as AppShell).project!)
+  const updated = nativeStateForProjectPage(saved, root)!.shapes
+  const moved = updated.find((shape) => shape.id === phase.id)!
+  if (moved.kind !== 'text') throw new Error('Phase label not found')
+  expect(moved.position.x).toBeCloseTo(current.position.x)
+  expect(moved.position.y - current.position.y).toBeCloseTo(26)
+  expect(updated.find((shape) => shape.id === rail.id)).toEqual(rail)
+  expect(updated.find((shape) => shape.id === breaker.id)).toMatchObject({ position: breaker.position })
+  expect(updated.find((shape) => shape.id === current.id)).toEqual(current)
+  const rendered = app.locator(`text[data-shape-id="${phase.id}"]`)
+  await expect(rendered).toHaveAttribute('x', String(moved.position.x))
+  await expect(rendered).toHaveAttribute('y', String(moved.position.y))
+  const exported = await app.evaluate((element, id) => {
+    const document = new DOMParser().parseFromString((element as CadleApp).toSVG(), 'image/svg+xml')
+    const text = document.querySelector(`text[data-shape-id="${id}"]`)
+    return { x: text?.getAttribute('x'), y: text?.getAttribute('y'), text: text?.textContent }
+  }, phase.id)
+  expect(exported).toEqual({ x: String(moved.position.x), y: String(moved.position.y), text: phase.text })
+  await shell.evaluate((element) => (element as AppShell).loadPage('00000000-0000-4000-8000-000000000102'))
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const reloaded = await shell.evaluate((element) => (element as AppShell).project!)
+  expect(nativeStateForProjectPage(reloaded, root)!.shapes).toEqual(updated)
+})
 
 test('resizes a busbar without moving its circuits or their connections', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })

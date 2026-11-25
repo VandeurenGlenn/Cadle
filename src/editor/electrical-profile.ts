@@ -78,6 +78,20 @@ export const normalizeElectricalProfile = (profile: ElectricalProjectProfile | u
   }
 }
 
+export const addElectricalBoard = (profile: ElectricalProjectProfile | undefined, name: string) => {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Vul een naam voor de kast in.')
+  const next = normalizeElectricalProfile(profile)
+  const boards = next.boards!
+  const baseId = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'verdeelbord'
+  const ids = new Set(boards.map((board) => board.id))
+  let id = baseId
+  for (let suffix = 2; ids.has(id); suffix += 1) id = `${baseId}-${suffix}`
+  boards.push({ id, name: trimmed, rails: [{ id: 'rail-1', name: 'Rail 1' }] })
+  return { profile: next, id }
+}
+
 export const electricalSupplyLabel = (profile: ElectricalProjectProfile | undefined): string | undefined => {
   if (!profile) return undefined
   const normalized = normalizeElectricalProfile(profile)

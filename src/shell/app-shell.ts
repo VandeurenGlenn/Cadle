@@ -61,7 +61,7 @@ import { storeOneWireTrainingExample } from '../editor/onewire-training-data.js'
 import { refreshCircuitScheduleItems, type CircuitScheduleEditorItem } from '../editor/circuit-schedule-page.js'
 import { addScheduleDifferential, assignScheduleDifferential } from '../editor/circuit-schedule-editing.js'
 import { isRcdType } from '../editor/model/electrical.js'
-import { normalizeElectricalProfile } from '../editor/electrical-profile.js'
+import { addElectricalBoard, normalizeElectricalProfile } from '../editor/electrical-profile.js'
 import { nativeStateForProjectPage } from '../data/project-document.js'
 import { connectGoogleDrive, installGoogleDriveExitBackup } from '../data/google-drive-backup.js'
 
@@ -785,20 +785,31 @@ export class AppShell extends LiteElement {
 
   async #addScheduleBoard(name: string) {
     if (!this.projectKey || !this.project) return
-    const profile = normalizeElectricalProfile(this.project.electricalProfile)
-    const baseId =
-      name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'verdeelbord'
-    const ids = new Set(profile.boards.map((board) => board.id))
-    let id = baseId
-    for (let suffix = 2; ids.has(id); suffix += 1) id = `${baseId}-${suffix}`
-    profile.boards.push({ id, name, rails: [{ id: 'rail-1', name: 'Rail 1' }] })
+    const { profile } = addElectricalBoard(this.project.electricalProfile, name)
     this.project = { ...this.project, electricalProfile: profile }
     await setProjectData(this.projectKey, this.project)
+  }
+
+  async addInspectorBoard(name: string): Promise<string> {
+    if (!this.projectKey || !this.project) throw new Error('Geen project geopend.')
+    const projectKey = this.projectKey, pageKey = this.currentPageKey
+    await this.savePage()
+    if (!this.project || this.projectKey !== projectKey || this.currentPageKey !== pageKey) {
+      throw new Error('De pagina is gewijzigd; voeg de kast opnieuw toe.')
+    }
+    const settingsKey = this.#buildingSettingsPageKey()
+    const profile = this.#buildingSettingsPage()?.electricalProfile ??
+      this.#legacyBuildingSettingsPage()?.electricalProfile ?? this.project.electricalProfile
+    const result = addElectricalBoard(profile, name)
+    const project = settingsKey && this.project.pages[settingsKey]
+      ? { ...this.project, pages: { ...this.project.pages,
+          [settingsKey]: { ...this.project.pages[settingsKey], electricalProfile: result.profile } } }
+      : { ...this.project, electricalProfile: result.profile }
+    await setProjectData(projectKey, project)
+    this.project = project
+    const app = this.shadowRoot?.querySelector('cadle-app:not([read-only])') as NativeAppElement | null
+    app?.refreshProjectContext?.(project)
+    return result.id
   }
 
   async #assignCircuitBoard(circuitId: string, boardId: string) {
@@ -2587,7 +2598,10 @@ export class AppShell extends LiteElement {
                       <custom-icon icon="close"></custom-icon>
                     </button>
                   </header>
-                  <object-pane></object-pane>
+                  <object-pane .boards=${normalizeElectricalProfile(
+                    this.#buildingSettingsPage()?.electricalProfile ??
+                    this.#legacyBuildingSettingsPage()?.electricalProfile ?? this.project?.electricalProfile
+                  ).boards ?? []}></object-pane>
                 </aside>
               `}
           <button

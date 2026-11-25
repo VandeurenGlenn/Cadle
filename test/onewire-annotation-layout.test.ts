@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildKamrailCircuitBundle, buildOneWireRowSection } from '../src/editor/layout/onewire-helpers.ts'
-import { placeOneWireCountLabels, spaceOneWireCircuitAnnotations } from '../src/editor/layout/onewire-annotation-layout.ts'
+import { migrateOneWireBreakerPhaseLabels, placeOneWireCountLabels, spaceOneWireCircuitAnnotations } from '../src/editor/layout/onewire-annotation-layout.ts'
 import { applyOneWireCircuitPresentation } from '../src/editor/layout/onewire-circuit-presentation.ts'
 import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
+import { protectionLabelLayout } from '../src/editor/layout/protection-label-layout.ts'
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import type { Shape, TextShape } from '../src/editor/model/types.ts'
 
@@ -96,9 +97,8 @@ const checkClearance = (shapes: Shape[]) => {
   const phase = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-phase')!
   assert.ok(current.kind === 'text' && phase.kind === 'text')
   assert.equal(current.textAnchor, 'start')
-  assert.notEqual(phase.position.x, current.position.x)
-  assert.equal(phase.position.y - current.position.y, -8)
-  assert.ok(phase.position.y < breaker.position.y + terminals.bottom!.y)
+  assert.equal(phase.position.x, current.position.x)
+  assert.equal(phase.position.y - current.position.y, 26)
   const currentBox = oneWireLayoutBounds(current)
   const phaseBox = oneWireLayoutBounds(phase)
   const poles = oneWireLayoutBounds(shapes.find((shape) => shape.sourceLink?.role === 'breaker-poles')!)
@@ -107,6 +107,7 @@ const checkClearance = (shapes: Shape[]) => {
     phaseBox.y + phaseBox.height <= currentBox.y || currentBox.y + currentBox.height <= phaseBox.y)
   assert.ok(poles.x + poles.width < axisX - 10)
   assert.ok(currentBox.x + currentBox.width < axisX - 10)
+  assert.ok(phaseBox.x + phaseBox.width < axisX - 10)
   assert.ok(currentBox.y >= poles.y + poles.height)
   for (const row of shapes.filter((shape) => shape.sourceLink?.kind !== 'board')) {
     const box = oneWireLayoutBounds(row)
@@ -116,6 +117,30 @@ const checkClearance = (shapes: Shape[]) => {
   const wires = shapes.filter((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'row-wire')
   assert.ok(wires.some((wire) => wire.kind === 'line' && wire.start.x === trunk.end.x && wire.start.y === trunk.end.y))
 }
+
+test('moves only default legacy phase labels below their own current, preserving manual positions', () => {
+  const shapes = circuit()
+  const breaker = shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')!
+  const current = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-current')!
+  const phase = shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'breaker-phase')!
+  assert.ok(breaker.kind === 'symbol' && current.kind === 'text' && phase.kind === 'text')
+  const old = protectionLabelLayout(breaker)!
+  const legacy = shapes.map((shape) => shape.id === phase.id
+    ? { ...phase, position: { x: old.rightX, y: old.centerY + 33 } }
+    : shape.id === current.id ? { ...current, position: { x: current.position.x + 12, y: current.position.y + 5 } } : shape)
+  const updated = migrateOneWireBreakerPhaseLabels(legacy)
+  const changedPhase = updated.find((shape) => shape.id === phase.id)!
+  assert.ok(changedPhase.kind === 'text')
+  assert.equal(changedPhase.position.x, current.position.x + 12)
+  assert.equal(changedPhase.position.y, current.position.y + 5 + 26)
+  assert.ok(updated.every((shape, index) => shape.id === phase.id || shape === legacy[index]))
+  assert.deepEqual(migrateOneWireBreakerPhaseLabels(updated), updated)
+  const custom = legacy.map((shape) => shape.id === phase.id && shape.kind === 'text'
+    ? { ...shape, position: { x: shape.position.x + 10, y: shape.position.y } } : shape)
+  assert.deepEqual(migrateOneWireBreakerPhaseLabels(custom), custom)
+  const locked = legacy.map((shape) => shape.id === phase.id ? { ...shape, locked: true } : shape)
+  assert.deepEqual(migrateOneWireBreakerPhaseLabels(locked), locked)
+})
 
 test('cable text has its own clear conductor section and protection values clear the breaker', () => {
   const shapes = circuit()

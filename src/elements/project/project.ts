@@ -354,8 +354,7 @@ export class ProjectElement extends LiteElement {
               event.stopPropagation()
               return
             }
-            await cadleShell.savePage()
-            cadleShell.loadPage(key)
+            await cadleShell.loadPage(key)
           }}
           ><span class="page-label">${project.name}</span>
           <button
@@ -363,11 +362,7 @@ export class ProjectElement extends LiteElement {
             class="page-drag-handle"
             type="button"
             aria-label=${`Sleep ${project.name} om te ordenen`}
-            title="Ingedrukt houden en verslepen om te ordenen"
-            @click=${(event: Event) => {
-              event.stopPropagation()
-              if (this.#ignoreNextPageClick) this.#ignoreNextPageClick = false
-            }}>
+            title="Klik om te openen, houd ingedrukt en versleep om te ordenen">
             <custom-icon icon="drag_indicator"></custom-icon>
           </button>
         </custom-drawer-item

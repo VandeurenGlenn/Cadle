@@ -4,6 +4,8 @@ import type { Project } from '../../src/types.ts'
 import type { AppShell } from '../../src/shell/app-shell.ts'
 import type { CadleApp } from '../../src/editor/cadle-app.ts'
 
+test.use({ hasTouch: true })
+
 test('adds pages quickly with automatic names, type detection and cancel support', async ({ page }, testInfo) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
@@ -83,7 +85,37 @@ test('adds pages quickly with automatic names, type detection and cancel support
   await expect.poll(() => app.evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
   await oneWireItem.locator('.page-drag-handle').click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(oneWireKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
+  await pagePane.locator(`custom-drawer-item[data-project="${groundKey}"]`).click({ position: { x: 20, y: 18 } })
   await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await app.evaluate((element) => {
+    (element as CadleApp).flushPendingSave = async () => { throw new Error('test save failure') }
+  })
+  const alert = page.waitForEvent('dialog').then(async (dialog) => {
+    const message = dialog.message()
+    await dialog.dismiss()
+    return message
+  })
+  await oneWireItem.click()
+  expect(await alert).toContain('De huidige pagina kon niet worden opgeslagen')
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
+  await app.evaluate((element) => { Reflect.deleteProperty(element, 'flushPendingSave') })
+  const oneWireHandleBounds = await oneWireItem.locator('.page-drag-handle').boundingBox()
+  expect(oneWireHandleBounds).not.toBeNull()
+  await page.touchscreen.tap(oneWireHandleBounds!.x + oneWireHandleBounds!.width / 2, oneWireHandleBounds!.y + oneWireHandleBounds!.height / 2)
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(oneWireKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
+  const groundBounds = await pagePane.locator(`custom-drawer-item[data-project="${groundKey}"]`).boundingBox()
+  expect(groundBounds).not.toBeNull()
+  await page.touchscreen.tap(groundBounds!.x + 20, groundBounds!.y + 18)
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
   const groundplanHandle = groundplanItem.locator('.page-drag-handle')
   const oneWireBounds = await oneWireItem.boundingBox()
   const handleBounds = await groundplanHandle.boundingBox()

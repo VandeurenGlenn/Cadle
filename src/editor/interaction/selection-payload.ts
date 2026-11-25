@@ -28,6 +28,7 @@ export type NativeSelectionShapePayload = {
   stairClipAtWalls?: boolean
   drivewayMaterial?: DrivewayMaterial
   drivewayCurved?: boolean
+  drivewayClosed?: boolean
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
@@ -171,6 +172,7 @@ export const createNativeSelectionChangedPayload = (
     shapePayload.name = 'Oprit'
     shapePayload.drivewayMaterial = selectedShape.drivewayMaterial ?? 'pavers'
     shapePayload.drivewayCurved = selectedShape.drivewayCurved !== false
+    shapePayload.drivewayClosed = selectedShape.drivewayClosed === true
   }
   if (
     selectedShape.kind === 'rect' &&

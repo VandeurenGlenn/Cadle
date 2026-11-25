@@ -152,6 +152,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
 - `src/editor/layout/` — catalog, symbol, title-block, and one-wire layout generation.
 - Driveway paving is a background surface, not an obstacle for automatic circuit-label placement.
   Labels retain their positions above the paving in both the editor and export.
+  The driveway tool offers a width-based route or a filled polygon. Filled areas use the clicked boundary
+  without a width offset; Enter, double-click or clicking the first corner closes the surface. Crossing or
+  degenerate boundaries are rejected. The material remains editable and the closed boundary persists with the shape.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
   through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text
   import and variant selection; importing one component never replaces the other component's specifications.

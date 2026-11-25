@@ -11,7 +11,7 @@ import { applySymbolTextOverrides, getCachedSymbolSvg } from './symbol-svg-cache
 import { symbolTextPresentation } from './symbol-metadata.js'
 import { electricalConnectionMarkup } from './electrical-connection-markup.js'
 import { paperTextContentMarkup } from './layout/paper-text-layout.js'
-import type { LineShape, Point, Shape } from '../editor/model/types.js'
+import type { LineShape, Point, RectShape, Shape } from '../editor/model/types.js'
 import { symbolContentBounds, symbolOpticalMetrics } from './layout/symbol-layout.js'
 import {
   ENERGY_SCENARIO_DURATION,
@@ -91,7 +91,8 @@ export const shapeTemplate = (
   extraClass = '',
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
   heatingObstacles: HeatingObstacle[] = [],
-  scene: readonly Shape[] = []
+  scene: readonly Shape[] = [],
+  drivewaySurfaceOnly = false
 ) => {
   if (shape.hidden) return nothing
   if (shape.kind === 'rect' && shape.heating) return unsafeSVG(heatingMarkup(shape, selected, false, heatingObstacles))
@@ -256,8 +257,10 @@ export const shapeTemplate = (
         return svg`
           <g class=${`${shapeClass} shape-driveway`} data-shape-id=${shape.id} data-selected=${selectedAttr}
             transform=${transform || nothing} fill="none" stroke-linecap="butt" stroke-linejoin="round">
-            <path d=${geometry.path} stroke="#625d56" stroke-width=${geometry.width + 2}></path>
-            <path class="driveway-surface" d=${geometry.path} stroke=${`url(#driveway-${shape.drivewayMaterial ?? 'pavers'})`} stroke-width=${geometry.width}></path>
+            ${shape.drivewayClosed
+              ? svg`<path class="driveway-surface" d=${geometry.path} fill=${`url(#driveway-${shape.drivewayMaterial ?? 'pavers'})`} stroke=${drivewaySurfaceOnly ? 'none' : '#625d56'} stroke-width="2"></path>`
+              : svg`${drivewaySurfaceOnly ? nothing : svg`<path d=${geometry.path} stroke="#625d56" stroke-width=${geometry.width + 2}></path>`}
+                <path class="driveway-surface" d=${geometry.path} stroke=${`url(#driveway-${shape.drivewayMaterial ?? 'pavers'})`} stroke-width=${geometry.width}></path>`}
           </g>
         `
       }
@@ -701,6 +704,16 @@ export const bindingLabelsMarkup = (shapes: Shape[]): string =>
         `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
     )
     .join('')
+
+export const drivewayOutlinesMarkup = (shapes: readonly Shape[], monochrome = false): string =>
+  `<g class="driveway-outlines" pointer-events="none">${shapes
+    .filter((shape): shape is RectShape => shape.kind === 'rect' && shape.variant === 'driveway-route' && !shape.hidden)
+    .map((shape) => {
+      const geometry = drivewayGeometry(shape)
+      return `<path d="${geometry.path}" transform="${rectTransform(shape, shapeBounds(shape))}" fill="none"
+        stroke="${monochrome ? '#333333' : '#625d56'}" stroke-width="${shape.drivewayClosed ? 2 : geometry.width + 2}"
+        stroke-linecap="butt" stroke-linejoin="round"></path>`
+    }).join('')}</g>`
 
 export const stairReadabilityMaskMarkup = (shapes: Shape[]): string => {
   const visible = shapes.filter((shape) => !shape.hidden)

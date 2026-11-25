@@ -91,4 +91,58 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
   await expect(surface).toHaveAttribute('stroke', 'url(#driveway-cobbles)')
   await expect(surface).toHaveAttribute('d', / Q /)
   await expect(label).toHaveText('A1')
+
+  await page.getByRole('button', { name: 'More drawing tools', exact: true }).click()
+  await page.getByRole('button', { name: 'Oprit tekenen', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Vorm oprit', exact: true }).selectOption('area')
+  await expect(page.getByRole('spinbutton', { name: 'Opritbreedte (cm)' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Oprit bewaren', exact: true }).click()
+  await expect(app.getByRole('status').filter({ hasText: 'minstens drie hoeken' })).toBeVisible()
+  await click(1080, 400)
+  await click(1720, 400)
+  await click(1720, 1040)
+  await click(1080, 1040)
+  await click(1080, 400)
+  const filled = app.locator('g.shape-driveway:not(.draft) .driveway-surface[fill="url(#driveway-cobbles)"]')
+  await expect(filled).toHaveCount(1)
+  await expect(filled).toHaveAttribute('d', 'M 1080 400 L 1720 400 L 1720 1040 L 1080 1040 Z')
+  await expect(page.locator('object-pane [data-driveway-curved]')).toHaveCount(0)
+  const filledId = (await filled.locator('..').getAttribute('data-shape-id'))!
+  const pixels = await filled.evaluate(async (path: SVGPathElement) => {
+    const pattern = path.ownerSVGElement!.querySelector('#driveway-cobbles')!
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" width="2376" height="1680"><defs>${pattern.outerHTML}</defs>${path.outerHTML}</svg>`
+    const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }))
+    try {
+      const image = new Image()
+      image.src = url
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = 2376; canvas.height = 1680
+      const context = canvas.getContext('2d')!
+      context.fillStyle = 'white'; context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      return { center: [...context.getImageData(1400, 720, 1, 1).data], outside: [...context.getImageData(1000, 720, 1, 1).data] }
+    } finally { URL.revokeObjectURL(url) }
+  })
+  expect(pixels.center).not.toEqual([255, 255, 255, 255])
+  expect(pixels.outside).toEqual([255, 255, 255, 255])
+  await app.evaluate((element) => (element as CadleApp).undo())
+  await expect(filled).toHaveCount(0)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  await expect(filled).toHaveCount(1)
+  const inspector = page.locator('app-shell #object-inspector')
+  if (await inspector.getAttribute('data-open') === 'true') await inspector.getByRole('button', { name: 'Close properties' }).click()
+  await click(2000, 1200)
+  await click(1400, 720)
+  await expect(app.locator(`g.shape-driveway[data-shape-id="${filledId}"]`)).toHaveAttribute('data-selected', 'true')
+  await page.locator('object-pane [data-driveway-material]').selectOption('gravel')
+  await expect(app.locator(`g.shape-driveway[data-shape-id="${filledId}"] .driveway-surface`)).toHaveAttribute('fill', 'url(#driveway-gravel)')
+  expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('fill="url(#driveway-gravel)"')
+  await page.screenshot({ path: testInfo.outputPath('filled-driveway.png') })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  await expect(app.locator(`g.shape-driveway[data-shape-id="${filledId}"] .driveway-surface`)).toHaveAttribute('fill', 'url(#driveway-gravel)')
+  await expect(label).toHaveText('A1')
 })

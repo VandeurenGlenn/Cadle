@@ -12,7 +12,7 @@ import type { PaperPresetConfig } from '../constants.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import type { Project } from '../../types.js'
 import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
-import { bindingLabelsMarkup, roomLabelsMarkup, stairReadabilityMaskMarkup } from '../svg-templates.js'
+import { bindingLabelsMarkup, drivewayOutlinesMarkup, roomLabelsMarkup, stairReadabilityMaskMarkup } from '../svg-templates.js'
 import { pageLayout, PAPER_BINDING_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
@@ -183,7 +183,8 @@ export const shapeMarkup = (
   symbolStrokeWidthPreference = DEFAULT_SYMBOL_STROKE_WIDTH,
   monochrome = false,
   heatingObstacles: HeatingObstacle[] = [],
-  scene: readonly Shape[] = []
+  scene: readonly Shape[] = [],
+  drivewaySurfaceOnly = false
 ): string => {
   if (shape.hidden) return ''
   if (shape.kind === 'rect' && shape.heating) return heatingMarkup(shape, selected, monochrome, heatingObstacles)
@@ -298,8 +299,11 @@ export const shapeMarkup = (
         const geometry = drivewayGeometry(shape)
         return `<g class="shape shape-rect shape-driveway ${extraClass}" data-shape-id="${escapeHtml(shape.id)}" ${rectTransform(shape, bounds)}
           fill="none" stroke-linecap="butt" stroke-linejoin="round">
-          <path d="${geometry.path}" stroke="${monochrome ? '#333333' : '#625d56'}" stroke-width="${geometry.width + 2}"></path>
+          ${shape.drivewayClosed
+            ? `<path class="driveway-surface" d="${geometry.path}" fill="url(#driveway-${shape.drivewayMaterial ?? 'pavers'})" stroke="${drivewaySurfaceOnly ? 'none' : monochrome ? '#333333' : '#625d56'}" stroke-width="2"></path>`
+            : `${drivewaySurfaceOnly ? '' : `<path d="${geometry.path}" stroke="${monochrome ? '#333333' : '#625d56'}" stroke-width="${geometry.width + 2}"></path>`}
           <path class="driveway-surface" d="${geometry.path}" stroke="url(#driveway-${shape.drivewayMaterial ?? 'pavers'})" stroke-width="${geometry.width}"></path>
+          `}
         </g>`
       }
       if (isStairVariant(shape.variant)) {
@@ -595,16 +599,17 @@ export const buildSvgDocument = (options: {
     return entries
       .map((entry) =>
         entry.type === 'single'
-          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes)
+          ? shapeMarkup(entry.shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes, true)
           : `<g class="shape-group" data-group-id="${entry.groupId}">${entry.shapes
-              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes))
+              .map((shape) => shapeMarkup(shape, false, '', options.symbolStrokeWidth, options.monochrome, obstacles, options.shapes, true))
               .join('')}</g>`
       )
       .join('')
   }
 
   const wallOpeningCuts = buildWallOpeningCuts(options.shapes, '#ffffff')
-  const drivewayMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && shape.variant === 'driveway-route'))
+  const drivewayShapes = options.shapes.filter((shape) => shape.kind === 'rect' && shape.variant === 'driveway-route')
+  const drivewayMarkup = drivewayOutlinesMarkup(drivewayShapes, options.monochrome) + groupedMarkup(drivewayShapes)
   const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall')) + wallJunctionMarkup(options.shapes, options.monochrome)
   const stairShapes = options.shapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant))
   const stairMarkup = stairShapes.length ? `<g mask="url(#stair-readability-mask)">${groupedMarkup(stairShapes)}</g>` : ''

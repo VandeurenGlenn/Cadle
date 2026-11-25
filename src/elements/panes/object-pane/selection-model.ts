@@ -26,6 +26,7 @@ export type SelectionShape = {
   stairClipAtWalls?: boolean
   drivewayMaterial?: DrivewayMaterial
   drivewayCurved?: boolean
+  drivewayClosed?: boolean
   path?: string
   text?: string
   symbolTextFields?: SymbolTextField[]
@@ -135,6 +136,7 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       stairClipAtWalls: typeof shape.stairClipAtWalls === 'boolean' ? shape.stairClipAtWalls : null,
       drivewayMaterial: isDrivewayMaterial(shape.drivewayMaterial) ? shape.drivewayMaterial : null,
       drivewayCurved: typeof shape.drivewayCurved === 'boolean' ? shape.drivewayCurved : null,
+      drivewayClosed: shape.drivewayClosed === true,
       connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',
       label: kind === 'driveway-route' ? 'Oprit' : kind === 'roof-left' || kind === 'roof-straight' || kind === 'roof-right' ? 'Dakvlak' : kind.charAt(0).toUpperCase() + kind.slice(1),

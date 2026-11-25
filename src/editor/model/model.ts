@@ -10,7 +10,7 @@ import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multip
 import { isRoofPattern, oppositeRoofVariant } from '../roof-geometry.js'
 import { isStairVariant } from './stair-geometry.js'
 import { sanitizeStairRoute } from './stair-route.js'
-import { isDrivewayMaterial } from './driveway.js'
+import { isDrivewayMaterial, sanitizeDrivewayRoute } from './driveway.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -138,6 +138,7 @@ const copyGeneratedMetadata = (
     drivewayRoute?: unknown
     drivewayMaterial?: unknown
     drivewayCurved?: unknown
+    drivewayClosed?: unknown
   },
   target: Shape
 ): void => {
@@ -147,9 +148,10 @@ const copyGeneratedMetadata = (
     if (typeof source.stairClipAtWalls === 'boolean') target.stairClipAtWalls = source.stairClipAtWalls
   }
   if (target.kind === 'rect' && target.variant === 'driveway-route') {
-    target.drivewayRoute = sanitizeStairRoute(source.drivewayRoute)
+    target.drivewayRoute = sanitizeDrivewayRoute(source.drivewayRoute, source.drivewayClosed === true)
     if (isDrivewayMaterial(source.drivewayMaterial)) target.drivewayMaterial = source.drivewayMaterial
     if (typeof source.drivewayCurved === 'boolean') target.drivewayCurved = source.drivewayCurved
+    if (source.drivewayClosed === true) target.drivewayClosed = true
   }
   if (target.kind === 'text') {
     const label = sanitizeRoomLabel(source.roomLabel)
@@ -247,6 +249,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       drivewayRoute?: unknown
       drivewayMaterial?: unknown
       drivewayCurved?: unknown
+      drivewayClosed?: unknown
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
@@ -319,7 +322,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
 
     if (raw.kind === 'rect' && isPoint(raw.start) && isPoint(raw.end)) {
       if (raw.variant === 'stairs-route' && !sanitizeStairRoute(raw.stairRoute)) continue
-      if (raw.variant === 'driveway-route' && (!sanitizeStairRoute(raw.drivewayRoute) || raw.start.x === raw.end.x || raw.start.y === raw.end.y)) continue
+      if (raw.variant === 'driveway-route' && (!sanitizeDrivewayRoute(raw.drivewayRoute, raw.drivewayClosed === true) || raw.start.x === raw.end.x || raw.start.y === raw.end.y)) continue
       const rect: RectShape = {
         id: raw.id,
         kind: 'rect',

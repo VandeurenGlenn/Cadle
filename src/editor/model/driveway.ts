@@ -1,5 +1,5 @@
 import type { DrivewayMaterial, Point, RectShape } from './types.js'
-import { cleanStairRoute } from './stair-route.js'
+import { cleanStairRoute, sanitizeStairRoute } from './stair-route.js'
 
 export const isDrivewayMaterial = (value: unknown): value is DrivewayMaterial =>
   value === 'cobbles' || value === 'gravel' || value === 'pavers'
@@ -24,6 +24,57 @@ export const drivewayRouteError = (points: readonly Point[], width: number): str
   return null
 }
 
+const areaPoints = (input: readonly Point[]): Point[] => {
+  const points = cleanStairRoute(input)
+  if (points.length > 1 && points[0].x === points.at(-1)!.x && points[0].y === points.at(-1)!.y) points.pop()
+  return points
+}
+
+export const drivewayAreaError = (input: readonly Point[]): string | null => {
+  const points = areaPoints(input)
+  if (points.length < 3) return 'Teken minstens drie hoeken voor een gevuld vlak.'
+  if (points.length > 200) return 'Een opritvlak mag maximaal 200 punten bevatten.'
+  if (points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return 'Een hoek van het opritvlak is ongeldig.'
+  const cross = (a: Point, b: Point, c: Point) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+  const onSegment = (a: Point, b: Point, p: Point) => Math.abs(cross(a, b, p)) < 1e-10 &&
+    p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x) &&
+    p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y)
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length]
+    for (let j = i + 2; j < points.length; j++) {
+      if (i === 0 && j === points.length - 1) continue
+      const c = points[j], d = points[(j + 1) % points.length]
+      if ((cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) ||
+        onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b)) {
+        return 'De randen van het opritvlak mogen elkaar niet kruisen of overlappen.'
+      }
+    }
+  }
+  const twiceArea = points.reduce((sum, p, i) => {
+    const next = points[(i + 1) % points.length]
+    return sum + (p.x - points[0].x) * (next.y - points[0].y) - (next.x - points[0].x) * (p.y - points[0].y)
+  }, 0)
+  return Math.abs(twiceArea) < 1e-10 ? 'Teken een vlak met een breedte en hoogte.' : null
+}
+
+export const sanitizeDrivewayRoute = (value: unknown, closed: boolean) => {
+  const route = sanitizeStairRoute(value)
+  return route && (!closed || !drivewayAreaError(route.points)) ? route : undefined
+}
+
+export const createDrivewayArea = (id: string, input: readonly Point[], material: DrivewayMaterial): RectShape => {
+  const points = areaPoints(input)
+  const error = drivewayAreaError(points)
+  if (error) throw new Error(error)
+  const x = Math.min(...points.map((p) => p.x)), y = Math.min(...points.map((p) => p.y))
+  const w = Math.max(...points.map((p) => p.x)) - x, h = Math.max(...points.map((p) => p.y)) - y
+  return {
+    id, kind: 'rect', variant: 'driveway-route', start: { x, y }, end: { x: x + w, y: y + h },
+    drivewayRoute: { points: points.map((p) => ({ x: (p.x - x) / w, y: (p.y - y) / h })), width: 1 },
+    drivewayMaterial: material, drivewayCurved: false, drivewayClosed: true
+  }
+}
+
 export const createDriveway = (id: string, input: readonly Point[], width: number, material: DrivewayMaterial, curved: boolean): RectShape => {
   const points = cleanStairRoute(input)
   const error = drivewayRouteError(points, width)
@@ -46,6 +97,7 @@ export const drivewayGeometry = (shape: RectShape): { path: string; width: numbe
   const w = Math.abs(shape.end.x - shape.start.x), h = Math.abs(shape.end.y - shape.start.y)
   const points = cleanStairRoute(route.points.map((p) => ({ x: x + p.x * w, y: y + p.y * h })))
   if (points.length < 2) return { path: '', width: 0 }
+  if (shape.drivewayClosed) return { path: `${points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')} Z`, width: 0 }
   const width = route.width * Math.min(w, h)
   const xy = (p: Point) => `${p.x} ${p.y}`
   let path = `M ${xy(points[0])}`

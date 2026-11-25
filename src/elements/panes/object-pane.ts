@@ -66,6 +66,7 @@ export class ObjectPane extends LiteElement {
   @property({ attribute: false }) private accessor _nativeStairClipAtWalls: boolean | null = null
   @property({ attribute: false }) private accessor _nativeDrivewayMaterial: 'cobbles' | 'gravel' | 'pavers' | null = null
   @property({ attribute: false }) private accessor _nativeDrivewayCurved: boolean | null = null
+  @property({ attribute: false }) private accessor _nativeDrivewayClosed = false
 
   @property({ type: String, attribute: false })
   private accessor _nativeBindingId = ''
@@ -198,6 +199,7 @@ export class ObjectPane extends LiteElement {
       this._nativeRoofPattern = 'none'
       this._nativeDrivewayMaterial = null
       this._nativeDrivewayCurved = null
+      this._nativeDrivewayClosed = false
       if (this._selectionCount === 0) this._nativeBindingId = ''
       this._nativeName = ''
       this._nativeIsRoom = false
@@ -238,6 +240,7 @@ export class ObjectPane extends LiteElement {
     this._nativeStairClipAtWalls = shape.stairClipAtWalls
     this._nativeDrivewayMaterial = shape.drivewayMaterial
     this._nativeDrivewayCurved = shape.drivewayCurved
+    this._nativeDrivewayClosed = shape.drivewayClosed
     this._nativeRectVariant = shape.rectVariant ?? ''
     this._nativeRoofPattern =
       shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam'
@@ -1023,18 +1026,19 @@ export class ObjectPane extends LiteElement {
         ${!multiple ? this.#dimensionSummary() : ''}
         ${!multiple ? this.#heatingProperties() : ''}
         ${!multiple && this._nativeDrivewayMaterial ? this.#propertySection('driveway', 'Oprit', html`
+          ${this._nativeDrivewayClosed ? html`<p>Gevuld vlak</p>` : ''}
           <label><span class="native-label">Verharding</span>
             <select class="native-select" data-driveway-material .value=${this._nativeDrivewayMaterial}
               @change=${(event: Event) => pubsub.publish('editor.object.update', { drivewayMaterial: (event.target as HTMLSelectElement).value })}>
               <option value="cobbles">Kasseien</option><option value="gravel">Kiezels</option><option value="pavers">Klinkers</option>
             </select>
           </label>
-          <label><span class="native-label">Bochten</span>
+          ${!this._nativeDrivewayClosed ? html`<label><span class="native-label">Bochten</span>
             <select class="native-select" data-driveway-curved .value=${this._nativeDrivewayCurved ? 'rounded' : 'angular'}
               @change=${(event: Event) => pubsub.publish('editor.object.update', { drivewayCurved: (event.target as HTMLSelectElement).value === 'rounded' })}>
               <option value="rounded">Afgerond</option><option value="angular">Hoekig</option>
             </select>
-          </label>
+          </label>` : ''}
         `, true) : ''}
         ${!multiple && this._nativeStairClipAtWalls !== null ? this.#propertySection('stairs', 'Trapweergave', html`
           <label><span class="native-label">Zichtbaarheid</span>

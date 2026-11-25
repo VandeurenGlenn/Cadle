@@ -90,6 +90,7 @@ export type RectShape = GeneratedShapeMetadata & {
   drivewayRoute?: StairRoute
   drivewayMaterial?: DrivewayMaterial
   drivewayCurved?: boolean
+  drivewayClosed?: boolean
   scale?: number
   rotation?: number
   flipX?: boolean

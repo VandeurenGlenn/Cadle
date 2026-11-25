@@ -120,6 +120,117 @@ test('places differentials from the toolbar on rails and inline without adding a
   await page.screenshot({ path: testInfo.outputPath('differential-toolbar.png') })
 })
 
+test('grows and shrinks only the affected rail when differentials are added and removed', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'differential-rail.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: [
+        { id: 'rail', kind: 'line', start: { x: 500, y: 1000 }, end: { x: 1100, y: 1000 },
+          stroke: '#000000', strokeWidth: 4, groupId: 'onewire-kamrail-main' },
+        { id: 'feeder', kind: 'line', start: { x: 550, y: 1000 }, end: { x: 550, y: 1200 },
+          stroke: '#000000', strokeWidth: 2, connection: { kind: 'wire', showLabel: false } },
+        { id: 'other-rail', kind: 'line', start: { x: 1400, y: 1000 }, end: { x: 1700, y: 1000 },
+          stroke: '#000000', strokeWidth: 4, groupId: 'onewire-kamrail-other' }
+      ],
+      selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680
+    }))
+  })
+  await app.evaluate(async (element) => { await (element as CadleApp).exportA4PNG() })
+  const stage = app.locator('svg.stage')
+  const rail = stage.locator('line[data-shape-id="rail"]')
+  const railSpan = (id: string) => stage.locator(`line[data-shape-id="${id}"]`).evaluate((line) => ({
+    start: Number(line.getAttribute('x1')), end: Number(line.getAttribute('x2'))
+  }))
+  const clickRailAt = async (x: number) => {
+    const point = await rail.evaluate((line: SVGLineElement, x) => {
+      const screen = new DOMPoint(x, line.y1.baseVal.value).matrixTransform(line.getScreenCTM()!)
+      return { x: screen.x, y: screen.y }
+    }, x)
+    await page.mouse.click(point.x, point.y)
+  }
+  const otherBefore = await railSpan('other-rail')
+  const before = await railSpan('rail')
+  const add = page.locator('onewire-actions').getByRole('button', { name: 'Add differential', exact: true })
+  await add.click()
+  await clickRailAt(650)
+  const differentials = stage.locator('g.shape-symbol').filter({
+    has: page.locator('title', { hasText: /^Residual-current circuit breaker$/ })
+  })
+  await expect(differentials).toHaveCount(1)
+  await closePropertiesForDrawing(page)
+  await add.click()
+  await clickRailAt(1090)
+  await expect(differentials).toHaveCount(2)
+  const grown = await railSpan('rail')
+  expect(grown.end - grown.start).toBeGreaterThan(before.end - before.start)
+  const removedId = (await differentials.last().getAttribute('data-shape-id'))!
+
+  await closePropertiesForDrawing(page)
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  const point = await differentials.last().locator('path').first().evaluate((path: SVGPathElement) => {
+    const screen = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  await page.keyboard.press('Delete')
+  await expect(differentials).toHaveCount(1)
+  const shrunk = await railSpan('rail')
+  expect(shrunk.end - shrunk.start).toBeLessThan(grown.end - grown.start)
+  expect(shrunk.start).toBeLessThanOrEqual(550)
+  expect(shrunk.end).toBeGreaterThanOrEqual(650)
+  expect(await railSpan('other-rail')).toEqual(otherBefore)
+  await closePropertiesForDrawing(page)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(differentials).toHaveCount(2)
+  expect(await railSpan('rail')).toEqual(grown)
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(differentials).toHaveCount(1)
+  expect(await railSpan('rail')).toEqual(shrunk)
+  await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  const saved = nativeStateForProjectPage(project, schematic)!.shapes
+  expect(saved.find((shape) => shape.id === 'rail')).toMatchObject({
+    start: { x: shrunk.start }, end: { x: shrunk.end }
+  })
+  expect(saved.some((shape) => shape.id === removedId)).toBe(false)
+  expect(saved.find((shape) => shape.id === 'feeder')).toMatchObject({ start: { x: 550, y: 1000 } })
+  expect(saved.filter((shape) => shape.sourceLink?.role === 'connector')).toHaveLength(1)
+  expect(saved.filter((shape) => shape.sourceLink?.role === 'differential-wire')).toHaveLength(2)
+  await shell.evaluate(async (element) => {
+    await (element as AppShell).loadPage('00000000-0000-4000-8000-000000000103')
+  })
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000103'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await expect(differentials).toHaveCount(1)
+  expect(await railSpan('rail')).toEqual(shrunk)
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  const remainingPoint = await differentials.first().locator('path').first().evaluate((path: SVGPathElement) => {
+    const screen = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(remainingPoint.x, remainingPoint.y)
+  await page.keyboard.press('Delete')
+  await expect(differentials).toHaveCount(0)
+  const lastRemoved = await railSpan('rail')
+  expect(lastRemoved.end - lastRemoved.start).toBeCloseTo(240)
+  expect(lastRemoved.start).toBeLessThanOrEqual(550)
+  expect(lastRemoved.end).toBeGreaterThanOrEqual(550)
+  expect(await railSpan('other-rail')).toEqual(otherBefore)
+})
+
 test('adds a cable designation when loading a previously placed differential', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

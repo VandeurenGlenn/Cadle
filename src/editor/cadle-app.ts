@@ -2701,9 +2701,25 @@ export class CadleApp extends LiteElement {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const circuitTargets = new Set<string>()
     const affectedRailIds = new Set<string>()
+    const deletedDifferentialAnchors = new Map<string, number>()
     if (currentPageType === 'onewire') {
       for (const shape of this.#document.shapes) {
-        if (!ids.has(shape.id) || !shape.groupId?.startsWith('onewire-')) continue
+        if (!ids.has(shape.id)) continue
+        if (shape.kind === 'symbol' && shape.sourceLink?.role === 'differential' && shape.oneWireRailId) {
+          const terminal = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === 'bottom')
+          if (terminal) {
+            affectedRailIds.add(shape.oneWireRailId)
+            deletedDifferentialAnchors.set(shape.oneWireRailId, terminal.point.x)
+            for (const connector of this.#document.shapes) {
+              if (connector.kind !== 'line' || connector.oneWireRailId !== shape.oneWireRailId ||
+                connector.sourceLink?.role !== 'connector' || connector.sourceLink.id !== shape.sourceLink.id) continue
+              if (Math.hypot(connector.end.x - terminal.point.x, connector.end.y - terminal.point.y) < 0.01) {
+                ids.add(connector.id)
+              }
+            }
+          }
+        }
+        if (!shape.groupId?.startsWith('onewire-')) continue
         if (shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker') {
           const terminal = oneWireSymbolTerminalInfo(shape.path, shape.scale)?.bottom
           const terminalPoint = {
@@ -2719,7 +2735,9 @@ export class CadleApp extends LiteElement {
       }
     }
     this.#document.shapes = this.#document.shapes.filter((shape) => !ids.has(shape.id))
-    for (const railId of affectedRailIds) this.#resizeOneWireRailsToBreakers(railId, false)
+    for (const railId of affectedRailIds) {
+      this.#resizeOneWireRailsToBreakers(railId, false, deletedDifferentialAnchors.get(railId))
+    }
     this.#document.selectedId = null
     this.#document.selectedIds = new Set()
     this.#pushHistory()
@@ -3394,7 +3412,9 @@ export class CadleApp extends LiteElement {
     })
   }
 
-  #resizeOneWireRailsToBreakers(targetRailId?: string, preserveExisting = Boolean(targetRailId)): boolean {
+  #resizeOneWireRailsToBreakers(
+    targetRailId?: string, preserveExisting = Boolean(targetRailId), emptyRailAnchorX?: number
+  ): boolean {
     let changed = false
     const anchors = this.#oneWireRailAnchors(this.#document.shapes.filter(
       (shape): shape is LineShape => shape.kind === 'line' && this.#isKamrailShape(shape)
@@ -3403,6 +3423,24 @@ export class CadleApp extends LiteElement {
       if (shape.kind !== 'line' || !this.#isKamrailShape(shape)) return shape
       if (targetRailId && shape.id !== targetRailId) return shape
       const anchorXs = anchors.filter((anchor) => anchor.railId === shape.id).map((anchor) => anchor.x)
+      for (const item of this.#document.shapes) {
+        if (item.hidden || item.id === shape.id) continue
+        if (item.kind === 'symbol' && item.sourceLink?.role === 'differential' && item.oneWireRailId === shape.id) {
+          const terminal = oneWireSymbolConnectionAnchors(item).find((anchor) => anchor.side === 'bottom')
+          if (terminal) {
+            const closest = this.#closestPointOnSegment(terminal.point, shape.start, shape.end)
+            if (Math.hypot(terminal.point.x - closest.x, terminal.point.y - closest.y) <= 72) {
+              anchorXs.push(terminal.point.x)
+            }
+          }
+        }
+        if (item.kind !== 'line' || this.#oneWireController.isRail(item)) continue
+        for (const point of [item.start, item.end]) {
+          const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
+          if (Math.hypot(point.x - closest.x, point.y - closest.y) < 0.01) anchorXs.push(point.x)
+        }
+      }
+      if (!anchorXs.length && emptyRailAnchorX !== undefined) anchorXs.push(emptyRailAnchorX)
       if (!anchorXs.length) return shape
       const span = this.#oneWireController.railSpanForAnchors(anchorXs)
       if (!span) return shape
@@ -6993,6 +7031,7 @@ export class CadleApp extends LiteElement {
         if (this.#oneWireComposeKind === 'kamrail') return
         if (this.#oneWireComposeKind === 'differential') {
           if (this.#composeOneWireOnKamrailAt(rawPoint)) {
+            this.#resizeOneWireRailsToBreakers(clickedKamrail.id)
             this.#pushHistory()
             this.#render()
           }

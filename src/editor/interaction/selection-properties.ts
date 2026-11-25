@@ -1,5 +1,5 @@
 import { cloneShape, shapeBounds } from '../../editor/model/model.js'
-import type { LineShape, Point, RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
+import type { DrivewayMaterial, LineShape, Point, RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
 import { bindingLabelOffset, type BindingLabelSide } from '../layout/symbol-layout.js'
 import { isOneWireFamilyLabel, placeOneWireFamilyLabels } from '../layout/onewire-annotation-layout.js'
 import { translateShape } from './shape-transforms.js'
@@ -11,6 +11,7 @@ import { symbolTextFieldsFor } from '../symbol-metadata.js'
 import { logicalDeviceKey, orderBindingPoints } from '../auto-bindings.js'
 import { shapeAnchorPoint } from '../room-regions.js'
 import { isStairVariant } from '../model/stair-geometry.js'
+import { isDrivewayMaterial } from '../model/driveway.js'
 import {
   breakerCurrentLabel,
   inferCircuitType,
@@ -28,6 +29,8 @@ export type SelectionPropertyUpdate = {
   rectVariant?: RoofVariant
   roofPattern?: RoofPattern
   stairClipAtWalls?: boolean
+  drivewayMaterial?: DrivewayMaterial
+  drivewayCurved?: boolean
   heating?: Partial<HeatingData>
   connection?: Partial<ElectricalConnection> | null
   text?: string
@@ -264,6 +267,10 @@ const applyProperties = (
   }
   if (updated.kind === 'rect' && isStairVariant(updated.variant) && typeof payload.stairClipAtWalls === 'boolean') {
     updated.stairClipAtWalls = payload.stairClipAtWalls
+  }
+  if (updated.kind === 'rect' && updated.variant === 'driveway-route') {
+    if (isDrivewayMaterial(payload.drivewayMaterial)) updated.drivewayMaterial = payload.drivewayMaterial
+    if (typeof payload.drivewayCurved === 'boolean') updated.drivewayCurved = payload.drivewayCurved
   }
   if (
     updated.kind === 'rect' &&

@@ -769,6 +769,14 @@ output,
 
 .stair-route-status { flex-wrap: wrap; pointer-events: auto; }
 .stair-route-status input { width: 64px; }
+.driveway-route-status select {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--md-sys-color-surface);
+  color: inherit;
+  font: inherit;
+}
 .heating-planner-status button, .stair-route-status button {
   pointer-events: auto;
   flex-shrink: 0;

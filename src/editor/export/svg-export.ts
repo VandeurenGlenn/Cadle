@@ -20,6 +20,7 @@ import { oneWireSocketConnector } from '../layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from '../roof-geometry.js'
 import { isStairVariant } from '../model/stair-geometry.js'
 import { stairShapeGeometry } from '../model/stair-route.js'
+import { drivewayGeometry, drivewayPatterns } from '../model/driveway.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -293,6 +294,14 @@ export const shapeMarkup = (
       const strokeAttr = ` stroke="${escapeHtml(shape.stroke ?? '#000000')}"`
       const strokeWidthStyle =
         typeof shape.strokeWidth === 'number' ? ` style="stroke-width: ${Math.max(0.5, shape.strokeWidth)}px;"` : ''
+      if (shape.variant === 'driveway-route' && shape.drivewayRoute) {
+        const geometry = drivewayGeometry(shape)
+        return `<g class="shape shape-rect shape-driveway ${extraClass}" data-shape-id="${escapeHtml(shape.id)}" ${rectTransform(shape, bounds)}
+          fill="none" stroke-linecap="butt" stroke-linejoin="round">
+          <path d="${geometry.path}" stroke="${monochrome ? '#333333' : '#625d56'}" stroke-width="${geometry.width + 2}"></path>
+          <path class="driveway-surface" d="${geometry.path}" stroke="url(#driveway-${shape.drivewayMaterial ?? 'pavers'})" stroke-width="${geometry.width}"></path>
+        </g>`
+      }
       if (isStairVariant(shape.variant)) {
         const geometry = stairShapeGeometry(shape, scene)
         return `
@@ -595,12 +604,13 @@ export const buildSvgDocument = (options: {
   }
 
   const wallOpeningCuts = buildWallOpeningCuts(options.shapes, '#ffffff')
+  const drivewayMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && shape.variant === 'driveway-route'))
   const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall')) + wallJunctionMarkup(options.shapes, options.monochrome)
   const stairMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant)))
   const nonSymbolMarkup = groupedMarkup(
     options.shapes.filter((shape) =>
       shape.kind !== 'wall' && shape.kind !== 'symbol' &&
-      !(shape.kind === 'rect' && isStairVariant(shape.variant)))
+      !(shape.kind === 'rect' && (isStairVariant(shape.variant) || shape.variant === 'driveway-route')))
   )
   const symbolMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'symbol'))
   const labelMarkup = roomLabelsMarkup(options.shapes) + bindingLabelsMarkup(options.shapes)
@@ -626,9 +636,9 @@ export const buildSvgDocument = (options: {
     options.printMargin,
     options.drawingScale
   )
-  const markup = `${wallMarkup}${wallOpeningCuts}${stairMarkup}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
+  const markup = `${drivewayMarkup}${wallMarkup}${wallOpeningCuts}${stairMarkup}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
   const exportStyle = options.monochrome ? EXPORT_STYLE_BLOCK_MONO : EXPORT_STYLE_BLOCK
-  const defs = `<style><![CDATA[${exportStyle}]]></style>`
+  const defs = `<style><![CDATA[${exportStyle}]]></style>${drivewayPatterns(options.monochrome)}`
   return `
       <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${options.paper.widthMm}mm" height="${options.paper.heightMm}mm" style="background:#ffffff;">
         <defs>${defs}</defs>

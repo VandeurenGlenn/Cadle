@@ -1,4 +1,4 @@
-import type { RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
+import type { DrivewayMaterial, RoofPattern, RoofVariant, Shape } from '../../editor/model/types.js'
 import { shapeBounds } from '../../editor/model/model.js'
 import { isStairVariant } from '../model/stair-geometry.js'
 import { getCachedSymbolSvg, listEditableSymbolTextFields } from '../symbol-svg-cache.js'
@@ -26,6 +26,8 @@ export type NativeSelectionShapePayload = {
   rectVariant?: RoofVariant
   roofPattern?: RoofPattern
   stairClipAtWalls?: boolean
+  drivewayMaterial?: DrivewayMaterial
+  drivewayCurved?: boolean
   text?: string
   path?: string
   symbolTextFields?: NativeSelectionSymbolTextField[]
@@ -164,6 +166,11 @@ export const createNativeSelectionChangedPayload = (
   if (selectedShape.kind === 'rect' && isStairVariant(selectedShape.variant)) {
     shapePayload.name = 'Trap'
     if (selectedShape.variant !== 'stairs-spiral') shapePayload.stairClipAtWalls = selectedShape.stairClipAtWalls !== false
+  }
+  if (selectedShape.kind === 'rect' && selectedShape.variant === 'driveway-route') {
+    shapePayload.name = 'Oprit'
+    shapePayload.drivewayMaterial = selectedShape.drivewayMaterial ?? 'pavers'
+    shapePayload.drivewayCurved = selectedShape.drivewayCurved !== false
   }
   if (
     selectedShape.kind === 'rect' &&

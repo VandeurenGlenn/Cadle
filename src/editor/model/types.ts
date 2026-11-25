@@ -14,6 +14,7 @@ export type Tool =
   | 'rect'
   | 'built-in-cabinet'
   | StairVariant
+  | 'driveway-route'
   | 'circle'
   | 'arc'
   | 'roof-left'
@@ -34,6 +35,7 @@ export type RoofPattern = 'none' | 'tiles' | 'slates' | 'standing-seam'
 export type StairVariant = 'stairs-straight' | 'stairs-quarter-turn' | 'stairs-double-quarter-turn' | 'stairs-spiral' | 'stairs-route'
 // Points use rectangle-relative coordinates; width is relative to its shorter side.
 export type StairRoute = { points: Point[]; width: number }
+export type DrivewayMaterial = 'cobbles' | 'gravel' | 'pavers'
 
 export type OneWireSourceLink = {
   kind: 'board' | 'circuit' | 'device'
@@ -81,10 +83,13 @@ export type RectShape = GeneratedShapeMetadata & {
   kind: 'rect'
   start: Point
   end: Point
-  variant?: 'rect' | 'circle' | 'arc' | 'built-in-cabinet' | RoofVariant | StairVariant
+  variant?: 'rect' | 'circle' | 'arc' | 'built-in-cabinet' | RoofVariant | StairVariant | 'driveway-route'
   roofPattern?: RoofPattern
   stairRoute?: StairRoute
   stairClipAtWalls?: boolean
+  drivewayRoute?: StairRoute
+  drivewayMaterial?: DrivewayMaterial
+  drivewayCurved?: boolean
   scale?: number
   rotation?: number
   flipX?: boolean

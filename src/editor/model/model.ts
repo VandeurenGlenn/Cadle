@@ -10,6 +10,7 @@ import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multip
 import { isRoofPattern, oppositeRoofVariant } from '../roof-geometry.js'
 import { isStairVariant } from './stair-geometry.js'
 import { sanitizeStairRoute } from './stair-route.js'
+import { isDrivewayMaterial } from './driveway.js'
 
 export const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y })
 
@@ -134,6 +135,9 @@ const copyGeneratedMetadata = (
     locked?: unknown
     stairRoute?: unknown
     stairClipAtWalls?: unknown
+    drivewayRoute?: unknown
+    drivewayMaterial?: unknown
+    drivewayCurved?: unknown
   },
   target: Shape
 ): void => {
@@ -141,6 +145,11 @@ const copyGeneratedMetadata = (
   if (target.kind === 'rect' && isStairVariant(target.variant)) {
     if (target.variant === 'stairs-route') target.stairRoute = sanitizeStairRoute(source.stairRoute)
     if (typeof source.stairClipAtWalls === 'boolean') target.stairClipAtWalls = source.stairClipAtWalls
+  }
+  if (target.kind === 'rect' && target.variant === 'driveway-route') {
+    target.drivewayRoute = sanitizeStairRoute(source.drivewayRoute)
+    if (isDrivewayMaterial(source.drivewayMaterial)) target.drivewayMaterial = source.drivewayMaterial
+    if (typeof source.drivewayCurved === 'boolean') target.drivewayCurved = source.drivewayCurved
   }
   if (target.kind === 'text') {
     const label = sanitizeRoomLabel(source.roomLabel)
@@ -235,6 +244,9 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       roofPattern?: unknown
       stairRoute?: unknown
       stairClipAtWalls?: unknown
+      drivewayRoute?: unknown
+      drivewayMaterial?: unknown
+      drivewayCurved?: unknown
       fill?: unknown
       stroke?: unknown
       strokeWidth?: unknown
@@ -307,13 +319,14 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
 
     if (raw.kind === 'rect' && isPoint(raw.start) && isPoint(raw.end)) {
       if (raw.variant === 'stairs-route' && !sanitizeStairRoute(raw.stairRoute)) continue
+      if (raw.variant === 'driveway-route' && (!sanitizeStairRoute(raw.drivewayRoute) || raw.start.x === raw.end.x || raw.start.y === raw.end.y)) continue
       const rect: RectShape = {
         id: raw.id,
         kind: 'rect',
         start: clonePoint(raw.start),
         end: clonePoint(raw.end)
       }
-      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'built-in-cabinet' || isStairVariant(raw.variant) || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
+      if (raw.variant === 'circle' || raw.variant === 'arc' || raw.variant === 'rect' || raw.variant === 'built-in-cabinet' || raw.variant === 'driveway-route' || isStairVariant(raw.variant) || raw.variant === 'roof-left' || raw.variant === 'roof-straight' || raw.variant === 'roof-right') rect.variant = raw.variant
       if (isRoofPattern(raw.roofPattern) && (rect.variant === 'roof-left' || rect.variant === 'roof-straight' || rect.variant === 'roof-right')) {
         rect.roofPattern = raw.roofPattern
       }

@@ -1,6 +1,8 @@
 import { sanitizeRoomLabel, type RoomLabelData } from '../../../editor/room-labels.js'
 import type { ElectricalConnection } from '../../../editor/model/electrical-connection.js'
 import { sanitizeHeating, type HeatingData, type HeatingLayout } from '../../../editor/heating-plan.js'
+import { isDrivewayMaterial } from '../../../editor/model/driveway.js'
+import type { DrivewayMaterial } from '../../../editor/model/types.js'
 export type BindingLabelSide = 'auto' | 'left' | 'right' | 'top' | 'bottom'
 
 export type SymbolTextField = {
@@ -22,6 +24,8 @@ export type SelectionShape = {
   rectVariant?: 'roof-left' | 'roof-straight' | 'roof-right'
   roofPattern?: 'none' | 'tiles' | 'slates' | 'standing-seam'
   stairClipAtWalls?: boolean
+  drivewayMaterial?: DrivewayMaterial
+  drivewayCurved?: boolean
   path?: string
   text?: string
   symbolTextFields?: SymbolTextField[]
@@ -129,9 +133,11 @@ export const normalizeSelection = (payload: SelectionPayload) => {
       rectVariant: shape.rectVariant === 'roof-left' || shape.rectVariant === 'roof-straight' || shape.rectVariant === 'roof-right' ? shape.rectVariant : null,
       roofPattern: shape.roofPattern === 'tiles' || shape.roofPattern === 'slates' || shape.roofPattern === 'standing-seam' ? shape.roofPattern : 'none',
       stairClipAtWalls: typeof shape.stairClipAtWalls === 'boolean' ? shape.stairClipAtWalls : null,
+      drivewayMaterial: isDrivewayMaterial(shape.drivewayMaterial) ? shape.drivewayMaterial : null,
+      drivewayCurved: typeof shape.drivewayCurved === 'boolean' ? shape.drivewayCurved : null,
       connection: shape.connection ? { ...shape.connection } : null,
       path: typeof shape.path === 'string' ? shape.path : '',
-      label: kind === 'roof-left' || kind === 'roof-straight' || kind === 'roof-right' ? 'Dakvlak' : kind.charAt(0).toUpperCase() + kind.slice(1),
+      label: kind === 'driveway-route' ? 'Oprit' : kind === 'roof-left' || kind === 'roof-straight' || kind === 'roof-right' ? 'Dakvlak' : kind.charAt(0).toUpperCase() + kind.slice(1),
       bindingId: typeof shape.bindingId === 'string' ? shape.bindingId : '',
       name: typeof shape.name === 'string' ? shape.name : '',
       isRoom: shape.isRoom === true,

@@ -5,6 +5,7 @@ import { createHeatingPipe, heatingAnchors, heatingDefaults, heatingManifoldSize
 import { heatingObstacleBounds } from './heating-openings.js'
 import { cleanStairRoute, createStairRoute, snapStairRoutePoint, stairRouteError } from './model/stair-route.js'
 import { isStairVariant } from './model/stair-geometry.js'
+import { createDriveway, drivewayRouteError, DRIVEWAY_PATTERNS, isDrivewayMaterial } from './model/driveway.js'
 import { heatingMaterialsCSV } from './heating-materials.js'
 import { readHeatingPipeProfiles, applyHeatingPipeProfile } from './heating-products.js'
 import { HeatingPlanningFailure, type HeatingPlanningDiagnostic } from './heating-diagnostics.js'
@@ -60,6 +61,7 @@ import {
 import { parseHash } from '../shell/routing.js'
 import type {
   DraftShape,
+  DrivewayMaterial,
   RectShape,
   DragState,
   LineShape,
@@ -294,6 +296,9 @@ export class CadleApp extends LiteElement {
   #stairRoutePoints: Point[] = []
   #stairRouteHover: Point | null = null
   #stairWidthCm = 90
+  #drivewayWidthCm = 300
+  #drivewayMaterial: DrivewayMaterial = 'pavers'
+  #drivewayCurved = true
   #stairRouteError: string | null = null
   #automaticHeatingSettings: AutomaticHeatingSettings | null = null
   #roomLabelError: string | null = null
@@ -2036,7 +2041,7 @@ export class CadleApp extends LiteElement {
 
   #activateTool(tool: Tool) {
     this.#roomLabelError = null
-    if (tool !== 'stairs-route') {
+    if (tool !== this.#tools.current) {
       this.#stairRoutePoints = []
       this.#stairRouteHover = null
       this.#stairRouteError = null
@@ -2437,6 +2442,11 @@ export class CadleApp extends LiteElement {
   }
 
   #onStageDoubleClick = async (event: MouseEvent) => {
+    if (this.#tools.current === 'driveway-route') {
+      event.preventDefault()
+      this.#commitDriveway()
+      return
+    }
     if (this.#tools.current === 'stairs-route') {
       event.preventDefault()
       this.#commitStairRoute()
@@ -5226,6 +5236,32 @@ export class CadleApp extends LiteElement {
               <button type="button" @click=${() => this.#commitStairRoute()}>Trap bewaren</button>
               <button type="button" @click=${() => this.#activateTool('select')}>Annuleren</button>
             </div>` : ''}
+            ${this.#tools.current === 'driveway-route' ? html`<div class="stair-route-status driveway-route-status" role="status">
+              <span>${this.#stairRouteError ?? 'Klik de punten van de oprit. Enter of dubbelklik om te bewaren; Backspace verwijdert het laatste punt.'}</span>
+              <label>Breedte (cm) <input aria-label="Opritbreedte (cm)" type="number" min="1" step="any" required
+                .value=${String(this.#drivewayWidthCm)} @change=${(event: Event) => {
+                  const input = event.target as HTMLInputElement
+                  if (input.checkValidity() && Number.isFinite(input.valueAsNumber)) {
+                    this.#drivewayWidthCm = input.valueAsNumber
+                    this.#stairRouteError = null
+                    this.#render()
+                  } else input.reportValidity()
+                }} /></label>
+              <label>Verharding <select aria-label="Verharding oprit" .value=${this.#drivewayMaterial} @change=${(event: Event) => {
+                const value = (event.target as HTMLSelectElement).value
+                if (isDrivewayMaterial(value)) { this.#drivewayMaterial = value; this.#render() }
+              }}>
+                <option value="cobbles">Kasseien</option><option value="gravel">Kiezels</option><option value="pavers">Klinkers</option>
+              </select></label>
+              <label>Bochten <select aria-label="Bochten oprit" .value=${this.#drivewayCurved ? 'rounded' : 'angular'} @change=${(event: Event) => {
+                this.#drivewayCurved = (event.target as HTMLSelectElement).value === 'rounded'
+                this.#render()
+              }}>
+                <option value="rounded">Afgerond</option><option value="angular">Hoekig</option>
+              </select></label>
+              <button type="button" @click=${() => this.#commitDriveway()}>Oprit bewaren</button>
+              <button type="button" @click=${() => this.#activateTool('select')}>Annuleren</button>
+            </div>` : ''}
             ${this.#tools.current === 'room-label' || this.#roomLabelError ? html`<div class="room-label-status" role=${this.#roomLabelError ? 'alert' : 'status'}>
               ${this.#roomLabelError ?? 'Klik in een gesloten ruimte om een ID en naam toe te voegen of te wijzigen.'}
             </div>` : ''}
@@ -5261,6 +5297,7 @@ export class CadleApp extends LiteElement {
               @dblclick=${this.#onStageDoubleClick}
               @contextmenu=${this.#onStageContextMenu}>
               <defs>
+                ${unsafeSVG(DRIVEWAY_PATTERNS)}
                 ${guard([this.#sceneRevision, this.readOnly], () => this.#wallMaskTemplate())}
                 <clipPath id="page-clip">
                   <rect
@@ -5599,6 +5636,7 @@ export class CadleApp extends LiteElement {
     )
     const symbolShapes = displayShapes.filter((shape) => shape.kind === 'symbol')
     const stairShapes = displayShapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant))
+    const drivewayShapes = displayShapes.filter((shape) => shape.kind === 'rect' && shape.variant === 'driveway-route')
     const restShapes = displayShapes.filter(
       (shape) =>
         shape.kind !== 'wall' &&
@@ -5606,7 +5644,7 @@ export class CadleApp extends LiteElement {
         shape.kind !== 'window' &&
         shape.kind !== 'gate' &&
         shape.kind !== 'symbol' &&
-        !(shape.kind === 'rect' && isStairVariant(shape.variant))
+        !(shape.kind === 'rect' && (isStairVariant(shape.variant) || shape.variant === 'driveway-route'))
     )
     const wallMask = this.#hasWallOpenings() ? 'url(#wall-opening-mask)' : nothing
     const selectedGroupId = this.#selectedGroupId()
@@ -5666,6 +5704,7 @@ export class CadleApp extends LiteElement {
 
     return svg`
       ${this.#safeAreaTemplate()}
+      ${groupedTemplate(drivewayShapes)}
       <g mask=${wallMask}>
         ${groupedTemplate(wallShapes)}
         ${unsafeSVG(wallJunctionMarkup(wallShapes))}
@@ -6102,9 +6141,12 @@ export class CadleApp extends LiteElement {
   #stairRoutePreviewTemplate() {
     if (!this.#stairRoutePoints.length || !this.#stairRouteHover) return nothing
     const points = cleanStairRoute([...this.#stairRoutePoints, this.#stairRouteHover])
-    const width = drawingUnitsForMetres(this.#stairWidthCm / 100, this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+    const driveway = this.#tools.current === 'driveway-route'
+    const width = drawingUnitsForMetres((driveway ? this.#drivewayWidthCm : this.#stairWidthCm) / 100, this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
     return svg`
-      ${!stairRouteError(points, width) ? this.#shapeTemplate(createStairRoute('__stair-preview__', points, width), false, 'draft') : nothing}
+      ${driveway
+        ? !drivewayRouteError(points, width) ? this.#shapeTemplate(createDriveway('__driveway-preview__', points, width, this.#drivewayMaterial, this.#drivewayCurved), false, 'draft') : nothing
+        : !stairRouteError(points, width) ? this.#shapeTemplate(createStairRoute('__stair-preview__', points, width), false, 'draft') : nothing}
       <polyline data-stair-route-preview points=${points.map((p) => `${p.x},${p.y}`).join(' ')}
         fill="none" stroke="var(--md-sys-color-primary, #356859)" stroke-width="1" stroke-dasharray="4 4" pointer-events="none"></polyline>
     `
@@ -6118,6 +6160,21 @@ export class CadleApp extends LiteElement {
     this.#stairRouteError = stairRouteError(points, width)
     if (this.#stairRouteError) { this.#render(); return }
     const shape = createStairRoute(nextShapeId(), points, width)
+    this.#document.shapes.push(shape)
+    this.#document.selectedId = shape.id
+    this.#document.selectedIds = new Set([shape.id])
+    this.#pushHistory()
+    this.#activateTool('select')
+  }
+
+  #commitDriveway() {
+    const widthInput = this.shadowRoot?.querySelector<HTMLInputElement>('.driveway-route-status input')
+    if (widthInput && !widthInput.checkValidity()) { widthInput.reportValidity(); return }
+    const points = cleanStairRoute(this.#stairRoutePoints)
+    const width = drawingUnitsForMetres(this.#drivewayWidthCm / 100, this.#drawingScale ?? DEFAULT_DRAWING_SCALE)
+    this.#stairRouteError = drivewayRouteError(points, width)
+    if (this.#stairRouteError) { this.#render(); return }
+    const shape = createDriveway(nextShapeId(), points, width, this.#drivewayMaterial, this.#drivewayCurved)
     this.#document.shapes.push(shape)
     this.#document.selectedId = shape.id
     this.#document.selectedIds = new Set([shape.id])
@@ -6361,8 +6418,9 @@ export class CadleApp extends LiteElement {
       await this.#labelRoomAt(rawPoint)
       return
     }
-    if (this.#tools.current === 'stairs-route' && event.button === 0) {
-      const point = snapStairRoutePoint(this.#snapPoint(rawPoint), this.#stairRoutePoints.at(-1))
+    if ((this.#tools.current === 'stairs-route' || this.#tools.current === 'driveway-route') && event.button === 0) {
+      const snapped = this.#snapPoint(rawPoint)
+      const point = this.#tools.current === 'stairs-route' ? snapStairRoutePoint(snapped, this.#stairRoutePoints.at(-1)) : snapped
       if (!samePoint(point, this.#stairRoutePoints.at(-1) ?? null)) this.#stairRoutePoints.push(point)
       this.#stairRouteHover = point
       this.#stairRouteError = null
@@ -6883,8 +6941,9 @@ export class CadleApp extends LiteElement {
     if (!rawPoint) return
     this.#stageContextPastePoint = rawPoint
     pubsub.publish('shell.pointer', rawPoint)
-    if (this.#tools.current === 'stairs-route' && this.#stairRoutePoints.length) {
-      this.#stairRouteHover = snapStairRoutePoint(this.#snapPoint(rawPoint), this.#stairRoutePoints.at(-1))
+    if ((this.#tools.current === 'stairs-route' || this.#tools.current === 'driveway-route') && this.#stairRoutePoints.length) {
+      const snapped = this.#snapPoint(rawPoint)
+      this.#stairRouteHover = this.#tools.current === 'stairs-route' ? snapStairRoutePoint(snapped, this.#stairRoutePoints.at(-1)) : snapped
       this.#renderPreviewOnly()
       return
     }
@@ -7206,9 +7265,12 @@ export class CadleApp extends LiteElement {
       return
     }
     if (isEditableKeyboardEvent(event)) return
-    if (this.#tools.current === 'stairs-route' && ['Enter', 'Escape', 'Backspace'].includes(event.key)) {
+    if ((this.#tools.current === 'stairs-route' || this.#tools.current === 'driveway-route') && ['Enter', 'Escape', 'Backspace'].includes(event.key)) {
       event.preventDefault()
-      if (event.key === 'Enter') this.#commitStairRoute()
+      if (event.key === 'Enter') {
+        if (this.#tools.current === 'driveway-route') this.#commitDriveway()
+        else this.#commitStairRoute()
+      }
       else if (event.key === 'Escape') this.#activateTool('select')
       else {
         this.#stairRoutePoints.pop()

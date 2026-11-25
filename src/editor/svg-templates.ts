@@ -27,6 +27,7 @@ import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
 import { isStairVariant } from './model/stair-geometry.js'
 import { stairShapeGeometry } from './model/stair-route.js'
+import { drivewayGeometry } from './model/driveway.js'
 
 const pointToSegmentDistance = (point: Point, start: Point, end: Point): number => {
   const dx = end.x - start.x
@@ -249,6 +250,17 @@ export const shapeTemplate = (
       const bounds = shapeBounds(shape)
       const fill = shape.fill ?? 'transparent'
       const stroke = shape.stroke ?? '#000000'
+      if (shape.variant === 'driveway-route' && shape.drivewayRoute) {
+        const geometry = drivewayGeometry(shape)
+        const transform = rectTransform(shape, bounds)
+        return svg`
+          <g class=${`${shapeClass} shape-driveway`} data-shape-id=${shape.id} data-selected=${selectedAttr}
+            transform=${transform || nothing} fill="none" stroke-linecap="butt" stroke-linejoin="round">
+            <path d=${geometry.path} stroke="#625d56" stroke-width=${geometry.width + 2}></path>
+            <path class="driveway-surface" d=${geometry.path} stroke=${`url(#driveway-${shape.drivewayMaterial ?? 'pavers'})`} stroke-width=${geometry.width}></path>
+          </g>
+        `
+      }
       if (isStairVariant(shape.variant)) {
         const geometry = stairShapeGeometry(shape, scene)
         const transform = rectTransform(shape, bounds)

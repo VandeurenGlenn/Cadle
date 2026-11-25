@@ -99,6 +99,7 @@ import {
 } from './circuit-schedule-page.js'
 import {
   bindingLabelsTemplate,
+  stairReadabilityMaskMarkup,
   hasWallOpeningMask,
   measurementTemplate,
   rubberBandTemplate,
@@ -5298,6 +5299,7 @@ export class CadleApp extends LiteElement {
               @contextmenu=${this.#onStageContextMenu}>
               <defs>
                 ${unsafeSVG(DRIVEWAY_PATTERNS)}
+                ${guard([this.#sceneRevision, this.readOnly], () => unsafeSVG(stairReadabilityMaskMarkup(this.#displayShapes())))}
                 ${guard([this.#sceneRevision, this.readOnly], () => this.#wallMaskTemplate())}
                 <clipPath id="page-clip">
                   <rect
@@ -5709,7 +5711,7 @@ export class CadleApp extends LiteElement {
         ${groupedTemplate(wallShapes)}
         ${unsafeSVG(wallJunctionMarkup(wallShapes))}
       </g>
-      ${groupedTemplate(stairShapes)}
+      <g mask="url(#stair-readability-mask)">${groupedTemplate(stairShapes)}</g>
       ${groupedTemplate(restShapes)}
       ${groupedTemplate(openingShapes)}
       ${groupedTemplate(symbolShapes)}

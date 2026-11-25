@@ -19,7 +19,11 @@ test('draws a stair route, hides all flights after the first wall and retains th
       schema: { version: 'native-svg-1', objects: [{ kind: 'cadle-native-svg-document', payload: {
         version: 2, paperLayoutVersion: 1, selectedId: null, drawingScale: 100,
         paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680,
-        shapes: [{ id: 'wall', kind: 'wall', start: { x: 400, y: 704 }, end: { x: 960, y: 704 }, strokeWidth: 8 }]
+        shapes: [
+          { id: 'wall', kind: 'wall', start: { x: 400, y: 704 }, end: { x: 960, y: 704 }, strokeWidth: 8 },
+          { id: 'light', kind: 'symbol', path: 'symbols/Consumption appliances/Lighting.svg', name: 'Lighting',
+            position: { x: 480, y: 880 }, scale: 1, bindingId: 'A1', bindingLabelOffset: { x: 0, y: 60 } }
+        ]
       } }] }
     } }
   }
@@ -74,6 +78,32 @@ test('draws a stair route, hides all flights after the first wall and retains th
   await expect(stairs.locator('.stairs-break')).toHaveCount(1)
   await expect(app.locator('[data-stair-route-preview]')).toHaveCount(0)
   await expect.poll(footprint).toEqual({ x: 440, y: 708, width: 80, height: 252 })
+  const mask = app.locator('#stair-readability-mask')
+  await expect(mask.locator('rect[fill="black"]')).toHaveCount(2)
+  const pixels = await app.evaluate(async (element) => {
+    const root = element.shadowRoot!
+    const mask = root.querySelector('#stair-readability-mask')!.outerHTML
+    const stair = root.querySelector('g.shape-stairs:not(.draft)')!.outerHTML
+    const image = new Image()
+    const url = URL.createObjectURL(new Blob([
+      `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1100"><defs>${mask}</defs><g mask="url(#stair-readability-mask)">${stair}</g></svg>`
+    ], { type: 'image/svg+xml' }))
+    try {
+      image.src = url
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = 1000
+      canvas.height = 1100
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, 1000, 1100)
+      context.drawImage(image, 0, 0)
+      return [840, 880, 940].map((y) => Array.from(context.getImageData(480, y, 1, 1).data))
+    } finally { URL.revokeObjectURL(url) }
+  })
+  expect(pixels[0][0]).toBeLessThan(160)
+  expect(pixels[1]).toEqual([255, 255, 255, 255])
+  expect(pixels[2]).toEqual([255, 255, 255, 255])
   const outline = await stairs.locator('.stairs-outline').getAttribute('d')
   const exported = await app.evaluate((element) => (element as CadleApp).toSVG())
   expect(exported).toContain(`d="${outline}"`)

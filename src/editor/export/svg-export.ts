@@ -12,7 +12,7 @@ import type { PaperPresetConfig } from '../constants.js'
 import { DEFAULT_DRAW_STROKE, DEFAULT_DRAW_STROKE_WIDTH } from '../constants.js'
 import type { Project } from '../../types.js'
 import { buildProjectTitleBlockMarkup } from '../layout/project-title-block.js'
-import { bindingLabelsMarkup, roomLabelsMarkup } from '../svg-templates.js'
+import { bindingLabelsMarkup, roomLabelsMarkup, stairReadabilityMaskMarkup } from '../svg-templates.js'
 import { pageLayout, PAPER_BINDING_LABEL_FONT_SIZE } from '../layout/page-layout.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from '../socket-multiplicity.js'
@@ -606,7 +606,8 @@ export const buildSvgDocument = (options: {
   const wallOpeningCuts = buildWallOpeningCuts(options.shapes, '#ffffff')
   const drivewayMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && shape.variant === 'driveway-route'))
   const wallMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'wall')) + wallJunctionMarkup(options.shapes, options.monochrome)
-  const stairMarkup = groupedMarkup(options.shapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant)))
+  const stairShapes = options.shapes.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant))
+  const stairMarkup = stairShapes.length ? `<g mask="url(#stair-readability-mask)">${groupedMarkup(stairShapes)}</g>` : ''
   const nonSymbolMarkup = groupedMarkup(
     options.shapes.filter((shape) =>
       shape.kind !== 'wall' && shape.kind !== 'symbol' &&
@@ -638,7 +639,7 @@ export const buildSvgDocument = (options: {
   )
   const markup = `${drivewayMarkup}${wallMarkup}${wallOpeningCuts}${stairMarkup}${nonSymbolMarkup}${symbolMarkup}${labelMarkup}${titleBlockMarkup}`
   const exportStyle = options.monochrome ? EXPORT_STYLE_BLOCK_MONO : EXPORT_STYLE_BLOCK
-  const defs = `<style><![CDATA[${exportStyle}]]></style>${drivewayPatterns(options.monochrome)}`
+  const defs = `<style><![CDATA[${exportStyle}]]></style>${drivewayPatterns(options.monochrome)}${stairReadabilityMaskMarkup(options.shapes)}`
   return `
       <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${options.paper.widthMm}mm" height="${options.paper.heightMm}mm" style="background:#ffffff;">
         <defs>${defs}</defs>

@@ -702,6 +702,45 @@ export const bindingLabelsMarkup = (shapes: Shape[]): string =>
     )
     .join('')
 
+export const stairReadabilityMaskMarkup = (shapes: Shape[]): string => {
+  const visible = shapes.filter((shape) => !shape.hidden)
+  const stairs = visible.filter((shape) => shape.kind === 'rect' && isStairVariant(shape.variant))
+  if (!stairs.length) return ''
+  const padding = 4
+  const transformedBounds = (shape: Shape) => {
+    const bounds = shapeBounds(shape)
+    if (!shape.rotation && !shape.flipX && !shape.flipY) return bounds
+    const center = 'position' in shape ? shape.position
+      : { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
+    const angle = (shape.rotation ?? 0) * Math.PI / 180
+    const points = [0, 1, 2, 3].map((corner) => {
+      const dx = (bounds.x + (corner % 2) * bounds.width - center.x) * (shape.flipX ? -1 : 1)
+      const dy = (bounds.y + Math.floor(corner / 2) * bounds.height - center.y) * (shape.flipY ? -1 : 1)
+      return { x: center.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: center.y + dx * Math.sin(angle) + dy * Math.cos(angle) }
+    })
+    const x = Math.min(...points.map((point) => point.x)), y = Math.min(...points.map((point) => point.y))
+    return { x, y, width: Math.max(...points.map((point) => point.x)) - x, height: Math.max(...points.map((point) => point.y)) - y }
+  }
+  const clearances = visible.flatMap((shape) =>
+    shape.kind === 'symbol' ? [symbolContentBounds(shape)] : shape.kind === 'text' ? [transformedBounds(shape)] : []
+  )
+  for (const label of resolveBindingLabelPlacements(visible)) {
+    const width = Math.max(PAPER_BINDING_LABEL_FONT_SIZE, label.bindingId.length * PAPER_BINDING_LABEL_FONT_SIZE * 0.68)
+    const height = PAPER_BINDING_LABEL_FONT_SIZE * 1.1
+    clearances.push({ x: label.x - width / 2, y: label.y - height / 2, width, height })
+  }
+  const bounds = [...stairs.map(transformedBounds), ...clearances]
+  const x = Math.min(...bounds.map((rect) => rect.x)) - padding * 2
+  const y = Math.min(...bounds.map((rect) => rect.y)) - padding * 2
+  const width = Math.max(...bounds.map((rect) => rect.x + rect.width)) - x + padding * 2
+  const height = Math.max(...bounds.map((rect) => rect.y + rect.height)) - y + padding * 2
+  return `<mask id="stair-readability-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"
+    x="${x}" y="${y}" width="${width}" height="${height}" style="mask-type:luminance">
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="white"/>
+    ${clearances.map((rect) => `<rect x="${rect.x - padding}" y="${rect.y - padding}" width="${rect.width + padding * 2}" height="${rect.height + padding * 2}" fill="black"/>`).join('')}
+  </mask>`
+}
+
 const selectedOutlineBounds = (shape: Shape) => {
   if (shape.kind === 'text') {
     const scale = shape.scale ?? 1

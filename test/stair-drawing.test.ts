@@ -12,6 +12,7 @@ import { updateSelectionProperties } from '../src/editor/interaction/selection-p
 import { createNativeSelectionChangedPayload } from '../src/editor/interaction/selection-payload.ts'
 import { PAPER_PRESETS } from '../src/editor/constants.ts'
 import type { LineShape, RectShape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
+import { stairReadabilityMaskMarkup } from '../src/editor/svg-templates.ts'
 
 for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral'] as const) {
   test(`${variant} resizes with the pointer and retains its geometry after saving and scaling`, () => {
@@ -81,6 +82,26 @@ test('renders stairs beneath symbols and text labels regardless of document orde
   const stairIndex = markup.indexOf('data-shape-id="stair"')
   assert.ok(stairIndex < markup.indexOf('data-shape-id="symbol"'))
   assert.ok(stairIndex < markup.indexOf('data-shape-id="label"'))
+  assert.match(markup, /<g mask="url\(#stair-readability-mask\)">/)
+  assert.match(markup, /<mask id="stair-readability-mask"/)
+})
+
+test('stairs leave padded clearances around symbols, text and binding labels without masking other shapes', () => {
+  const stair: RectShape = { id: 'stair', kind: 'rect', variant: 'stairs-straight',
+    start: { x: 0, y: 0 }, end: { x: 200, y: 400 } }
+  const lamp: SymbolShape = { id: 'lamp', kind: 'symbol', path: 'lamp.svg', name: 'Lighting',
+    position: { x: 100, y: 200 }, scale: 1, bindingId: 'A1', bindingLabelOffset: { x: 50, y: 0 } }
+  const text: TextShape = { id: 'text', kind: 'text', position: { x: 20, y: 300 }, text: 'Lamp' }
+  const shapes = [stair, lamp, text]
+  const mask = stairReadabilityMaskMarkup(shapes)
+  assert.match(mask, /x="84" y="184" width="32" height="32" fill="black"/)
+  assert.equal((mask.match(/fill="black"/g) ?? []).length, 3)
+  assert.equal((stairReadabilityMaskMarkup([stair, { ...lamp, hidden: true }]).match(/fill="black"/g) ?? []).length, 0)
+  assert.equal(stairReadabilityMaskMarkup([lamp]), '')
+  const exported = buildSvgDocument({ shapes, selectedShape: null, paper: PAPER_PRESETS['a4-landscape'],
+    worldWidth: 1000, worldHeight: 1000 })
+  assert.ok(exported.includes(mask))
+  assert.match(exported, /<image\s+class="shape shape-symbol[^>]*data-shape-id="lamp"[^>]*>/)
 })
 
 test('double-quarter-turn stairs have three flights, two winding corners and an open centre', () => {

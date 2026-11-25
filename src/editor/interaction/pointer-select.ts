@@ -26,7 +26,7 @@ export const expandSelectionWithGroup = (shapes: readonly Shape[], shapeId: stri
   const shape = shapes.find((candidate) => candidate.id === shapeId)
   if (!shape || shape.locked) return new Set()
   const groupId = shape.groupId
-  if (!groupId || groupId.startsWith('onewire-')) return new Set([shapeId])
+  if (!groupId || groupId.startsWith('onewire-') || groupId.startsWith('solar-installation-')) return new Set([shapeId])
   return new Set(
     shapes.filter((candidate) => candidate.groupId === groupId && !candidate.locked).map((candidate) => candidate.id)
   )

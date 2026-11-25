@@ -7,6 +7,7 @@ import { ONE_WIRE_CONDUCTOR_STROKE_WIDTH } from '../constants.js'
 import { isOneWireRailShape } from './onewire-regeneration.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from '../circuit-defaults.js'
 import { presentConnectionLabels } from './connection-label-presentation.js'
+import { PROTECTION_TEXT_SIZE, PROTECTION_TEXT_WEIGHT } from './protection-label-layout.js'
 
 export const buildSolarInstallation = (
   installation: SolarInstallation,
@@ -21,11 +22,12 @@ export const buildSolarInstallation = (
   let connection = tap
   let solarBreakerId: string | undefined
   const text = (content: string, x: number, y: number): TextShape => ({
-    id: nextId(), kind: 'text', text: content, position: { x, y }, scale: paperTextScale(2.5), groupId,
+    id: nextId(), kind: 'text', text: content, position: { x, y }, scale: paperTextScale(2),
+    fontWeight: 400, groupId,
     ...(railId ? { oneWireRailId: railId } : {})
   })
   const add = (path: string, name: string, description: string, quantity?: string) => {
-    const scale = oneWireSymbolScaleFor(path) ?? 1.35
+    const scale = name === 'Zonnepanelen' ? 2.4 : oneWireSymbolScaleFor(path) ?? 1.35
     let shape: SymbolShape = {
       id: nextId(), kind: 'symbol', path, name, scale, groupId, ...(railId ? { oneWireRailId: railId } : {}),
       strokeWidth: oneWireSymbolStrokeWidthFor(path, scale),
@@ -44,10 +46,12 @@ export const buildSolarInstallation = (
         poles: `${shape.electrical.poles}P`, phase: '', 'residual-current': '' }
     }
     if (name === 'PV automaat') solarBreakerId = shape.id
-    const placed = positionOneWireSymbolForConnection(shape, connection, direction, undefined, 48)
+    const placed = positionOneWireSymbolForConnection(shape, connection, direction, undefined,
+      name === 'Omvormer' ? 300 : 48)
     shape = placed.symbol
     const body = oneWireLayoutBounds(shape)
-    const row: (SymbolShape | TextShape)[] = [shape, text(description, body.x + body.width + 24, body.y + 20)]
+    const row: (SymbolShape | TextShape)[] = [shape]
+    if (description) row.push(text(description, body.x + body.width + 24, body.y + 20))
     if (quantity) row.push(text(quantity, body.x + body.width + 24, body.y - 10))
     if (direction === 'top' && !disconnected) {
       const bottom = Math.max(...row.map(oneWireLayoutBounds).map((box) => box.y + box.height))
@@ -69,11 +73,13 @@ export const buildSolarInstallation = (
       shapes.push(cable)
       if (solarCable) {
         const cableLabel = text(
-          'PV-kabel AC:\nnog op te geven',
-          connection.x - 72,
-          (connection.y + placed.connection.y) / 2
+          'nog op te geven',
+          connection.x + 36,
+          Math.max(connection.y, placed.connection.y) - 24
         )
-        cableLabel.textAnchor = 'end'
+        cableLabel.scale = PROTECTION_TEXT_SIZE / 18
+        cableLabel.fontWeight = PROTECTION_TEXT_WEIGHT
+        cableLabel.rotation = -90
         cableLabel.sourceLink = { kind: 'device', id: solarBreakerId, role: 'solar-ac-cable-label' }
         shapes.push(cableLabel)
       }
@@ -92,7 +98,7 @@ export const buildSolarInstallation = (
     })
   }
   if (installation.kind !== 'panels') {
-    add('symbols/Protection devices/Automaat.svg', 'PV automaat', 'PV')
+    add('symbols/Protection devices/Automaat.svg', 'PV automaat', '')
     add('symbols/Photovoltaic devices (≠AREI)/Inverter.svg', 'Omvormer',
       [installation.inverterManufacturer, installation.inverterModel,
         `${installation.inverterPowerW / 1000} kW AC · ${installation.phases} fase(n)`,
@@ -123,6 +129,12 @@ export const updateSolarInstallationCable = (shapes: readonly Shape[], breaker: 
   const sectionMm2 = electrical?.cableSectionMm2 ?? defaultCable?.sectionMm2
   const conductors = sectionMm2 ? electrical?.cableConductors ?? defaultCable?.conductors ?? defaults.cableConductors : undefined
   return presentConnectionLabels(shapes.map((shape) => {
+    if (shape.kind === 'symbol' && shape.groupId === breaker.groupId &&
+      shape.electrical?.solar && shape.electrical.solar.kind !== 'panels' &&
+      typeof electrical?.breakerCurrentA === 'number') {
+      return { ...shape, electrical: { ...shape.electrical,
+        solar: { ...shape.electrical.solar, breakerCurrentA: electrical.breakerCurrentA } } }
+    }
     if (shape.kind !== 'line' || shape.sourceLink?.role !== 'solar-ac-cable' ||
       shape.sourceLink.id !== breaker.id || !shape.connection) return shape
     return {
@@ -139,6 +151,25 @@ export const updateSolarInstallationCable = (shapes: readonly Shape[], breaker: 
       }
     }
   }))
+}
+
+export const preserveSolarBreakerSettings = (shapes: Shape[], previous?: SymbolShape): Shape[] => {
+  const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')
+  if (!breaker || !previous?.electrical || !breaker.electrical) return shapes
+  const electrical = { ...previous.electrical, ...breaker.electrical,
+    cableConductors: previous.electrical.cableConductors,
+    cableSectionMm2: previous.electrical.cableSectionMm2,
+    cableType: previous.electrical.cableType,
+    cableFireClass: previous.electrical.cableFireClass,
+    hasProtectiveConductor: previous.electrical.hasProtectiveConductor,
+    breakerCurve: previous.electrical.breakerCurve ?? breaker.electrical.breakerCurve }
+  const restored: SymbolShape = {
+    ...breaker, electrical,
+    bindingId: previous.bindingId, bindingLabelOffset: previous.bindingLabelOffset,
+    symbolTextOverrides: { ...previous.symbolTextOverrides, ...breaker.symbolTextOverrides,
+      'rated-current': `${electrical.breakerCurve ?? 'C'}${electrical.breakerCurrentA}A` }
+  }
+  return updateSolarInstallationCable(shapes.map((shape) => shape.id === breaker.id ? restored : shape), restored)
 }
 
 const solarElectricalLines = (panel: SolarPanel) => [

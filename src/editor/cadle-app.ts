@@ -147,7 +147,7 @@ import {
 } from './layout/onewire-layout-plan.js'
 import { alignOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
-import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
+import { buildSolarInstallation, preserveSolarBreakerSettings, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -778,6 +778,7 @@ export class CadleApp extends LiteElement {
     const isTopologyProtection = Boolean(
       isProtectionSymbol && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
     )
+    const isSolarProtection = Boolean(isProtectionSymbol && selectedShape?.groupId?.startsWith('solar-installation-'))
     const standaloneCircuitKey = selectedShape ? circuitKeyForShape(selectedShape) : null
     const multipleSelection = !this.#selectedGroupId() && this.#document.selectedIds.size > 1
     if (payload.electrical && multipleSelection && currentPageType === 'onewire') {
@@ -951,6 +952,7 @@ export class CadleApp extends LiteElement {
     if (
       payload.electrical &&
       !multipleSelection &&
+      !isSolarProtection &&
       (circuitGroup || (currentPageType === 'onewire' && isProtectionSymbol && standaloneCircuitKey))
     ) {
       const { role, oneWireEligible, ratedCurrentA, ...circuitProperties } = payload.electrical
@@ -991,6 +993,22 @@ export class CadleApp extends LiteElement {
     }
     if (payload.connection && selectedShape?.kind === 'line') {
       const connection = (nextShapes.find((shape) => shape.id === selectedShape.id) as LineShape | undefined)?.connection
+      if (connection?.labelOwner === 'solar-installation' && selectedShape.sourceLink?.role === 'solar-ac-cable') {
+        const breaker = this.#document.shapes.find((shape): shape is SymbolShape =>
+          shape.kind === 'symbol' && shape.id === selectedShape.sourceLink?.id)
+        const electrical: NonNullable<SelectionPropertyUpdate['electrical']> = {}
+        if ('sectionMm2' in payload.connection) electrical.cableSectionMm2 = connection.sectionMm2 ?? null
+        if ('conductors' in payload.connection) electrical.cableConductors = connection.conductors ?? null
+        if ('cableType' in payload.connection) electrical.cableType = connection.cableType ?? null
+        if ('fireClass' in payload.connection) electrical.cableFireClass = connection.fireClass ?? null
+        if ('hasProtectiveConductor' in payload.connection) electrical.hasProtectiveConductor = connection.hasProtectiveConductor ?? null
+        if (breaker && Object.keys(electrical).length) {
+          const updated = updateSelectionProperties(this.#document.shapes, { electrical },
+            { selectedIds: new Set([breaker.id]), selectedId: breaker.id, groupedSelection: false })
+          const updatedBreaker = updated?.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.id === breaker.id)
+          if (updated && updatedBreaker) this.#document.shapes = updateSolarInstallationCable(updated, updatedBreaker)
+        }
+      }
       if (connection?.labelOwner === 'circuit' && selectedShape.sourceLink) {
         const update: CircuitPropertyUpdate = {}
         if ('sectionMm2' in payload.connection) update.cableSectionMm2 = connection.sectionMm2
@@ -4942,6 +4960,7 @@ export class CadleApp extends LiteElement {
     const isTopologyProtection = Boolean(
       isProtectionText && /^board:main:topology:v\d+:/.test(selectedShape?.generationKey ?? '')
     )
+    const isSolarProtection = Boolean(isProtectionText && selectedShape?.groupId?.startsWith('solar-installation-'))
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
     const circuitPropertiesEditable = currentPageType === 'onewire' && Boolean(isProtectionText) &&
       (Boolean(groupedSelection) || selectedShapes.every((shape) => shape.kind === 'symbol' &&
@@ -4952,6 +4971,8 @@ export class CadleApp extends LiteElement {
         ? isTopologyProtection
           ? (selectedShape.electrical ??
             electricalMetadataFromCatalog(undefined, selectedShape.name, selectedShape.path))
+          : isSolarProtection
+            ? selectedShape.electrical
           : circuitGroup
             ? effectiveCircuitElectrical(selectedShape, circuitGroup)
             : effectiveStandaloneCircuitElectrical(
@@ -5994,6 +6015,8 @@ export class CadleApp extends LiteElement {
         shape.kind === 'symbol' && shape.groupId === selected.groupId && Boolean(shape.electrical?.solar)) : undefined
     const previous = equipment?.electrical?.solar
     let groupId = previous ? selected?.groupId : undefined
+    const previousBreaker = groupId ? this.#document.shapes.find((shape): shape is SymbolShape =>
+      shape.kind === 'symbol' && shape.groupId === groupId && shape.name === 'PV automaat') : undefined
     if (groupId && this.#document.shapes.some((shape) => shape.groupId === groupId && shape.locked)) {
       globalThis.alert('Ontgrendel de PV-installatie voordat je deze bijwerkt.')
       return
@@ -6058,10 +6081,10 @@ export class CadleApp extends LiteElement {
       shape.kind === 'line' && shape.groupId === groupId && Math.abs(shape.start.y - rail.start.y) < 0.01) : undefined
     const tap = { x: oldFeed?.start.x ?? Math.min(rail.start.x, rail.end.x) + 60, y: rail.start.y }
     const direction = oldFeed && oldFeed.end.y > oldFeed.start.y ? 'bottom' : 'top'
-    let generated = buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction)
+    let generated = preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction), previousBreaker)
     let dx = solarInstallationPlacement(generated, occupied, rail, area)
     if (dx === undefined) {
-      generated = buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction === 'top' ? 'bottom' : 'top')
+      generated = preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction === 'top' ? 'bottom' : 'top'), previousBreaker)
       dx = solarInstallationPlacement(generated, occupied, rail, area)
     }
     if (dx === undefined) {

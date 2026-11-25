@@ -207,6 +207,66 @@ test('cancels PV placement mode with Escape', async ({ page }) => {
   expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(0)
 })
 
+test('edits the PV breaker circuit and cable like a normal breaker and keeps them after PV edits and reload', async ({ page }) => {
+  const { app, stored, pageKey } = await openProject(page, [])
+  const trigger = page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })
+  await trigger.click()
+  const dialog = page.locator('solar-installation-dialog')
+  await dialog.getByLabel('Paneelmodel', { exact: true }).fill('P470')
+  await dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true }).fill('470')
+  await dialog.getByLabel('Omvormermodel', { exact: true }).fill('INV-5000')
+  await dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true }).fill('5000')
+  await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('32')
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
+  await clickPlacementPoint(page)
+  const breaker = (await stored()).find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  await app.locator(`g.shape-symbol[data-shape-id="${breaker.id}"] text.onewire-technical-annotation`)
+    .filter({ hasText: 'C32A' }).click()
+  const pane = page.locator('object-pane')
+  const binding = pane.locator('input.native-binding-input')
+  await expect(binding).toBeVisible()
+  await binding.fill('A')
+  await binding.press('Enter')
+  await pane.locator('[data-electrical-field="breakerCurrentA"]').selectOption('25')
+  await pane.locator('[data-electrical-field="cableSectionMm2"]').selectOption('6')
+  await pane.locator('[data-electrical-field="cableType"]').selectOption('XVB')
+  await expect.poll(async () => (await stored()).find((shape) =>
+    shape.kind === 'text' && shape.sourceLink?.role === 'solar-ac-cable-label'))
+    .toMatchObject({ text: '3G6 mm² XVB', rotation: -90 })
+  await expect.poll(async () => (await stored()).find((shape) => shape.id === breaker.id))
+    .toMatchObject({ bindingId: 'A', electrical: { cableSectionMm2: 6, cableType: 'XVB' } })
+  await expect(app.locator(`.binding-label[data-shape-id="${breaker.id}"]`)).toContainText('A')
+
+  await trigger.click()
+  await expect(dialog.getByLabel('PV-automaat (A)', { exact: true })).toHaveValue('25')
+  await dialog.getByLabel('Aantal panelen', { exact: true }).fill('2')
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  await expect(dialog).not.toHaveAttribute('data-open')
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  const saved = await stored()
+  expect(saved.find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat'))
+    .toMatchObject({ bindingId: 'A', electrical: { cableSectionMm2: 6, cableType: 'XVB' } })
+  expect(saved.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'solar-ac-cable-label'))
+    .toMatchObject({ text: '3G6 mm² XVB', rotation: -90 })
+  const cable = saved.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-ac-cable')
+  if (!cable || cable.kind !== 'line') throw new Error('PV cable missing.')
+  const line = app.locator(`line[data-shape-id="${cable.id}"]`).first()
+  const point = await line.evaluate((element: SVGLineElement) => {
+    const point = new DOMPoint(element.x1.baseVal.value * 0.75 + element.x2.baseVal.value * 0.25,
+      element.y1.baseVal.value * 0.75 + element.y2.baseVal.value * 0.25).matrixTransform(element.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  await pane.getByLabel('Doorsnede (mm²)', { exact: true }).selectOption('10')
+  await expect.poll(async () => (await stored()).find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat'))
+    .toMatchObject({ bindingId: 'A', electrical: { cableSectionMm2: 10, cableType: 'XVB' } })
+  await expect.poll(async () => (await stored()).find((shape) =>
+    shape.kind === 'text' && shape.sourceLink?.role === 'solar-ac-cable-label'))
+    .toMatchObject({ text: '3G10 mm² XVB' })
+})
+
 test('reads a scanned PDF datasheet using local OCR', async ({ page }) => {
   await openProject(page, [])
   const raster = await page.evaluate(() => {

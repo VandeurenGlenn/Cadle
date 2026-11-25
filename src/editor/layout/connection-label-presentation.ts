@@ -30,8 +30,8 @@ export const presentConnectionLabels = (shapes: readonly Shape[]): Shape[] => {
       : shape.sourceLink?.role === 'meter-cable-label' ? meterCableLabel(connection)
       : owner === 'solar' ? `PV-kabel:\n${connection.conductors && connection.sectionMm2 && connection.cableType && connection.cableType !== 'none'
         ? cableLabelText(connection) : 'nog op te geven'}`
-      : owner === 'solar-installation' ? `PV-kabel AC:\n${connection.conductors && connection.sectionMm2
-        ? cableLabelText(connection) : 'nog op te geven'}`
+      : owner === 'solar-installation' ? connection.conductors && connection.sectionMm2
+        ? cableLabelText(connection) : 'nog op te geven'
       : owner === 'topology' ? cableLabelText(connection, 'x') : cableLabelText(connection)
     const hidden = connection.showLabel === false
     return shape.text === text && Boolean(shape.hidden) === hidden ? shape : { ...shape, text, hidden }

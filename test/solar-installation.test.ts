@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { distributeSolarPanels, normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
   type SolarInstallation } from '../src/editor/solar-installation.ts'
-import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
+import { buildSolarInstallation, preserveSolarBreakerSettings, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
+import { expandSelectionWithGroup } from '../src/editor/interaction/pointer-select.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { sanitizeShapes, cloneShapes } from '../src/editor/model/model.ts'
 import type { LineShape, SymbolShape } from '../src/editor/model/types.ts'
@@ -222,7 +223,8 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   assert.match(labels, /2 string\(s\) van 6 panelen/)
   assert.match(labels, /Voc 34.77 V/)
   assert.match(labels, /INV-5000/)
-  assert.match(labels, /PV-kabel AC:\nnog op te geven/)
+  assert.match(labels, /nog op te geven/)
+  assert.doesNotMatch(labels, /PV-kabel AC:|^PV$/m)
   const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
   const configured = updateSolarInstallationCable(shapes, {
     ...breaker,
@@ -231,7 +233,7 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   const cable = configured.find((shape) => shape.sourceLink?.role === 'solar-ac-cable')
   const cableLabel = configured.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
   assert.equal(cable?.kind === 'line' ? cable.connection?.sectionMm2 : undefined, 6)
-  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, 'PV-kabel AC:\n3G6 mm² XVB')
+  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, '3G6 mm² XVB')
   const restored = sanitizeShapes(cloneShapes(configured))
   const restoredCable = restored.find((shape) => shape.sourceLink?.role === 'solar-ac-cable')
   assert.equal(restoredCable?.kind === 'line' ? restoredCable.connection?.labelOwner : undefined, 'solar-installation')
@@ -260,14 +262,36 @@ test('defaults a 32 A PV breaker to 3G4 and lets its cable settings override tha
   const cableLabel = shapes.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
   assert.equal(breaker.electrical?.cableSectionMm2, 4)
   assert.equal(breaker.electrical?.cableConductors, 3)
-  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, 'PV-kabel AC:\n3G4 mm²')
+  assert.equal(cableLabel?.kind === 'text' ? cableLabel.text : undefined, '3G4 mm²')
 
   const adjusted = updateSolarInstallationCable(shapes, {
     ...breaker,
     electrical: { ...breaker.electrical!, cableSectionMm2: 6, cableConductors: 3 }
   })
   const adjustedLabel = adjusted.find((shape) => shape.sourceLink?.role === 'solar-ac-cable-label')
-  assert.equal(adjustedLabel?.kind === 'text' ? adjustedLabel.text : undefined, 'PV-kabel AC:\n3G6 mm²')
+  assert.equal(adjustedLabel?.kind === 'text' ? adjustedLabel.text : undefined, '3G6 mm²')
+})
+
+test('selects the PV breaker independently and preserves its circuit and cable settings after editing', () => {
+  let id = 0
+  const shapes = buildSolarInstallation({ ...installation, breakerCurrentA: 32 }, 'rail',
+    { x: 300, y: 1200 }, () => `old-${++id}`)
+  const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  const panel = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')!
+  assert.deepEqual([...expandSelectionWithGroup(shapes, breaker.id)], [breaker.id])
+  assert.equal(panel.scale, 2.4)
+  assert.ok(shapes.filter((shape) => shape.kind === 'text').every((shape) => shape.fontWeight === 400))
+  const previous = { ...breaker, bindingId: 'A', electrical: { ...breaker.electrical!, cableSectionMm2: 6,
+    cableConductors: 5, cableType: 'XVB' as const, breakerCurve: 'B' as const } }
+  const refreshed = preserveSolarBreakerSettings(buildSolarInstallation(
+    { ...installation, breakerCurrentA: 32 }, 'rail', { x: 300, y: 1200 }, () => `new-${++id}`), previous)
+  const restored = refreshed.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  const label = refreshed.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'solar-ac-cable-label')
+  assert.equal(restored.bindingId, 'A')
+  assert.equal(restored.electrical?.cableSectionMm2, 6)
+  assert.equal(restored.symbolTextOverrides?.['rated-current'], 'B32A')
+  assert.equal(label?.kind === 'text' ? label.text : undefined, '5G6 mm² XVB')
+  assert.equal(label?.kind === 'text' ? label.rotation : undefined, -90)
 })
 
 test('keeps readable annotations clear of every device above and below a kamrail', () => {

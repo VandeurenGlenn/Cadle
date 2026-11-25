@@ -8,6 +8,45 @@ import { protectionLabelLayout } from '../src/editor/layout/protection-label-lay
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import type { Shape, TextShape } from '../src/editor/model/types.ts'
 
+test('collapses identical push buttons per point and positions each count above its symbol', () => {
+  for (const compact of [false, true]) {
+    let id = 0
+    const push = 'symbols/Switches/Push button.svg'
+    const illuminated = 'symbols/Switches/Illuminated push button.svg'
+    const toggle = 'symbols/Switches/Switch general symbol.svg'
+    const section = buildOneWireRowSection(0, ['A1', [
+      ...[push, push, push, illuminated, illuminated, toggle, toggle].map((sourcePath, index) => ({
+        bindingId: 'A1', kind: 'switch' as const, sourcePath, sourceShapeId: `source-${index}`
+      })),
+      { bindingId: 'A1', kind: 'load', sourcePath: 'symbols/Consumption appliances/Lighting.svg' }
+    ]], 1100, 400, {
+      nextShapeId: () => `button-${++id}`,
+      oneWireComponentSymbol: () => ({ name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+      branchStroke: '#000000'
+    }, compact)
+    const symbols = section.shapes.filter((shape) => shape.kind === 'symbol')
+    assert.equal(symbols.filter((shape) => shape.path === push).length, 1)
+    assert.equal(symbols.filter((shape) => shape.path === illuminated).length, 1)
+    assert.equal(symbols.filter((shape) => shape.path === toggle).length, 2)
+    assert.equal(symbols.filter((shape) => /impulse relay/i.test(shape.path)).length, 1)
+    const counts = section.shapes.filter((shape): shape is TextShape =>
+      shape.kind === 'text' && shape.sourceLink?.role === 'count-label')
+    assert.deepEqual(counts.map((shape) => shape.text), ['x3', 'x2'])
+    for (const count of counts) {
+      const index = Number(/:count:(\d+)$/.exec(count.generationKey!)![1])
+      const label = oneWireLayoutBounds(count)
+      const body = oneWireLayoutBounds(symbols[index])
+      assert.ok(label.y + label.height <= body.y - 6 + 1e-8)
+      for (const other of symbols.map(oneWireLayoutBounds)) {
+        assert.ok(label.x + label.width <= other.x || other.x + other.width <= label.x ||
+          label.y + label.height <= other.y || other.y + other.height <= label.y)
+      }
+    }
+  }
+})
+
 test('places counts above their own horizontal or stacked symbols, clear of devices and wires', () => {
   for (const compact of [false, true]) {
     let id = 0

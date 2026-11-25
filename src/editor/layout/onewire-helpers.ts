@@ -165,6 +165,11 @@ const CONTROL_DEVICE_PATH =
   /switches\/(?:impulse relay|time switch|thermostat|timer|dimmer switch|niko home control dimmer)\.svg$/i
 const PUSH_BUTTON_PATH = /switches\/(?:illuminated |double )?push button\.svg$/i
 
+export const isOneWireCountedComponent = (kind: 'switch' | 'load', path: string): boolean =>
+  kind === 'switch'
+    ? PUSH_BUTTON_PATH.test(path) || /switches\/push switch with safety cover\.svg$/i.test(path)
+    : /lighting|lamp|fluorescent|spot|wall light/i.test(path)
+
 export const oneWireProtectionSymbolPath = (name: string, path: string): string => {
   const searchable = `${name} ${path}`
   if (/residual|differential|differentieel|rcd/i.test(searchable)) {
@@ -471,17 +476,17 @@ export const buildOneWireRowSection = (
         ]
       : entries
 
-  const repeatedLightingCounts = new Map<string, number>()
-  const seenLightingPaths = new Set<string>()
+  const repeatedCounts = new Map<string, number>()
+  const seenPaths = new Set<string>()
   const collapsedEntries = resolvedEntries.filter(
     (entry): entry is OneWireResolvedComponent & { kind: 'switch' | 'load' } => {
       if (entry.kind === 'empty') return false
       const path = resolvedEntryPath(entry)
-      if (entry.kind !== 'load' || !/lighting|lamp|fluorescent|spot|wall light/i.test(path)) return true
-      const key = path.toLowerCase()
-      repeatedLightingCounts.set(key, (repeatedLightingCounts.get(key) ?? 0) + 1)
-      if (seenLightingPaths.has(key)) return false
-      seenLightingPaths.add(key)
+      if (!isOneWireCountedComponent(entry.kind, path)) return true
+      const key = `${entry.kind}:${path.toLowerCase()}`
+      repeatedCounts.set(key, (repeatedCounts.get(key) ?? 0) + 1)
+      if (seenPaths.has(key)) return false
+      seenPaths.add(key)
       return true
     }
   )
@@ -552,7 +557,7 @@ export const buildOneWireRowSection = (
     }
     if (typeof rotation === 'number') probe.rotation = rotation
     const bounds = oneWireSymbolBounds(probe) ?? deps.symbolContentBounds(probe)
-    const repeatCount = repeatedLightingCounts.get(component.path.toLowerCase()) ?? 1
+    const repeatCount = repeatedCounts.get(`${entry.kind}:${component.path.toLowerCase()}`) ?? 1
     const symbolRightReach = bounds.x + bounds.width - probeSlotX
     const isSpot = /(?:^|[\/\s])spot(?:light)?(?:\.svg)?$/i.test(`${component.path} ${component.name}`)
     return {

@@ -1,5 +1,5 @@
 import type { LineShape, Shape, SymbolShape } from '../model/types.js'
-import { buildKamrailCircuitBundle, type BuildKamrailCircuitBundleInput } from './onewire-helpers.js'
+import { buildKamrailCircuitBundle, isOneWireCountedComponent, type BuildKamrailCircuitBundleInput } from './onewire-helpers.js'
 import { isOneWireRailShape, reconcileGeneratedOneWire } from './onewire-regeneration.js'
 import { spaceOneWireCircuitAnnotations } from './onewire-annotation-layout.js'
 import { repairOneWireInlineConnections } from '../interaction/onewire-inline-placement.js'
@@ -86,8 +86,8 @@ export const migrateOneWireCircuitGeometry = (shapes: readonly Shape[], deps: Mi
           candidate.generationKey?.endsWith(`:count:${symbolIndex}`)
       )
       const repeats =
-        shape.sourceLink?.role === 'load' &&
-        /lighting|lamp|fluorescent|spot|wall light/i.test(shape.path) &&
+        (shape.sourceLink?.role === 'load' || shape.sourceLink?.role === 'switch') &&
+        isOneWireCountedComponent(shape.sourceLink.role, shape.path) &&
         count?.kind === 'text'
           ? Math.max(1, Math.min(1000, Number(/^x(\d+)$/.exec(count.text)?.[1] ?? 1)))
           : 1

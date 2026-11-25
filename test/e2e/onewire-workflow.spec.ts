@@ -871,6 +871,104 @@ test('uses the printable width and consolidates old automatic sheets without los
   await expect.poll(async () => oneWireKeys(await saved())).toEqual(oneWireKeys(compact))
 })
 
+test('counts identical push buttons per point on generated and synchronized schematics', async ({ page }) => {
+  const ground = randomUUID(), root = randomUUID()
+  const push = 'symbols/Switches/Push button.svg'
+  const illuminated = 'symbols/Switches/Illuminated push button.svg'
+  const device = (id: string, bindingId: string, path: string, index: number): Shape => ({
+    id, kind: 'symbol', name: path.split('/').at(-1)!.replace('.svg', ''), path, bindingId,
+    position: { x: 300 + index * 100, y: 400 }, scale: 1
+  })
+  const source = [
+    device('push-1', 'A1', push, 0), device('push-2', 'A1', push, 1),
+    device('lit-1', 'A1', illuminated, 2), device('lit-2', 'A1', illuminated, 3),
+    device('light-1', 'A1', 'symbols/Consumption appliances/Lighting.svg', 4),
+    device('push-a2', 'A2', push, 5),
+    device('light-2', 'A2', 'symbols/Consumption appliances/Lighting.svg', 6)
+  ]
+  const state = (shapes: Shape[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+    shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
+  const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
+    { kind: 'cadle-native-svg-document', payload: state(shapes) }
+  ] })
+  const project: Project = {
+    uuid: randomUUID(), creationTime: 1, name: 'Drukknoppen tellen', company: '',
+    customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
+    address: { street: '', number: '', postalCode: '', city: '' },
+    oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
+    pages: {
+      [ground]: { name: 'Situatieplan', pageType: 'groundplan', creationTime: 1,
+        linkedOneWirePageKey: root, schema: document(source) },
+      [root]: { name: 'Eendraads', pageType: 'onewire', creationTime: 2, schema: document([]) }
+    }
+  }
+  await page.goto('/#!/projects')
+  await page.evaluate(async (value) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(value.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(content)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const load = async (key: string) => {
+    await shell.evaluate((element, key) => (element as AppShell).loadPage(key), key)
+    await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), key)).toBe(true)
+  }
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
+  await shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  const saved = () => shell.evaluate((element) => (element as AppShell).project!)
+  const generated = await saved()
+  const schematic = oneWireGenerationPageKeys(generated, root).find((key) =>
+    nativeStateForProjectPage(generated, key)?.shapes.some((shape) => shape.sourceLink?.id === 'push-1'))!
+  expect(schematic).toBeTruthy()
+  const check = async (expected: string) => {
+    const shapes = nativeStateForProjectPage(await saved(), schematic)!.shapes
+    const buttons = shapes.filter((shape) => shape.kind === 'symbol' && shape.path === push)
+    expect(buttons.map((shape) => shape.bindingId).sort()).toEqual(['A1', 'A2'])
+    expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.path === illuminated)).toHaveLength(1)
+    const row = shapes.filter((shape) => shape.kind === 'symbol' && shape.bindingId === 'A1' &&
+      (shape.sourceLink?.role === 'switch' || shape.sourceLink?.role === 'load'))
+    const counts = shapes.filter((shape) => shape.kind === 'text' && shape.bindingId === 'A1' &&
+      shape.sourceLink?.role === 'count-label')
+    const values = counts.map((count) => {
+      if (count.kind !== 'text') throw new Error('Invalid count')
+      const index = Number(/:count:(\d+)$/.exec(count.generationKey!)![1])
+      const symbol = row[index]
+      const labelBounds = oneWireLayoutBounds(count), symbolBounds = oneWireLayoutBounds(symbol)
+      expect(labelBounds.y + labelBounds.height).toBeLessThan(symbolBounds.y)
+      return { path: symbol.kind === 'symbol' ? symbol.path : '', value: count.text, id: count.id }
+    })
+    expect(values.map(({ path, value }) => ({ path, value }))).toEqual([
+      { path: push, value: expected }, { path: illuminated, value: 'x2' }
+    ])
+    expect(shapes.filter((shape) => shape.bindingId === 'A2' && shape.sourceLink?.role === 'count-label')).toHaveLength(0)
+    await load(schematic)
+    const markup = await app.evaluate((element) => (element as CadleApp).toSVG())
+    for (const count of values) expect(markup).toContain(`data-shape-id="${count.id}"`)
+  }
+  await check('x2')
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await load(schematic)
+  await check('x2')
+  await load(ground)
+  const updated = [...source, device('push-3', 'A1', push, 7)]
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'drukknoppen.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state(updated)))
+  })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  await load(schematic)
+  await check('x3')
+})
+
 test('generates junction boxes and imported breakers with current assets', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

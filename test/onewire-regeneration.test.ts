@@ -340,6 +340,26 @@ test('synchronizes changed source devices and lamp counts while retaining standa
   assert.ok(cleared.some((shape) => shape.sourceLink?.id === 'B' && shape.sourceLink.role === 'breaker'))
 })
 
+test('preserves repeated push button counts when rebuilding a circuit without its source', () => {
+  let sequence = 0
+  const input: BuildKamrailCircuitBundleInput = {
+    rail: { id: 'rail', kind: 'line', groupId: 'onewire-kamrail-main', start: { x: 0, y: 1200 }, end: { x: 900, y: 1200 } },
+    anchorX: 400, options: { family: 'A', amps: 16, autoIncludeFamily: true },
+    familyComponents: [1, 2, 3].map((index) => ({
+      bindingId: 'A1', kind: 'switch', sourceShapeId: `push-${index}`,
+      sourcePath: 'symbols/Switches/Push button.svg'
+    })),
+    nextShapeId: () => `button-migration-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  }
+  const original = [input.rail, ...buildKamrailCircuitBundle(input)!.shapes]
+  const rebuilt = migrateOneWireCircuitGeometry(sanitizeShapes(original, 'onewire'), input)
+  assert.equal(rebuilt.filter((shape) => shape.kind === 'symbol' && /push button\.svg$/i.test(shape.path)).length, 1)
+  assert.equal(rebuilt.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'count-label')?.text, 'x3')
+})
+
 test('source synchronization assigns new numbered points to one continuation chunk only', () => {
   const page = (key: string, bindingId: string) => ({
     key, shapes: [

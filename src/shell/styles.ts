@@ -319,6 +319,73 @@ export const shellStyles = css`
     outline: none;
     box-shadow: var(--cadle-focus-ring);
   }
+  .installation-sheets-picker {
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .installation-sheets-picker summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 8px;
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface-container);
+    cursor: pointer;
+    font: 500 11px var(--cadle-font-sans);
+    list-style: none;
+    white-space: nowrap;
+  }
+  .installation-sheets-picker summary::-webkit-details-marker { display: none; }
+  .installation-sheets-picker summary strong {
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    color: var(--md-sys-color-primary);
+    background: var(--cadle-selected-bg);
+    font-size: 10px;
+  }
+  .installation-sheets-picker summary:focus-visible {
+    outline: none;
+    box-shadow: var(--cadle-focus-ring);
+  }
+  .installation-sheets-menu {
+    position: absolute;
+    z-index: 10060;
+    top: calc(100% + 6px);
+    right: 0;
+    display: grid;
+    gap: 4px;
+    width: min(320px, 82vw);
+    max-height: min(360px, 70dvh);
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--cadle-radius-md);
+    color: var(--md-sys-color-on-surface);
+    background: var(--md-sys-color-surface-container-high);
+    box-shadow: var(--cadle-elevation-3);
+  }
+  .installation-sheets-menu > strong {
+    padding: 2px 4px 6px;
+    font: 600 12px var(--cadle-font-sans);
+  }
+  .installation-sheets-menu label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 40px;
+    padding: 0 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: var(--cadle-navigation-font);
+  }
+  .installation-sheets-menu label:hover { background: var(--cadle-hover-bg); }
+  .installation-sheets-menu input { accent-color: var(--md-sys-color-primary); }
   .center-stage-toolbar {
     display: flex;
     align-items: center;
@@ -641,6 +708,7 @@ export const shellStyles = css`
     .drawing-project, .context-separator, .drawing-kind { display: none; }
     .page-link-control { flex-basis: 132px; }
     .page-link-control span { display: none; }
+    .installation-sheets-picker summary { gap: 4px; padding: 0 6px; }
     .center-stage-toolbar { padding: 6px; }
 
     .mobile-drawer-backdrop {

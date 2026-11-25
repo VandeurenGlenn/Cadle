@@ -37,6 +37,15 @@ export const connectionDefaults = (kind: ConnectionKind): ElectricalConnection =
   ...(kind === 'bridge' ? { offsetMm: 3 } : {})
 })
 
+export const ONE_WIRE_DIFFERENTIAL_CABLE_DEFAULTS: Readonly<ElectricalConnection> = {
+  kind: 'cable',
+  conductors: 3,
+  sectionMm2: 2.5,
+  cableType: 'VOB',
+  hasProtectiveConductor: true,
+  showLabel: true
+}
+
 export const sanitizeConnection = (value: unknown): ElectricalConnection | undefined => {
   if (!value || typeof value !== 'object') return undefined
   const raw = value as Record<string, unknown>

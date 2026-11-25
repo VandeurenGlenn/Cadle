@@ -77,7 +77,14 @@ import type {
 import type { Project, UUID } from '../types.js'
 import { compareCircuitFamilies, electricalMetadataFromCatalog, isDistributionBoardDevice } from './model/electrical.js'
 import { isSocketSymbol, socketCountFromKeyboardEvent, withSocketCount } from './socket-multiplicity.js'
-import { connectionDefaults, connectionPoints, connectionSegments, isConnectionKind, type ConnectionKind } from './model/electrical-connection.js'
+import {
+  connectionDefaults,
+  connectionPoints,
+  connectionSegments,
+  isConnectionKind,
+  ONE_WIRE_DIFFERENTIAL_CABLE_DEFAULTS,
+  type ConnectionKind
+} from './model/electrical-connection.js'
 import { projectStore, setProjectData } from '../api/project.js'
 import pubsub from '../pubsub.js'
 import { downloadTextFile } from './export/downloads.js'
@@ -1571,9 +1578,12 @@ export class CadleApp extends LiteElement {
         shape.locked || (!shape.sourceLink?.role.startsWith('sheet-reference:') && shape.sourceLink?.role !== 'overflow-reference'))
       const removedReferences = withoutReferences.length !== this.#document.shapes.length
       const incomingCable = placeOneWireIncomingCable(withoutReferences)
-      if (removedReferences || incomingCable.changed) {
-        this.#document.shapes = removedReferences
-          ? alignOneWireContent(incomingCable.shapes, this.#safeAreaRect()).shapes : incomingCable.shapes
+      let migratedShapes = removedReferences
+        ? alignOneWireContent(incomingCable.shapes, this.#safeAreaRect()).shapes : incomingCable.shapes
+      const withDifferentialWires = this.#ensureManualDifferentialWires(migratedShapes)
+      const addedDifferentialWires = withDifferentialWires !== migratedShapes
+      if (removedReferences || incomingCable.changed || addedDifferentialWires) {
+        this.#document.shapes = withDifferentialWires
         this.#documentSizeMigrated = true
       }
     }
@@ -4479,6 +4489,47 @@ export class CadleApp extends LiteElement {
     return true
   }
 
+  #manualDifferentialWire(symbol: SymbolShape): LineShape | null {
+    if (symbol.sourceLink?.role !== 'differential' ||
+      this.#document.shapes.some((shape) => shape.kind === 'line' &&
+        shape.sourceLink?.kind === symbol.sourceLink?.kind &&
+        shape.sourceLink.id === symbol.sourceLink?.id && shape.sourceLink.role === 'differential-wire')) return null
+    const top = oneWireSymbolTerminalInfo(symbol.path, symbol.scale)?.top
+    if (!top) return null
+    const radians = (symbol.rotation ?? 0) * Math.PI / 180
+    const transform = (point: Point) => {
+      const x = point.x * (symbol.flipX ? -1 : 1)
+      const y = point.y * (symbol.flipY ? -1 : 1)
+      return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) }
+    }
+    const terminalOffset = transform(top)
+    const direction = transform({ x: 0, y: -1 })
+    const start = { x: symbol.position.x + terminalOffset.x, y: symbol.position.y + terminalOffset.y }
+    return {
+      id: nextShapeId(),
+      kind: 'line',
+      start,
+      end: { x: start.x + direction.x * 180, y: start.y + direction.y * 180 },
+      stroke: ONEWIRE_BRANCH_STROKE,
+      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+      connection: { ...ONE_WIRE_DIFFERENTIAL_CABLE_DEFAULTS },
+      bindingId: symbol.bindingId,
+      oneWireRailId: symbol.oneWireRailId,
+      sourceLink: { kind: 'circuit', id: symbol.sourceLink.id, role: 'differential-wire' }
+    }
+  }
+
+  #ensureManualDifferentialWires(shapes: Shape[]): Shape[] {
+    let updated = shapes
+    for (const symbol of shapes.filter((shape): shape is SymbolShape =>
+      shape.kind === 'symbol' && shape.sourceLink?.role === 'differential')) {
+      if (updated === shapes) updated = [...shapes]
+      const wire = this.#manualDifferentialWire(symbol)
+      if (wire) updated.push(wire)
+    }
+    return updated
+  }
+
   #composeOneWireOnKamrailAt(point: Point): boolean {
     if (this.#oneWireComposeKind === 'kamrail') return false
     const railAnchor = this.#nearestKamrail(point)
@@ -4579,7 +4630,10 @@ export class CadleApp extends LiteElement {
       sourceLink: { kind: 'circuit', id: bindingId, role: 'label' }
     }
 
-    this.#document.shapes.push(connector, symbol, ...(this.#oneWireComposeKind === 'differential' ? [] : [label]))
+    const differentialWire = this.#oneWireComposeKind === 'differential'
+      ? this.#manualDifferentialWire(symbol) : null
+    this.#document.shapes.push(connector, symbol, ...(differentialWire ? [differentialWire] : []),
+      ...(this.#oneWireComposeKind === 'differential' ? [] : [label]))
     this.#document.selectedId = symbol.id
     this.#document.selectedIds = new Set(this.#oneWireComposeKind === 'differential'
       ? [symbol.id] : [connector.id, symbol.id, label.id])
@@ -4650,7 +4704,9 @@ export class CadleApp extends LiteElement {
       oneWireRailId: anchor.hostSymbol.oneWireRailId
     }
 
-    this.#document.shapes.push(connector, newSymbol)
+    const differentialWire = this.#oneWireComposeKind === 'differential'
+      ? this.#manualDifferentialWire(newSymbol) : null
+    this.#document.shapes.push(connector, newSymbol, ...(differentialWire ? [differentialWire] : []))
     this.#document.selectedId = newSymbol.id
     this.#document.selectedIds = new Set([connector.id, newSymbol.id])
     return true

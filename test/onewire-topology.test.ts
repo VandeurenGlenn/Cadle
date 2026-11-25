@@ -5,6 +5,7 @@ import { buildOneWireTopology } from '../src/editor/layout/onewire-topology.ts'
 import { oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireLayoutBounds } from '../src/editor/layout/onewire-connections.ts'
 import { protectionDescriptionLayout } from '../src/editor/layout/protection-label-layout.ts'
+import { connectionLabel } from '../src/editor/model/electrical-connection.ts'
 import {
   energyScenarioOpacityValues,
   oneWireEnergyFlowSegment,
@@ -82,6 +83,10 @@ test('draws the solar branch beside the residual-breaker path after the main dif
   assert.ok(roles.has('additional-differential-consumers-1'))
   assert.ok(roles.has('additional-differential-ev-2'))
   assert.ok(roles.has('additional-differential-consumers-3'))
+  const differentialWire = shapes.find((shape) =>
+    shape.kind === 'line' && shape.sourceLink?.role === 'additional-differential-consumers-1-outgoing')
+  assert.equal(differentialWire?.kind === 'line' && differentialWire.connection
+    ? connectionLabel(differentialWire.connection) : '', '3G2.5 mm² VOB')
   assert.ok(roles.has('ev-load'))
   assert.ok(shapes.every((shape) => shape.groupId?.startsWith('onewire-topology-')))
   assert.ok(shapes.every((shape) => shape.generationKey?.startsWith('board:main:topology:v37:')))

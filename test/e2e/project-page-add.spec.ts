@@ -207,20 +207,38 @@ test('adds pages quickly with automatic names, type detection and cancel support
   expect(combinedAnalysis.groups.map((group) => group.components.length)).toEqual(
     singleLevelAnalysis.groups.map((group) => group.components.length * 2)
   )
+  const linkedSheets = page.locator('.installation-sheets-picker')
+  await expect(linkedSheets).toBeVisible()
+  const openLinkedSheets = async () => {
+    if (!await linkedSheets.evaluate((element: HTMLDetailsElement) => element.open)) {
+      await linkedSheets.locator('summary').click()
+    }
+  }
+  await openLinkedSheets()
+  await linkedSheets.getByLabel('Koppel Handmatig eendraadsblad').check()
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, manualKey)).toBe(oneWireKey)
+  await openLinkedSheets()
+  await linkedSheets.getByLabel('Koppel Andere installatie').check()
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, otherWireKey)).toBe(oneWireKey)
+  await openLinkedSheets()
+  await expect(linkedSheets.getByLabel('Koppel Handmatig eendraadsblad')).toBeChecked()
+  await expect(linkedSheets.getByLabel('Koppel Andere installatie')).toBeChecked()
   await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, manualKey)
   await expect.poll(() => app.evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), manualKey)).toBe(true)
   await linkSelect.selectOption(oneWireKey!)
   await expect.poll(() => shell.evaluate((element, key) =>
     (element as AppShell).project?.pages[key]?.oneWireInstallationOf, manualKey)).toBe(oneWireKey)
-  await expect(linkSelect.locator(`option[value="${oneWireKey}"]`)).toHaveText(/2 situatie \/ 2 eendraads/)
+  await expect(linkSelect.locator(`option[value="${oneWireKey}"]`)).toHaveText(/3 situatie \/ 3 eendraads/)
   const manualAnalysis = await app.evaluate((element) => (element as CadleApp).analyzeBindings())
   expect(manualAnalysis.groups.map((group) => group.components.length)).toEqual(
-    combinedAnalysis.groups.map((group) => group.components.length)
+    singleLevelAnalysis.groups.map((group) => group.components.length * 3)
   )
   await page.getByRole('button', { name: 'Compare with linked page', exact: true }).click()
   const comparison = page.getByRole('combobox', { name: 'Vergelijkingsblad' })
-  await expect(comparison.locator('option')).toHaveCount(2)
+  await expect(comparison.locator('option')).toHaveCount(3)
   await comparison.selectOption(upperFloorKey)
   await expect.poll(() => page.locator('cadle-app[read-only]').evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), upperFloorKey)).toBe(true)
@@ -229,7 +247,7 @@ test('adds pages quickly with automatic names, type detection and cancel support
   await expect.poll(() => app.evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
   await page.getByRole('button', { name: 'Compare with linked page', exact: true }).click()
-  await expect(comparison.locator('option')).toHaveCount(2)
+  await expect(comparison.locator('option')).toHaveCount(3)
   await comparison.selectOption(manualKey)
   await expect.poll(() => page.locator('cadle-app[read-only]').evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), manualKey)).toBe(true)

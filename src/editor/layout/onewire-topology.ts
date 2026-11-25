@@ -1,4 +1,5 @@
 import { cableLabelText } from '../model/cable-designation.js'
+import { ONE_WIRE_DIFFERENTIAL_CABLE_DEFAULTS } from '../model/electrical-connection.js'
 import type { OneWireTopologyPlan } from '../../types.js'
 import type { LineShape, Shape, SymbolShape, TextShape } from '../model/types.js'
 import { ONE_WIRE_BREAKER_SCALE, ONE_WIRE_RCD_SCALE, ONE_WIRE_RENDERED_STROKE_WIDTH, ONE_WIRE_BUS_STROKE_WIDTH, oneWireSymbolStrokeWidthFor, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from './onewire-symbol-nodes.js'
@@ -476,18 +477,18 @@ export const buildOneWireTopology = (
     )
     const evLoad = item.purpose === 'ev' ? options.ev : undefined
     const outgoingEnd = evLoad ? { x: branchTop.x, y: branchTop.y - 72 } : { x: branchTop.x, y: branchTop.y - 54 }
-    shapes.push(
-      line(
-        `${role}-outgoing`,
-        branchTop.x,
-        branchTop.y,
-        outgoingEnd.x,
-        outgoingEnd.y,
-        ONE_WIRE_RENDERED_STROKE_WIDTH,
-        undefined,
-        downstreamSource
-      )
+    const outgoing = line(
+      `${role}-outgoing`,
+      branchTop.x,
+      branchTop.y,
+      outgoingEnd.x,
+      outgoingEnd.y,
+      ONE_WIRE_RENDERED_STROKE_WIDTH,
+      undefined,
+      downstreamSource
     )
+    outgoing.connection = { ...ONE_WIRE_DIFFERENTIAL_CABLE_DEFAULTS }
+    shapes.push(outgoing)
     if (evLoad) {
       const evSymbol = symbolAtTerminal(
         `${role}-load`,

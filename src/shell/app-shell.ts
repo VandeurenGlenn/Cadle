@@ -609,6 +609,46 @@ export class AppShell extends LiteElement {
     }
   }
 
+  #onInstallationSheetsChange = async (event: Event) => {
+    const currentPageKey = this.currentPageKey
+    const projectKey = this.projectKey
+    const picker = (event.currentTarget as HTMLInputElement).closest<HTMLElement>('.installation-sheets-picker')
+    if (!projectKey || !this.project || !currentPageKey || !picker) return
+    const selectedKeys = new Set([...picker.querySelectorAll<HTMLInputElement>('input[data-page-key]:checked')]
+      .map((input) => input.dataset.pageKey!)
+      .filter(Boolean))
+
+    try {
+      await this.savePage()
+      const project = await getProjectData(projectKey)
+      const rootKey = oneWireInstallationRootKey(project, currentPageKey)
+      if (!rootKey) throw new Error('Koppel eerst een eendraadsblad aan deze installatie.')
+      const currentPages = installationOneWirePageKeys(project, rootKey)
+      const currentMembers = currentPages.filter((key) =>
+        key !== rootKey && !project.pages[key]?.oneWireOverflowOf)
+      let updatedProject = project
+
+      for (const key of currentMembers) {
+        if (!selectedKeys.has(key)) updatedProject = linkOneWirePageToInstallation(updatedProject, key, key)
+      }
+      for (const key of selectedKeys) {
+        if (project.pages[key]?.pageType !== 'onewire' || key === rootKey) continue
+        if (oneWireInstallationRootKey(updatedProject, key) !== rootKey) {
+          updatedProject = linkOneWirePageToInstallation(updatedProject, key, rootKey)
+        }
+      }
+
+      await setProjectData(projectKey, updatedProject)
+      this.project = updatedProject
+      const app = this.shadowRoot?.querySelector('cadle-app:not([read-only])') as NativeAppElement | null
+      app?.refreshProjectContext?.(updatedProject)
+    } catch (error) {
+      console.error('Eendraadsbladen koppelen mislukt.', error)
+      globalThis.alert(`De eendraadsbladen konden niet worden gekoppeld: ${error instanceof Error ? error.message : String(error)}`)
+      this.requestRender()
+    }
+  }
+
   #selectedObjectId = ''
 
   #onEditorSelectionChanged = (payload: {
@@ -2109,6 +2149,14 @@ export class AppShell extends LiteElement {
       !oneWirePageOptions.some(([key]) => key === this.currentPageKey)
       ? [...oneWirePageOptions, [this.currentPageKey, this.currentPage] as const]
       : oneWirePageOptions
+    const installationRootKey = this.project
+      ? oneWireInstallationRootKey(this.project, this.currentPageKey) : null
+    const installationSheetOptions = this.projectPageEntries
+      .filter(([key, page]) => page.pageType === 'onewire' && !page.oneWireOverflowOf && key !== installationRootKey)
+      .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+    const installationSheetCount = this.project && installationRootKey
+      ? installationOneWirePageKeys(this.project, installationRootKey).length
+      : 0
 
     return html`
       ${this.#appNotices()}
@@ -2306,6 +2354,28 @@ export class AppShell extends LiteElement {
                       })}
                     </select>
                   </label>
+                ` : ''}
+                ${installationRootKey && installationSheetOptions.length ? html`
+                  <details class="installation-sheets-picker">
+                    <summary aria-label="Koppel meerdere eendraadsbladen aan deze installatie">
+                      <span>Eendraadsbladen</span>
+                      <strong>${installationSheetCount}</strong>
+                    </summary>
+                    <div class="installation-sheets-menu">
+                      <strong>Koppel eendraadsbladen aan deze installatie</strong>
+                      ${installationSheetOptions.map(([pageKey, page]) => html`
+                        <label>
+                          <input
+                            type="checkbox"
+                            data-page-key=${pageKey}
+                            aria-label=${`Koppel ${page.name}`}
+                            .checked=${oneWireInstallationRootKey(this.project!, pageKey) === installationRootKey}
+                            @change=${this.#onInstallationSheetsChange}>
+                          <span>${page.name}</span>
+                        </label>
+                      `)}
+                    </div>
+                  </details>
                 ` : ''}
                 <button
                   class="settings-navigation"

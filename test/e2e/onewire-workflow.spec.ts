@@ -56,6 +56,19 @@ test('places differentials from the toolbar on rails and inline without adding a
   const differentials = stage.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Residual-current circuit breaker$/ }) })
   await expect(differentials).toHaveCount(1)
   const railDifferentialId = (await differentials.getAttribute('data-shape-id'))!
+  const differentialSvg = await app.evaluate((element) => (element as CadleApp).toSVG())
+  expect(differentialSvg).toContain('3G2.5 mm² VOB')
+  await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
+  const savedProject = await shell.evaluate((element) => (element as AppShell).project!)
+  const differentialShapes = nativeStateForProjectPage(savedProject, schematic)!.shapes
+  const differential = differentialShapes.find((shape) => shape.kind === 'symbol' && shape.id === railDifferentialId)
+  const differentialWire = differential?.kind === 'symbol'
+    ? differentialShapes.find((shape) => shape.kind === 'line' && shape.bindingId === differential.bindingId &&
+      shape.sourceLink?.role === 'differential-wire')
+    : undefined
+  expect(differentialWire).toMatchObject({
+    connection: { kind: 'cable', conductors: 3, sectionMm2: 2.5, cableType: 'VOB', showLabel: true }
+  })
   await expect(page.locator('input-form-dialog[open]')).toHaveCount(0)
   const pane = page.locator('object-pane')
   await expect(pane.getByLabel('RCD (mA)', { exact: true })).toBeVisible()
@@ -105,6 +118,55 @@ test('places differentials from the toolbar on rails and inline without adding a
   await expect(pane.locator('select[data-electrical-field="breakerCurrentA"]')).toHaveValue('40')
   await closePropertiesForDrawing(page)
   await page.screenshot({ path: testInfo.outputPath('differential-toolbar.png') })
+})
+
+test('adds a cable designation when loading a previously placed differential', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'legacy-differential.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2,
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: [{
+        id: 'legacy-differential',
+        kind: 'symbol',
+        name: 'Differentieel',
+        path: 'symbols/Protection devices/Residual-current circuit breaker.svg',
+        position: { x: 700, y: 800 },
+        scale: 1.35,
+        bindingId: 'legacy-diff',
+        sourceLink: { kind: 'circuit', id: 'legacy-diff', role: 'differential' }
+      }],
+      selectedId: null,
+      paperPreset: 'a4-landscape',
+      printMargin: 10,
+      worldWidth: 2376,
+      worldHeight: 1680
+    }))
+  })
+
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).toSVG().includes('3G2.5 mm² VOB'))).toBe(true)
+  await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  const shapes = nativeStateForProjectPage(project, schematic)!.shapes
+  expect(shapes.filter((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire')).toHaveLength(1)
+  expect(shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire')).toMatchObject({
+      connection: { kind: 'cable', conductors: 3, sectionMm2: 2.5, cableType: 'VOB', showLabel: true }
+    })
 })
 
 test('requires a reviewed supply description and preserves editable text, JSON corrections and the main protections', async ({ page }, testInfo) => {

@@ -9,6 +9,99 @@ import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-
 import { oneWireLayoutBounds } from '../../src/editor/layout/onewire-connections.ts'
 import { pageLayout } from '../../src/editor/layout/page-layout.ts'
 import { PAPER_PRESETS } from '../../src/editor/constants.ts'
+import { findConnectionIssues } from '../../src/editor/layout/connection-issues.ts'
+
+test('places differentials from the toolbar on rails and inline without adding a breaker', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'differential-placement.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: [
+        { id: 'diff-rail', kind: 'line', start: { x: 500, y: 1000 }, end: { x: 1000, y: 1000 },
+          stroke: '#000000', strokeWidth: 4, groupId: 'onewire-kamrail-diff' },
+        { id: 'diff-wire', kind: 'line', start: { x: 1500, y: 400 }, end: { x: 1500, y: 1000 },
+          stroke: '#000000', strokeWidth: 2, connection: { kind: 'wire', showLabel: false } }
+      ],
+      selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680
+    }))
+  })
+  await app.evaluate(async (element) => { await (element as CadleApp).exportA4PNG() })
+  const stage = app.locator('svg.stage')
+  const diff = page.locator('onewire-actions').getByRole('button', { name: 'Add differential', exact: true })
+  await diff.click()
+  await expect(diff).toHaveAttribute('aria-pressed', 'true')
+  const clickMiddle = async (id: string) => {
+    const point = await stage.locator(`line[data-shape-id="${id}"]`).evaluate((line: SVGLineElement) => {
+      const point = new DOMPoint((line.x1.baseVal.value + line.x2.baseVal.value) / 2,
+        (line.y1.baseVal.value + line.y2.baseVal.value) / 2).matrixTransform(line.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+    await page.mouse.click(point.x, point.y)
+  }
+  await clickMiddle('diff-rail')
+  const differentials = stage.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Residual-current circuit breaker$/ }) })
+  await expect(differentials).toHaveCount(1)
+  const railDifferentialId = (await differentials.getAttribute('data-shape-id'))!
+  await expect(page.locator('input-form-dialog[open]')).toHaveCount(0)
+  const pane = page.locator('object-pane')
+  await expect(pane.getByLabel('RCD (mA)', { exact: true })).toBeVisible()
+  await pane.getByLabel('RCD (mA)', { exact: true }).fill('30')
+  await pane.getByRole('combobox', { name: 'RCD type', exact: true }).selectOption('A')
+  await pane.locator('select[data-electrical-field="breakerCurrentA"]').selectOption('40')
+  await expect(pane.getByLabel('RCD (mA)', { exact: true })).toHaveValue('30')
+  await closePropertiesForDrawing(page)
+  await diff.click()
+  await clickMiddle('diff-wire')
+  await expect(differentials).toHaveCount(2)
+  await expect(stage.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Automaat$/ }) })).toHaveCount(0)
+  await closePropertiesForDrawing(page)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(differentials).toHaveCount(1)
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(differentials).toHaveCount(2)
+  const exportedIds = await app.evaluate((element) => {
+    const exported = new DOMParser().parseFromString((element as CadleApp).toSVG(), 'image/svg+xml')
+    return [...exported.querySelectorAll('.shape-symbol')].map((node) => node.getAttribute('data-shape-id'))
+  })
+  expect(exportedIds).toEqual(await differentials.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-shape-id'))))
+  await app.evaluate(async (element) => { await (element as CadleApp).flushPendingSave() })
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  const saved = nativeStateForProjectPage(project, schematic)?.shapes.find((shape) => shape.id === railDifferentialId)
+  expect(saved?.kind === 'symbol' && saved.electrical?.rcdSensitivityMa).toBe(30)
+  expect(saved?.kind === 'symbol' && saved.electrical?.breakerCurrentA).toBe(40)
+  expect(findConnectionIssues(nativeStateForProjectPage(project, schematic)!.shapes).filter((issue) => issue.nearby)).toEqual([])
+  await shell.evaluate(async (element) => {
+    await (element as AppShell).loadPage('00000000-0000-4000-8000-000000000103')
+  })
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000103'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await expect(differentials).toHaveCount(2)
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  const railDifferential = stage.locator(`g.shape-symbol[data-shape-id="${railDifferentialId}"]`)
+  const contact = await railDifferential.locator('path').first().evaluate((path: SVGPathElement) => {
+    const point = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(contact.x, contact.y)
+  await expect(railDifferential).toHaveAttribute('data-selected', 'true')
+  await expect(pane.getByLabel('RCD (mA)', { exact: true })).toBeVisible()
+  await expect(pane.getByLabel('RCD (mA)', { exact: true })).toHaveValue('30')
+  await expect(pane.locator('select[data-electrical-field="breakerCurrentA"]')).toHaveValue('40')
+  await closePropertiesForDrawing(page)
+  await page.screenshot({ path: testInfo.outputPath('differential-toolbar.png') })
+})
 
 test('requires a reviewed supply description and preserves editable text, JSON corrections and the main protections', async ({ page }, testInfo) => {
   await page.goto('/?fixture=priority-suite#!/projects')

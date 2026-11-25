@@ -31,7 +31,7 @@ type SymbolBounds = {
   height: number
 }
 
-type OneWireComponentKind = 'breaker' | 'switch' | 'kamrail' | 'load'
+export type OneWireComponentKind = 'breaker' | 'differential' | 'switch' | 'kamrail' | 'load'
 
 type OneWireCatalogComponent = {
   bindingId: string

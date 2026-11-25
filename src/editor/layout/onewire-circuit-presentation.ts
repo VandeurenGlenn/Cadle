@@ -20,6 +20,7 @@ import {
   oneWirePhaseLabelText
 } from './onewire-helpers.js'
 import { oneWireSymbolNodeInfo, oneWireSymbolScaleFor, oneWireSymbolStrokeWidthFor } from './onewire-symbol-nodes.js'
+import { isOneWireDistributionProtection } from '../interaction/connected-conductors.js'
 
 export type CircuitPropertyUpdate = Partial<{
   [Key in keyof ElectricalDeviceMetadata]: ElectricalDeviceMetadata[Key] | null
@@ -55,6 +56,7 @@ export const updateCircuitSpecifications = (
 }
 
 export const circuitKeyForShape = (shape: Shape): string | null => {
+  if (!shape.generationKey && isOneWireDistributionProtection(shape)) return null
   if (shape.sourceLink?.kind === 'board' || shape.sourceLink?.kind === 'circuit') {
     const linked = shape.sourceLink.id.trim().toUpperCase()
     if (linked) return linked

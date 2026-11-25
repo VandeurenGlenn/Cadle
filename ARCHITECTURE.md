@@ -127,6 +127,9 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   Breakers, rails, lower rows and other circuits stay fixed; the intervening conductor extends to keep contacts intact.
   Inline-edited circuits retain their manual geometry during property updates. Locked wires/rows, occupied junctions
   and insufficient conductor space produce an explicit message instead of repacking surrounding equipment.
+  The one-wire toolbar's Diff action places a differential directly on a rail or inline in a conductor,
+  without adding a breaker first. It reuses the protection symbol scale, electrical contacts and editable RCD fields.
+  Manual differentials retain their own ratings independently of the circuits they supply.
   Circuit source synchronization restores inline clearance and re-cuts regenerated conductors around existing devices,
   retaining continuation-wire identities instead of leaving a bypass through the symbol.
 - `src/editor/keyboard/` — editor hotkey definitions, resolution, and command descriptors.

@@ -119,7 +119,8 @@ import { paginateOneWireCircuits } from './layout/onewire-overflow.js'
 import {
   buildKamrailCircuitBundle,
   ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
-  oneWireProtectionSymbolPath
+  oneWireProtectionSymbolPath,
+  type OneWireComponentKind
 } from './layout/onewire-helpers.js'
 import {
   applyOneWireCircuitPresentation,
@@ -357,7 +358,7 @@ export class CadleApp extends LiteElement {
   #oneWireBindingId = 'A1'
   #oneWirePreset: OneWirePreset = 'sockets'
   #oneWireMode: 'preset' | 'compose' = 'preset'
-  #oneWireComposeKind: 'breaker' | 'switch' | 'kamrail' | 'load' = 'switch'
+  #oneWireComposeKind: OneWireComponentKind = 'switch'
   #stageContextMenuOpen = false
   #stageContextMenuX = 0
   #stageContextMenuY = 0
@@ -3196,8 +3197,9 @@ export class CadleApp extends LiteElement {
     return svg`<circle class=${`snap-indicator snap-indicator-${this.#snapIndicatorKind}`} cx=${this.#snapTarget.x} cy=${this.#snapTarget.y} r="9"></circle>`
   }
 
-  #oneWireComponentSymbol(kind: 'breaker' | 'switch' | 'kamrail' | 'load'): { name: string; path: string } {
+  #oneWireComponentSymbol(kind: OneWireComponentKind): { name: string; path: string } {
     if (kind === 'breaker') return { name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }
+    if (kind === 'differential') return { name: 'Differentieel', path: 'symbols/Protection devices/Residual-current circuit breaker.svg' }
     if (kind === 'switch') return { name: 'Switch', path: 'symbols/Switches/Switch general symbol.svg' }
     if (kind === 'kamrail') return { name: 'Kamrail', path: 'symbols/Protection devices/Kamrail.svg' }
     if (this.#oneWirePreset === 'sockets') {
@@ -3209,7 +3211,7 @@ export class CadleApp extends LiteElement {
     return { name: 'Lighting', path: 'symbols/Consumption appliances/Lighting.svg' }
   }
 
-  #oneWireSymbolScale(path: string, _kind: 'breaker' | 'switch' | 'kamrail' | 'load'): number {
+  #oneWireSymbolScale(path: string, _kind: OneWireComponentKind): number {
     return oneWireSymbolScaleFor(path) ?? inferSymbolScale(path)
   }
 
@@ -4447,7 +4449,8 @@ export class CadleApp extends LiteElement {
     const rotation = oneWireSymbolRotationFor(component.path)
     const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
     const breakerTerminal =
-      this.#oneWireComposeKind === 'breaker' ? oneWireSymbolTerminalInfo(component.path, scale)?.bottom : undefined
+      this.#oneWireComposeKind === 'breaker' || this.#oneWireComposeKind === 'differential'
+        ? oneWireSymbolTerminalInfo(component.path, scale)?.bottom : undefined
     const attachmentOffset = breakerTerminal ?? node?.offset
     const targetNode: Point = {
       x: railAnchor.point.x,
@@ -4455,7 +4458,7 @@ export class CadleApp extends LiteElement {
     }
 
     const bindingId = this.#oneWireBindingId
-    const groupId = `onewire-${nextShapeId()}`
+    const groupId = this.#oneWireComposeKind === 'differential' ? undefined : `onewire-${nextShapeId()}`
 
     const symbol: SymbolShape = {
       id: nextShapeId(),
@@ -4490,7 +4493,8 @@ export class CadleApp extends LiteElement {
       connection: { kind: 'wire', showLabel: false },
       start: {
         x: targetNode.x,
-        y: railAnchor.point.y + ((placeBelowRail ? 1 : -1) * (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH)) / 2
+        y: railAnchor.point.y + (this.#oneWireComposeKind === 'differential'
+          ? 0 : ((placeBelowRail ? 1 : -1) * (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH)) / 2)
       },
       end: { x: targetNode.x, y: connectorEndY },
       stroke: ONEWIRE_BRANCH_STROKE,
@@ -4520,9 +4524,10 @@ export class CadleApp extends LiteElement {
       sourceLink: { kind: 'circuit', id: bindingId, role: 'label' }
     }
 
-    this.#document.shapes.push(connector, symbol, label)
+    this.#document.shapes.push(connector, symbol, ...(this.#oneWireComposeKind === 'differential' ? [] : [label]))
     this.#document.selectedId = symbol.id
-    this.#document.selectedIds = new Set([connector.id, symbol.id, label.id])
+    this.#document.selectedIds = new Set(this.#oneWireComposeKind === 'differential'
+      ? [symbol.id] : [connector.id, symbol.id, label.id])
     this.#oneWireBindingId = this.#nextOneWireBindingId()
     return true
   }
@@ -4678,6 +4683,7 @@ export class CadleApp extends LiteElement {
   }
 
   #circuitGroupForShape(shape: Shape): CircuitGroup | null {
+    if (!shape.generationKey && isOneWireDistributionProtection(shape)) return null
     const analysis = this.analyzeBindings()
     if (shape.sourceLink?.kind === 'device') {
       return (
@@ -5931,7 +5937,7 @@ export class CadleApp extends LiteElement {
     connectionKind?: ConnectionKind
     paper?: PaperPreset
     onewirePreset?: OneWirePreset
-    onewireCompose?: 'breaker' | 'switch' | 'kamrail' | 'load'
+    onewireCompose?: OneWireComponentKind
     action?: string
     circuitId?: string
     spacingMm?: number
@@ -5988,7 +5994,7 @@ export class CadleApp extends LiteElement {
     }
 
     const compose = payload.onewireCompose
-    if (compose === 'breaker' || compose === 'switch' || compose === 'kamrail' || compose === 'load') {
+    if (compose === 'breaker' || compose === 'differential' || compose === 'switch' || compose === 'kamrail' || compose === 'load') {
       this.#oneWireMode = 'compose'
       this.#oneWireComposeKind = compose
       if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
@@ -6700,6 +6706,13 @@ export class CadleApp extends LiteElement {
         : (this.#nearestKamrail(rawPoint)?.rail ?? null)
       if (clickedKamrail) {
         if (this.#oneWireComposeKind === 'kamrail') return
+        if (this.#oneWireComposeKind === 'differential') {
+          if (this.#composeOneWireOnKamrailAt(rawPoint)) {
+            this.#pushHistory()
+            this.#render()
+          }
+          return
+        }
         const followUpKind = this.#oneWireComposeKind === 'breaker' ? null : this.#oneWireComposeKind
 
         const defaultFamily = this.#normalizeBindingFamily(this.#oneWireBindingId) ?? 'A'

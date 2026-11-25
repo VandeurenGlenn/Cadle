@@ -4,6 +4,7 @@ import '@vandeurenglenn/lite-elements/icon-button.js'
 import pubsub from '../../pubsub.js'
 import styles from './onewire-actions.css' with { type: 'css' }
 import { CONNECTION_NAMES, type ConnectionKind } from '../../editor/model/electrical-connection.js'
+import type { OneWireComponentKind } from '../../editor/layout/onewire-helpers.js'
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -18,7 +19,7 @@ type OneWireAction = {
   label: string
 }
 
-type OneWireComposeKind = 'breaker' | 'switch' | 'kamrail' | 'load'
+type OneWireComposeKind = OneWireComponentKind
 
 @customElement('onewire-actions')
 export class OneWireActions extends LiteElement {
@@ -44,6 +45,7 @@ export class OneWireActions extends LiteElement {
   #actions: OneWireAction[] = [
     { kind: 'kamrail', icon: 'power_input', title: 'Add kamrail', label: 'Kamrail' },
     { kind: 'breaker', icon: 'electric_bolt', title: 'Add breaker', label: 'Breaker' },
+    { kind: 'differential', icon: 'electric_bolt', title: 'Add differential', label: 'Diff' },
     { kind: 'switch', icon: 'toggle_off', title: 'Add switch', label: 'Switch' },
     { kind: 'load', icon: 'power', title: 'Add load', label: 'Load' }
   ]

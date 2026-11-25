@@ -34,6 +34,23 @@ test('derives a stable circuit key from generated and bound shapes', () => {
   assert.equal(circuitKeyForShape(bound), 'A')
 })
 
+test('keeps a manually placed differential independent from its connected circuit specifications', () => {
+  const differential: SymbolShape = {
+    id: 'diff', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg',
+    position: { x: 300, y: 500 }, scale: 4, bindingId: 'A1',
+    sourceLink: { kind: 'circuit', id: 'A1', role: 'inline' },
+    electrical: { role: 'protection', oneWireEligible: true, breakerCurrentA: 40, rcdSensitivityMa: 30, rcdType: 'A' }
+  }
+  const circuits = { A1: { breakerCurrentA: 16, rcdSensitivityMa: 300 } }
+  assert.equal(circuitKeyForShape(differential), null)
+  const effective = effectiveStandaloneCircuitElectrical(differential, circuits)
+  assert.equal(effective.breakerCurrentA, 40)
+  assert.equal(effective.rcdSensitivityMa, 30)
+  const result = applyOneWireCircuitPresentation({ shapes: [differential], circuitKey: 'A1', stored: circuits.A1 })
+  assert.deepEqual(result.shapes, [differential])
+})
+
 test('updates circuit specifications immutably and excludes runtime metadata', () => {
   const current = { A: { breakerCurrentA: 20, breakerCurve: 'C' as const } }
   const result = updateCircuitSpecifications(current, ' a ', {

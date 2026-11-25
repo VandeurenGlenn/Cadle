@@ -571,7 +571,8 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     else labeledShapes.set(key, [shape])
   }
 
-  const occupied = shapes.filter((shape) => !(shape.kind === 'rect' && shape.variant === 'driveway-route')).map((shape) =>
+  const occupied = shapes.filter((shape) =>
+    !(shape.kind === 'rect' && (shape.variant === 'driveway-route' || isStairVariant(shape.variant)))).map((shape) =>
     shape.kind === 'symbol' ? symbolContentBounds(shape) : shapeCollisionBounds(shape)
   )
   const placedLabelRects: Array<{ x: number; y: number; width: number; height: number }> = []

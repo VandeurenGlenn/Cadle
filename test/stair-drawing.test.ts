@@ -12,7 +12,7 @@ import { updateSelectionProperties } from '../src/editor/interaction/selection-p
 import { createNativeSelectionChangedPayload } from '../src/editor/interaction/selection-payload.ts'
 import { PAPER_PRESETS } from '../src/editor/constants.ts'
 import type { LineShape, RectShape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
-import { stairReadabilityMaskMarkup } from '../src/editor/svg-templates.ts'
+import { bindingLabelsMarkup, stairReadabilityMaskMarkup } from '../src/editor/svg-templates.ts'
 
 for (const variant of ['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral'] as const) {
   test(`${variant} resizes with the pointer and retains its geometry after saving and scaling`, () => {
@@ -102,6 +102,23 @@ test('stairs leave padded clearances around symbols, text and binding labels wit
     worldWidth: 1000, worldHeight: 1000 })
   assert.ok(exported.includes(mask))
   assert.match(exported, /<image\s+class="shape shape-symbol[^>]*data-shape-id="lamp"[^>]*>/)
+})
+
+test('a stair does not suppress automatic circuit labels or their readability cutouts', () => {
+  const lamp: SymbolShape = { id: 'lamp', kind: 'symbol', path: 'lamp.svg', name: 'Lighting',
+    position: { x: 100, y: 200 }, scale: 1, bindingId: 'A1' }
+  const stairs: RectShape[] = (['stairs-straight', 'stairs-quarter-turn', 'stairs-double-quarter-turn', 'stairs-spiral', 'stairs-route'] as const)
+    .map((variant) => ({ id: variant, kind: 'rect', variant,
+      start: { x: 0, y: 0 }, end: { x: 200, y: 400 } }))
+  const labels = bindingLabelsMarkup([lamp])
+  assert.match(labels, />A1<\/text>/)
+  for (const stair of stairs) {
+    assert.equal(bindingLabelsMarkup([stair, lamp]), labels)
+    assert.equal((stairReadabilityMaskMarkup([stair, lamp]).match(/fill="black"/g) ?? []).length, 2)
+    const exported = buildSvgDocument({ shapes: [stair, lamp], selectedShape: null,
+      paper: PAPER_PRESETS['a4-landscape'], worldWidth: 1000, worldHeight: 1000 })
+    assert.ok(exported.includes(labels))
+  }
 })
 
 test('double-quarter-turn stairs have three flights, two winding corners and an open centre', () => {

@@ -22,7 +22,9 @@ test('draws a stair route, hides all flights after the first wall and retains th
         shapes: [
           { id: 'wall', kind: 'wall', start: { x: 400, y: 704 }, end: { x: 960, y: 704 }, strokeWidth: 8 },
           { id: 'light', kind: 'symbol', path: 'symbols/Consumption appliances/Lighting.svg', name: 'Lighting',
-            position: { x: 480, y: 880 }, scale: 1, bindingId: 'A1', bindingLabelOffset: { x: 0, y: 60 } }
+            position: { x: 480, y: 880 }, scale: 1, bindingId: 'A1', bindingLabelOffset: { x: 0, y: 60 } },
+          { id: 'automatic-light', kind: 'symbol', path: 'symbols/Consumption appliances/Lighting.svg', name: 'Lighting',
+            position: { x: 480, y: 780 }, scale: 1, bindingId: 'A2' }
         ]
       } }] }
     } }
@@ -41,6 +43,9 @@ test('draws a stair route, hides all flights after the first wall and retains th
   await page.locator(`projects-field custom-list-item[data-name="${project.name}"]`).click()
   const app = page.locator('cadle-app:not([read-only])')
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  const automaticLabel = app.locator('.binding-label[data-shape-id="automatic-light"] text')
+  await expect(automaticLabel).toHaveText('A2')
+  const labelPosition = await automaticLabel.evaluate((node) => ({ x: node.getAttribute('x'), y: node.getAttribute('y') }))
   const point = (x: number, y: number) => app.locator('.world').evaluate((world: SVGGElement, value) => {
     const p = new DOMPoint(value.x, value.y).matrixTransform(world.getScreenCTM()!)
     return { x: p.x, y: p.y }
@@ -79,7 +84,14 @@ test('draws a stair route, hides all flights after the first wall and retains th
   await expect(app.locator('[data-stair-route-preview]')).toHaveCount(0)
   await expect.poll(footprint).toEqual({ x: 440, y: 708, width: 80, height: 252 })
   const mask = app.locator('#stair-readability-mask')
-  await expect(mask.locator('rect[fill="black"]')).toHaveCount(2)
+  await expect(automaticLabel).toHaveText('A2')
+  expect(await automaticLabel.evaluate((node) => ({ x: node.getAttribute('x'), y: node.getAttribute('y') }))).toEqual(labelPosition)
+  await expect(mask.locator('rect[fill="black"]')).toHaveCount(4)
+  expect(await mask.locator('rect[fill="black"]').evaluateAll((rects, position) => rects.some((rect) =>
+    Number(rect.getAttribute('x')) < Number(position.x) &&
+    Number(rect.getAttribute('y')) < Number(position.y) &&
+    Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')) > Number(position.x) &&
+    Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) > Number(position.y)), labelPosition)).toBe(true)
   const pixels = await app.evaluate(async (element) => {
     const root = element.shadowRoot!
     const mask = root.querySelector('#stair-readability-mask')!.outerHTML
@@ -107,6 +119,8 @@ test('draws a stair route, hides all flights after the first wall and retains th
   const outline = await stairs.locator('.stairs-outline').getAttribute('d')
   const exported = await app.evaluate((element) => (element as CadleApp).toSVG())
   expect(exported).toContain(`d="${outline}"`)
+  expect(exported).toContain('class="binding-label" data-shape-id="automatic-light"')
+  expect(exported).toContain('>A2</text>')
 
   const visibility = page.locator('object-pane [data-stair-visibility]')
   await visibility.selectOption('full')
@@ -123,6 +137,7 @@ test('draws a stair route, hides all flights after the first wall and retains th
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
   await expect(stairs.locator('.stairs-break')).toHaveCount(1)
   await expect.poll(footprint).toEqual({ x: 440, y: 708, width: 80, height: 252 })
+  await expect(automaticLabel).toHaveText('A2')
   await click(480, 832)
   await visibility.selectOption('full')
   await expect.poll(footprint).toEqual({ x: 440, y: 360, width: 480, height: 600 })

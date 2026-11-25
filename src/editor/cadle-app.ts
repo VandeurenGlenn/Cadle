@@ -347,7 +347,12 @@ export class CadleApp extends LiteElement {
   #pendingCatalogSymbol: NativeCatalogPick | null = null
   #symbolPreviewPoint: Point | null = null
   // Active symbol placement gesture: anchor stays fixed while dragging sets the rotation.
-  #symbolPlacement: { anchor: Point; rotation: number; inline?: OneWireInlinePlacement } | null = null
+  #symbolPlacement: {
+    anchor: Point
+    rotation: number
+    inline?: OneWireInlinePlacement
+    oneWireRail?: { railId: string; point: Point }
+  } | null = null
   // Zoom & pan state
   #viewport = new ViewportController()
   #isPanning = false
@@ -3110,12 +3115,54 @@ export class CadleApp extends LiteElement {
     return best ? { point: best, snapped: true } : { point, snapped: false }
   }
 
+  #manualBreakerRailSnap(point: Point, symbol: SymbolShape): { point: Point; railId: string; railPoint: Point } | null {
+    if (this.#symbolPlacementContext() !== 'onewire' ||
+      !/\/protection devices\/automaat\.svg$/i.test(symbol.path)) return null
+    const nearest = this.#nearestKamrail(point)
+    if (!nearest || nearest.rail.hidden || nearest.rail.locked) return null
+    const bottom = this.#symbolConnectionAnchors(symbol).find((anchor) => anchor.side === 'bottom')
+    if (!bottom) return null
+    const contact = { x: nearest.point.x, y: nearest.point.y - KAMRAIL_ATTACH_OFFSET }
+    return {
+      point: { x: symbol.position.x + contact.x - bottom.point.x, y: symbol.position.y + contact.y - bottom.point.y },
+      railId: nearest.rail.id,
+      railPoint: nearest.point
+    }
+  }
+
+  #manualBreakerTerminalPoint(symbol: SymbolShape): Point | undefined {
+    const bottom = oneWireSymbolTerminalInfo(symbol.path, symbol.scale)?.bottom
+    if (!bottom) return this.#symbolConnectionAnchors(symbol).find((anchor) => anchor.side === 'bottom')?.point
+    const radians = (symbol.rotation ?? 0) * Math.PI / 180
+    const x = bottom.x * (symbol.flipX ? -1 : 1)
+    const y = bottom.y * (symbol.flipY ? -1 : 1)
+    return {
+      x: symbol.position.x + x * Math.cos(radians) - y * Math.sin(radians),
+      y: symbol.position.y + x * Math.sin(radians) + y * Math.cos(radians)
+    }
+  }
+
+  #alignManualBreakerWithRail(symbol: SymbolShape, railPoint: Point): SymbolShape {
+    const terminal = this.#manualBreakerTerminalPoint(symbol)
+    if (!terminal) return symbol
+    const contact = { x: railPoint.x, y: railPoint.y - KAMRAIL_ATTACH_OFFSET }
+    return {
+      ...symbol,
+      position: { x: symbol.position.x + contact.x - terminal.x, y: symbol.position.y + contact.y - terminal.y }
+    }
+  }
+
   #symbolPlacementContext(): 'groundplan' | 'onewire' {
     return this.#project?.pages?.[this.#pageKey]?.pageType === 'onewire' ? 'onewire' : 'groundplan'
   }
 
   // Takes the raw (unsnapped) world point; skips grid snapping when a wall is in range.
-  #snapSymbolPlacementPoint(rawPoint: Point): { point: Point; snapped: boolean; kind: SnapIndicatorKind } {
+  #snapSymbolPlacementPoint(rawPoint: Point): {
+    point: Point
+    snapped: boolean
+    kind: SnapIndicatorKind
+    oneWireRail?: { railId: string; point: Point }
+  } {
     const symbolScale = this.#pendingCatalogSymbol ? resolveCatalogSymbolScale(this.#pendingCatalogSymbol, this.#symbolPlacementContext()) : 1
     const symbolHalfExtent = (24 * Math.max(0.4, symbolScale)) / 2
     const previewShape = this.#pendingCatalogSymbol
@@ -3124,6 +3171,11 @@ export class CadleApp extends LiteElement {
     if (previewShape && this.#symbolPlacementContext() === 'onewire') {
       const inline = planOneWireInlinePlacement(this.#document.shapes, previewShape, rawPoint)
       if (inline && !('error' in inline)) return { point: inline.point, snapped: true, kind: 'electrical' }
+      const breaker = this.#manualBreakerRailSnap(rawPoint, previewShape)
+      if (breaker) return {
+        point: breaker.point, snapped: true, kind: 'electrical',
+        oneWireRail: { railId: breaker.railId, point: breaker.railPoint }
+      }
     }
 
     const wall = this.#snapSymbolToWallOffset(rawPoint, symbolHalfExtent, previewShape)
@@ -5753,6 +5805,9 @@ export class CadleApp extends LiteElement {
     if (this.#tools.current === 'symbol' && this.#pendingCatalogSymbol && this.#symbolPreviewPoint) {
       symbolPreviewShape = createSymbolShape('__symbol-preview__', this.#symbolPreviewPoint, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
       if (this.#symbolPlacement?.rotation) symbolPreviewShape.rotation = this.#symbolPlacement.rotation
+      if (this.#symbolPlacement?.oneWireRail) {
+        symbolPreviewShape = this.#alignManualBreakerWithRail(symbolPreviewShape, this.#symbolPlacement.oneWireRail.point)
+      }
       if (this.#symbolPlacementContext() === 'onewire') {
         const inline = this.#symbolPlacement?.inline ?? planOneWireInlinePlacement(this.#document.shapes, symbolPreviewShape, this.#symbolPreviewPoint)
         if (inline && !('error' in inline)) symbolPreviewShape = { ...inline.symbol, id: '__symbol-preview__' }
@@ -6654,7 +6709,8 @@ export class CadleApp extends LiteElement {
       this.#symbolPlacement = {
         anchor: snapped.point,
         rotation: 0,
-        ...(inline && 'symbol' in inline ? { inline } : {})
+        ...(inline && 'symbol' in inline ? { inline } : {}),
+        ...(snapped.oneWireRail ? { oneWireRail: snapped.oneWireRail } : {})
       }
       this.#stagePointerId = event.pointerId
       ;(stage as SVGSVGElement).setPointerCapture(event.pointerId)
@@ -7208,6 +7264,32 @@ export class CadleApp extends LiteElement {
         } else {
           shape = createSymbolShape(nextShapeId(), placement.anchor, this.#pendingCatalogSymbol, this.#symbolPlacementContext())
           if (placement.rotation) shape.rotation = placement.rotation
+          const rail = placement.oneWireRail && this.#document.shapes.find((candidate): candidate is LineShape =>
+            candidate.id === placement.oneWireRail!.railId && this.#isKamrailShape(candidate) &&
+            !candidate.hidden && !candidate.locked)
+          if (rail && placement.oneWireRail) {
+            shape = this.#alignManualBreakerWithRail(shape, placement.oneWireRail.point)
+            shape.oneWireRailId = rail.id
+            const terminal = this.#manualBreakerTerminalPoint(shape)
+            if (terminal) {
+              const groupId = `onewire-${shape.id}`
+              shape.groupId = groupId
+              this.#document.shapes.push({
+                id: nextShapeId(),
+                kind: 'line',
+                start: {
+                  x: placement.oneWireRail.point.x,
+                  y: placement.oneWireRail.point.y - (rail.strokeWidth ?? KAMRAIL_STROKE_WIDTH) / 2
+                },
+                end: { ...terminal },
+                stroke: ONEWIRE_BRANCH_STROKE,
+                strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+                connection: { kind: 'wire', showLabel: false },
+                groupId,
+                oneWireRailId: rail.id
+              })
+            }
+          }
           this.#document.shapes.push(shape)
         }
         this.#document.selectedId = shape.id

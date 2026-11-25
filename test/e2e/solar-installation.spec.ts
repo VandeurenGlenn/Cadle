@@ -6,6 +6,7 @@ import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { Shape } from '../../src/editor/model/types.ts'
 import { nativeStateForProjectPage } from '../../src/data/project-document.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { jsPDF } from 'jspdf'
 
 const openProject = async (page: Page, shapes: Shape[]) => {
@@ -45,6 +46,43 @@ const openProject = async (page: Page, shapes: Shape[]) => {
   }
   return { app, shell, stored, pageKey }
 }
+
+test('places a catalog PV breaker connected to the nearest kamrail', async ({ page }) => {
+  const rail: Shape = {
+    id: 'pv-manual-test-rail', kind: 'line', start: { x: 500, y: 900 }, end: { x: 1500, y: 900 },
+    stroke: '#000000', strokeWidth: 4, groupId: 'onewire-kamrail-pv-manual-test'
+  }
+  const { app, stored } = await openProject(page, [rail])
+  await page.getByRole('button', { name: 'Add symbol', exact: true }).click()
+  const picker = page.locator('symbol-picker-dialog')
+  const search = picker.locator('catalog-element search-element input')
+  await search.fill('Automaat')
+  await expect(picker.locator('.search-status')).toContainText('Automaat')
+  await picker.getByRole('button', { name: 'Place automaat', exact: true }).first().click()
+
+  const stage = app.locator('svg.stage')
+  const point = await stage.locator('line[data-shape-id="pv-manual-test-rail"]').evaluate((line: SVGLineElement) => {
+    const point = new DOMPoint((line.x1.baseVal.value + line.x2.baseVal.value) / 2,
+      (line.y1.baseVal.value + line.y2.baseVal.value) / 2).matrixTransform(line.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+
+  const shapes = await stored()
+  const breaker = shapes.find((shape) => shape.kind === 'symbol' && shape.path.endsWith('/Automaat.svg'))
+  expect(breaker?.kind).toBe('symbol')
+  if (!breaker || breaker.kind !== 'symbol') throw new Error('Manual PV breaker was not placed.')
+  expect(breaker.oneWireRailId).toBe('pv-manual-test-rail')
+  const terminal = oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')?.point
+  expect(terminal).toBeDefined()
+  const connector = shapes.find((shape) => shape.kind === 'line' &&
+    shape.oneWireRailId === 'pv-manual-test-rail' && shape.connection?.kind === 'wire')
+  expect(connector?.kind).toBe('line')
+  if (!connector || connector.kind !== 'line' || !terminal) throw new Error('Manual PV breaker connector was not created.')
+  expect(connector.end).toEqual(terminal)
+  expect(Math.abs(connector.start.x - 1000)).toBeLessThan(3)
+  expect(connector.start.y).toBeCloseTo(898, 5)
+})
 
 test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23 panels', async ({ page }, testInfo) => {
   const { app, stored, pageKey } = await openProject(page, [])

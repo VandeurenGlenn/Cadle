@@ -95,6 +95,7 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
   await page.getByRole('button', { name: 'More drawing tools', exact: true }).click()
   await page.getByRole('button', { name: 'Oprit tekenen', exact: true }).click()
   await page.getByRole('combobox', { name: 'Vorm oprit', exact: true }).selectOption('area')
+  await page.getByRole('combobox', { name: 'Verharding oprit', exact: true }).selectOption('cobbles')
   await expect(page.getByRole('spinbutton', { name: 'Opritbreedte (cm)' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Oprit bewaren', exact: true }).click()
   await expect(app.getByRole('status').filter({ hasText: 'minstens drie hoeken' })).toBeVisible()
@@ -145,4 +146,45 @@ test('draws and edits a curved driveway and preserves it after reload', async ({
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
   await expect(app.locator(`g.shape-driveway[data-shape-id="${filledId}"] .driveway-surface`)).toHaveAttribute('fill', 'url(#driveway-gravel)')
   await expect(label).toHaveText('A1')
+
+  const sampleJoin = (exported = false) => app.evaluate(async (element, exported) => {
+    const root = exported
+      ? new DOMParser().parseFromString((element as CadleApp).toSVG(), 'image/svg+xml')
+      : element.shadowRoot!
+    const definitions = [...root.querySelectorAll('pattern[id^="driveway-"]')].map((node) => node.outerHTML).join('')
+    const outlines = root.querySelector('.driveway-outlines')!.outerHTML
+    const surfaces = [...root.querySelectorAll('g.shape-driveway:not(.draft)')].map((node) => node.outerHTML).join('')
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" width="2376" height="1680"><defs>${definitions}</defs>${outlines}${surfaces}</svg>`
+    const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }))
+    try {
+      const image = new Image()
+      image.src = url
+      await image.decode()
+      const canvas = document.createElement('canvas')
+      canvas.width = 2376; canvas.height = 1680
+      const context = canvas.getContext('2d')!
+      context.fillStyle = 'white'; context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      return [479, 480, 640, 641].map((x) => [...context.getImageData(x, 360, 1, 1).data])
+    } finally { URL.revokeObjectURL(url) }
+  }, exported)
+  const beforeJoin = await sampleJoin()
+  await page.getByRole('button', { name: 'More drawing tools', exact: true }).click()
+  await page.getByRole('button', { name: 'Oprit tekenen', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Vorm oprit', exact: true }).selectOption('route')
+  await page.getByRole('combobox', { name: 'Verharding oprit', exact: true }).selectOption('cobbles')
+  await page.getByRole('spinbutton', { name: 'Opritbreedte (cm)' }).fill('200')
+  await click(560, 200)
+  await click(560, 400)
+  await page.keyboard.press('Enter')
+  await expect(app.locator('g.shape-driveway:not(.draft)')).toHaveCount(3)
+  expect(await sampleJoin()).toEqual(beforeJoin)
+  expect(await sampleJoin(true)).toEqual(beforeJoin)
+  await expect(label).toHaveText('A1')
+  await page.screenshot({ path: testInfo.outputPath('joined-driveways.png') })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  expect(await sampleJoin()).toEqual(beforeJoin)
 })

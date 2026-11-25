@@ -155,6 +155,8 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   The driveway tool offers a width-based route or a filled polygon. Filled areas use the clicked boundary
   without a width offset; Enter, double-click or clicking the first corner closes the surface. Crossing or
   degenerate boundaries are rejected. The material remains editable and the closed boundary persists with the shape.
+  Driveway outlines are painted together beneath all paving surfaces, so overlapping routes and areas join
+  without internal border lines in both editor and export, while retaining individually editable shapes.
 - The one-wire “Omvormer / PV” action adds or edits an inverter, panel array, or complete connected PV branch
   through a reviewable equipment form. Each component has its own manufacturer, model, datasheet image/text
   import and variant selection; importing one component never replaces the other component's specifications.

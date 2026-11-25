@@ -614,6 +614,11 @@ test('starts a short generated rail close to its first breaker and keeps it afte
     uuid: randomUUID(), creationTime: 1, name: 'Korte rail met twee kringen', company: '',
     customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
     address: { street: '', number: '', postalCode: '', city: '' },
+    electricalProfile: {
+      standard: 'AREI', edition: '2025', distributor: '', supplyConfiguration: '3x400V+N',
+      supplyVoltageV: 400, phaseConfiguration: 'L1+L2+L3+N', earthingSystem: 'TT', defaultPoles: 4
+    },
+    circuitSpecifications: { E: { poles: 4 } },
     oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
       mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
     pages: {
@@ -652,6 +657,14 @@ test('starts a short generated rail close to its first breaker and keeps it afte
   if (!rail || rail.kind !== 'line') throw new Error('Generated rail not found')
   const breakers = shapes.filter((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker')
   expect(breakers).toHaveLength(2)
+  expect(breakers.find((shape) => shape.sourceLink?.id === 'D')?.electrical?.poles).toBe(2)
+  expect(breakers.find((shape) => shape.sourceLink?.id === 'E')?.electrical?.poles).toBe(4)
+  expect(shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.id === 'D' &&
+    shape.sourceLink.role === 'breaker-poles')).toMatchObject({ text: '2P' })
+  expect(shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.id === 'D' &&
+    shape.sourceLink.role === 'breaker-phase')).toMatchObject({ text: '' })
+  expect(shapes.find((shape) => shape.kind === 'text' && shape.sourceLink?.id === 'E' &&
+    shape.sourceLink.role === 'breaker-poles')).toMatchObject({ text: '4P' })
   const firstX = Math.min(...breakers.map((breaker) =>
     oneWireSymbolConnectionAnchors(breaker).find((anchor) => anchor.side === 'bottom')!.point.x))
   expect(firstX - rail.start.x).toBeCloseTo(20)

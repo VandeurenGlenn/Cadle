@@ -231,4 +231,20 @@ test('resolves standalone inspector values from project metadata', () => {
   assert.equal(electrical.cableConductors, 4)
   assert.equal(electrical.phaseConfiguration, 'L2+N')
   assert.equal(electrical.poles, 2)
+  assert.equal(effectiveStandaloneCircuitElectrical(breaker, {}, {
+    standard: 'AREI', edition: '2025', distributor: 'Fluvius', supplyConfiguration: '3x400V+N',
+    supplyVoltageV: 400, phaseConfiguration: 'L1+L2+L3+N', earthingSystem: 'TT', defaultPoles: 4
+  }).poles, 2)
+  assert.equal(effectiveStandaloneCircuitElectrical({
+    ...breaker, electrical: { role: 'protection', oneWireEligible: true, poles: 4 }
+  }).poles, 4)
+})
+
+test('does not label a 2P breaker with the three-phase supply', () => {
+  const result = applyOneWireCircuitPresentation({
+    shapes: [linkedText('phase', 'breaker-phase', 'L1-L2-L3-N')],
+    circuitKey: 'A',
+    stored: { poles: 2, phaseConfiguration: 'L1+L2+L3+N' }
+  })
+  assert.equal((result.shapes[0] as TextShape).text, '')
 })

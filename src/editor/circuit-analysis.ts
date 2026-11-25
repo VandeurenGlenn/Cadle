@@ -157,10 +157,7 @@ const suggestedSpecification = (
     cableType: explicit.cableType ?? defaults.cableType,
     cableInstallation: explicit.cableInstallation ?? defaults.cableInstallation,
     showCableInstallation: explicit.showCableInstallation ?? true,
-    poles:
-      explicit.poles ??
-      profile?.defaultPoles ??
-      (phaseConfiguration === 'three-phase' || phaseConfiguration === 'L1+L2+L3+N' ? 4 : 2),
+    poles: explicit.poles ?? defaults.poles,
     phaseConfiguration,
     manufacturer,
     ...(explicit.productSeries ? { productSeries: explicit.productSeries } : {}),
@@ -183,7 +180,7 @@ const suggestedSpecification = (
     sources: {
       breakerCurrentA: explicit.breakerCurrentA !== undefined ? 'entered' : 'suggested',
       cableSectionMm2: explicit.cableSectionMm2 !== undefined ? 'entered' : 'suggested',
-      poles: explicit.poles !== undefined ? 'entered' : profile ? 'project' : 'suggested',
+      poles: explicit.poles !== undefined ? 'entered' : 'suggested',
       phaseConfiguration: explicit.phaseConfiguration !== undefined ? 'entered' : profile ? 'project' : 'suggested'
     }
   }

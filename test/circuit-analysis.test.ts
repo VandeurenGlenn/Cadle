@@ -448,7 +448,7 @@ test('does not use a device rated current as its breaker current', () => {
   assert.equal(analysis.groups[0].specification.sources.breakerCurrentA, 'suggested')
 })
 
-test('uses project phase and pole defaults with field-level provenance', () => {
+test('defaults circuit breakers to 2P independently of the supply, while preserving explicit poles', () => {
   const analysis = analyzeCircuits([symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')], {
     standard: 'AREI',
     edition: 'Book 1',
@@ -460,9 +460,16 @@ test('uses project phase and pole defaults with field-level provenance', () => {
     defaultPoles: 4
   })
   assert.equal(analysis.groups[0].specification.phaseConfiguration, 'three-phase')
-  assert.equal(analysis.groups[0].specification.poles, 4)
+  assert.equal(analysis.groups[0].specification.poles, 2)
   assert.equal(analysis.groups[0].specification.sources.phaseConfiguration, 'project')
-  assert.equal(analysis.groups[0].specification.sources.poles, 'project')
+  assert.equal(analysis.groups[0].specification.sources.poles, 'suggested')
+  const explicit = analyzeCircuits([symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')],
+    undefined, { A: { poles: 4, phaseConfiguration: 'three-phase' } })
+  assert.equal(explicit.groups[0].specification.poles, 4)
+  assert.equal(explicit.groups[0].specification.sources.poles, 'entered')
+  const threePhase = analyzeCircuits([symbol('lamp', 'A1', 'Lighting', 'symbols/Consumption appliances/Lighting.svg')],
+    undefined, { A: { phaseConfiguration: 'three-phase' } })
+  assert.equal(threePhase.groups[0].specification.poles, 2)
 })
 
 test('keeps partially entered circuit specifications marked as suggested', () => {

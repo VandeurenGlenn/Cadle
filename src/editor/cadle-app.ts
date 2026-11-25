@@ -7109,7 +7109,7 @@ export class CadleApp extends LiteElement {
           primarySpecification?.hasProtectiveConductor ?? defaultHasProtectiveConductor(cableConductors)
         const poles = familyGroups.length
           ? Math.max(...familyGroups.map((group) => group.specification.poles))
-          : (this.#activeElectricalProfile()?.defaultPoles ?? 2)
+          : circuitDefaults().poles
         const phaseConfiguration = familyGroups.some(
           (group) =>
             group.specification.phaseConfiguration === 'three-phase' ||

@@ -13,7 +13,7 @@ import {
   ONE_WIRE_ROW_SPACING_Y
 } from './onewire-layout-plan.js'
 import { translateShape } from '../interaction/shape-transforms.js'
-import { phaseConfigurationLabel, neutralPositionForManufacturer, shouldShowPhaseLabel } from '../model/electrical.js'
+import { phaseConfigurationLabel, phaseConfigurationLabelForPoles, neutralPositionForManufacturer, shouldShowPhaseLabel } from '../model/electrical.js'
 import {
   oneWireSymbolBounds,
   oneWireSymbolNodeInfo,
@@ -134,9 +134,12 @@ export const ONE_WIRE_ROW_COMPONENT_SCALE = 0.85
 
 export const oneWirePhaseLabelText = (
   phase: OneWireBundleOptions['phaseConfiguration'] | undefined,
-  neutralPosition: OneWireBundleOptions['neutralPosition'] = 'right'
+  neutralPosition: OneWireBundleOptions['neutralPosition'] = 'right',
+  poles?: number
 ): string => {
-  return phaseConfigurationLabel(phase, neutralPosition)
+  return poles === undefined
+    ? phaseConfigurationLabel(phase, neutralPosition)
+    : phaseConfigurationLabelForPoles(poles, phase, neutralPosition)
 }
 
 const ONE_WIRE_CABLE_INSTALLATION_PATHS: Record<OneWireCableInstallation, string> = {
@@ -327,7 +330,8 @@ export const buildOneWireBreakerSection = (
           specification?.phaseConfiguration,
           specification?.neutralPosition ??
             neutralPositionForManufacturer(specification?.manufacturer ?? 'Schneider Electric') ??
-            'right'
+            'right',
+          specification?.poles ?? 2
         )
       : '',
     textAnchor: 'start',

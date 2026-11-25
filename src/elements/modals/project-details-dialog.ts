@@ -745,7 +745,7 @@ export class ProjectDetailsDialog extends LiteElement {
             </select>
           </label>
           <label>
-            <span>Standaard aantal polen</span>
+            <span>Standaard pooltal verdeelbord</span>
             <input
               type="number"
               min="1"

@@ -94,7 +94,7 @@ export const effectiveStandaloneCircuitElectrical = (
       neutralPositionForManufacturer(stored.manufacturer ?? base.manufacturer ?? 'Schneider Electric') ??
       'right',
     showPhaseLabel: stored.showPhaseLabel ?? base.showPhaseLabel ?? true,
-    poles: stored.poles ?? profile?.defaultPoles ?? defaults.poles
+    poles: stored.poles ?? base.poles ?? (circuitKey ? defaults.poles : profile?.defaultPoles ?? defaults.poles)
   }
 }
 
@@ -174,7 +174,7 @@ export const applyOneWireCircuitPresentation = ({
     cableType: stored.cableType ?? baseline?.cableType ?? defaults.cableType,
     cableInstallation: stored.cableInstallation ?? baseline?.cableInstallation ?? defaults.cableInstallation,
     showCableInstallation: stored.showCableInstallation ?? baseline?.showCableInstallation ?? true,
-    poles: stored.poles ?? baseline?.poles ?? profile?.defaultPoles ?? defaults.poles,
+    poles: stored.poles ?? baseline?.poles ?? defaults.poles,
     phaseConfiguration:
       stored.phaseConfiguration ??
       baseline?.phaseConfiguration ??
@@ -198,7 +198,7 @@ export const applyOneWireCircuitPresentation = ({
     'breaker-poles': `${specification.poles}P`,
     'breaker-current': breakerCurrentLabel(specification.breakerCurrentA, specification.breakerCurve),
     'breaker-phase': shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-      ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
+      ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition, specification.poles)
       : '',
     'cable-section': cableConnection?.name?.trim() ? withCableFireClass(cableConnection.name.trim(), specification.cableFireClass) : oneWireCableLabelText({
       conductors: specification.cableConductors,
@@ -236,7 +236,7 @@ export const applyOneWireCircuitPresentation = ({
           ...(shape.symbolTextOverrides ?? {}),
           poles: `${specification.poles}P`,
           phase: shouldShowPhaseLabel(specification.poles, specification.showPhaseLabel)
-            ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition)
+            ? oneWirePhaseLabelText(specification.phaseConfiguration, specification.neutralPosition, specification.poles)
             : '',
           'rated-current': isResidualBreaker ? `${specification.breakerCurrentA}A`
             : breakerCurrentLabel(specification.breakerCurrentA, specification.breakerCurve),

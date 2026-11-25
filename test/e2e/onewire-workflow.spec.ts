@@ -6,7 +6,7 @@ import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { Shape } from '../../src/editor/model/types.ts'
 import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
-import { oneWireLayoutBounds } from '../../src/editor/layout/onewire-connections.ts'
+import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { pageLayout } from '../../src/editor/layout/page-layout.ts'
 import { PAPER_PRESETS } from '../../src/editor/constants.ts'
 import { findConnectionIssues } from '../../src/editor/layout/connection-issues.ts'
@@ -118,6 +118,120 @@ test('places differentials from the toolbar on rails and inline without adding a
   await expect(pane.locator('select[data-electrical-field="breakerCurrentA"]')).toHaveValue('40')
   await closePropertiesForDrawing(page)
   await page.screenshot({ path: testInfo.outputPath('differential-toolbar.png') })
+})
+
+test('places a differential above or below the rail according to the pointer position', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'differential-sides.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: [{ id: 'rail-sides', kind: 'line', start: { x: 400, y: 900 }, end: { x: 1600, y: 900 },
+        strokeWidth: 4, groupId: 'onewire-kamrail-sides' }],
+      selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680
+    }))
+  })
+  const stage = app.locator('svg.stage')
+  const rail = stage.locator('line[data-shape-id="rail-sides"]')
+  const button = page.locator('onewire-actions').getByRole('button', { name: 'Add differential', exact: true })
+  for (const [x, y] of [[650, 860], [1200, 940]]) {
+    await closePropertiesForDrawing(page)
+    if (await button.getAttribute('aria-pressed') !== 'true') await button.click()
+    const point = await rail.evaluate((line: SVGLineElement, coords) => {
+      const screen = new DOMPoint(coords.x, coords.y).matrixTransform(line.getScreenCTM()!)
+      return { x: screen.x, y: screen.y }
+    }, { x, y })
+    await page.mouse.click(point.x, point.y)
+  }
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  const shapes = nativeStateForProjectPage(project, schematic)!.shapes
+  const differentials = shapes.filter((shape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'differential')
+  expect(differentials).toHaveLength(2)
+  for (const [index, side] of ['top', 'bottom'].entries()) {
+    const symbol = differentials[index]
+    if (symbol.kind !== 'symbol') throw new Error('Differential is not a symbol')
+    const incoming = oneWireSymbolConnectionAnchors(symbol).find((anchor) => anchor.side === (side === 'top' ? 'bottom' : 'top'))!.point
+    const outgoing = oneWireSymbolConnectionAnchors(symbol).find((anchor) => anchor.side === side)!.point
+    const connector = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'connector' &&
+      shape.sourceLink.id === symbol.sourceLink?.id)
+    const wire = shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'differential-wire' &&
+      shape.sourceLink.id === symbol.sourceLink?.id)
+    if (connector?.kind !== 'line' || wire?.kind !== 'line') throw new Error('Differential wiring not found')
+    expect(side === 'top' ? symbol.position.y < 900 : symbol.position.y > 900).toBe(true)
+    expect(connector.start.y).toBe(900)
+    expect(connector.end.x).toBeCloseTo(incoming.x, 5)
+    expect(connector.end.y).toBeCloseTo(incoming.y, 5)
+    expect(wire.start.x).toBeCloseTo(outgoing.x, 5)
+    expect(wire.start.y).toBeCloseTo(outgoing.y, 5)
+    expect(side === 'top' ? wire.end.y < wire.start.y : wire.end.y > wire.start.y).toBe(true)
+  }
+  await shell.evaluate((element) => (element as AppShell).loadPage('00000000-0000-4000-8000-000000000102'))
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), schematic)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const reloaded = await shell.evaluate((element) => (element as AppShell).project!)
+  expect(nativeStateForProjectPage(reloaded, schematic)!.shapes).toEqual(shapes)
+  const lower = differentials[1]
+  const lowerWire = shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire' && shape.sourceLink.id === lower.sourceLink?.id)!
+  const upper = differentials[0]
+  const upperWire = shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire' && shape.sourceLink.id === upper.sourceLink?.id)!
+  const upperConnector = shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'connector' && shape.sourceLink.id === upper.sourceLink?.id)!
+  if (upperConnector.kind !== 'line') throw new Error('Upper connector not found')
+  const rotatedConnectorEnd = {
+    x: 2 * upper.position.x - upperConnector.end.x,
+    y: 2 * upper.position.y - upperConnector.end.y
+  }
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'missing-differential-wire.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      ...nativeStateForProjectPage(reloaded, schematic),
+      shapes: shapes.filter((shape) => shape.id !== lowerWire.id && shape.id !== upperWire.id).map((shape) =>
+        shape.id === upper.id && shape.kind === 'symbol' ? { ...shape, rotation: 180 }
+          : shape.id === upperConnector.id && shape.kind === 'line' ? { ...shape, end: rotatedConnectorEnd } : shape)
+    }))
+  })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const restored = await shell.evaluate((element) => (element as AppShell).project!)
+  const restoredWire = nativeStateForProjectPage(restored, schematic)!.shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire' && shape.sourceLink.id === lower.sourceLink?.id)
+  expect(restoredWire?.kind).toBe('line')
+  if (!restoredWire || restoredWire.kind !== 'line') throw new Error('Differential cable not restored')
+  expect(restoredWire.start.y).toBeLessThan(restoredWire.end.y)
+  const rotatedWire = nativeStateForProjectPage(restored, schematic)!.shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'differential-wire' && shape.sourceLink.id === upper.sourceLink?.id)
+  expect(rotatedWire?.kind).toBe('line')
+  if (!rotatedWire || rotatedWire.kind !== 'line') throw new Error('Rotated differential cable not restored')
+  expect(rotatedWire.start.y).toBeGreaterThan(rotatedConnectorEnd.y)
+  expect(rotatedWire.end.y).toBeGreaterThan(rotatedWire.start.y)
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  const lowerConnector = shapes.find((shape) => shape.kind === 'line' &&
+    shape.sourceLink?.role === 'connector' && shape.sourceLink.id === lower.sourceLink?.id)!
+  const point = await stage.locator(`g.shape-symbol[data-shape-id="${lower.id}"] path`).first()
+    .evaluate((path: SVGPathElement) => {
+      const screen = path.getPointAtLength(2).matrixTransform(path.getScreenCTM()!)
+      return { x: screen.x, y: screen.y }
+    })
+  await page.mouse.click(point.x, point.y)
+  await page.keyboard.press('Delete')
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const afterDelete = await shell.evaluate((element) => (element as AppShell).project!)
+  const remaining = nativeStateForProjectPage(afterDelete, schematic)!.shapes
+  expect(remaining.some((shape) => shape.id === lower.id || shape.id === lowerConnector.id)).toBe(false)
+  expect(remaining.some((shape) => shape.id === differentials[0].id)).toBe(true)
 })
 
 test('starts a new kamrail at a compact length', async ({ page }) => {

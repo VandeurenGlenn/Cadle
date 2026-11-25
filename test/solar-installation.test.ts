@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { distributeSolarPanels, normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows, sanitizeSolarInstallation, validateSolarInstallation,
   type SolarInstallation } from '../src/editor/solar-installation.ts'
-import { buildSolarInstallation, preserveSolarBreakerSettings, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
+import { buildSolarInstallation, preserveSolarBreakerSettings, preserveSolarTextPositions, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
 import { expandSelectionWithGroup } from '../src/editor/interaction/pointer-select.ts'
 import { bindingLabelsMarkup } from '../src/editor/svg-templates.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
@@ -98,6 +98,38 @@ const installation: SolarInstallation = {
   panelCount: 12, stringCount: 2, inverterManufacturer: 'Test', inverterModel: 'INV-5000',
   inverterPowerW: 5000, phases: 1, breakerCurrentA: 25
 }
+
+test('preserves independently moved PV labels from current and legacy installations', () => {
+  let id = 0
+  const original = buildSolarInstallation(installation, 'rail', { x: 300, y: 1200 }, () => `old-${++id}`)
+  const roles = ['solar-panel-description', 'solar-panel-quantity', 'solar-inverter-description', 'solar-ac-cable-label']
+  const offsets = [{ x: 37, y: -42 }, { x: -18, y: 25 }, { x: 60, y: 15 }, { x: -30, y: -10 }]
+  const oldLabels = roles.map((role) => original.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === role)!)
+  for (const legacy of [false, true]) {
+    const previous = original.map((shape) => {
+      const index = oldLabels.findIndex((label) => label.id === shape.id)
+      if (shape.kind !== 'text' || index < 0) return shape
+      const moved = { ...shape, position: {
+        x: shape.position.x + offsets[index].x, y: shape.position.y + offsets[index].y
+      } }
+      if (!legacy || shape.sourceLink?.role === 'solar-ac-cable-label') return moved
+      const { sourceLink: _sourceLink, ...oldShape } = moved
+      return oldShape
+    })
+    id = 0
+    const regenerated = preserveSolarTextPositions(
+      buildSolarInstallation({ ...installation, panelCount: 14 }, 'rail', { x: 400, y: 1200 }, () => `new-${++id}`),
+      previous
+    )
+    for (const [index, role] of roles.entries()) {
+      const old = oldLabels[index]
+      const current = regenerated.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === role)
+      if (old.kind !== 'text' || current?.kind !== 'text') throw new Error(`Missing PV label: ${role}`)
+      assert.ok(Math.abs(current.position.x - (old.position.x + 100 + offsets[index].x)) < 1e-8)
+      assert.ok(Math.abs(current.position.y - (old.position.y + offsets[index].y)) < 1e-8)
+    }
+  }
+})
 
 const inverterSheet = `SUN2000-12/15/17/20/25K-MB0
 Technical Specification SUN2000-12K- SUN2000-15K- SUN2000-17K- SUN2000-20K- SUN2000-25K-

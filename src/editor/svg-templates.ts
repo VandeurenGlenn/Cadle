@@ -384,7 +384,19 @@ export const shapeTemplate = (
     case 'text':
       const textStrokeWidthStyle = typeof shape.strokeWidth === 'number' ? `stroke-width: ${shape.strokeWidth}px;` : ''
       const fontWeightStyle = typeof shape.fontWeight === 'number' ? `font-weight: ${shape.fontWeight};` : ''
+      const textHitBounds = shape.groupId?.startsWith('solar-installation-') && !shape.locked ? shapeBounds(shape) : null
       return svg`
+        ${textHitBounds ? svg`<rect
+          class="solar-text-hit-area"
+          data-shape-id=${shape.id}
+          aria-hidden="true"
+          x=${textHitBounds.x}
+          y=${textHitBounds.y}
+          width=${textHitBounds.width}
+          height=${textHitBounds.height}
+          fill="transparent"
+          pointer-events="all"
+          style="cursor: grab"></rect>` : nothing}
         <text
           class=${shapeClass}
           data-shape-id=${shape.id}

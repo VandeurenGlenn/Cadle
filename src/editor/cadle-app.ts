@@ -148,7 +148,7 @@ import {
 } from './layout/onewire-layout-plan.js'
 import { alignOneWireContent, fitLegacyGroundPlanToPrintArea, fitShapesToContentArea, scaleShapesBetweenPages } from './layout/page-scaling.js'
 import { placeOneWireCountLabels, placeOneWireFamilyLabels, spaceOneWireCircuitAnnotations } from './layout/onewire-annotation-layout.js'
-import { buildSolarInstallation, preserveSolarBreakerSettings, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
+import { buildSolarInstallation, preserveSolarBreakerSettings, preserveSolarTextPositions, solarInstallationPlacement, updateSolarInstallationCable } from './layout/solar-installation-layout.js'
 import { placeOneWireIncomingCable, spaceOneWireTopologyAnnotations } from './layout/onewire-topology-annotations.js'
 import { presentInheritedPhaseLabels } from './layout/inherited-phase-labels.js'
 import { presentConnectionLabels } from './layout/connection-label-presentation.js'
@@ -2709,14 +2709,18 @@ export class CadleApp extends LiteElement {
       for (const shape of this.#document.shapes) {
         if (!ids.has(shape.id)) continue
         if (shape.kind === 'symbol' && shape.sourceLink?.role === 'differential' && shape.oneWireRailId) {
-          const terminal = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === 'bottom')
-          if (terminal) {
+          const terminals = oneWireSymbolConnectionAnchors(shape)
+          if (terminals.length) {
             affectedRailIds.add(shape.oneWireRailId)
-            deletedDifferentialAnchors.set(shape.oneWireRailId, terminal.point.x)
+            deletedDifferentialAnchors.set(shape.oneWireRailId,
+              (terminals.find((anchor) => anchor.side === 'bottom') ?? terminals[0]).point.x)
             for (const connector of this.#document.shapes) {
               if (connector.kind !== 'line' || connector.oneWireRailId !== shape.oneWireRailId ||
                 connector.sourceLink?.role !== 'connector' || connector.sourceLink.id !== shape.sourceLink.id) continue
-              if (Math.hypot(connector.end.x - terminal.point.x, connector.end.y - terminal.point.y) < 0.01) {
+              const terminal = terminals.find((anchor) =>
+                Math.hypot(connector.end.x - anchor.point.x, connector.end.y - anchor.point.y) < 0.01)
+              if (terminal) {
+                deletedDifferentialAnchors.set(shape.oneWireRailId, terminal.point.x)
                 ids.add(connector.id)
               }
             }
@@ -3429,12 +3433,12 @@ export class CadleApp extends LiteElement {
       for (const item of this.#document.shapes) {
         if (item.hidden || item.id === shape.id) continue
         if (item.kind === 'symbol' && item.sourceLink?.role === 'differential' && item.oneWireRailId === shape.id) {
-          const terminal = oneWireSymbolConnectionAnchors(item).find((anchor) => anchor.side === 'bottom')
-          if (terminal) {
-            const closest = this.#closestPointOnSegment(terminal.point, shape.start, shape.end)
-            if (Math.hypot(terminal.point.x - closest.x, terminal.point.y - closest.y) <= 72) {
-              anchorXs.push(terminal.point.x)
-            }
+          const nearest = oneWireSymbolConnectionAnchors(item).map(({ point }) => {
+            const closest = this.#closestPointOnSegment(point, shape.start, shape.end)
+            return { point, distance: Math.hypot(point.x - closest.x, point.y - closest.y) }
+          }).sort((a, b) => a.distance - b.distance)[0]
+          if (nearest && nearest.distance <= 72) {
+            anchorXs.push(nearest.point.x)
           }
         }
         if (item.kind !== 'line' || this.#oneWireController.isRail(item)) continue
@@ -4560,21 +4564,21 @@ export class CadleApp extends LiteElement {
     return true
   }
 
-  #manualDifferentialWire(symbol: SymbolShape): LineShape | null {
+  #manualDifferentialWire(symbol: SymbolShape, outgoingSide: 'top' | 'bottom' = 'top'): LineShape | null {
     if (symbol.sourceLink?.role !== 'differential' ||
       this.#document.shapes.some((shape) => shape.kind === 'line' &&
         shape.sourceLink?.kind === symbol.sourceLink?.kind &&
         shape.sourceLink.id === symbol.sourceLink?.id && shape.sourceLink.role === 'differential-wire')) return null
-    const top = oneWireSymbolTerminalInfo(symbol.path, symbol.scale)?.top
-    if (!top) return null
+    const terminal = oneWireSymbolTerminalInfo(symbol.path, symbol.scale)?.[outgoingSide]
+    if (!terminal) return null
     const radians = (symbol.rotation ?? 0) * Math.PI / 180
     const transform = (point: Point) => {
       const x = point.x * (symbol.flipX ? -1 : 1)
       const y = point.y * (symbol.flipY ? -1 : 1)
       return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) }
     }
-    const terminalOffset = transform(top)
-    const direction = transform({ x: 0, y: -1 })
+    const terminalOffset = transform(terminal)
+    const direction = transform({ x: 0, y: outgoingSide === 'top' ? -1 : 1 })
     const start = { x: symbol.position.x + terminalOffset.x, y: symbol.position.y + terminalOffset.y }
     return {
       id: nextShapeId(),
@@ -4595,7 +4599,18 @@ export class CadleApp extends LiteElement {
     for (const symbol of shapes.filter((shape): shape is SymbolShape =>
       shape.kind === 'symbol' && shape.sourceLink?.role === 'differential')) {
       if (updated === shapes) updated = [...shapes]
-      const wire = this.#manualDifferentialWire(symbol)
+      const connector = shapes.find((shape): shape is LineShape => shape.kind === 'line' &&
+        shape.sourceLink?.role === 'connector' && shape.sourceLink.id === symbol.sourceLink?.id &&
+        shape.oneWireRailId === symbol.oneWireRailId)
+      const radians = (symbol.rotation ?? 0) * Math.PI / 180
+      const flip = symbol.flipY ? -1 : 1
+      const direction = { x: Math.sin(radians) * flip, y: -Math.cos(radians) * flip }
+      const topSide = Math.abs(direction.x) > Math.abs(direction.y)
+        ? direction.x < 0 ? 'left' : 'right' : direction.y < 0 ? 'top' : 'bottom'
+      const top = oneWireSymbolConnectionAnchors(symbol).find((anchor) => anchor.side === topSide)?.point
+      const connectedAtTop = connector && top &&
+        [connector.start, connector.end].some((point) => Math.hypot(point.x - top.x, point.y - top.y) < 0.01)
+      const wire = this.#manualDifferentialWire(symbol, connectedAtTop ? 'bottom' : 'top')
       if (wire) updated.push(wire)
     }
     return updated
@@ -4622,12 +4637,12 @@ export class CadleApp extends LiteElement {
 
     const component = this.#oneWireComponentSymbol(this.#oneWireComposeKind)
     const scale = this.#oneWireSymbolScale(component.path, this.#oneWireComposeKind)
-    const placeBelowRail = false
+    const placeBelowRail = this.#oneWireComposeKind === 'differential' && point.y > railAnchor.point.y
     const rotation = oneWireSymbolRotationFor(component.path)
     const node = oneWireSymbolNodeInfo(component.path, scale, rotation)
     const breakerTerminal =
       this.#oneWireComposeKind === 'breaker' || this.#oneWireComposeKind === 'differential'
-        ? oneWireSymbolTerminalInfo(component.path, scale)?.bottom : undefined
+        ? oneWireSymbolTerminalInfo(component.path, scale)?.[placeBelowRail ? 'top' : 'bottom'] : undefined
     const attachmentOffset = breakerTerminal ?? node?.offset
     const targetNode: Point = {
       x: railAnchor.point.x,
@@ -4702,7 +4717,7 @@ export class CadleApp extends LiteElement {
     }
 
     const differentialWire = this.#oneWireComposeKind === 'differential'
-      ? this.#manualDifferentialWire(symbol) : null
+      ? this.#manualDifferentialWire(symbol, placeBelowRail ? 'bottom' : 'top') : null
     this.#document.shapes.push(connector, symbol, ...(differentialWire ? [differentialWire] : []),
       ...(this.#oneWireComposeKind === 'differential' ? [] : [label]))
     this.#document.selectedId = symbol.id
@@ -6089,6 +6104,7 @@ export class CadleApp extends LiteElement {
 
     const area = this.#safeAreaRect()
     const occupied = this.#document.shapes.filter((shape) => !groupId || shape.groupId !== groupId)
+    const previousShapes = groupId ? this.#document.shapes.filter((shape) => shape.groupId === groupId) : []
     if (result.installation.kind === 'panels') {
       const oldContact = groupId && previous?.kind === 'panels' && equipment
         ? oneWireSymbolConnectionAnchors(equipment).find((anchor) => anchor.side === 'bottom')?.point : undefined
@@ -6096,7 +6112,8 @@ export class CadleApp extends LiteElement {
         : [area.y + area.height - 240, area.y + area.height / 2, area.y + 240]
           .map((y) => ({ x: area.x + 60, y }))
       for (const tap of taps) {
-        const generated = buildSolarInstallation(result.installation, undefined, tap, nextShapeId)
+        const generated = preserveSolarTextPositions(
+          buildSolarInstallation(result.installation, undefined, tap, nextShapeId), previousShapes)
         const dx = solarInstallationPlacement(generated, occupied, undefined, area)
         if (dx === undefined || (oldContact && dx !== 0)) continue
         const added = generated.map((shape) => translateShape(shape, dx, 0))
@@ -6126,10 +6143,12 @@ export class CadleApp extends LiteElement {
       shape.kind === 'line' && shape.groupId === groupId && Math.abs(shape.start.y - rail.start.y) < 0.01) : undefined
     const tap = { x: oldFeed?.start.x ?? Math.min(rail.start.x, rail.end.x) + 60, y: rail.start.y }
     const direction = oldFeed && oldFeed.end.y > oldFeed.start.y ? 'bottom' : 'top'
-    let generated = preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction), previousBreaker)
+    let generated = preserveSolarTextPositions(
+      preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction), previousBreaker), previousShapes)
     let dx = solarInstallationPlacement(generated, occupied, rail, area)
     if (dx === undefined) {
-      generated = preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction === 'top' ? 'bottom' : 'top'), previousBreaker)
+      generated = preserveSolarTextPositions(
+        preserveSolarBreakerSettings(buildSolarInstallation(result.installation, rail.id, tap, nextShapeId, direction === 'top' ? 'bottom' : 'top'), previousBreaker), previousShapes)
       dx = solarInstallationPlacement(generated, occupied, rail, area)
     }
     if (dx === undefined) {

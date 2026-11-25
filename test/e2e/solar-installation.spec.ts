@@ -7,6 +7,7 @@ import type { Shape } from '../../src/editor/model/types.ts'
 import { nativeStateForProjectPage } from '../../src/data/project-document.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
+import { buildSolarInstallation } from '../../src/editor/layout/solar-installation-layout.ts'
 import { jsPDF } from 'jspdf'
 
 const openProject = async (page: Page, shapes: Shape[]) => {
@@ -68,6 +69,49 @@ const clickRail = async (page: Page, railId: string) => {
 
 const expectPvPlacementMode = (page: Page) =>
   expect(page.getByRole('button', { name: 'PV-installatie plaatsen', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+test('moves PV descriptions independently and keeps their position after editing and reloading', async ({ page }) => {
+  const rail: Shape = { id: 'rail', kind: 'line', start: { x: 300, y: 1200 }, end: { x: 1700, y: 1200 },
+    groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+  let sequence = 0
+  const solar = buildSolarInstallation({
+    panel: { manufacturer: 'Osda', model: 'ODA460', powerWp: 460 },
+    panelCount: 24, stringCount: 2, inverterManufacturer: 'Huawei', inverterModel: 'SUN2000',
+    inverterPowerW: 8000, phases: 3, breakerCurrentA: 32
+  }, rail.id, { x: 700, y: 1200 }, () => `solar-${++sequence}`)
+  const { app, stored, pageKey } = await openProject(page, [rail, ...solar])
+  const before = await stored()
+  const description = before.find((shape) => shape.kind === 'text' && shape.text.startsWith('Osda'))
+  if (!description || description.kind !== 'text') throw new Error('PV description not found')
+  const hitArea = app.locator(`rect.solar-text-hit-area[data-shape-id="${description.id}"]`)
+  const bounds = await hitArea.boundingBox()
+  if (!bounds) throw new Error('PV description hit area not found')
+  const origin = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
+  await page.mouse.move(origin.x, origin.y)
+  await page.mouse.down()
+  await page.mouse.move(origin.x + 90, origin.y - 35, { steps: 4 })
+  await page.mouse.up()
+  const moved = await stored()
+  const movedText = moved.find((shape) => shape.id === description.id)
+  expect(movedText?.kind).toBe('text')
+  if (!movedText || movedText.kind !== 'text') throw new Error('Moved PV description not found')
+  expect(movedText.position.x).toBeGreaterThan(description.position.x + 20)
+  expect(moved.filter((shape) => shape.id !== description.id)).toEqual(before.filter((shape) => shape.id !== description.id))
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  expect((await stored()).find((shape) => shape.id === description.id)).toEqual(movedText)
+  await app.locator(`rect.solar-text-hit-area[data-shape-id="${description.id}"]`).click()
+  await page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true }).click()
+  const dialog = page.locator('solar-installation-dialog')
+  await dialog.getByLabel('Aantal panelen', { exact: true }).fill('26')
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  const edited = (await stored()).find((shape) => shape.kind === 'text' && shape.text.startsWith('Osda'))
+  expect(edited?.kind).toBe('text')
+  if (!edited || edited.kind !== 'text') throw new Error('Edited PV description not found')
+  expect(edited.position.x).toBeCloseTo(movedText.position.x, 6)
+  expect(edited.position.y).toBeCloseTo(movedText.position.y, 6)
+})
 
 test('places a catalog PV breaker connected to the nearest kamrail', async ({ page }) => {
   const rail: Shape = {

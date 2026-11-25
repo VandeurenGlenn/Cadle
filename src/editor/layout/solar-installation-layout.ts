@@ -51,8 +51,10 @@ export const buildSolarInstallation = (
     shape = placed.symbol
     const body = oneWireLayoutBounds(shape)
     const row: (SymbolShape | TextShape)[] = [shape]
-    if (description) row.push(text(description, body.x + body.width + 24, body.y + 20))
-    if (quantity) row.push(text(quantity, body.x + body.width + 24, body.y - 10))
+    if (description) row.push({ ...text(description, body.x + body.width + 24, body.y + 20),
+      sourceLink: { kind: 'device', id: shape.id, role: name === 'Zonnepanelen' ? 'solar-panel-description' : 'solar-inverter-description' } })
+    if (quantity) row.push({ ...text(quantity, body.x + body.width + 24, body.y - 10),
+      sourceLink: { kind: 'device', id: shape.id, role: 'solar-panel-quantity' } })
     if (direction === 'top' && !disconnected) {
       const bottom = Math.max(...row.map(oneWireLayoutBounds).map((box) => box.y + box.height))
       const dy = Math.min(0, connection.y - 24 - bottom)
@@ -170,6 +172,58 @@ export const preserveSolarBreakerSettings = (shapes: Shape[], previous?: SymbolS
       'rated-current': `${electrical.breakerCurve ?? 'C'}${electrical.breakerCurrentA}A` }
   }
   return updateSolarInstallationCable(shapes.map((shape) => shape.id === breaker.id ? restored : shape), restored)
+}
+
+const solarTextAnchors = (shapes: readonly Shape[]) => {
+  const result = new Map<string, { text: TextShape; anchor: Point }>()
+  const symbols = new Map(shapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol')
+    .map((shape) => [shape.id, shape]))
+  let precedingSymbol: SymbolShape | undefined
+  for (const shape of shapes) {
+    if (shape.kind === 'symbol') {
+      precedingSymbol = shape
+      continue
+    }
+    if (shape.kind === 'line') {
+      precedingSymbol = undefined
+      continue
+    }
+    if (shape.kind !== 'text') continue
+    const role = shape.sourceLink?.role
+    if (role === 'solar-ac-cable-label') {
+      const cable = shapes.find((candidate): candidate is LineShape => candidate.kind === 'line' &&
+        candidate.sourceLink?.role === 'solar-ac-cable' && candidate.sourceLink.id === shape.sourceLink?.id)
+      if (cable) result.set(role, { text: shape, anchor: cable.start })
+      continue
+    }
+    const symbol = shape.sourceLink ? symbols.get(shape.sourceLink.id) : precedingSymbol
+    if (!symbol) continue
+    const inferredRole = symbol.name === 'Zonnepanelen'
+      ? /^\s*\d+\s*x\s+[\d.]+\s+Wp\s*=/i.test(shape.text) ? 'solar-panel-quantity' : 'solar-panel-description'
+      : symbol.name === 'Omvormer' ? 'solar-inverter-description' : undefined
+    const key = role === 'solar-panel-quantity' || role === 'solar-panel-description' ||
+      role === 'solar-inverter-description' ? role : !shape.sourceLink ? inferredRole : undefined
+    if (key) result.set(key, { text: shape, anchor: symbol.position })
+  }
+  return result
+}
+
+export const preserveSolarTextPositions = (shapes: Shape[], previous: readonly Shape[]): Shape[] => {
+  const old = solarTextAnchors(previous)
+  const fresh = solarTextAnchors(shapes)
+  const positions = new Map<string, Point>()
+  for (const [role, current] of fresh) {
+    const original = old.get(role)
+    if (!original) continue
+    positions.set(current.text.id, {
+      x: original.text.position.x + (current.anchor.x - original.anchor.x),
+      y: original.text.position.y + (current.anchor.y - original.anchor.y)
+    })
+  }
+  return shapes.map((shape) => {
+    const position = positions.get(shape.id)
+    return shape.kind === 'text' && position ? { ...shape, position } : shape
+  })
 }
 
 const solarElectricalLines = (panel: SolarPanel) => [

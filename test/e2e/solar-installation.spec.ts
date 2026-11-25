@@ -231,6 +231,8 @@ test('reads a scanned PDF datasheet using local OCR', async ({ page }) => {
   })
   const scan = new jsPDF({ unit: 'pt', format: 'a4' })
   scan.addImage(raster, 'PNG', 0, 0, 595, 842)
+  scan.setFontSize(5)
+  scan.text('SPECIFICATION STC MODEL TYPE Rated Peak Power-Pmax(Wp) product specification', 10, 838)
   scan.text('1', 570, 820)
   await page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true }).click()
   const dialog = page.locator('solar-installation-dialog')

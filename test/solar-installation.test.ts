@@ -6,6 +6,7 @@ import { buildSolarInstallation, solarInstallationPlacement, updateSolarInstalla
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { sanitizeShapes, cloneShapes } from '../src/editor/model/model.ts'
 import type { LineShape, SymbolShape } from '../src/editor/model/types.ts'
+import { shouldOcrSolarDatasheetPage } from '../src/editor/solar-datasheet-import.ts'
 
 const datasheet = `SPECIFICATION (STC)
 MODEL TYPE ODA450-24V-MHDBRz ODA455-24V-MHDBRz ODA460-24V-MHDBRz ODA465-24V-MHDBRz ODA470-24V-MHDBRz
@@ -42,6 +43,29 @@ test('reconstructs OCR columns spatially and accepts decimal commas without inve
   assert.equal(result.panels[0].vocV, undefined)
   assert.ok(result.warnings.some((warning) => warning.includes('Voc')))
   assert.equal(parseSolarDatasheet('unreadable image').panels.length, 0)
+})
+
+test('does not create panel variants from unrelated STC values and groups slightly misaligned PDF text', () => {
+  const unrelated = parseSolarDatasheet(`SPECIFICATION (STC)
+Maximum Power Voltage-Vmp(V) 29.38 29.43 29.47 29.51 29.55
+Maximum Power Current-Imp(A) 15.31 15.46 15.60 15.76 15.91`)
+  assert.equal(unrelated.panels.length, 0)
+
+  const rows = solarDatasheetRows([
+    { text: 'MODEL TYPE TEST450', x: 0, y: 40, fontSize: 12 },
+    { text: 'Rated Peak Power-Pmax(Wp)', x: 0, y: 80, fontSize: 12 },
+    { text: '450.00', x: 300, y: 86, fontSize: 12 }
+  ])
+  assert.deepEqual(parseSolarDatasheet(rows).panels.map(({ model, powerWp }) => ({ model, powerWp })),
+    [{ model: 'TEST450', powerWp: 450 }])
+})
+
+test('limits blind PDF OCR on long documents and OCRs pages whose extracted text contains solar fields', () => {
+  const irrelevant = 'This is a product brochure page with selectable text and no electrical specification.'
+  assert.equal(shouldOcrSolarDatasheetPage(irrelevant, 100), false)
+  assert.equal(shouldOcrSolarDatasheetPage('Rated Peak Power-Pmax(Wp)', 100), true)
+  assert.equal(shouldOcrSolarDatasheetPage('1', 10), true)
+  assert.equal(shouldOcrSolarDatasheetPage('1', 11), false)
 })
 
 test('makes light-on-grey header text readable without changing white margins or ordinary body text', () => {
@@ -100,6 +124,7 @@ test('reads separate inverter variants from AC output, joins wrapped model codes
   const decimal = parseInverterDatasheet('Manufacturer: Other-Brand\nModel INV-5000\nRated output power (kW) 5,000')
   assert.equal(decimal.inverters[0].inverterPowerW, 5000)
   assert.equal(decimal.inverters[0].inverterManufacturer, 'Other-Brand')
+  assert.equal(parseInverterDatasheet('Model SG8.0RS\nRated output power 8000 W').inverters[0].inverterModel, 'SG8.0RS')
   assert.equal(parseInverterDatasheet('Unreadable image').inverters.length, 0)
 })
 

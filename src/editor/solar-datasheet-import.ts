@@ -1,6 +1,26 @@
 import { createPdfScanOcrSession, type PdfScanOcrSession } from './pdf-scan-ocr.js'
 import { pdfImportFileError, pdfImportPageCountError, releasePdfCanvas } from './pdf-import-limits.js'
-import { normalizeSolarDatasheetHeaderContrast, solarDatasheetRows } from './solar-installation.js'
+import { normalizeSolarDatasheetHeaderContrast, parseInverterDatasheet, parseSolarDatasheet, solarDatasheetRows,
+  solarPanelFields } from './solar-installation.js'
+
+const maximumBlindOcrPages = 10
+
+export const shouldOcrSolarDatasheetPage = (text: string, pageCount: number): boolean =>
+  solarPanelFields.some(({ pattern }) => pattern.test(text)) ||
+  /\b(?:rated\s*(?:AC\s*)?output\s*power|nominal\s*(?:AC\s*)?(?:output\s*)?power|number\s*of\s*MPP(?:T)?\s*trackers|max(?:imum)?\.?\s*input\s*voltage)\b/i.test(text) ||
+  (pageCount <= maximumBlindOcrPages && text.trim().length < 40)
+
+const hasReliableDatasheetValues = (text: string): boolean => {
+  const { panels } = parseSolarDatasheet(text)
+  if (panels.length && panels.every((panel) => !!panel.model?.trim() &&
+    typeof panel.powerWp === 'number' && Number.isFinite(panel.powerWp) && panel.powerWp > 0)) {
+    return true
+  }
+  const { inverters } = parseInverterDatasheet(text)
+  return inverters.length > 0 && inverters.every((inverter) =>
+    !!inverter.inverterModel?.trim() && typeof inverter.inverterPowerW === 'number' &&
+    Number.isFinite(inverter.inverterPowerW) && inverter.inverterPowerW > 0)
+}
 
 export const readSolarDatasheet = async (
   file: File,
@@ -52,8 +72,9 @@ export const readSolarDatasheet = async (
               return [{ text: item.str, x: transform[4], y: transform[5],
                 fontSize: Math.max(1, Math.hypot(transform[2], transform[3])) }]
             })
-            if (texts.reduce((length, text) => length + text.text.length, 0) >= 40) {
-              pages.push(solarDatasheetRows(texts))
+            const extracted = solarDatasheetRows(texts)
+            if (hasReliableDatasheetValues(extracted) || !shouldOcrSolarDatasheetPage(extracted, pdf.numPages)) {
+              pages.push(extracted)
             }
             else {
               const canvas = document.createElement('canvas')

@@ -57,7 +57,7 @@ export const solarPanelFields = [
 export const solarDatasheetRows = (texts: readonly PdfVectorText[]): string => {
   const rows: { y: number; height: number; texts: PdfVectorText[] }[] = []
   for (const text of [...texts].sort((a, b) => a.y - b.y || a.x - b.x)) {
-    const row = rows.find((row) => Math.abs(row.y - text.y) < Math.max(4, Math.min(row.height, text.fontSize) * 0.6))
+    const row = rows.find((row) => Math.abs(row.y - text.y) < Math.max(4, Math.min(row.height, text.fontSize) * 0.8))
     if (row) row.texts.push(text)
     else rows.push({ y: text.y, height: text.fontSize, texts: [text] })
   }
@@ -100,14 +100,16 @@ export const parseSolarDatasheet = (text: string): { panels: Partial<SolarPanel>
     .join('\n').split(/BNPI|bifacial|mechanical|operating parameters|NMOT|NOCT/i)[0].split('\n')
   const modelLine = stc.findIndex((line) => /model\s*(?:type|number|name)?/i.test(line))
   const modelText = modelLine < 0 ? '' : stc.slice(modelLine, modelLine + 2).join(' ')
-  const models = modelText.match(/\b[A-Z]{1,12}\d{2,5}[A-Z0-9]*(?:[-/][A-Z0-9]+)*\b/gi) ?? []
+  const models = (modelText.match(/\b[A-Z0-9]+(?:[-/.][A-Z0-9]+)*\b/gi) ?? [])
+    .filter((model) => /[A-Z]/i.test(model) && /\d/.test(model))
   const values = solarPanelFields.map(({ key, pattern }) => {
     const line = stc.find((line) => pattern.test(line))
     const tokens = line?.slice((line.match(pattern)?.index ?? 0) + (line.match(pattern)?.[0].length ?? 0))
       .match(/(?<![a-zA-Z0-9])\d+(?:[.,]\d+)?/g) ?? []
     return { key, tokens, numbers: tokens.map((value) => Number(value.replace(',', '.'))) }
   })
-  const count = models.length || Math.max(0, ...values.map(({ numbers }) => numbers.length))
+  const powerValues = values.find(({ key }) => key === 'powerWp')!
+  const count = models.length || powerValues.numbers.length
   const panels: Partial<SolarPanel>[] = Array.from({ length: count }, (_, index) => ({ model: models[index] ?? '' }))
   const warnings: string[] = []
   for (const { key, numbers, tokens } of values) {
@@ -157,7 +159,7 @@ export const parseInverterDatasheet = (text: string): { inverters: Partial<Solar
   const header = lines.slice(0, headerEnd < 0 ? 15 : headerEnd)
   let models: string[] = []
   for (let index = 0; index < header.length; index++) {
-    const candidates = (header[index].match(/\b[A-Z][A-Z0-9]*(?:[-/][A-Z0-9]+)+-?/gi) ?? [])
+    const candidates = (header[index].match(/\b[A-Z][A-Z0-9]*(?:[-/.][A-Z0-9]+)+-?/gi) ?? [])
       .filter((model) => /\d/.test(model) && !/\d+\//.test(model))
     if (!candidates.length) continue
     const wrapped = candidates.some((model) => model.endsWith('-'))

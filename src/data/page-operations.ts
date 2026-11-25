@@ -2,6 +2,17 @@ import { addPage, getProjectData, setProjectData } from '../api/project.js'
 import type { PageType, Project, UUID } from '../types.js'
 import { nativeStateForProjectPage } from '../editor/model/document-state.js'
 
+export const linkedGroundplanPageKeys = (project: Project, oneWirePageKey: string): string[] => {
+  const rootKey = project.pages[oneWirePageKey]?.oneWireOverflowOf ?? oneWirePageKey
+  if (project.pages[rootKey]?.pageType !== 'onewire') return []
+  return Object.entries(project.pages)
+    .filter(([, page]) =>
+      page.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf &&
+      page.linkedOneWirePageKey === rootKey
+    )
+    .map(([key]) => key)
+}
+
 export const explicitLinkedPageKey = (project: Project, pageKey: string): string | null => {
   const page = project.pages[pageKey]
   if (page?.pageType === 'groundplan') {
@@ -10,10 +21,7 @@ export const explicitLinkedPageKey = (project: Project, pageKey: string): string
     return linkedKey && project.pages[linkedKey]?.pageType === 'onewire' ? linkedKey : ''
   }
   if (page?.pageType === 'onewire') {
-    const rootKey = page.oneWireOverflowOf ?? pageKey
-    return Object.entries(project.pages).find(([, candidate]) =>
-      candidate.pageType === 'groundplan' && candidate.linkedOneWirePageKey === rootKey
-    )?.[0] ?? null
+    return linkedGroundplanPageKeys(project, pageKey)[0] ?? null
   }
   return null
 }
@@ -68,11 +76,34 @@ const oneWirePageKey = (project: Project, groundPlanPageKey?: string): string | 
   )?.[0] ?? null
 }
 
-const linkGroundPlanToOneWirePage = (project: Project, groundPlanPageKey: string, oneWirePageKey: string): Project => {
+export const linkGroundPlanToOneWirePage = (
+  project: Project, groundPlanPageKey: string, oneWirePageKey: string
+): Project => {
   const pages = { ...project.pages }
+  const previousSettingsPages = Object.entries(pages)
+    .filter(([key, page]) =>
+      key !== groundPlanPageKey && page.pageType === 'groundplan' &&
+      page.linkedOneWirePageKey === oneWirePageKey
+    )
+    .map(([, page]) => page)
+  previousSettingsPages.push(pages[groundPlanPageKey])
+  const oneWirePage = pages[oneWirePageKey]
   pages[groundPlanPageKey] = {
     ...pages[groundPlanPageKey],
     linkedOneWirePageKey: oneWirePageKey as UUID
+  }
+  pages[oneWirePageKey] = {
+    ...oneWirePage,
+    electricalProfile: oneWirePage.electricalProfile ??
+      previousSettingsPages.find((page) => page?.electricalProfile)?.electricalProfile,
+    circuitSpecifications: oneWirePage.circuitSpecifications ??
+      previousSettingsPages.find((page) => page?.circuitSpecifications)?.circuitSpecifications,
+    mainFuseA: oneWirePage.mainFuseA ??
+      previousSettingsPages.find((page) => page?.mainFuseA !== undefined)?.mainFuseA,
+    oneWirePrompt: oneWirePage.oneWirePrompt ??
+      previousSettingsPages.find((page) => page?.oneWirePrompt)?.oneWirePrompt,
+    oneWireTopology: oneWirePage.oneWireTopology ??
+      previousSettingsPages.find((page) => page?.oneWireTopology)?.oneWireTopology
   }
   const rootName = pages[oneWirePageKey]?.name ?? ''
   const rootNumber = /^One-wire diagram(?: (\d+))?$/.exec(rootName)

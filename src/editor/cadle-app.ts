@@ -30,7 +30,7 @@ import {
   saveNativeState,
   type NativeDocumentState
 } from '../data/project-document.js'
-import { explicitLinkedPageKey } from '../data/page-operations.js'
+import { linkedGroundplanPageKeys } from '../data/page-operations.js'
 import { oneWireSourceFingerprint, projectFromRecoveryPoint, projectWithRecoveryPoint } from '../data/project-recovery.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
@@ -3708,28 +3708,49 @@ export class CadleApp extends LiteElement {
     return lower.includes('switch') || lower.includes('schakel') || lower.includes('knop') ? 'switch' : 'load'
   }
 
-  #buildingSettingsPageKey(): string | undefined {
-    if (!this.#project || !this.#pageKey) return undefined
-    const page = this.#project.pages[this.#pageKey]
-    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) return this.#pageKey
+  #buildingSettingsPageKey(pageKey: string | undefined = this.#pageKey): string | undefined {
+    if (!this.#project || !pageKey) return undefined
+    const page = this.#project.pages[pageKey]
+    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) {
+      const linkedKey = page.linkedOneWirePageKey
+      return linkedKey && this.#project.pages[linkedKey]?.pageType === 'onewire' ? linkedKey : pageKey
+    }
     if (page?.pageType === 'onewire') {
-      const linkedPageKey = explicitLinkedPageKey(this.#project, this.#pageKey)
-      return linkedPageKey || undefined
+      const rootKey = page.oneWireOverflowOf ?? pageKey
+      return linkedGroundplanPageKeys(this.#project, rootKey).length ? rootKey : undefined
     }
     return undefined
   }
 
-  #buildingSettingsPage() {
-    const key = this.#buildingSettingsPageKey()
+  #buildingSettingsPage(pageKey: string | undefined = this.#pageKey) {
+    const key = this.#buildingSettingsPageKey(pageKey)
     return key ? this.#project?.pages[key] : undefined
   }
 
+  #legacyBuildingSettingsPage(pageKey: string | undefined = this.#pageKey) {
+    if (!this.#project) return undefined
+    const settingsPage = this.#buildingSettingsPage(pageKey)
+    if (settingsPage?.pageType === 'groundplan') return settingsPage
+    if (settingsPage?.pageType !== 'onewire') return undefined
+    const rootKey = settingsPage.oneWireOverflowOf ?? this.#buildingSettingsPageKey(pageKey)
+    return rootKey
+      ? linkedGroundplanPageKeys(this.#project, rootKey)
+          .map((key) => this.#project?.pages[key])
+          .find((page) => page && (
+            page.electricalProfile || page.circuitSpecifications || page.mainFuseA !== undefined ||
+            page.oneWirePrompt || page.oneWireTopology
+          ))
+      : undefined
+  }
+
   #activeElectricalProfile() {
-    return this.#buildingSettingsPage()?.electricalProfile ?? this.#project?.electricalProfile
+    return this.#buildingSettingsPage()?.electricalProfile ??
+      this.#legacyBuildingSettingsPage()?.electricalProfile ?? this.#project?.electricalProfile
   }
 
   #activeCircuitSpecifications() {
-    return this.#buildingSettingsPage()?.circuitSpecifications ?? this.#project?.circuitSpecifications
+    return this.#buildingSettingsPage()?.circuitSpecifications ??
+      this.#legacyBuildingSettingsPage()?.circuitSpecifications ?? this.#project?.circuitSpecifications
   }
 
   #storeActiveCircuitSpecifications(specifications: NonNullable<Project['circuitSpecifications']>) {
@@ -3740,7 +3761,8 @@ export class CadleApp extends LiteElement {
   }
 
   #activeOneWireTopology() {
-    return this.#buildingSettingsPage()?.oneWireTopology ?? this.#project?.oneWireTopology
+    return this.#buildingSettingsPage()?.oneWireTopology ??
+      this.#legacyBuildingSettingsPage()?.oneWireTopology ?? this.#project?.oneWireTopology
   }
 
   #storeActiveOneWireTopology(topology: NonNullable<Project['oneWireTopology']>) {
@@ -3751,14 +3773,29 @@ export class CadleApp extends LiteElement {
   }
 
   #activeMainFuseA() {
-    return this.#buildingSettingsPage()?.mainFuseA ?? this.#project?.mainFuseA
+    return this.#buildingSettingsPage()?.mainFuseA ??
+      this.#legacyBuildingSettingsPage()?.mainFuseA ?? this.#project?.mainFuseA
+  }
+
+  #groundplanPageKeysForSource(sourcePageKey: string): string[] {
+    if (!this.#project) return []
+    const sourcePage = this.#project.pages[sourcePageKey]
+    if (sourcePage?.pageType === 'groundplan') {
+      const linkedKey = sourcePage.linkedOneWirePageKey
+      return linkedKey && this.#project.pages[linkedKey]?.pageType === 'onewire'
+        ? linkedGroundplanPageKeys(this.#project, linkedKey)
+        : [sourcePageKey]
+    }
+    if (sourcePage?.pageType === 'onewire') {
+      return linkedGroundplanPageKeys(this.#project, sourcePage.oneWireOverflowOf ?? sourcePageKey)
+    }
+    return []
   }
 
   #groundplanShapePool(includeCurrentDocument = true, sourcePageKey?: string | null): Shape[] {
     const currentPageType = this.#pageKey ? this.#project?.pages?.[this.#pageKey]?.pageType : undefined
-    // Separate page coordinate spaces before room inference. Ground plans often
-    // reuse the same A4 coordinates, so flattening them directly could assign a
-    // device on page 2 to a room drawn at the same position on page 1.
+    // Keep floor levels in separate coordinate spaces so reused sheet coordinates
+    // cannot make room inference connect devices across different floors.
     const pageOffset = (shapes: readonly Shape[], pageIndex: number): Shape[] =>
       shapes.map((shape) => translateShape(cloneShape(shape), pageIndex * 10_000_000, 0))
     const pageKeys = Object.keys(this.#project?.pages ?? {}) as UUID[]
@@ -3766,12 +3803,23 @@ export class CadleApp extends LiteElement {
       ? currentPageType === 'onewire' ? this.#buildingSettingsPageKey() : undefined
       : sourcePageKey ?? undefined
     if (selectedSourcePageKey) {
-      const pageIndex = pageKeys.indexOf(selectedSourcePageKey as UUID)
-      if (pageIndex < 0) return []
-      const shapes = includeCurrentDocument && selectedSourcePageKey === this.#pageKey
-        ? this.#document.shapes
-        : this.#nativeStateForPage(selectedSourcePageKey as UUID)?.shapes
-      return shapes ? pageOffset(sanitizeShapes(shapes, 'groundplan'), pageIndex) : []
+      const sourcePageKeys = this.#groundplanPageKeysForSource(selectedSourcePageKey)
+      return sourcePageKeys.flatMap((pageKey) => {
+        const pageIndex = pageKeys.indexOf(pageKey as UUID)
+        if (pageIndex < 0) return []
+        const shapes = includeCurrentDocument && pageKey === this.#pageKey
+          ? this.#document.shapes
+          : this.#nativeStateForPage(pageKey as UUID)?.shapes
+        if (!shapes) return []
+        const sanitized = sanitizeShapes(shapes, 'groundplan')
+        const isolated = sourcePageKeys.length > 1
+          ? sanitized.map((shape) => ({
+              ...shape,
+              groupId: `floorplan:${pageKey}:${shape.groupId ?? shape.id}`
+            }))
+          : sanitized
+        return pageOffset(isolated, pageIndex)
+      })
     }
     const currentPageIndex = this.#pageKey ? Math.max(0, pageKeys.indexOf(this.#pageKey)) : 0
     const pageMetadata = this.#project?.pages?.[this.#pageKey]
@@ -3782,9 +3830,19 @@ export class CadleApp extends LiteElement {
       if (includeCurrentDocument && pageKey === this.#pageKey) continue
       const page = this.#project.pages[pageKey]
       if (page?.pageType === 'onewire' || page.heatingPlanOf || page.heatingScheduleOf) continue
-      const state = this.#nativeStateForPage(pageKey)
+      const state = this.#nativeStateForPage(pageKey as UUID)
       if (!state || !Array.isArray(state.shapes)) continue
-      pool.push(...pageOffset(sanitizeShapes(state.shapes, 'groundplan'), pageIndex))
+      const sanitized = sanitizeShapes(state.shapes, 'groundplan')
+      const isolated = pageKeys.filter((key) => {
+        const entry = this.#project?.pages[key]
+        return entry?.pageType !== 'onewire' && !entry?.heatingPlanOf && !entry?.heatingScheduleOf
+      }).length > 1
+        ? sanitized.map((shape) => ({
+            ...shape,
+            groupId: `floorplan:${pageKey}:${shape.groupId ?? shape.id}`
+          }))
+        : sanitized
+      pool.push(...pageOffset(isolated, pageIndex))
     }
 
     return pool
@@ -3796,7 +3854,7 @@ export class CadleApp extends LiteElement {
     if (!scopedPageKey && currentPageType === 'onewire') {
       scopedPageKey = this.#buildingSettingsPageKey()
     } else if (!scopedPageKey && currentPageType === 'groundplan') {
-      const page = this.#buildingSettingsPage()
+      const page = this.#project?.pages[this.#pageKey]
       if (page && (
         page.linkedOneWirePageKey !== undefined ||
         page.electricalProfile ||
@@ -3806,11 +3864,13 @@ export class CadleApp extends LiteElement {
         page.oneWireTopology
       )) scopedPageKey = this.#pageKey
     }
-    const settingsPage = scopedPageKey ? this.#project?.pages[scopedPageKey] : undefined
+    const settingsPage = scopedPageKey ? this.#buildingSettingsPage(scopedPageKey) : undefined
+    const legacySettingsPage = scopedPageKey ? this.#legacyBuildingSettingsPage(scopedPageKey) : undefined
     return this.#oneWireController.analyze(
       scopedPageKey ? this.#groundplanShapePool(true, scopedPageKey) : this.#groundplanShapePool(),
-      settingsPage?.electricalProfile ?? this.#project?.electricalProfile,
-      settingsPage?.circuitSpecifications ?? this.#project?.circuitSpecifications
+      settingsPage?.electricalProfile ?? legacySettingsPage?.electricalProfile ?? this.#project?.electricalProfile,
+      settingsPage?.circuitSpecifications ?? legacySettingsPage?.circuitSpecifications ??
+        this.#project?.circuitSpecifications
     )
   }
 

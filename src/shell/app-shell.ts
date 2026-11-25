@@ -40,7 +40,14 @@ import {
 import { addPage, getProjectData, getProjects, projectStore, setProjectData } from '../api/project.js'
 import { circuitTemplates } from '../templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from '../editor/circuit-analysis.js'
-import { ensureOneWirePage, explicitLinkedPageKey, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../data/page-operations.js'
+import {
+  ensureOneWirePage,
+  explicitLinkedPageKey,
+  linkGroundPlanToOneWirePage,
+  linkedGroundplanPageKeys,
+  oneWireGenerationPageKeys,
+  redundantOneWirePageKeys
+} from '../data/page-operations.js'
 import type { Shape } from '../editor/model/types.js'
 import { clonePageSchema } from '../data/page-schema.js'
 import { downloadBom, downloadDataUrl } from '../editor/export/export-commands.js'
@@ -235,17 +242,43 @@ export class AppShell extends LiteElement {
   #buildingSettingsPageKey(): string | undefined {
     if (!this.project || !this.currentPageKey) return undefined
     const page = this.project.pages[this.currentPageKey]
-    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) return this.currentPageKey
-    if (page?.pageType === 'onewire') {
+    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) {
       const linkedPageKey = explicitLinkedPageKey(this.project, this.currentPageKey)
-      return linkedPageKey || undefined
+      return linkedPageKey || this.currentPageKey
     }
+    if (page?.pageType === 'onewire') {
+      const rootKey = page.oneWireOverflowOf ?? this.currentPageKey
+      return linkedGroundplanPageKeys(this.project, rootKey).length ? rootKey : undefined
+    }
+    return undefined
+  }
+
+  #buildingSourcePageKey(): string | undefined {
+    if (!this.project || !this.currentPageKey) return undefined
+    const page = this.project.pages[this.currentPageKey]
+    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) {
+      return this.currentPageKey
+    }
+    if (page?.pageType === 'onewire') return explicitLinkedPageKey(this.project, this.currentPageKey) || undefined
     return undefined
   }
 
   #buildingSettingsPage() {
     const key = this.#buildingSettingsPageKey()
     return key ? this.project?.pages[key] : undefined
+  }
+
+  #legacyBuildingSettingsPage() {
+    if (!this.project) return undefined
+    const settingsPage = this.#buildingSettingsPage()
+    if (settingsPage?.pageType === 'groundplan') return settingsPage
+    if (settingsPage?.pageType !== 'onewire') return undefined
+    return linkedGroundplanPageKeys(this.project, settingsPage.oneWireOverflowOf ?? this.#buildingSettingsPageKey() ?? '')
+      .map((key) => this.project?.pages[key])
+      .find((page) => page && (
+        page.electricalProfile || page.circuitSpecifications || page.mainFuseA !== undefined ||
+        page.oneWirePrompt || page.oneWireTopology
+      ))
   }
 
   get projectPageCount(): number {
@@ -523,12 +556,15 @@ export class AppShell extends LiteElement {
       const page = project.pages[currentPageKey]
       if (!page || page.pageType !== 'groundplan') return
       const updatedPage = { ...page }
+      let updatedProject = project
       if (selectedKey === 'auto') delete updatedPage.linkedOneWirePageKey
       else if (!selectedKey) updatedPage.linkedOneWirePageKey = null
-      else updatedPage.linkedOneWirePageKey = selectedKey as UUID
-      project.pages[currentPageKey] = updatedPage
-      await setProjectData(this.projectKey, project)
-      this.project = project
+      else updatedProject = linkGroundPlanToOneWirePage(project, currentPageKey, selectedKey)
+      if (updatedProject === project) {
+        updatedProject = { ...project, pages: { ...project.pages, [currentPageKey]: updatedPage } }
+      }
+      await setProjectData(this.projectKey, updatedProject)
+      this.project = updatedProject
       if (!this.linkedPageKey) this.splitViewOpen = false
     } catch (error) {
       console.error('Eendraadschema koppelen mislukt.', error)
@@ -880,6 +916,7 @@ export class AppShell extends LiteElement {
     const previous = this.project
     const settingsPageKey = this.#buildingSettingsPageKey()
     const settingsPage = settingsPageKey ? this.project.pages[settingsPageKey] : undefined
+    const legacySettingsPage = this.#legacyBuildingSettingsPage()
     if (settingsPageKey && settingsPage) {
       this.project = {
         ...this.project,
@@ -903,7 +940,8 @@ export class AppShell extends LiteElement {
     }
     const mainDifferential = topology.mainDifferential
     if (mainDifferential) {
-      const profile = settingsPage?.electricalProfile ?? this.project.electricalProfile ?? {
+      const profile = settingsPage?.electricalProfile ?? legacySettingsPage?.electricalProfile ??
+        this.project.electricalProfile ?? {
         standard: 'AREI' as const,
         edition: 'Book 1 (current edition)',
         distributor: '',
@@ -1752,7 +1790,9 @@ export class AppShell extends LiteElement {
     }
     this.project = await getProjectData(this.projectKey)
 
-    const buildingPageKey = this.#buildingSettingsPageKey()
+    const buildingPageKey = this.#buildingSourcePageKey()
+    const settingsPageKey = this.#buildingSettingsPageKey()
+    const legacySettingsPage = this.#legacyBuildingSettingsPage()
     const report = nativeApp?.analyzeBindings?.(buildingPageKey) ?? null
     const preflight = evaluateOneWirePreflight(report)
     if (preflight.ready === false) {
@@ -1764,7 +1804,8 @@ export class AppShell extends LiteElement {
       }
       return
     }
-    const topology = (buildingPageKey ? this.project.pages[buildingPageKey]?.oneWireTopology : undefined) ??
+    const topology = (settingsPageKey ? this.project.pages[settingsPageKey]?.oneWireTopology : undefined) ??
+      legacySettingsPage?.oneWireTopology ??
       this.project.oneWireTopology
     if (!topology?.mainDifferential) {
       this.openOneWirePromptDialog()
@@ -2091,8 +2132,10 @@ export class AppShell extends LiteElement {
           this.projects = await getProjects()
         }}></project-share-dialog>
       <onewire-prompt-dialog
-        .prompt=${this.#buildingSettingsPage()?.oneWirePrompt ?? this.project?.oneWirePrompt ?? ''}
-        .topology=${this.#buildingSettingsPage()?.oneWireTopology ?? this.project?.oneWireTopology}
+        .prompt=${this.#buildingSettingsPage()?.oneWirePrompt ??
+          this.#legacyBuildingSettingsPage()?.oneWirePrompt ?? this.project?.oneWirePrompt ?? ''}
+        .topology=${this.#buildingSettingsPage()?.oneWireTopology ??
+          this.#legacyBuildingSettingsPage()?.oneWireTopology ?? this.project?.oneWireTopology}
         .open=${this.oneWirePromptDialogOpen}
         @close=${() => (this.oneWirePromptDialogOpen = false)}
         @apply-topology=${(

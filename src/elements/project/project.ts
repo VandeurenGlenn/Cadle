@@ -37,6 +37,17 @@ export class ProjectElement extends LiteElement {
   @property({ type: String })
   accessor newPageName = ''
 
+  #pageDrag: {
+    pageKey: string
+    pointerId: number
+    startX: number
+    startY: number
+    active: boolean
+    targetPageKey?: string
+    targetAfter?: boolean
+  } | null = null
+  #ignoreNextPageClick = false
+
   onChange(name: string): void {
     if (name === 'loadedPage') {
       queueMicrotask(() => {
@@ -69,6 +80,135 @@ export class ProjectElement extends LiteElement {
     const pageName = target?.value ?? ''
     this.newPageName = pageName
     if (this.#shouldUseOneWirePageType(pageName)) this.newPageType = 'onewire'
+  }
+
+  #onPagePointerDown = (event: PointerEvent, pageKey: string) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    const touchHandle = event.composedPath().some((target) =>
+      target instanceof HTMLElement && target.classList.contains('page-drag-handle')
+    )
+    if (event.pointerType === 'touch' && !touchHandle) return
+    this.#pageDrag = {
+      pageKey,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false
+    }
+    try {
+      this.setPointerCapture(event.pointerId)
+    } catch (error) {
+      console.warn('Pagina verslepen kon niet worden gestart.', error)
+    }
+  }
+
+  @listen('pointerdown', { target: (host: ProjectElement) => host.shadowRoot })
+  onPagePointerDown(event: PointerEvent) {
+    const pageItem = event.composedPath().find((target) =>
+      target instanceof HTMLElement && target.matches('custom-drawer-item[data-project]')
+    ) as HTMLElement | undefined
+    const pageKey = pageItem?.dataset.project
+    if (pageKey) this.#onPagePointerDown(event, pageKey)
+  }
+
+  @listen('pointermove')
+  onPagePointerMove(event: PointerEvent) {
+    this.#onPagePointerMove(event)
+  }
+
+  @listen('pointerup')
+  onPagePointerUp(event: PointerEvent) {
+    void this.#onPagePointerUp(event)
+  }
+
+  @listen('pointercancel')
+  onPagePointerCancel(event: PointerEvent) {
+    this.#onPagePointerCancel(event)
+  }
+
+  #onPagePointerMove = (event: PointerEvent) => {
+    const drag = this.#pageDrag
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 7) return
+    drag.active = true
+    this.setAttribute('data-reordering-pages', '')
+
+    const items = [...(this.shadowRoot?.querySelectorAll<HTMLElement>('custom-drawer-item[data-project]') ?? [])]
+    let targetItem = items.find((item) => {
+      const bounds = item.getBoundingClientRect()
+      return event.clientY >= bounds.top && event.clientY <= bounds.bottom
+    })
+    if (!targetItem && items.length) {
+      const first = items[0].getBoundingClientRect()
+      const last = items[items.length - 1].getBoundingClientRect()
+      if (event.clientY < first.top) targetItem = items[0]
+      else if (event.clientY > last.bottom) targetItem = items[items.length - 1]
+    }
+    const targetPageKey = targetItem?.dataset.project
+    if (!targetPageKey) {
+      this.#clearPageDropMarker()
+      drag.targetPageKey = undefined
+      return
+    }
+    const bounds = targetItem!.getBoundingClientRect()
+    const targetAfter = event.clientY >= bounds.top + bounds.height / 2
+    this.#clearPageDropMarker()
+    targetItem!.setAttribute('data-drop-position', targetAfter ? 'after' : 'before')
+    drag.targetPageKey = targetPageKey
+    drag.targetAfter = targetAfter
+  }
+
+  #onPagePointerUp = async (event: PointerEvent) => {
+    const drag = this.#pageDrag
+    if (!drag || drag.pointerId !== event.pointerId) return
+    this.#pageDrag = null
+    this.#clearPageDropMarker()
+    this.removeAttribute('data-reordering-pages')
+    if (!drag.active) return
+
+    this.#ignoreNextPageClick = true
+    window.setTimeout(() => {
+      this.#ignoreNextPageClick = false
+    }, 0)
+    if (!drag.targetPageKey || drag.targetPageKey === drag.pageKey) return
+    const orderedKeys = this.#orderedPages.map(([key]) => key)
+    const targetIndex = orderedKeys.indexOf(drag.targetPageKey)
+    const insertIndex = targetIndex + (drag.targetAfter ? 1 : 0)
+    const sourceIndex = orderedKeys.indexOf(drag.pageKey)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    orderedKeys.splice(sourceIndex, 1)
+    orderedKeys.splice(insertIndex - (sourceIndex < insertIndex ? 1 : 0), 0, drag.pageKey)
+    await this.#persistPageOrder(orderedKeys)
+  }
+
+  #onPagePointerCancel = (event: PointerEvent) => {
+    if (this.#pageDrag?.pointerId !== event.pointerId) return
+    this.#pageDrag = null
+    this.#clearPageDropMarker()
+    this.removeAttribute('data-reordering-pages')
+  }
+
+  #clearPageDropMarker() {
+    this.shadowRoot?.querySelectorAll('[data-drop-position]').forEach((item) =>
+      item.removeAttribute('data-drop-position')
+    )
+  }
+
+  async #persistPageOrder(orderedKeys: string[]) {
+    if (!this.projectKey || !this.project) return
+    const pages = { ...this.project.pages }
+    orderedKeys.forEach((key, index) => {
+      pages[key] = { ...pages[key], order: index }
+    })
+    try {
+      await setProjectData(this.projectKey, { ...this.project, pages })
+      this.project = await getProjectData(this.projectKey)
+      cadleShell.project = this.project
+      this.requestRender()
+    } catch (error) {
+      console.error('Paginavolgorde opslaan mislukt.', error)
+      globalThis.alert('De paginavolgorde kon niet worden opgeslagen. Probeer opnieuw.')
+    }
   }
 
   #defaultPageName(pageType: PageType) {
@@ -179,34 +319,13 @@ export class ProjectElement extends LiteElement {
   }
 
   async #movePage(pageKey: string, direction: -1 | 1) {
-    const ordered = this.#orderedPages.map(([key, project], index) => ({ key, project, index }))
-    const currentIndex = ordered.findIndex((item) => item.key === pageKey)
-    if (currentIndex === -1) return
+    const orderedKeys = this.#orderedPages.map(([key]) => key)
+    const currentIndex = orderedKeys.indexOf(pageKey)
     const targetIndex = currentIndex + direction
-    if (targetIndex < 0 || targetIndex >= ordered.length) return
-
-    const current = ordered[currentIndex]
-    const target = ordered[targetIndex]
-    const currentOrder = typeof current.project.order === 'number' ? current.project.order : currentIndex
-    const targetOrder = typeof target.project.order === 'number' ? target.project.order : targetIndex
-
-    current.project.order = targetOrder
-    target.project.order = currentOrder
-
-    ordered.sort((a, b) => {
-      const orderA = typeof a.project.order === 'number' ? a.project.order : Number.MAX_SAFE_INTEGER
-      const orderB = typeof b.project.order === 'number' ? b.project.order : Number.MAX_SAFE_INTEGER
-      return orderA - orderB || a.project.creationTime - b.project.creationTime
-    })
-
-    ordered.forEach((entry, index) => {
-      this.project!.pages[entry.key].order = index
-    })
-
-    await setProjectData(this.projectKey, this.project!)
-    this.project = await getProjectData(this.projectKey)
-    cadleShell.project = this.project
-    this.requestRender()
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedKeys.length) return
+    orderedKeys.splice(currentIndex, 1)
+    orderedKeys.splice(targetIndex, 0, pageKey)
+    await this.#persistPageOrder(orderedKeys)
   }
 
   static styles = [styles]
@@ -225,11 +344,30 @@ export class ProjectElement extends LiteElement {
         <custom-drawer-item
           .headline=${project.name}
           data-project=${key}
-          @click=${async () => {
+          @click=${async (event: Event) => {
+            if (this.#ignoreNextPageClick) {
+              this.#ignoreNextPageClick = false
+              event.preventDefault()
+              event.stopPropagation()
+              return
+            }
             await cadleShell.savePage()
             cadleShell.loadPage(key)
           }}
-          >${project.name}</custom-drawer-item
+          >${project.name}
+          <button
+            slot="end"
+            class="page-drag-handle"
+            type="button"
+            aria-label=${`Sleep ${project.name} om te ordenen`}
+            title="Ingedrukt houden en verslepen om te ordenen"
+            @click=${(event: Event) => {
+              event.stopPropagation()
+              if (this.#ignoreNextPageClick) this.#ignoreNextPageClick = false
+            }}>
+            <custom-icon icon="drag_indicator"></custom-icon>
+          </button>
+        </custom-drawer-item
         >
       `
     )

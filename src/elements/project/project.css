@@ -17,6 +17,7 @@ custom-selector {
 }
 
 custom-drawer-item {
+  position: relative;
   min-height: 36px !important;
   max-height: 36px !important;
   padding-left: var(--cadle-space-3) !important;
@@ -25,6 +26,7 @@ custom-drawer-item {
   font: var(--cadle-navigation-font);
   color: var(--md-sys-color-on-surface);
   background: transparent;
+  user-select: none;
   transition:
     background-color var(--cadle-motion-fast),
     color var(--cadle-motion-fast);
@@ -42,6 +44,46 @@ custom-drawer-item.custom-selected {
 custom-drawer-item:focus-visible {
   outline: none;
   box-shadow: var(--cadle-focus-ring);
+}
+
+.page-drag-handle {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--cadle-radius-sm);
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.page-drag-handle:hover {
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.page-drag-handle:active {
+  cursor: grabbing;
+}
+
+.page-drag-handle custom-icon {
+  pointer-events: none;
+}
+
+custom-drawer-item[data-drop-position='before'] {
+  box-shadow: inset 0 2px var(--md-sys-color-primary);
+}
+
+custom-drawer-item[data-drop-position='after'] {
+  box-shadow: inset 0 -2px var(--md-sys-color-primary);
+}
+
+:host([data-reordering-pages]) custom-drawer-item {
+  transition: none;
 }
 
 .page-add-area {

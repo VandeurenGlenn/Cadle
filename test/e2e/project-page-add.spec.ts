@@ -70,10 +70,73 @@ test('adds pages quickly with automatic names, type detection and cancel support
   await linkSelect.selectOption('')
   await expect.poll(() => shell.evaluate((element) => (element as AppShell).linkedPageKey)).toBe('')
 
+  const groundplanKey = await shell.evaluate((element) =>
+    Object.entries((element as AppShell).project!.pages).find(([, entry]) => entry.name === 'Groundplan')?.[0])
+  const groundplanItem = pagePane.locator(`custom-drawer-item[data-project="${groundplanKey}"]`)
+  const oneWireItem = pagePane.locator(`custom-drawer-item[data-project="${oneWireKey}"]`)
+  const groundplanBounds = await groundplanItem.boundingBox()
+  const oneWireBounds = await oneWireItem.boundingBox()
+  expect(groundplanBounds).not.toBeNull()
+  expect(oneWireBounds).not.toBeNull()
+  await page.mouse.move(groundplanBounds!.x + 24, groundplanBounds!.y + groundplanBounds!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(oneWireBounds!.x + 24, oneWireBounds!.y + oneWireBounds!.height - 2, { steps: 8 })
+  await expect(pagePane).toHaveAttribute('data-reordering-pages', '')
+  await page.mouse.up()
+  await expect.poll(() => shell.evaluate((element) => {
+    const project = (element as AppShell).project!
+    return Object.values(project.pages).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((entry) => entry.name)
+  })).toEqual(['Situatieplan', 'Eendraadschema', 'Groundplan'])
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
+  await expect(pagePane.getByRole('button', { name: 'Sleep Groundplan om te ordenen' })).toBeVisible()
+
   await pagePane.getByRole('button', { name: 'Nieuwe pagina' }).click()
   await pagePane.getByRole('textbox', { name: 'Paginanaam' }).fill('Niet bewaren')
   await pagePane.getByRole('textbox', { name: 'Paginanaam' }).press('Escape')
   await expect(pagePane.getByRole('button', { name: 'Nieuwe pagina' })).toBeVisible()
   expect(await shell.evaluate((element) =>
     Object.values((element as AppShell).project!.pages).some((entry) => entry.name === 'Niet bewaren'))).toBe(false)
+
+  await linkSelect.selectOption(oneWireKey!)
+  await expect.poll(() => shell.evaluate((element) => {
+    const appShell = element as AppShell
+    return appShell.project?.pages[appShell.currentPageKey]?.linkedOneWirePageKey
+  })).toBe(oneWireKey)
+  const singleLevelAnalysis = await app.evaluate((element, key) =>
+    (element as CadleApp).analyzeBindings(key), groundKey)
+  const groupedProject = await shell.evaluate((element) => structuredClone((element as AppShell).project!))
+  const upperFloorKey = randomUUID()
+  groupedProject.pages[upperFloorKey] = {
+    ...structuredClone(groupedProject.pages[groundKey]),
+    name: 'Verdieping',
+    order: Object.keys(groupedProject.pages).length,
+    linkedOneWirePageKey: oneWireKey as Project['pages'][string]['linkedOneWirePageKey']
+  }
+  await page.goto('/#!/projects')
+  await page.evaluate(async (value) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(value.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(content)
+      await writer.close()
+    }
+  }, groupedProject)
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="Pagina toevoegen test"]').click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(groupedProject.uuid)
+  await shell.evaluate(async (element, key) => {
+    await (element as AppShell).loadPage(key)
+  }, oneWireKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
+  const combinedAnalysis = await app.evaluate((element, key) =>
+    (element as CadleApp).analyzeBindings(key), oneWireKey)
+  expect(combinedAnalysis.groups.map((group) => group.bindingId)).toEqual(
+    singleLevelAnalysis.groups.map((group) => group.bindingId)
+  )
+  expect(combinedAnalysis.groups.map((group) => group.components.length)).toEqual(
+    singleLevelAnalysis.groups.map((group) => group.components.length * 2)
+  )
 })

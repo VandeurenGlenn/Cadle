@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ensureOneWirePage, explicitLinkedPageKey, oneWireGenerationPageKeys, redundantOneWirePageKeys } from '../src/data/page-operations.ts'
+import {
+  ensureOneWirePage,
+  explicitLinkedPageKey,
+  linkGroundPlanToOneWirePage,
+  linkedGroundplanPageKeys,
+  oneWireGenerationPageKeys,
+  redundantOneWirePageKeys
+} from '../src/data/page-operations.ts'
 import type { Shape } from '../src/editor/model/types.ts'
 import { clonePageSchema } from '../src/data/page-schema.ts'
 import type { Project, UUID } from '../src/types.ts'
@@ -139,6 +146,40 @@ test('resolves explicit ground-plan and one-wire page links without changing leg
   assert.equal(explicitLinkedPageKey(project, 'buildingAWire'), 'buildingA')
   assert.equal(explicitLinkedPageKey(project, 'buildingBWire'), null)
   assert.equal(explicitLinkedPageKey(project, 'legacyBuilding'), null)
+})
+
+test('shares one installation across linked floor plans and migrates legacy settings to its one-wire page', () => {
+  const electricalProfile = { standard: 'AREI', edition: 'Book 1' } as Project['electricalProfile']
+  const circuitSpecifications = { A1: { breakerCurrentA: 16 } } as Project['circuitSpecifications']
+  const oneWireTopology = { mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } } as Project['oneWireTopology']
+  const project = {
+    pages: {
+      ground: {
+        name: 'Gebouw 1 - Gelijkvloers',
+        pageType: 'groundplan',
+        linkedOneWirePageKey: 'wire',
+        electricalProfile,
+        oneWireTopology
+      },
+      upper: {
+        name: 'Gebouw 1 - Verdieping',
+        pageType: 'groundplan',
+        linkedOneWirePageKey: 'other-wire',
+        circuitSpecifications
+      },
+      wire: { name: 'Gebouw 1 - Eendraads', pageType: 'onewire' },
+      'other-wire': { name: 'Gebouw 2 - Eendraads', pageType: 'onewire' }
+    }
+  } as Project
+
+  const linked = linkGroundPlanToOneWirePage(project, 'upper', 'wire')
+
+  assert.deepEqual(linkedGroundplanPageKeys(linked, 'wire'), ['ground', 'upper'])
+  assert.equal(explicitLinkedPageKey(linked, 'wire'), 'ground')
+  assert.equal(linked.pages.wire.electricalProfile, electricalProfile)
+  assert.equal(linked.pages.wire.circuitSpecifications, circuitSpecifications)
+  assert.equal(linked.pages.wire.oneWireTopology, oneWireTopology)
+  assert.equal(linked.pages['other-wire'].electricalProfile, undefined)
 })
 
 test('groups one-wire overflow sheets only with their linked building diagram', () => {

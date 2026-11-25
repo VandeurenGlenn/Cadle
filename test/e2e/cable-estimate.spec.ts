@@ -68,6 +68,37 @@ const seed = async (page: Page, project: Project) => {
   return app
 }
 
+test('shows schematic breaker and cable values for a circuit also present on the floor plan', async ({ page }) => {
+  const project = fixture()
+  project.name = 'Kringenoverzicht eendraadsgegevens'
+  project.circuitSpecifications!.A = { boardId: 'main' }
+  let nextId = 0
+  const bundle = buildKamrailCircuitBundle({
+    rail: { id: 'rail', kind: 'line', start: { x: 100, y: 1200 }, end: { x: 2000, y: 1200 } },
+    anchorX: 400,
+    options: { family: 'A', amps: 32, poles: 4, cableConductors: 5, cableSectionMm2: 6, cableType: 'XVB',
+      autoIncludeFamily: true },
+    familyComponents: [{ bindingId: 'A1', kind: 'load', sourceShapeId: 'a1',
+      sourceName: 'Wall outlet with grounding',
+      sourcePath: 'symbols/Socket outlets/Wall outlet with grounding.svg' }],
+    nextShapeId: () => `generated-${++nextId}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!,
+    branchStroke: '#000000'
+  })!
+  project.pages[schematic].schema = schema(bundle.shapes)
+  await seed(page, project)
+  await page.locator('app-shell').evaluate((element) => (element as AppShell).openCircuitScheduleDialog())
+  const overview = page.locator('circuit-schedule-field')
+  const circuit = overview.locator('.device[data-circuit-id="A"]')
+  await expect(circuit.locator('.protection')).toHaveText('4P · C32A')
+  await expect(circuit.locator('.cable-estimate')).toContainText('5G6 mm² XVB')
+  await overview.getByRole('button', { name: 'Kastlayoutplanner' }).click()
+  await expect(page.getByRole('dialog', { name: 'Kastlayoutplanner' })
+    .locator('.cabinet-device[data-item-id="A"]')).toContainText('4M')
+})
+
 test('shows cable totals per board and cable type, updates assignments and remembers physical cabinet positions', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1100 })
   const app = await seed(page, fixture())

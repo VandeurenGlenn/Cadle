@@ -9,7 +9,7 @@ import { connectedOneWireRails, isOneWireDistributionProtection } from './intera
 import { oneWireSymbolConnectionAnchors } from './layout/onewire-connections.js'
 import { orderedOneWireDifferentials } from './layout/onewire-topology.js'
 
-/** Floor-plan devices stay authoritative; schematic-only families fill the gaps. */
+/** Floor-plan devices stay authoritative; schematic data supplies circuit settings and missing families. */
 export const analyzeCircuitSchedule = (
   floorPlanShapes: readonly Shape[],
   oneWireShapes: readonly Shape[],
@@ -27,7 +27,7 @@ export const analyzeCircuitSchedule = (
       shape.sourceLink.role === 'breaker' ? shape.sourceLink.id : undefined)
     if (!bindingId) continue
     const binding = bindingParts(bindingId)
-    if (!binding || knownFamilies.has(binding.family)) continue
+    if (!binding) continue
     const key = `${binding.bindingId}:${shape.generationKey ??
       (shape.sourceLink?.kind === 'device' ? shape.sourceLink.id : shape.id)}`
     if (seen.has(key)) continue
@@ -63,7 +63,8 @@ export const analyzeCircuitSchedule = (
     if (shape.kind === 'symbol' && shape.electrical?.oneWireEligible === false) continue
     const role = inferCircuitRole(shape)
     if (role === 'neutral' || role === 'junction') continue
-    if (shape.kind === 'symbol' && role === 'protection' && shape.electrical) {
+    if (shape.kind === 'symbol' && role === 'protection' && shape.electrical &&
+      !isOneWireDistributionProtection(shape)) {
       const { role: _role, oneWireEligible: _eligible, ratedCurrentA, circuitType, ...electrical } = shape.electrical
       inferred[binding.family] = {
         ...previous,
@@ -73,9 +74,11 @@ export const analyzeCircuitSchedule = (
       }
     }
     // Generated group IDs describe rows, not logical devices on a floor plan.
-    additional.push({ ...shape, bindingId, groupId: shape.groupId?.startsWith('onewire-') ? undefined : shape.groupId })
+    if (!knownFamilies.has(binding.family)) {
+      additional.push({ ...shape, bindingId, groupId: shape.groupId?.startsWith('onewire-') ? undefined : shape.groupId })
+    }
   }
-  if (!additional.length) return floorPlan
+  if (!additional.length && !Object.keys(inferred).length) return floorPlan
   for (const family of Object.keys(inferred)) {
     inferred[family] = { ...inferred[family], ...circuitSpecifications[family] }
   }

@@ -524,9 +524,43 @@ test('includes schematic-only A through D without doubling floor-plan families o
   assert.deepEqual(rows[1].consumers, ['Lighting'])
   assert.deepEqual(rows[4].consumers, ['Floor plan socket'])
   assert.deepEqual(rows[4].rooms, ['Keuken'])
+  assert.equal(rows[4].protection, 'C32A')
+  assert.equal(rows[4].poles, '4P')
+  assert.equal(rows[4].cable, '5G6 mm² XGB LSOH')
   assert.deepEqual(analyzeCircuits(floorPlan).families, ['E'])
   const svg = buildCircuitScheduleSvgs(null, result).join('')
   for (const family of ['A', 'B', 'C', 'D', 'E']) assert.match(svg, new RegExp(`>${family}</text>`))
+})
+
+test('preserves explicit circuit settings over schematic values for floor-plan families', () => {
+  const floorPlan: Shape[] = [{
+    id: 'socket', kind: 'symbol', position: { x: 100, y: 100 }, name: 'Socket',
+    path: 'symbols/Socket outlets/Wall outlet with grounding.svg', scale: 1, bindingId: 'A1'
+  }]
+  const result = analyzeCircuitSchedule(floorPlan, schematicCircuit('A'), undefined, {
+    A: { breakerCurrentA: 20, poles: 2, cableSectionMm2: 2.5 }
+  })
+  const [row] = circuitScheduleRows(result)
+  assert.equal(row.protection, 'C20A')
+  assert.equal(row.poles, '2P')
+  assert.equal(row.cable, '5G2.5 mm² XGB LSOH')
+  assert.deepEqual(row.consumers, ['Socket'])
+})
+
+test('does not use a differential on the same circuit as its breaker settings', () => {
+  const floorPlan: Shape[] = [{
+    id: 'socket', kind: 'symbol', position: { x: 100, y: 100 }, name: 'Socket',
+    path: 'symbols/Socket outlets/Wall outlet with grounding.svg', scale: 1, bindingId: 'A1'
+  }]
+  const differential: Shape = {
+    id: 'diff', kind: 'symbol', name: 'Differentieel',
+    path: 'symbols/Protection devices/Residual-current circuit breaker.svg',
+    position: { x: 300, y: 300 }, scale: 1, bindingId: 'A1',
+    electrical: { role: 'protection', oneWireEligible: true, breakerCurrentA: 40, poles: 2, rcdSensitivityMa: 30 }
+  }
+  const [row] = circuitScheduleRows(analyzeCircuitSchedule(floorPlan, [...schematicCircuit('A'), differential]))
+  assert.equal(row.protection, 'C32A')
+  assert.equal(row.poles, '4P')
 })
 
 test('stored circuit specifications override schematic metadata without inventing unused circuits', () => {

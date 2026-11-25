@@ -198,6 +198,55 @@ test('a moved bus retains T junctions at their position along the conductor', ()
   assert.strictEqual(result[2], crossing)
 })
 
+test('resizing a busbar leaves circuit connections in place and cannot cut them off', () => {
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 0, y: 100 }, end: { x: 400, y: 100 },
+    groupId: 'onewire-kamrail-main' }
+  const pvFeed = wire('pv-feed', { x: 80, y: 100 }, { x: 80, y: 50 })
+  const branch = wire('branch', { x: 320, y: 50 }, { x: 320, y: 100 })
+  const crossing = wire('crossing', { x: 40, y: 50 }, { x: 40, y: 150 })
+  const shapes = [rail, pvFeed, branch, crossing]
+  for (const [start, end, expectedStart, expectedEnd] of [
+    [-100, 500, -100, 500],
+    [100, 300, 80, 320]
+  ]) {
+    const resized = { ...rail, start: { x: start, y: 100 }, end: { x: end, y: 100 } }
+    const result = followConnectedConductors(shapes, [resized, pvFeed, branch, crossing], new Set([rail.id]))
+    assert.deepEqual((result[0] as LineShape).start, { x: expectedStart, y: 100 })
+    assert.deepEqual((result[0] as LineShape).end, { x: expectedEnd, y: 100 })
+    assert.deepEqual(result.slice(1), shapes.slice(1))
+  }
+})
+
+test('resizing a reversed busbar preserves direct symbol contacts and locked feeders', () => {
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 400, y: 100 }, end: { x: 0, y: 100 },
+    groupId: 'onewire-kamrail-main' }
+  const path = 'symbols/Protection devices/Automaat.svg'
+  const scale = oneWireSymbolScaleFor(path)!
+  const terminal = oneWireSymbolTerminalInfo(path, scale)!.bottom
+  const breaker: SymbolShape = { id: 'breaker', kind: 'symbol', name: 'Automaat', path, scale,
+    position: { x: 80 - terminal.x, y: 100 - terminal.y } }
+  const feed = { ...wire('locked-feed', { x: 320, y: 100 }, { x: 320, y: 150 }), locked: true }
+  const crossing = wire('crossing', { x: 40, y: 50 }, { x: 40, y: 150 })
+  const resized = { ...rail, start: { x: 300, y: 100 }, end: { x: 100, y: 100 } }
+  const result = followConnectedConductors([rail, breaker, feed, crossing],
+    [resized, breaker, feed, crossing], new Set([rail.id]))
+  const actual = result[0] as LineShape
+  close(actual.start.x, 320)
+  close(actual.end.x, 80)
+  assert.deepEqual(result.slice(1), [breaker, feed, crossing])
+})
+
+test('resizing an angled busbar retains an endpoint connected to the middle of a wire', () => {
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 0, y: 0 }, end: { x: 300, y: 400 },
+    groupId: 'onewire-kamrail-main' }
+  const feed = wire('feed', { x: -50, y: 0 }, { x: 50, y: 0 })
+  const resized = { ...rail, start: { x: 60, y: 80 }, end: { x: 240, y: 320 } }
+  const result = followConnectedConductors([rail, feed], [resized, feed], new Set([rail.id]))
+  assert.deepEqual((result[0] as LineShape).start, rail.start)
+  assert.deepEqual((result[0] as LineShape).end, resized.end)
+  assert.deepEqual(result[1], feed)
+})
+
 test('rotating and mirroring a device keep wires on its source contacts', () => {
   const device: SymbolShape = { id: 'device', kind: 'symbol', name: 'RCD',
     path: 'symbols/Protection devices/Residual-current circuit breaker.svg',

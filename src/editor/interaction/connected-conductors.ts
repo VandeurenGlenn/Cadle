@@ -135,6 +135,49 @@ export const followConnectedConductors = (
   before: readonly Shape[], after: readonly Shape[], movedIds: ReadonlySet<string>
 ): Shape[] => {
   const oldById = new Map(before.map((shape) => [shape.id, shape]))
+  let resizedRail = false
+  if (movedIds.size === 1) {
+    after = after.map((shape) => {
+      const old = oldById.get(shape.id)
+      if (!movedIds.has(shape.id) || shape.kind !== 'line' || old?.kind !== 'line' ||
+        !isOneWireRailShape(old) || connectionSegments(old).length !== 1 || connectionSegments(shape).length !== 1) return shape
+      const dx = old.end.x - old.start.x, dy = old.end.y - old.start.y
+      const length = Math.hypot(dx, dy), nextLength = Math.hypot(shape.end.x - shape.start.x, shape.end.y - shape.start.y)
+      if (!length || Math.abs(length - nextLength) < 0.01) return shape
+      const ux = dx / length, uy = dy / length
+      const projection = (point: Point) => (point.x - old.start.x) * ux + (point.y - old.start.y) * uy
+      const distance = (point: Point) => Math.abs((point.x - old.start.x) * uy - (point.y - old.start.y) * ux)
+      let start = projection(shape.start), end = projection(shape.end)
+      if (distance(shape.start) >= 0.01 || distance(shape.end) >= 0.01 || start >= end) return shape
+
+      const contacts: Point[] = []
+      for (const other of before) {
+        if (other.id === old.id || movedIds.has(other.id)) continue
+        if (other.kind === 'line') {
+          contacts.push(...[other.start, other.end].filter((point) => fraction(point, old.start, old.end) !== null))
+          contacts.push(...[old.start, old.end].filter((point) => connectionSegments(other).some((segment) =>
+            fraction(point, segment.start, segment.end) !== null)))
+        } else if (other.kind === 'symbol' &&
+          (oneWireSymbolNodeInfo(other.path, other.scale) || oneWireSymbolTerminalInfo(other.path, other.scale))) {
+          contacts.push(...oneWireSymbolConnectionAnchors(other).map((anchor) => anchor.point)
+            .filter((point) => fraction(point, old.start, old.end) !== null))
+        }
+      }
+      for (const point of contacts) {
+        const position = projection(point)
+        start = Math.min(start, position)
+        end = Math.max(end, position)
+      }
+      const constrained = {
+        ...shape,
+        start: { x: old.start.x + start * ux, y: old.start.y + start * uy },
+        end: { x: old.start.x + end * ux, y: old.start.y + end * uy }
+      }
+      resizedRail = true
+      return constrained
+    })
+  }
+  if (resizedRail) return [...after]
   after = after.map((shape) => {
     const old = oldById.get(shape.id)
     if (!movedIds.has(shape.id) || shape.kind !== 'line' || old?.kind !== 'line' ||

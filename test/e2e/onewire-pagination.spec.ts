@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpers.ts'
+import { buildSolarInstallation } from '../../src/editor/layout/solar-installation-layout.ts'
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
@@ -10,6 +11,89 @@ import type { AppShell } from '../../src/shell/app-shell.ts'
 
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
+
+test('resizes a busbar without moving its circuits or their connections', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), root)).toBe(true)
+  const rail: LineShape = { id: 'resize-rail', kind: 'line', start: { x: 300, y: 1200 },
+    end: { x: 1500, y: 1200 }, groupId: 'onewire-kamrail-resize', strokeWidth: 4 }
+  let sequence = 0
+  const solar = buildSolarInstallation({
+    panel: { manufacturer: 'Osda', model: 'ODA460', powerWp: 460 },
+    panelCount: 24, stringCount: 2, inverterManufacturer: 'Huawei', inverterModel: 'SUN2000',
+    inverterPowerW: 8000, phases: 3, breakerCurrentA: 32
+  }, rail.id, { x: 400, y: 1200 }, () => `resize-solar-${++sequence}`)
+  const circuits = ['B', 'C'].flatMap((family, index) => buildKamrailCircuitBundle({
+    rail, anchorX: 650 + index * 450, options: { family, amps: 20, autoIncludeFamily: true },
+    familyComponents: [{ bindingId: `${family}1`, kind: 'load',
+      sourcePath: 'symbols/Consumption appliances/Lighting.svg' }],
+    nextShapeId: () => `resize-circuit-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id })))
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'resize-rail.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(state([rail, ...solar, ...circuits])))
+  })
+  const saved = async () => {
+    await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+    return shell.evaluate((element, key) => {
+      const schema = (element as AppShell).project!.pages[key].schema!
+      return schema.objects.find((object) => object.kind === 'cadle-native-svg-document')!.payload.shapes
+    }, root)
+  }
+  const initial = await saved()
+  expect(initial.some((shape: SymbolShape) => shape.kind === 'symbol' && shape.name === 'PV automaat')).toBe(true)
+  expect(initial.some((shape: LineShape) => shape.kind === 'line' &&
+    shape.start.x === 400 && shape.start.y === 1200)).toBe(true)
+  const railLine = app.locator('line[data-shape-id="resize-rail"]')
+  const clickPoint = await railLine.evaluate((line: SVGLineElement) => {
+    const point = new DOMPoint(850, 1200).matrixTransform(line.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(clickPoint.x, clickPoint.y)
+  await expect(railLine).toHaveAttribute('data-selected', 'true')
+  const layout = page.locator('object-pane [data-property-section="layout"]')
+  await layout.locator('summary').click()
+  await layout.locator('button[title="Extend by one grid block"]').click()
+  const extended = await saved()
+  const afterRail = extended.find((shape: LineShape) => shape.id === rail.id) as LineShape
+  expect(afterRail.start.x).toBe(rail.start.x - 5)
+  expect(afterRail.end.x).toBe(rail.end.x + 5)
+  expect(extended.filter((shape: LineShape) => shape.id !== rail.id))
+    .toEqual(initial.filter((shape: LineShape) => shape.id !== rail.id))
+  let alertMessage = ''
+  page.once('dialog', (dialog) => {
+    alertMessage = dialog.message()
+    void dialog.accept()
+  })
+  const length = layout.locator('label:has-text("Busbar length") + .native-row input')
+  await length.fill('4')
+  await length.press('Tab')
+  expect(alertMessage).toContain('zonder een aansluiting los te maken')
+  const shortened = await saved()
+  const shortRail = shortened.find((shape: LineShape) => shape.id === rail.id) as LineShape
+  expect(shortRail.start.x).toBeLessThanOrEqual(400)
+  expect(shortRail.end.x).toBeGreaterThanOrEqual(1100)
+  expect(shortened.filter((shape: LineShape) => shape.id !== rail.id))
+    .toEqual(initial.filter((shape: LineShape) => shape.id !== rail.id))
+  await app.evaluate((element) => (element as CadleApp).undo())
+  expect(await saved()).toEqual(extended)
+  await app.evaluate((element) => (element as CadleApp).redo())
+  expect(await saved()).toEqual(shortened)
+  await shell.evaluate((element) => (element as AppShell).loadPage('00000000-0000-4000-8000-000000000102'))
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  expect(await saved()).toEqual(shortened)
+})
 
 test('keeps the rail start close to the first circuit when a fixed feeder is on the right', async ({ page }) => {
   await page.goto('/?fixture=priority-suite#!/projects')

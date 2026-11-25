@@ -3460,7 +3460,17 @@ export class CadleApp extends LiteElement {
     if (!this.#pageKey || this.#project?.pages?.[this.#pageKey]?.pageType !== 'onewire') return after
     const originals = new Map(before.map((shape) => [shape.id, shape]))
     const moved = new Set(after.filter((shape) => originals.get(shape.id) !== shape).map((shape) => shape.id))
-    return followConnectedConductors(before, after, moved)
+    const result = followConnectedConductors(before, after, moved)
+    if (result.some((shape) => {
+      if (!moved.has(shape.id) || !this.#isKamrailShape(shape)) return false
+      const requested = after.find((candidate) => candidate.id === shape.id)
+      return requested?.kind === 'line' &&
+        Math.hypot(shape.end.x - shape.start.x, shape.end.y - shape.start.y) >
+          Math.hypot(requested.end.x - requested.start.x, requested.end.y - requested.start.y) + 0.01
+    })) {
+      globalThis.alert('De kamrail kan niet verder worden ingekort zonder een aansluiting los te maken.')
+    }
+    return result
   }
 
   #layoutOneWireLabels(repack = false, familyGap?: number) {

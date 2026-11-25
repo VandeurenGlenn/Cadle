@@ -468,11 +468,15 @@ export const bindingLabelsTemplate = (shapes: Shape[]) => {
   return placements.map(
     (placement) => svg`
     <g class="binding-label" data-shape-id=${placement.shapeId}>
-      <text class="binding-label-text" style=${`font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px`} x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
+      <text class="binding-label-text" style=${bindingLabelStyle(placement.oneWire)} x=${placement.x} y=${placement.y} text-anchor="middle">${placement.bindingId}</text>
     </g>
   `
   )
 }
+
+const bindingLabelStyle = (oneWire?: boolean): string => oneWire
+  ? `font-size:${PAPER_LABEL_FONT_SIZE}px;font-weight:500;fill:#000;stroke:none;letter-spacing:normal;dominant-baseline:alphabetic`
+  : `font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px`
 
 export const roomLabelsMarkup = (shapes: Shape[]) =>
   namedRoomRegions(shapes).filter((room) => !shapes.some((shape) => isRoomLabel(shape) && !shape.hidden &&
@@ -564,7 +568,9 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     if (!bindingId) continue
     // One-wire circuits render their own text labels — skip them here.
     if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')) continue
-    if (circuitHeadings.has(bindingId)) continue
+    const solarBreaker = shape.kind === 'symbol' && shape.name === 'PV automaat' &&
+      shape.groupId?.startsWith('solar-installation-')
+    if (circuitHeadings.has(bindingId) && !solarBreaker) continue
     const key = shape.groupId ?? shape.id
     const grouped = labeledShapes.get(key)
     if (grouped) grouped.push(shape)
@@ -576,7 +582,7 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     shape.kind === 'symbol' ? symbolContentBounds(shape) : shapeCollisionBounds(shape)
   )
   const placedLabelRects: Array<{ x: number; y: number; width: number; height: number }> = []
-  const placements: Array<{ shapeId: string; bindingId: string; x: number; y: number }> = []
+  const placements: Array<{ shapeId: string; bindingId: string; x: number; y: number; oneWire?: boolean }> = []
 
   for (const groupedShapes of [...labeledShapes.values()]) {
     const base = groupedShapes[0]
@@ -597,6 +603,29 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
         (shape): shape is Shape & { bindingLabelOffset: { x: number; y: number } } =>
           'bindingLabelOffset' in shape && Boolean(shape.bindingLabelOffset)
       )?.bindingLabelOffset ?? null
+
+    if (anchorShape.kind === 'symbol' && anchorShape.name === 'PV automaat' &&
+      anchorShape.groupId?.startsWith('solar-installation-') && anchorShape.oneWireRailId) {
+      const rail = shapes.find((shape): shape is LineShape =>
+        shape.kind === 'line' && shape.id === anchorShape.oneWireRailId && !shape.hidden &&
+        Math.abs(shape.start.y - shape.end.y) < 0.01)
+      const tap = rail && shapes.flatMap((shape) => {
+        if (shape.kind !== 'line' || shape.hidden || shape.groupId !== anchorShape.groupId ||
+          shape.oneWireRailId !== rail.id || shape.connection?.kind !== 'wire') return []
+        return [shape.start, shape.end].filter((point) =>
+          Math.abs(point.y - rail.start.y) <= Math.max(4, (rail.strokeWidth ?? 4) / 2 + 1) &&
+          point.x >= Math.min(rail.start.x, rail.end.x) - 1 &&
+          point.x <= Math.max(rail.start.x, rail.end.x) + 1)
+      })[0]
+      if (rail && tap) {
+        const bounds = shapeBounds(anchorShape)
+        const x = manualOffset ? bounds.x + bounds.width / 2 + manualOffset.x : tap.x
+        const y = manualOffset ? bounds.y + bounds.height / 2 + manualOffset.y
+          : rail.start.y + (anchorShape.position.y < rail.start.y ? 24 : -12)
+        placements.push({ shapeId: anchorShape.id, bindingId, x, y, oneWire: true })
+        continue
+      }
+    }
 
     if (manualOffset) {
       const ab = shapeCollisionBounds(anchorShape)
@@ -702,7 +731,7 @@ export const bindingLabelsMarkup = (shapes: Shape[]): string =>
   resolveBindingLabelPlacements(shapes)
     .map(
       (placement) =>
-        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="font-size:${PAPER_BINDING_LABEL_FONT_SIZE}px" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
+        `<g class="binding-label" data-shape-id="${placement.shapeId}"><text class="binding-label-text" style="${bindingLabelStyle(placement.oneWire)}" x="${placement.x}" y="${placement.y}" text-anchor="middle">${escapeBindingLabelText(placement.bindingId)}</text></g>`
     )
     .join('')
 
@@ -739,9 +768,10 @@ export const stairReadabilityMaskMarkup = (shapes: Shape[]): string => {
     shape.kind === 'symbol' ? [symbolContentBounds(shape)] : shape.kind === 'text' ? [transformedBounds(shape)] : []
   )
   for (const label of resolveBindingLabelPlacements(visible)) {
-    const width = Math.max(PAPER_BINDING_LABEL_FONT_SIZE, label.bindingId.length * PAPER_BINDING_LABEL_FONT_SIZE * 0.68)
-    const height = PAPER_BINDING_LABEL_FONT_SIZE * 1.1
-    clearances.push({ x: label.x - width / 2, y: label.y - height / 2, width, height })
+    const fontSize = label.oneWire ? PAPER_LABEL_FONT_SIZE : PAPER_BINDING_LABEL_FONT_SIZE
+    const width = Math.max(fontSize, label.bindingId.length * fontSize * 0.68)
+    const height = fontSize * 1.1
+    clearances.push({ x: label.x - width / 2, y: label.y - (label.oneWire ? height : height / 2), width, height })
   }
   const bounds = [...stairs.map(transformedBounds), ...clearances]
   const x = Math.min(...bounds.map((rect) => rect.x)) - padding * 2

@@ -4,6 +4,7 @@ import { distributeSolarPanels, normalizeSolarDatasheetHeaderContrast, parseInve
   type SolarInstallation } from '../src/editor/solar-installation.ts'
 import { buildSolarInstallation, preserveSolarBreakerSettings, solarInstallationPlacement, updateSolarInstallationCable } from '../src/editor/layout/solar-installation-layout.ts'
 import { expandSelectionWithGroup } from '../src/editor/interaction/pointer-select.ts'
+import { bindingLabelsMarkup } from '../src/editor/svg-templates.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
 import { sanitizeShapes, cloneShapes } from '../src/editor/model/model.ts'
 import type { LineShape, SymbolShape } from '../src/editor/model/types.ts'
@@ -292,6 +293,25 @@ test('selects the PV breaker independently and preserves its circuit and cable s
   assert.equal(restored.symbolTextOverrides?.['rated-current'], 'B32A')
   assert.equal(label?.kind === 'text' ? label.text : undefined, '5G6 mm² XVB')
   assert.equal(label?.kind === 'text' ? label.rotation : undefined, -90)
+})
+
+test('places the PV circuit label at the rail tap like other breaker labels', () => {
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 100, y: 800 }, end: { x: 700, y: 800 },
+    strokeWidth: 4, groupId: 'onewire-kamrail-test' }
+  for (const direction of ['top', 'bottom'] as const) {
+    let id = 0
+    const shapes = buildSolarInstallation(installation, rail.id, { x: 300, y: 800 }, () => `pv-${++id}`, direction)
+    const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+    const bound = shapes.map((shape) => shape.id === breaker.id ? { ...breaker, bindingId: 'A' } : shape)
+    const heading: TextShape = { id: 'other-heading', kind: 'text', position: { x: 500, y: 824 }, text: 'A',
+      bindingId: 'A', sourceLink: { kind: 'circuit', id: 'A', role: 'label' } }
+    const markup = bindingLabelsMarkup([rail, heading, ...bound])
+    assert.match(markup, new RegExp(`data-shape-id="${breaker.id}"`))
+    assert.match(markup, new RegExp(`x="300" y="${direction === 'top' ? 824 : 788}"`))
+    assert.match(markup, /font-size:22px;font-weight:500/)
+    assert.doesNotMatch(bindingLabelsMarkup([rail, ...shapes]), /data-shape-id=/)
+    assert.match(bindingLabelsMarkup(bound), />A<\/text>/)
+  }
 })
 
 test('keeps readable annotations clear of every device above and below a kamrail', () => {

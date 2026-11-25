@@ -533,7 +533,8 @@ export class ObjectPane extends LiteElement {
       fields: [{ name: 'name', label: 'Naam van de kast', required: true, maxLength: 120 }],
       validate: (input) => input.name?.trim() ? null : 'Vul een naam voor de kast in.'
     })
-    if (!values || selection !== this.#bindingSelectionKey || pageKey !== globalThis.cadleShell.currentPageKey) return
+    if (!values || !this.isConnected || selection !== this.#bindingSelectionKey ||
+      pageKey !== globalThis.cadleShell.currentPageKey) return
     try {
       const id = await globalThis.cadleShell.addInspectorBoard(values.name)
       if (this.isConnected && selection === this.#bindingSelectionKey && pageKey === globalThis.cadleShell.currentPageKey) {
@@ -541,7 +542,7 @@ export class ObjectPane extends LiteElement {
       }
     } catch (error) {
       console.error('Kast toevoegen mislukt', error)
-      globalThis.alert('De kast kon niet worden toegevoegd. Probeer opnieuw.')
+      globalThis.alert(`Kast toevoegen: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -1021,6 +1022,7 @@ export class ObjectPane extends LiteElement {
     const isResidualBreaker = /residual-current/i.test(`${this._nativePath} ${this._nativeName}`)
     const isProtectionDevice = this._nativeCircuitPropertiesEditable
     const breakerCurrentA = this.#effectiveElectrical().breakerCurrentA
+    const boardId = this.#effectiveElectrical().boardId ?? ''
     const hasSelection = this._selectionCount > 0
     if (!hasSelection) {
       return html`
@@ -1448,14 +1450,14 @@ ${isProtectionDevice ? html`                    <div class="native-row">
                         ><select
                           class="native-select"
                           data-electrical-field="boardId"
+                          .value=${boardId}
                           @change=${(event: Event) =>
                             this.#updateElectrical('boardId', (event.target as HTMLSelectElement).value)}>
-                          ${!this.#effectiveElectrical().boardId ? html`<option value="" selected>Verschillend / niet ingesteld</option>` : ''}
-                          ${this.#effectiveElectrical().boardId &&
-                          !this.boards.some((board) => board.id === this.#effectiveElectrical().boardId)
-                            ? html`<option value=${this.#effectiveElectrical().boardId!} selected>${this.#effectiveElectrical().boardId}</option>` : ''}
+                          ${!boardId ? html`<option value="" selected>Verschillend / niet ingesteld</option>` : ''}
+                          ${boardId && !this.boards.some((board) => board.id === boardId)
+                            ? html`<option value=${boardId} selected>${boardId}</option>` : ''}
                           ${this.boards.map((board) => html`<option value=${board.id}
-                            ?selected=${board.id === this.#effectiveElectrical().boardId}>${board.name}</option>`)}
+                            ?selected=${board.id === boardId}>${board.name}</option>`)}
                         </select></label>
                     </div>
                     <button type="button" class="native-button" @click=${this.#addBoard}>Kast toevoegen</button>

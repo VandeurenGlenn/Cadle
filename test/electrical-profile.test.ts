@@ -1,7 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { electricalSupplyLabel, normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
+import { addElectricalBoard, electricalSupplyLabel, normalizeElectricalProfile } from '../src/editor/electrical-profile.ts'
 import { phaseConfigurationLabelForPoles } from '../src/editor/model/electrical.ts'
+
+test('adds uniquely named boards without mutating the original profile', () => {
+  const original = normalizeElectricalProfile(undefined)
+  const first = addElectricalBoard(original, ' Zolder é ')
+  const second = addElectricalBoard(first.profile, 'Zolder é')
+  assert.equal(first.id, 'zolder-e')
+  assert.equal(second.id, 'zolder-e-2')
+  assert.deepEqual(second.profile.boards?.at(-1), {
+    id: 'zolder-e-2', name: 'Zolder é', rails: [{ id: 'rail-1', name: 'Rail 1' }]
+  })
+  assert.equal(original.boards?.length, 1)
+  assert.throws(() => addElectricalBoard(original, '   '), /naam/)
+  const nonNormalized = { ...original, distributor: ' Fluvius ', phaseConfiguration: 'single-phase' as const }
+  const preserved = addElectricalBoard(nonNormalized, 'Werkplaats').profile
+  assert.equal(preserved.distributor, ' Fluvius ')
+  assert.equal(preserved.phaseConfiguration, 'single-phase')
+})
 
 test('keeps distributor and Belgian supply configuration in the project profile', () => {
   const profile = normalizeElectricalProfile({

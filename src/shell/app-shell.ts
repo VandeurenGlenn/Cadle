@@ -785,7 +785,7 @@ export class AppShell extends LiteElement {
 
   async #addScheduleBoard(name: string) {
     if (!this.projectKey || !this.project) return
-    const { profile } = addElectricalBoard(this.project.electricalProfile, name)
+    const { profile } = addElectricalBoard(normalizeElectricalProfile(this.project.electricalProfile), name)
     this.project = { ...this.project, electricalProfile: profile }
     await setProjectData(this.projectKey, this.project)
   }
@@ -806,6 +806,9 @@ export class AppShell extends LiteElement {
           [settingsKey]: { ...this.project.pages[settingsKey], electricalProfile: result.profile } } }
       : { ...this.project, electricalProfile: result.profile }
     await setProjectData(projectKey, project)
+    if (this.projectKey !== projectKey || this.currentPageKey !== pageKey) {
+      throw new Error('De pagina is gewijzigd tijdens het opslaan. De kast is aangemaakt maar niet toegewezen.')
+    }
     this.project = project
     const app = this.shadowRoot?.querySelector('cadle-app:not([read-only])') as NativeAppElement | null
     app?.refreshProjectContext?.(project)

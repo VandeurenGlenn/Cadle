@@ -81,8 +81,10 @@ export const normalizeElectricalProfile = (profile: ElectricalProjectProfile | u
 export const addElectricalBoard = (profile: ElectricalProjectProfile | undefined, name: string) => {
   const trimmed = name.trim()
   if (!trimmed) throw new Error('Vul een naam voor de kast in.')
-  const next = normalizeElectricalProfile(profile)
-  const boards = next.boards!
+  const boards = profile?.boards?.length
+    ? [...profile.boards]
+    : normalizeElectricalProfile(undefined).boards ?? []
+  const next: ElectricalProjectProfile = { ...(profile ?? normalizeElectricalProfile(undefined)), boards }
   const baseId = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'verdeelbord'
   const ids = new Set(boards.map((board) => board.id))

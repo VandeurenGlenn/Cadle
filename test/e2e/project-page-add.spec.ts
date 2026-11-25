@@ -74,8 +74,17 @@ test('adds pages quickly with automatic names, type detection and cancel support
     Object.entries((element as AppShell).project!.pages).find(([, entry]) => entry.name === 'Groundplan')?.[0])
   const groundplanItem = pagePane.locator(`custom-drawer-item[data-project="${groundplanKey}"]`)
   const oneWireItem = pagePane.locator(`custom-drawer-item[data-project="${oneWireKey}"]`)
+  await oneWireItem.click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(oneWireKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
+  await pagePane.locator(`custom-drawer-item[data-project="${groundKey}"]`).click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await oneWireItem.locator('.page-drag-handle').click()
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(groundKey)
   const groundplanHandle = groundplanItem.locator('.page-drag-handle')
-  const groundplanBounds = await groundplanItem.boundingBox()
   const oneWireBounds = await oneWireItem.boundingBox()
   const handleBounds = await groundplanHandle.boundingBox()
   expect(handleBounds).not.toBeNull()
@@ -128,9 +137,7 @@ test('adds pages quickly with automatic names, type detection and cancel support
   await page.reload()
   await page.locator('projects-field custom-list-item[data-name="Pagina toevoegen test"]').click()
   await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(groupedProject.uuid)
-  await shell.evaluate(async (element, key) => {
-    await (element as AppShell).loadPage(key)
-  }, oneWireKey)
+  await pagePane.locator(`custom-drawer-item[data-project="${oneWireKey}"]`).click()
   await expect.poll(() => app.evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
   const combinedAnalysis = await app.evaluate((element, key) =>

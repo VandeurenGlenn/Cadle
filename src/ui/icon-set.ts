@@ -14,6 +14,7 @@ export const iconSetTemplate = html`
       <span name="check_box_outline_blank">@symbol-check_box_outline_blank</span>
       <span name="cloud_off">@symbol-cloud_off</span>
       <span name="delete">@symbol-delete</span>
+      <span name="drag_indicator">@symbol-drag_indicator</span>
       <span name="check">@symbol-check</span>
       <span name="menu">@symbol-menu</span>
       <span name="menu_open">@symbol-menu_open</span>

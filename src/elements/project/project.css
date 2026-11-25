@@ -46,7 +46,18 @@ custom-drawer-item:focus-visible {
   box-shadow: var(--cadle-focus-ring);
 }
 
+.page-label {
+  position: absolute;
+  left: var(--cadle-space-3);
+  right: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .page-drag-handle {
+  position: absolute;
+  right: 4px;
   display: inline-grid;
   width: 30px;
   height: 30px;

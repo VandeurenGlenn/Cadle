@@ -95,11 +95,6 @@ export class ProjectElement extends LiteElement {
       startY: event.clientY,
       active: false
     }
-    try {
-      this.setPointerCapture(event.pointerId)
-    } catch (error) {
-      console.warn('Pagina verslepen kon niet worden gestart.', error)
-    }
   }
 
   @listen('pointerdown', { target: (host: ProjectElement) => host.shadowRoot })
@@ -130,8 +125,15 @@ export class ProjectElement extends LiteElement {
     const drag = this.#pageDrag
     if (!drag || drag.pointerId !== event.pointerId) return
     if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 7) return
-    drag.active = true
-    this.setAttribute('data-reordering-pages', '')
+    if (!drag.active) {
+      drag.active = true
+      this.setAttribute('data-reordering-pages', '')
+      try {
+        this.setPointerCapture(event.pointerId)
+      } catch (error) {
+        console.warn('Pagina verslepen kon niet worden gestart.', error)
+      }
+    }
 
     const items = [...(this.shadowRoot?.querySelectorAll<HTMLElement>('custom-drawer-item[data-project]') ?? [])]
     let targetItem = items.find((item) => {
@@ -344,6 +346,7 @@ export class ProjectElement extends LiteElement {
         <custom-drawer-item
           .headline=${project.name}
           data-project=${key}
+          title=${project.name}
           @click=${async (event: Event) => {
             if (this.#ignoreNextPageClick) {
               this.#ignoreNextPageClick = false
@@ -354,7 +357,7 @@ export class ProjectElement extends LiteElement {
             await cadleShell.savePage()
             cadleShell.loadPage(key)
           }}
-          >${project.name}
+          ><span class="page-label">${project.name}</span>
           <button
             slot="end"
             class="page-drag-handle"

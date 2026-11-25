@@ -140,7 +140,7 @@ test('does not automatically adopt existing diagrams for an unlinked situation p
   assert.deepEqual(oneWireGenerationPageKeys(explicitlyLinked, 'root'), ['root'])
 })
 
-test('resolves explicit ground-plan and one-wire page links without changing legacy auto-link behavior', () => {
+test('resolves explicit ground-plan and one-wire page links without inventing a link', () => {
   const project = {
     pages: {
       plot: { name: 'Perceel', pageType: 'groundplan' },

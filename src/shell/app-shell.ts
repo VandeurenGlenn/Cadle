@@ -218,7 +218,9 @@ export class AppShell extends LiteElement {
       ? installationOneWirePageKeys(this.project, this.currentPageKey)
       : this.currentPage?.pageType === 'onewire'
         ? linkedGroundplanPageKeys(this.project, this.currentPageKey) : []
-    return candidates.includes(this.comparisonPageKey) ? this.comparisonPageKey : candidates[0] ?? ''
+    const explicit = explicitLinkedPageKey(this.project, this.currentPageKey)
+    if (candidates.includes(this.comparisonPageKey)) return this.comparisonPageKey
+    return explicit && candidates.includes(explicit) ? explicit : candidates[0] ?? ''
   }
 
   #buildingSettingsPageKey(): string | undefined {
@@ -2288,14 +2290,13 @@ export class AppShell extends LiteElement {
                     <select
                       aria-label="Installatie van dit blad"
                       title="Groepeer alle situatie- en eendraadsbladen van dezelfde installatie."
-                      .value=${oneWirePageLinkValue}
                       @change=${this.#onInstallationChange}>
                       ${this.currentPage?.pageType === 'groundplan' ? html`
-                        <option value="">Niet gekoppeld</option>` : ''}
+                        <option value="" .selected=${oneWirePageLinkValue === ''}>Niet gekoppeld</option>` : ''}
                       ${installationOptions.map(([pageKey, page]) => {
                         const plans = linkedGroundplanPageKeys(this.project!, pageKey).length
                         const schematics = installationOneWirePageKeys(this.project!, pageKey).length
-                        return html`<option value=${pageKey}>${page.name} · ${plans} situatie / ${schematics} eendraads${pageKey === this.currentPageKey && this.currentPage?.pageType === 'onewire' && oneWirePageLinkValue !== pageKey ? ' · Eigen installatie' : ''}</option>`
+                        return html`<option value=${pageKey} .selected=${oneWirePageLinkValue === pageKey}>${page.name} · ${plans} situatie / ${schematics} eendraads${pageKey === this.currentPageKey && this.currentPage?.pageType === 'onewire' && oneWirePageLinkValue !== pageKey ? ' · Eigen installatie' : ''}</option>`
                       })}
                     </select>
                   </label>

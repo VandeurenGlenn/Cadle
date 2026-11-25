@@ -8,6 +8,102 @@ import { nativeStateForProjectPage } from '../../src/editor/model/document-state
 
 test.use({ hasTouch: true })
 
+test('links only chosen sheets and keeps the selected comparison sheet and view stable', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const ground = '00000000-0000-4000-8000-000000000102'
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const project = await shell.evaluate((element) => structuredClone((element as AppShell).project!))
+  const root = randomUUID(), second = randomUUID(), otherGround = randomUUID()
+  const document = (shapes: object[]) => ({ version: 'native-svg-1', objects: [{
+    kind: 'cadle-native-svg-document', payload: { version: 2, paperLayoutVersion: 1,
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION, shapes, selectedId: null,
+      paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 }
+  }] })
+  project.uuid = randomUUID()
+  project.name = 'Handmatige installatiekoppeling'
+  project.pages = {
+    [ground]: { ...project.pages[ground], linkedOneWirePageKey: undefined,
+      schema: document([{ id: 'floor-lamp', kind: 'symbol', name: 'Lighting',
+        path: 'symbols/Consumption appliances/Lighting.svg', scale: 1,
+        position: { x: 900, y: 700 }, bindingId: 'A1' }]) },
+    [otherGround]: { ...project.pages[ground], name: 'Andere situatie', linkedOneWirePageKey: undefined,
+      schema: document([{ id: 'other-lamp', kind: 'symbol', name: 'Lighting',
+        path: 'symbols/Consumption appliances/Lighting.svg', scale: 1,
+        position: { x: 900, y: 700 }, bindingId: 'C1' }]) },
+    [root]: { creationTime: 2, name: 'One-wire diagram', pageType: 'onewire',
+      schema: document([{ id: 'first-sheet', kind: 'text', position: { x: 600, y: 600 },
+        text: 'Eerste blad', bindingId: 'B1' }]) },
+    [second]: { creationTime: 3, name: 'One-wire diagram 2', pageType: 'onewire',
+      schema: document([{ id: 'second-sheet', kind: 'text', position: { x: 800, y: 800 },
+        text: 'Tweede blad', bindingId: 'A1' }]) }
+  }
+  await page.goto('/#!/projects')
+  await page.evaluate(async (value) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(value.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(content)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="Handmatige installatiekoppeling"]').click()
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
+  const installation = page.getByRole('combobox', { name: 'Installatie van dit blad' })
+  await expect(installation).toHaveValue('')
+  await expect(installation.locator('option[value="auto"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Compare with linked page' })).toBeDisabled()
+  expect(await shell.evaluate((element) => (element as AppShell).linkedPageKey)).toBe('')
+  expect((await app.evaluate((element) => (element as CadleApp).analyzeBindings())).groups.map((group) => group.bindingId))
+    .toEqual(['A1'])
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), second)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), second)).toBe(true)
+  expect((await app.evaluate((element) => (element as CadleApp).analyzeBindings())).groups).toHaveLength(0)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), ground)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
+  await installation.selectOption(root)
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.linkedOneWirePageKey, ground)).toBe(root)
+  expect(await shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireOverflowOf, second)).toBeUndefined()
+  const sheets = page.locator('.installation-sheets-picker')
+  await sheets.locator('summary').click()
+  await sheets.getByLabel('Koppel One-wire diagram 2').check()
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, second)).toBe(root)
+  await page.getByRole('button', { name: 'Compare with linked page' }).click()
+  const comparison = page.getByRole('combobox', { name: 'Vergelijkingsblad' })
+  await expect(comparison).toHaveValue(root)
+  const lamp = app.locator('g.shape-symbol[data-shape-id="floor-lamp"]')
+  await lamp.locator('path').first().click()
+  await expect(lamp).toHaveAttribute('data-selected', 'true')
+  await expect(comparison).toHaveValue(root)
+  await comparison.selectOption(second)
+  const linkedApp = page.locator('cadle-app[read-only]')
+  await expect.poll(() => linkedApp.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), second)).toBe(true)
+  await lamp.locator('path').first().click()
+  await expect(lamp).toHaveAttribute('data-selected', 'true')
+  await expect(comparison).toHaveValue(second)
+  await expect(linkedApp.locator('[data-selected="true"]')).toHaveCount(0)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), ground)).toBe(true)
+  await expect(installation).toHaveValue(root)
+  expect(await shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, second)).toBe(root)
+})
+
 test('adds pages quickly with automatic names, type detection and cancel support', async ({ page }, testInfo) => {
   await page.goto('/?fixture=priority-suite#!/projects')
   await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()

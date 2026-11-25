@@ -9,6 +9,7 @@ import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpe
 import { oneWireSymbolBounds, oneWireSymbolScaleFor } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireSourceSignature } from '../../src/editor/layout/onewire-source-sync.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
 
 const ground = '00000000-0000-4000-8000-000000000102' as UUID
 const schematic = '00000000-0000-4000-8000-000000000104' as UUID
@@ -137,6 +138,7 @@ test('restores a full project through History after restarting and keeps the pre
 
 test('source changes update linked content without repacking other rails and can be restored durably', async ({ page }) => {
   const project = fixture()
+  project.pages[ground].linkedOneWirePageKey = schematic
   let sequence = 0
   const rail: Shape = { id: 'rail', kind: 'line', start: { x: 300, y: 1100 }, end: { x: 900, y: 1100 },
     groupId: 'onewire-kamrail-main', strokeWidth: 4 }
@@ -187,4 +189,48 @@ test('source changes update linked content without repacking other rails and can
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
   await expect(app.locator('text').filter({ hasText: /^x2$/ })).toHaveCount(0)
   expect(await geometry()).toEqual(initial)
+})
+
+test('only synchronizes explicitly linked situation plans within their own installation', async ({ page }) => {
+  const project = fixture()
+  const otherGround = randomUUID() as UUID, otherWire = randomUUID() as UUID, unlinkedWire = randomUUID() as UUID
+  project.pages[ground].linkedOneWirePageKey = schematic
+  project.pages[ground].schema = schema([lamp(), lamp('second-lamp')])
+  project.pages[otherGround] = { creationTime: 3, name: 'Andere situatie', pageType: 'groundplan',
+    linkedOneWirePageKey: otherWire, schema: schema([lamp('other-lamp'), lamp('other-second')]) }
+  const makeDiagram = (prefix: string, sourceId: string): Shape[] => {
+    let sequence = 0
+    const rail: Shape = { id: `${prefix}-rail`, kind: 'line', start: { x: 300, y: 1100 },
+      end: { x: 900, y: 1100 }, groupId: `onewire-kamrail-${prefix}`, strokeWidth: 4 }
+    const components = [{ bindingId: 'A1', kind: 'load' as const, sourceShapeId: sourceId,
+      sourcePath: 'symbols/Consumption appliances/Lighting.svg' }]
+    const bundle = buildKamrailCircuitBundle({
+      rail, anchorX: 550, familyComponents: components, options: { family: 'A', amps: 16, autoIncludeFamily: true },
+      nextShapeId: () => `${prefix}-${++sequence}`,
+      oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+      oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+      symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+    })!
+    return [rail, ...bundle.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id,
+      ...(shape.sourceLink?.role === 'breaker' ? { oneWireSourceSignature: oneWireSourceSignature(components) } : {})
+    }))]
+  }
+  project.pages[schematic].schema = schema(makeDiagram('first', 'lamp'))
+  project.pages[otherWire] = { creationTime: 4, name: 'Andere eendraads', pageType: 'onewire',
+    schema: schema(makeDiagram('other', 'other-lamp')) }
+  project.pages[unlinkedWire] = { creationTime: 5, name: 'Onafhankelijke eendraads', pageType: 'onewire',
+    schema: schema(makeDiagram('unlinked', 'lamp')) }
+  const untouched = structuredClone(project.pages[unlinkedWire].schema)
+  await seed(page, project)
+  const shell = page.locator('app-shell')
+  const current = await shell.evaluate((element) => (element as AppShell).project!)
+  const signature = (key: UUID) => nativeStateForProjectPage(current, key)!.shapes
+    .find((shape) => shape.sourceLink?.role === 'breaker')?.oneWireSourceSignature
+  expect(signature(schematic)).toContain('second-lamp')
+  expect(signature(otherWire)).toContain('other-second')
+  expect(signature(otherWire)).not.toContain('second-lamp')
+  expect(current.pages[unlinkedWire].schema).toEqual(untouched)
+  await reopen(page)
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages?.[key]?.schema, unlinkedWire)).toEqual(untouched)
 })

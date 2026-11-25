@@ -31,7 +31,7 @@ import {
   saveNativeState,
   type NativeDocumentState
 } from '../data/project-document.js'
-import { electricalSettingsPageKey, linkedGroundplanPageKeys } from '../data/page-operations.js'
+import { electricalSettingsPageKey, linkedGroundplanPageKeys, oneWireInstallationRootKey } from '../data/page-operations.js'
 import { oneWireSourceFingerprint, projectFromRecoveryPoint, projectWithRecoveryPoint } from '../data/project-recovery.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
@@ -1409,6 +1409,7 @@ export class CadleApp extends LiteElement {
 
     try {
       changed = migrateOneWireProjectPages(this.#project, this.#oneWireController.layoutVersion, (state, pageKey) => {
+        if (!linkedGroundplanPageKeys(this.#project!, pageKey).length) return null
         this.#pageKey = pageKey
         this.#documentSizeMigrated = false
         if (!this.#applyPersistedState(state, false)) return null
@@ -1488,8 +1489,9 @@ export class CadleApp extends LiteElement {
       family, this.#groundplanComponentsForFamily(family, analysis)
     ]))
   ) {
+    const rootKey = oneWireInstallationRootKey(this.#project, this.#pageKey)
     const pages = Object.entries(this.#project.pages).flatMap(([key, page]) => {
-      if (page.pageType !== 'onewire') return []
+      if (page.pageType !== 'onewire' || oneWireInstallationRootKey(this.#project, key) !== rootKey) return []
       const shapes = key === this.#pageKey
         ? this.#document.shapes : nativeStateForProjectPage(this.#project, key as UUID)?.shapes
       return shapes ? [{ key, shapes }] : []

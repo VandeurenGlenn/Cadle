@@ -42,9 +42,13 @@ import { circuitTemplates } from '../templates/circuit-templates.js'
 import { type BomRow, type CircuitAnalysis } from '../editor/circuit-analysis.js'
 import {
   ensureOneWirePage,
+  electricalSettingsPageKey,
   explicitLinkedPageKey,
+  installationOneWirePageKeys,
   linkGroundPlanToOneWirePage,
+  linkOneWirePageToInstallation,
   linkedGroundplanPageKeys,
+  oneWireInstallationRootKey,
   oneWireGenerationPageKeys,
   redundantOneWirePageKeys
 } from '../data/page-operations.js'
@@ -109,6 +113,7 @@ type NativeAppElement = HTMLElement & {
   restoreRecoveryPoint?: (id: string) => Promise<UUID>
   focusBinding?: (bindingId: string) => boolean
   loadReadOnlyPage?: (projectKey: string, pageKey: string) => Promise<void>
+  refreshProjectContext?: (project: Project) => void
 }
 
 type KeyboardShortcutsElement = HTMLElement & {
@@ -154,6 +159,9 @@ export class AppShell extends LiteElement {
 
   @property({ type: Boolean, attribute: false })
   accessor splitViewOpen = false
+
+  @property({ type: String })
+  accessor comparisonPageKey = ''
 
   @property({ type: String, attribute: false })
   accessor selectedBindingId = ''
@@ -210,7 +218,19 @@ export class AppShell extends LiteElement {
   get linkedPageKey(): string {
     if (this.project) {
       const explicitLink = explicitLinkedPageKey(this.project, this.currentPageKey)
-      if (explicitLink !== null) return explicitLink
+      if (explicitLink !== null) {
+        const candidates = this.currentPage?.pageType === 'groundplan'
+          ? installationOneWirePageKeys(this.project, this.currentPageKey)
+          : linkedGroundplanPageKeys(this.project, this.currentPageKey)
+        if (candidates.includes(this.comparisonPageKey)) return this.comparisonPageKey
+        if (this.selectedBindingId) {
+          const matching = candidates.find((key) => nativeStateForProjectPage(this.project!, key)?.shapes.some((shape) =>
+            shape.bindingId?.trim().toUpperCase() === this.selectedBindingId ||
+            shape.sourceLink?.id?.trim().toUpperCase() === this.selectedBindingId))
+          if (matching) return matching
+        }
+        return explicitLink
+      }
     }
     const currentType = this.currentPage?.pageType
     const targetType = currentType === 'groundplan' ? 'onewire' : currentType === 'onewire' ? 'groundplan' : null
@@ -241,16 +261,7 @@ export class AppShell extends LiteElement {
 
   #buildingSettingsPageKey(): string | undefined {
     if (!this.project || !this.currentPageKey) return undefined
-    const page = this.project.pages[this.currentPageKey]
-    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) {
-      const linkedPageKey = explicitLinkedPageKey(this.project, this.currentPageKey)
-      return linkedPageKey || this.currentPageKey
-    }
-    if (page?.pageType === 'onewire') {
-      const rootKey = page.oneWireOverflowOf ?? this.currentPageKey
-      return linkedGroundplanPageKeys(this.project, rootKey).length ? rootKey : undefined
-    }
-    return undefined
+    return electricalSettingsPageKey(this.project, this.currentPageKey)
   }
 
   #buildingSourcePageKey(): string | undefined {
@@ -543,21 +554,38 @@ export class AppShell extends LiteElement {
     this.splitViewOpen = !this.splitViewOpen
   }
 
-  #onGroundplanOneWirePageChange = async (event: Event) => {
+  #onComparisonPageChange = async (event: Event) => {
+    const key = (event.currentTarget as HTMLSelectElement).value
+    const projectKey = this.projectKey
+    if (!projectKey) return
+    this.comparisonPageKey = key
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const app = this.shadowRoot?.querySelector('.linked-editor-pane cadle-app') as NativeAppElement | null
+      await app?.loadReadOnlyPage?.(projectKey, key)
+    } catch (error) {
+      console.error('Vergelijkingsblad laden mislukt.', error)
+      globalThis.alert('Het vergelijkingsblad kon niet worden geladen. Probeer opnieuw.')
+    }
+  }
+
+  #onInstallationChange = async (event: Event) => {
     const currentPageKey = this.currentPageKey
     const currentPage = this.currentPage
     const selectedKey = (event.currentTarget as HTMLSelectElement).value
-    if (!this.projectKey || !this.project || !currentPageKey || currentPage?.pageType !== 'groundplan') return
+    if (!this.projectKey || !this.project || !currentPageKey ||
+      (currentPage?.pageType !== 'groundplan' && currentPage?.pageType !== 'onewire')) return
     if (selectedKey && selectedKey !== 'auto' && this.project.pages[selectedKey]?.pageType !== 'onewire') return
 
     try {
       await this.savePage()
       const project = await getProjectData(this.projectKey)
       const page = project.pages[currentPageKey]
-      if (!page || page.pageType !== 'groundplan') return
+      if (!page) return
       const updatedPage = { ...page }
       let updatedProject = project
-      if (selectedKey === 'auto') delete updatedPage.linkedOneWirePageKey
+      if (page.pageType === 'onewire') updatedProject = linkOneWirePageToInstallation(project, currentPageKey, selectedKey)
+      else if (selectedKey === 'auto') delete updatedPage.linkedOneWirePageKey
       else if (!selectedKey) updatedPage.linkedOneWirePageKey = null
       else updatedProject = linkGroundPlanToOneWirePage(project, currentPageKey, selectedKey)
       if (updatedProject === project) {
@@ -565,12 +593,17 @@ export class AppShell extends LiteElement {
       }
       await setProjectData(this.projectKey, updatedProject)
       this.project = updatedProject
+      this.comparisonPageKey = ''
+      const app = this.shadowRoot?.querySelector('cadle-app:not([read-only])') as NativeAppElement | null
+      app?.refreshProjectContext?.(updatedProject)
       if (!this.linkedPageKey) this.splitViewOpen = false
     } catch (error) {
-      console.error('Eendraadschema koppelen mislukt.', error)
-      globalThis.alert('De koppeling kon niet worden opgeslagen. Probeer opnieuw.')
+      console.error('Installatie koppelen mislukt.', error)
+      globalThis.alert(`De installatie kon niet worden gekoppeld: ${error instanceof Error ? error.message : String(error)}`)
       const select = event.currentTarget as HTMLSelectElement
-      select.value = currentPage.linkedOneWirePageKey === undefined
+      select.value = currentPage.pageType === 'onewire'
+        ? oneWireInstallationRootKey(this.project!, currentPageKey) ?? currentPageKey
+        : currentPage.linkedOneWirePageKey === undefined
         ? 'auto'
         : currentPage.linkedOneWirePageKey ?? ''
     }
@@ -1744,6 +1777,7 @@ export class AppShell extends LiteElement {
       return
     }
     this.splitViewOpen = false
+    this.comparisonPageKey = ''
     this.selectedBindingId = ''
     this.loadedPage = key
     if (this.projectKey) {
@@ -1815,7 +1849,11 @@ export class AppShell extends LiteElement {
     let oneWirePage: Awaited<ReturnType<typeof ensureOneWirePage>>
     try {
       await nativeApp?.createRecoveryPoint?.('Vóór eendraads opnieuw indelen')
-      oneWirePage = await ensureOneWirePage(this.projectKey, this.project, undefined, buildingPageKey)
+      const currentRoot = this.currentPage?.pageType === 'onewire'
+        ? oneWireInstallationRootKey(this.project, this.currentPageKey) : null
+      oneWirePage = currentRoot
+        ? { project: this.project, pageKey: currentRoot }
+        : await ensureOneWirePage(this.projectKey, this.project, undefined, buildingPageKey)
     } catch (error) {
       console.error('Failed to create the one-wire page.', error)
       globalThis.alert('The one-wire page could not be created. Please try again.')
@@ -1847,7 +1885,7 @@ export class AppShell extends LiteElement {
       const pageName = `${this.project.pages[oneWirePage.pageKey]?.name ?? 'One-wire diagram'} · vervolg ${pageIndex}`
       let overflowPageKey = Object.entries(this.project.pages).find(
         ([, page]) => page.pageType === 'onewire' &&
-          page.oneWireOverflowOf === oneWirePage.pageKey && page.name === pageName
+          !page.oneWireInstallationOf && page.oneWireOverflowOf === oneWirePage.pageKey && page.name === pageName
       )?.[0]
       if (!overflowPageKey) {
         const newPageKey = await addPage(
@@ -2054,14 +2092,23 @@ export class AppShell extends LiteElement {
     const circuitSchedulePage = this.currentPage?.pageType === 'circuit-schedule'
     const linkedPageKey = this.linkedPageKey
     const oneWirePageOptions = this.projectPageEntries
-      .filter(([, page]) => page.pageType === 'onewire' && !page.oneWireOverflowOf)
+      .filter(([, page]) => page.pageType === 'onewire' && !page.oneWireOverflowOf && !page.oneWireInstallationOf)
       .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
-    const showOneWirePageLink = this.currentPage?.pageType === 'groundplan' &&
+    const showOneWirePageLink = (this.currentPage?.pageType === 'groundplan' || this.currentPage?.pageType === 'onewire') &&
       !this.currentPage.heatingPlanOf && !this.currentPage.heatingScheduleOf &&
       oneWirePageOptions.length > 0
-    const oneWirePageLinkValue = this.currentPage?.linkedOneWirePageKey === undefined
+    const oneWirePageLinkValue = this.currentPage?.pageType === 'onewire'
+      ? oneWireInstallationRootKey(this.project!, this.currentPageKey) ?? this.currentPageKey
+      : this.currentPage?.linkedOneWirePageKey === undefined
       ? 'auto'
-      : this.currentPage.linkedOneWirePageKey ?? ''
+      : oneWireInstallationRootKey(this.project!, this.currentPageKey) ?? ''
+    const comparisonKeys = !this.project ? [] : this.currentPage?.pageType === 'groundplan'
+      ? installationOneWirePageKeys(this.project, this.currentPageKey)
+      : linkedGroundplanPageKeys(this.project, this.currentPageKey)
+    const installationOptions = this.currentPage?.pageType === 'onewire' &&
+      !oneWirePageOptions.some(([key]) => key === this.currentPageKey)
+      ? [...oneWirePageOptions, [this.currentPageKey, this.currentPage] as const]
+      : oneWirePageOptions
 
     return html`
       ${this.#appNotices()}
@@ -2243,15 +2290,20 @@ export class AppShell extends LiteElement {
                 >
                 ${showOneWirePageLink ? html`
                   <label class="page-link-control">
-                    <span>Schema</span>
+                    <span>Installatie</span>
                     <select
-                      aria-label="Eendraadschema voor dit gebouw"
+                      aria-label="Installatie van dit blad"
+                      title="Groepeer alle situatie- en eendraadsbladen van dezelfde installatie."
                       .value=${oneWirePageLinkValue}
-                      @change=${this.#onGroundplanOneWirePageChange}>
-                      <option value="auto">Automatisch</option>
-                      <option value="">Niet gekoppeld</option>
-                      ${oneWirePageOptions.map(([pageKey, page]) =>
-                        html`<option value=${pageKey}>${page.name}</option>`)}
+                      @change=${this.#onInstallationChange}>
+                      ${this.currentPage?.pageType === 'groundplan' ? html`
+                        <option value="auto">Automatisch</option>
+                        <option value="">Niet gekoppeld</option>` : ''}
+                      ${installationOptions.map(([pageKey, page]) => {
+                        const plans = linkedGroundplanPageKeys(this.project!, pageKey).length
+                        const schematics = installationOneWirePageKeys(this.project!, pageKey).length
+                        return html`<option value=${pageKey}>${page.name} · ${plans} situatie / ${schematics} eendraads${pageKey === this.currentPageKey && this.currentPage?.pageType === 'onewire' && oneWirePageLinkValue !== pageKey ? ' · Eigen installatie' : ''}</option>`
+                      })}
                     </select>
                   </label>
                 ` : ''}
@@ -2312,7 +2364,11 @@ export class AppShell extends LiteElement {
                   ? html`
                       <div class="editor-pane linked-editor-pane">
                         <div class="editor-pane-label">
-                          ${this.project?.pages?.[linkedPageKey]?.name ?? 'Linked page'}
+                          <select aria-label="Vergelijkingsblad" .value=${linkedPageKey}
+                            @change=${this.#onComparisonPageChange}>
+                            ${(comparisonKeys.length ? comparisonKeys : [linkedPageKey]).map((key) =>
+                              html`<option value=${key}>${this.project?.pages[key]?.name ?? 'Linked page'}</option>`)}
+                          </select>
                           <span>Linked view</span>
                         </div>
                         <cadle-app

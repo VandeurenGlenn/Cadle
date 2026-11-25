@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { Project } from '../../src/types.ts'
 import type { AppShell } from '../../src/shell/app-shell.ts'
 import type { CadleApp } from '../../src/editor/cadle-app.ts'
+import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { nativeStateForProjectPage } from '../../src/editor/model/document-state.ts'
 
 test.use({ hasTouch: true })
 
@@ -61,7 +63,7 @@ test('adds pages quickly with automatic names, type detection and cancel support
   })).toBe('onewire')
   const oneWireKey = await shell.evaluate((element) =>
     Object.entries((element as AppShell).project!.pages).find(([, entry]) => entry.name === 'Eendraadschema')?.[0])
-  const linkSelect = page.getByRole('combobox', { name: 'Eendraadschema voor dit gebouw' })
+  const linkSelect = page.getByRole('combobox', { name: 'Installatie van dit blad' })
   await expect(linkSelect).toBeVisible()
   await linkSelect.selectOption(oneWireKey!)
   await expect.poll(() => shell.evaluate((element) => {
@@ -149,11 +151,36 @@ test('adds pages quickly with automatic names, type detection and cancel support
     (element as CadleApp).analyzeBindings(key), groundKey)
   const groupedProject = await shell.evaluate((element) => structuredClone((element as AppShell).project!))
   const upperFloorKey = randomUUID()
+  const manualKey = randomUUID()
+  const otherGroundKey = randomUUID()
+  const otherWireKey = randomUUID()
   groupedProject.pages[upperFloorKey] = {
     ...structuredClone(groupedProject.pages[groundKey]),
     name: 'Verdieping',
     order: Object.keys(groupedProject.pages).length,
     linkedOneWirePageKey: oneWireKey as Project['pages'][string]['linkedOneWirePageKey']
+  }
+  groupedProject.pages[oneWireKey!].oneWireTopology = {
+    version: 1, mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300, rcdType: 'A' },
+    residualBreaker: false, solar: false, consumers: true
+  }
+  groupedProject.pages[manualKey] = {
+    ...structuredClone(groupedProject.pages[oneWireKey!]),
+    name: 'Handmatig eendraadsblad',
+    schema: { version: 'native-svg-1', objects: [{
+      kind: 'cadle-native-svg-document',
+      payload: {
+        version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+        shapes: [{ id: 'manual-sheet-note', kind: 'text', position: { x: 200, y: 200 }, text: 'Handmatig blad bewaren' }],
+        selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680
+      }
+    }] }
+  }
+  groupedProject.pages[otherWireKey] = {
+    ...structuredClone(groupedProject.pages[oneWireKey!]), name: 'Andere installatie'
+  }
+  groupedProject.pages[otherGroundKey] = {
+    ...structuredClone(groupedProject.pages[groundKey]), name: 'Ander gebouw', linkedOneWirePageKey: otherWireKey
   }
   await page.goto('/#!/projects')
   await page.evaluate(async (value) => {
@@ -180,4 +207,57 @@ test('adds pages quickly with automatic names, type detection and cancel support
   expect(combinedAnalysis.groups.map((group) => group.components.length)).toEqual(
     singleLevelAnalysis.groups.map((group) => group.components.length * 2)
   )
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, manualKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), manualKey)).toBe(true)
+  await linkSelect.selectOption(oneWireKey!)
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, manualKey)).toBe(oneWireKey)
+  await expect(linkSelect.locator(`option[value="${oneWireKey}"]`)).toHaveText(/2 situatie \/ 2 eendraads/)
+  const manualAnalysis = await app.evaluate((element) => (element as CadleApp).analyzeBindings())
+  expect(manualAnalysis.groups.map((group) => group.components.length)).toEqual(
+    combinedAnalysis.groups.map((group) => group.components.length)
+  )
+  await page.getByRole('button', { name: 'Compare with linked page', exact: true }).click()
+  const comparison = page.getByRole('combobox', { name: 'Vergelijkingsblad' })
+  await expect(comparison.locator('option')).toHaveCount(2)
+  await comparison.selectOption(upperFloorKey)
+  await expect.poll(() => page.locator('cadle-app[read-only]').evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), upperFloorKey)).toBe(true)
+  await page.getByRole('button', { name: 'Close linked view', exact: true }).click()
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, groundKey)
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await page.getByRole('button', { name: 'Compare with linked page', exact: true }).click()
+  await expect(comparison.locator('option')).toHaveCount(2)
+  await comparison.selectOption(manualKey)
+  await expect.poll(() => page.locator('cadle-app[read-only]').evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), manualKey)).toBe(true)
+  await expect(page.locator('cadle-app[read-only] .shape-text')).toContainText('Handmatig blad bewaren')
+  await page.getByRole('button', { name: 'Close linked view', exact: true }).click()
+
+  const diff = page.locator('cadle-actions').getByRole('button', { name: 'Differentieel plaatsen', exact: true })
+  await expect(diff.locator('span')).toHaveText('Diff')
+  await diff.click()
+  const stage = app.locator('svg.stage')
+  const bounds = await stage.boundingBox()
+  await page.mouse.click(bounds!.x + bounds!.width * 0.6, bounds!.y + bounds!.height * 0.65)
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await expect(stage.locator('g.shape-symbol').filter({ has: page.locator('title', { hasText: /^Residual-current circuit breaker$/ }) })).toHaveCount(1)
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+
+  await shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).currentPageKey)).toBe(oneWireKey)
+  const generatedProject = await shell.evaluate((element) => (element as AppShell).project!)
+  expect(nativeStateForProjectPage(generatedProject, oneWireKey!)?.shapes.some((shape) => shape.generationKey)).toBe(true)
+  expect(nativeStateForProjectPage(generatedProject, manualKey)?.shapes.map((shape) => shape.id)).toEqual(['manual-sheet-note'])
+  expect(generatedProject.pages[manualKey].oneWireInstallationOf).toBe(oneWireKey)
+  expect(generatedProject.pages[otherGroundKey].linkedOneWirePageKey).toBe(otherWireKey)
+  await page.reload()
+  await page.locator('custom-button[label="Open"]').click()
+  await expect.poll(() => app.evaluate((element, key) =>
+    (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)
+  await expect.poll(() => shell.evaluate((element, key) =>
+    (element as AppShell).project?.pages[key]?.oneWireInstallationOf, manualKey)).toBe(oneWireKey)
+  await page.screenshot({ path: testInfo.outputPath('multi-sheet-installation.png') })
 })

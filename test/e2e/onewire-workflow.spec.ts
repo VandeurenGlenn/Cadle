@@ -38,6 +38,10 @@ test('places differentials from the toolbar on rails and inline without adding a
   await app.evaluate(async (element) => { await (element as CadleApp).exportA4PNG() })
   const stage = app.locator('svg.stage')
   const diff = page.locator('onewire-actions').getByRole('button', { name: 'Add differential', exact: true })
+  await page.setViewportSize({ width: 1000, height: 1100 })
+  await expect(diff.locator('span')).toBeVisible()
+  await expect(diff.locator('custom-icon')).toHaveAttribute('icon', 'shield')
+  await page.setViewportSize({ width: 1440, height: 1100 })
   await diff.click()
   await expect(diff).toHaveAttribute('aria-pressed', 'true')
   const clickMiddle = async (id: string) => {

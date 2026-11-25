@@ -89,6 +89,14 @@ domain modules below instead of increasing the responsibilities of `editor/cadle
   without moving its devices or changing their identities; wrapped captions extend only the incoming feeder.
   Recovery creation drains pending editor writes and adopts the shell's current project metadata before capturing
   the active drawing, so settings just saved by the shell cannot be overwritten by the editor's older project copy.
+- The `Installatie` selector groups multiple situation-plan floors and one-wire sheets under a canonical one-wire
+  root. Ground plans use `linkedOneWirePageKey`; manual one-wire membership uses `oneWireInstallationOf`, separate
+  from generated `oneWireOverflowOf` continuations. All members share the root's electrical settings and floor-plan
+  sources; unrelated installations remain isolated. Regeneration only owns the root and its automatic continuations,
+  not manually grouped sheets. Detaching a sheet copies inherited settings, and comparison view offers every
+  opposite-kind sheet in the installation.
+- The labelled `Diff` shortcut places a differential symbol on a situation plan. On one-wire sheets the distinct
+  shield-icon `Diff` action inserts directly on a rail or conductor, retaining its label on compact toolbars.
 - `src/editor/cable-estimate.ts` estimates cable route metres per circuit, board and cable designation for the circuit overview.
   It uses a rectilinear minimum spanning tree of labelled floor-plan devices and the selected board symbol at the page scale.
   Board locations are stable page/shape references, so moving a symbol or reassigning a circuit recalculates the estimate.

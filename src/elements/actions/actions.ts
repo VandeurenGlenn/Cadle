@@ -36,6 +36,7 @@ const DRAW_TOOLS: DrawTool[] = [
   { action: 'draw-stairs-spiral', icon: 'stairs', title: 'Wenteltrap tekenen', hint: 'Sleep om de afmetingen te bepalen. Houd Shift ingedrukt voor een ronde trap.', nativeOnly: true },
   { action: 'draw-access-point', icon: 'wifi', title: 'Place Wi-Fi access point', hint: 'Move the cursor to preview the access point, then click to place.' },
   { action: 'draw-heat-pump', icon: 'heat_pump', title: 'Warmtepomp plaatsen', hint: 'Beweeg de muis voor een voorbeeld en klik om de warmtepomp te plaatsen.', nativeOnly: true },
+  { action: 'draw-differential', icon: 'shield', title: 'Differentieel plaatsen', nativeOnly: true },
   { action: 'draw-gate', icon: 'fence', title: 'Draw gate' },
   { action: 'draw-window', icon: 'window', title: 'Draw window' },
   { action: 'draw-line', icon: 'horizontal_rule', title: 'Draw line' },
@@ -138,13 +139,14 @@ export class CadleActions extends LiteElement {
   }
 
   #toolButton(tool: DrawTool, menu = false) {
-    return html`<button type="button" class=${menu ? 'tool menu-tool' : tool.action === 'draw-heating-auto' ? 'tool heating-auto' : 'tool'}
+    return html`<button type="button" class=${menu ? 'tool menu-tool' : tool.action === 'draw-heating-auto' ? 'tool heating-auto' : tool.action === 'draw-differential' ? 'tool differential-placement' : 'tool'}
       title=${tool.hint ?? tool.title} aria-label=${tool.title}
       aria-pressed=${this.#isToolActive(tool) ? 'true' : 'false'}
       ?active=${this.#isToolActive(tool)} @click=${() => this.#pickTool(tool)}>
       <custom-icon icon=${tool.icon}></custom-icon>
       ${menu ? html`<span>${tool.title}</span>${this.#isToolActive(tool) ? html`<custom-icon class="tool-check" icon="check"></custom-icon>` : ''}` : ''}
       ${!menu && tool.action === 'draw-heating-auto' ? html`<span>Legplan</span>` : ''}
+      ${!menu && tool.action === 'draw-differential' ? html`<span>Diff</span>` : ''}
     </button>`
   }
 
@@ -172,7 +174,7 @@ export class CadleActions extends LiteElement {
     const heatingTools = tools.filter((tool) => tool.action === 'draw-heating-auto')
     const planTools = tools.filter((tool) => ['draw-wall', 'draw-room', 'draw-room-label', 'draw-door', 'draw-sliding-door', 'draw-window', 'draw-sliding-window', 'draw-gate'].includes(tool.action))
     const extraTools = tools.filter((tool) => tool.action !== 'select' && !['draw-text', 'draw-symbol'].includes(tool.action) &&
-      !heatingTools.includes(tool) && (oneWire || !planTools.includes(tool)))
+      !heatingTools.includes(tool) && tool.action !== 'draw-differential' && (oneWire || !planTools.includes(tool)))
     const extraActive = extraTools.find((tool) => this.#isToolActive(tool))
     return html`
       <div class="tool-group history-tools" role="group" aria-label="Undo and redo">
@@ -189,6 +191,7 @@ export class CadleActions extends LiteElement {
       <slot></slot>
       ${!oneWire ? html`<div class="tool-group" role="group" aria-label="Floor plan tools">
         ${planTools.map((tool) => this.#toolButton(tool))}
+        ${tools.filter((tool) => tool.action === 'draw-differential').map((tool) => this.#toolButton(tool))}
       </div>` : ''}
       <div class="tool-group drawing-tools" role="group" aria-label="Drawing and annotations">
         ${tools.filter((tool) => ['draw-text', 'draw-symbol'].includes(tool.action)).map((tool) => this.#toolButton(tool))}

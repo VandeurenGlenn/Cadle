@@ -31,7 +31,7 @@ import {
   saveNativeState,
   type NativeDocumentState
 } from '../data/project-document.js'
-import { linkedGroundplanPageKeys } from '../data/page-operations.js'
+import { electricalSettingsPageKey, linkedGroundplanPageKeys } from '../data/page-operations.js'
 import { oneWireSourceFingerprint, projectFromRecoveryPoint, projectWithRecoveryPoint } from '../data/project-recovery.js'
 import {
   DEFAULT_PRINT_MARGIN_MM,
@@ -482,6 +482,10 @@ export class CadleApp extends LiteElement {
   }
 
   #onShellAction = (action: string) => {
+    if (action === 'draw-differential') {
+      this.#onNativeCatalogPick({ name: 'Differentieel', path: 'symbols/Protection devices/Residual-current circuit breaker.svg' })
+      return
+    }
     if (action === 'draw-heat-pump') {
       this.#onNativeCatalogPick({ name: 'Warmtepomp', path: 'symbols/Consumption appliances/Heat pump.svg' })
       return
@@ -3725,16 +3729,13 @@ export class CadleApp extends LiteElement {
 
   #buildingSettingsPageKey(pageKey: string | undefined = this.#pageKey): string | undefined {
     if (!this.#project || !pageKey) return undefined
-    const page = this.#project.pages[pageKey]
-    if (page?.pageType === 'groundplan' && !page.heatingPlanOf && !page.heatingScheduleOf) {
-      const linkedKey = page.linkedOneWirePageKey
-      return linkedKey && this.#project.pages[linkedKey]?.pageType === 'onewire' ? linkedKey : pageKey
-    }
-    if (page?.pageType === 'onewire') {
-      const rootKey = page.oneWireOverflowOf ?? pageKey
-      return linkedGroundplanPageKeys(this.#project, rootKey).length ? rootKey : undefined
-    }
-    return undefined
+    return electricalSettingsPageKey(this.#project, pageKey)
+  }
+
+  refreshProjectContext(project: Project): void {
+    if (project.uuid !== this.#projectKey) throw new Error('De installatie hoort niet bij het actieve project.')
+    this.#project = project
+    this.#render()
   }
 
   #buildingSettingsPage(pageKey: string | undefined = this.#pageKey) {
@@ -3802,7 +3803,7 @@ export class CadleApp extends LiteElement {
         : [sourcePageKey]
     }
     if (sourcePage?.pageType === 'onewire') {
-      return linkedGroundplanPageKeys(this.#project, sourcePage.oneWireOverflowOf ?? sourcePageKey)
+      return linkedGroundplanPageKeys(this.#project, sourcePageKey)
     }
     return []
   }

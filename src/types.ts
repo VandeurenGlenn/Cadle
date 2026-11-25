@@ -168,6 +168,7 @@ export interface Project extends ProjectInput {
       schema: { version: string; objects: object[] }
       order?: number
       oneWireOverflowOf?: UUID
+      oneWireInstallationOf?: UUID
       linkedOneWirePageKey?: UUID | null
       electricalProfile?: ElectricalProjectProfile
       circuitSpecifications?: Record<string, ProjectCircuitSpecification>

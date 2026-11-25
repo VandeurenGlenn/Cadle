@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ensureOneWirePage,
+  electricalSettingsPageKey,
   explicitLinkedPageKey,
+  installationOneWirePageKeys,
   linkGroundPlanToOneWirePage,
+  linkOneWirePageToInstallation,
   linkedGroundplanPageKeys,
+  oneWireInstallationRootKey,
   oneWireGenerationPageKeys,
   redundantOneWirePageKeys
 } from '../src/data/page-operations.ts'
@@ -229,4 +233,99 @@ test('only removes obsolete automatic sheets whose complete content is represent
   assert.ok(!keys.includes('custom'))
   assert.deepEqual(redundantOneWirePageKeys(project, keys, new Set(['root'])), ['stale', 'empty', 'overflow'])
   assert.deepEqual(redundantOneWirePageKeys(project, keys, new Set(['root', 'stale'])), ['empty', 'overflow'])
+})
+
+test('groups multiple situation and one-wire sheets without adopting another building or treating manual sheets as overflow', async () => {
+  const project = {
+    pages: {
+      lower: { name: 'Gebouw 1 gelijkvloers', pageType: 'groundplan', linkedOneWirePageKey: 'supply' },
+      upper: { name: 'Gebouw 1 verdieping', pageType: 'groundplan', linkedOneWirePageKey: 'circuits' },
+      other: { name: 'Gebouw 2', pageType: 'groundplan', linkedOneWirePageKey: 'other-wire' },
+      supply: { name: 'Voeding', pageType: 'onewire',
+        electricalProfile: { boards: [{ id: 'main', name: 'Hoofdkast' }, { id: 'garage', name: 'Garage' }] },
+        circuitSpecifications: { A: { breakerCurrentA: 20 } } },
+      circuits: { name: 'Kringen blad 1', pageType: 'onewire', schema: { version: 'native-svg-1', objects: [] } },
+      continuation: { name: 'Kringen blad 2', pageType: 'onewire', oneWireOverflowOf: 'circuits' },
+      automatic: { name: 'Voeding vervolg', pageType: 'onewire', oneWireOverflowOf: 'supply' },
+      'other-wire': { name: 'Ander gebouw', pageType: 'onewire' }
+    }
+  } as Project
+  const grouped = linkOneWirePageToInstallation(project, 'circuits', 'supply')
+  assert.equal(project.pages.circuits.oneWireInstallationOf, undefined)
+  assert.equal(oneWireInstallationRootKey(grouped, 'continuation'), 'supply')
+  assert.equal(oneWireInstallationRootKey(grouped, 'upper'), 'supply')
+  assert.deepEqual(linkedGroundplanPageKeys(grouped, 'circuits'), ['lower', 'upper'])
+  assert.deepEqual(installationOneWirePageKeys(grouped, 'upper'), ['supply', 'circuits', 'continuation', 'automatic'])
+  for (const key of ['lower', 'upper', 'supply', 'circuits', 'continuation']) {
+    assert.equal(electricalSettingsPageKey(grouped, key), 'supply')
+  }
+  assert.deepEqual(oneWireGenerationPageKeys(grouped, 'circuits'), ['supply', 'automatic'])
+  assert.deepEqual(redundantOneWirePageKeys(grouped, ['circuits'], new Set(['supply'])), [])
+  assert.equal(explicitLinkedPageKey(grouped, 'upper'), 'supply')
+  assert.equal(explicitLinkedPageKey(grouped, 'continuation'), 'lower')
+  const relinked = linkGroundPlanToOneWirePage(grouped, 'upper', 'continuation')
+  assert.equal(relinked.pages.upper.linkedOneWirePageKey, 'supply')
+  const ensured = await ensureOneWirePage('project' as UUID, grouped, {
+    addPage: async () => { throw new Error('Do not add another installation.') },
+    getProjectData: async () => grouped,
+    setProjectData: async () => {}
+  }, 'upper')
+  assert.equal(ensured?.pageKey, 'supply')
+  assert.equal(oneWireInstallationRootKey(grouped, 'other'), 'other-wire')
+})
+
+test('detaching a manual sheet preserves the drawing and copies shared settings without mutable aliases', () => {
+  const project = { pages: {
+    root: { name: 'Installatie', pageType: 'onewire', circuitSpecifications: { A: { breakerCurrentA: 40 } } },
+    child: { name: 'Tweede blad', pageType: 'onewire', oneWireInstallationOf: 'root',
+      oneWireOverflowOf: 'root', schema: { version: 'native-svg-1', objects: [{ kind: 'manual-note' }] } }
+  } } as Project
+  const detached = linkOneWirePageToInstallation(project, 'child', 'child')
+  assert.equal(oneWireInstallationRootKey(detached, 'child'), 'child')
+  assert.equal(detached.pages.child.oneWireOverflowOf, undefined)
+  assert.deepEqual(detached.pages.child.schema, project.pages.child.schema)
+  assert.equal(detached.pages.child.circuitSpecifications?.A.breakerCurrentA, 40)
+  detached.pages.child.circuitSpecifications!.A.breakerCurrentA = 63
+  assert.equal(project.pages.root.circuitSpecifications?.A.breakerCurrentA, 40)
+})
+
+test('installation links reject invalid targets and cycles', () => {
+  const project = { pages: {
+    root: { pageType: 'onewire' },
+    child: { pageType: 'onewire', oneWireInstallationOf: 'root' },
+    loopA: { pageType: 'onewire', oneWireInstallationOf: 'loopB' },
+    loopB: { pageType: 'onewire', oneWireInstallationOf: 'loopA' }
+  } } as Project
+  assert.equal(oneWireInstallationRootKey(project, 'loopA'), null)
+  assert.deepEqual(installationOneWirePageKeys(project, 'loopA'), [])
+  assert.throws(() => linkOneWirePageToInstallation(project, 'root', 'child'), /eigen vervolgblad/)
+  assert.throws(() => linkOneWirePageToInstallation(project, 'child', 'missing'), /geldige installatie/)
+})
+
+test('moving an automatic continuation to another installation makes it a preserved manual sheet', () => {
+  const project = { pages: {
+    root: { name: 'Root', pageType: 'onewire' },
+    other: { name: 'Other', pageType: 'onewire' },
+    child: { name: 'Continuation', pageType: 'onewire', oneWireOverflowOf: 'root' }
+  } } as Project
+  const moved = linkOneWirePageToInstallation(project, 'child', 'other')
+  assert.equal(moved.pages.child.oneWireOverflowOf, undefined)
+  assert.equal(oneWireInstallationRootKey(moved, 'child'), 'other')
+  assert.equal(explicitLinkedPageKey(moved, 'child'), '')
+  assert.equal(explicitLinkedPageKey(moved, 'other'), '')
+  assert.deepEqual(oneWireGenerationPageKeys(moved, 'root'), ['root'])
+  assert.deepEqual(oneWireGenerationPageKeys(moved, 'other'), ['other'])
+})
+
+test('legacy automatic continuations without explicit installation membership retain project-wide sources and settings', () => {
+  const project = { pages: {
+    plan: { name: 'Groundplan', pageType: 'groundplan' },
+    root: { name: 'One-wire diagram', pageType: 'onewire' },
+    continuation: { name: 'Vervolg', pageType: 'onewire', oneWireOverflowOf: 'root' },
+    legacy: { name: 'One-wire diagram 2', pageType: 'onewire' }
+  } } as Project
+  assert.equal(electricalSettingsPageKey(project, 'root'), undefined)
+  assert.equal(electricalSettingsPageKey(project, 'continuation'), undefined)
+  assert.equal(explicitLinkedPageKey(project, 'continuation'), null)
+  assert.deepEqual(oneWireGenerationPageKeys(project, 'root'), ['root', 'legacy', 'continuation'])
 })

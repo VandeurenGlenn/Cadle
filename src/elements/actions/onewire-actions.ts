@@ -45,7 +45,7 @@ export class OneWireActions extends LiteElement {
   #actions: OneWireAction[] = [
     { kind: 'kamrail', icon: 'power_input', title: 'Add kamrail', label: 'Kamrail' },
     { kind: 'breaker', icon: 'electric_bolt', title: 'Add breaker', label: 'Breaker' },
-    { kind: 'differential', icon: 'electric_bolt', title: 'Add differential', label: 'Diff' },
+    { kind: 'differential', icon: 'shield', title: 'Add differential', label: 'Diff' },
     { kind: 'switch', icon: 'toggle_off', title: 'Add switch', label: 'Switch' },
     { kind: 'load', icon: 'power', title: 'Add load', label: 'Load' }
   ]
@@ -109,8 +109,8 @@ export class OneWireActions extends LiteElement {
         ${this.#actions.map(
           (action) => html`
             <button
-              class="onewire-action-btn"
-              title="${action.title}"
+              class=${`onewire-action-btn${action.kind === 'differential' ? ' differential-action' : ''}`}
+              title=${action.kind === 'differential' ? 'Differentieel plaatsen' : action.title}
               aria-label="${action.title}"
               aria-pressed=${this.activeTool === 'onewire' && this.activeKind === action.kind ? 'true' : 'false'}
               @click="${() => this.#handleAction(action.kind)}">

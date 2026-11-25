@@ -32,6 +32,7 @@ export type OneWireFamilyPlacement = {
   centerOffset: number
   requiredWidth: number
   anchorOffset?: number
+  familyGap?: number
 }
 
 export type OneWireLayoutPlan = {
@@ -320,6 +321,7 @@ export const planOneWireLayout = (
       for (const placement of pagePlacements) {
         placement.anchorOffset = packed.geometry.familyXs.get(placement.family)! + offsetX
         placement.centerOffset = placement.anchorOffset
+        placement.familyGap = pageGaps[pageIndex]
       }
       continue
     }

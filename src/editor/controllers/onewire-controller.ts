@@ -37,8 +37,8 @@ export class OneWireController {
     return planOneWireLayout(families, { usableWidth, usableHeight, measureFamily })
   }
 
-  packFamilies(families: readonly OneWireFamilyBounds[], centerX: number) {
-    return packOneWireFamilyBounds(families, centerX)
+  packFamilies(families: readonly OneWireFamilyBounds[], centerX: number, gap?: number) {
+    return packOneWireFamilyBounds(families, centerX, gap)
   }
 
   insertFamily(families: readonly OneWireFamilyBounds[], insertedFamily: string) {

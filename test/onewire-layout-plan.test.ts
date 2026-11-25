@@ -339,6 +339,7 @@ test('tightens family gaps only as needed to fit measured circuits on one sheet'
     (plan.placements[1].anchorOffset ?? 0) - (plan.placements[0].anchorOffset ?? 0),
     108
   )
+  assert.deepEqual(plan.placements.map((placement) => placement.familyGap), [8, 8, 8])
 })
 
 test('keeps cabinet rows on separate continuation pages', () => {

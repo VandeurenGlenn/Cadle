@@ -3,12 +3,57 @@ import { buildKamrailCircuitBundle } from '../../src/editor/layout/onewire-helpe
 import { oneWireSymbolBounds, oneWireSymbolScaleFor, oneWireSymbolTerminalInfo } from '../../src/editor/layout/onewire-symbol-nodes.ts'
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
+import { pageLayout } from '../../src/editor/layout/page-layout.ts'
 import type { LineShape, SymbolShape } from '../../src/editor/model/types.ts'
 import type { CadleApp } from '../../src/editor/cadle-app.ts'
 import type { AppShell } from '../../src/shell/app-shell.ts'
 
 const state = (shapes: unknown[]) => ({ version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
   shapes, selectedId: null, paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 })
+
+test('keeps the rail start close to the first circuit when a fixed feeder is on the right', async ({ page }) => {
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const root = '00000000-0000-4000-8000-000000000104'
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate((element, key) => (element as AppShell).loadPage(key), root)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), root)).toBe(true)
+  const rail: LineShape = { id: 'rail-short-start', kind: 'line', start: { x: 200, y: 1200 },
+    end: { x: 1800, y: 1200 }, groupId: 'onewire-kamrail-short-start', strokeWidth: 4 }
+  const feeder: LineShape = { id: 'right-feeder', kind: 'line', start: { x: 1600, y: 1200 },
+    end: { x: 1600, y: 1350 }, connection: { kind: 'wire', showLabel: false } }
+  let sequence = 0
+  const circuits = ['A', 'B'].flatMap((family, index) => buildKamrailCircuitBundle({
+    rail, anchorX: 550 + index * 250, options: { family, amps: 16, autoIncludeFamily: true },
+    familyComponents: [{ bindingId: `${family}1`, kind: 'load',
+      sourcePath: 'symbols/Consumption appliances/Lighting.svg' }],
+    nextShapeId: () => `short-start-${++sequence}`,
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  })!.shapes.map((shape) => ({ ...shape, oneWireRailId: rail.id })))
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'rail-short-start.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ ...state([rail, feeder, ...circuits]),
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION - 1 }))
+  })
+  await app.evaluate((element) => (element as CadleApp).flushPendingSave())
+  const project = await shell.evaluate((element) => (element as AppShell).project!)
+  const shapes = project.pages[root].schema!.objects.find((object) => object.kind === 'cadle-native-svg-document')!.payload.shapes
+  const updatedRail = shapes.find((shape: LineShape) => shape.id === rail.id) as LineShape
+  const updatedFeeder = shapes.find((shape: LineShape) => shape.id === feeder.id) as LineShape
+  const breakers = shapes.filter((shape: SymbolShape) => shape.kind === 'symbol' && shape.sourceLink?.role === 'breaker') as SymbolShape[]
+  const firstX = Math.min(...breakers.map((breaker) =>
+    breaker.position.x + oneWireSymbolTerminalInfo(breaker.path, breaker.scale)!.bottom.x))
+  expect(firstX - updatedRail.start.x).toBeLessThanOrEqual(120)
+  expect(firstX - updatedRail.start.x).toBeGreaterThanOrEqual(20 - 1e-6)
+  expect(firstX).toBeGreaterThan(pageLayout(2376, 1680).content.x + 96)
+  expect(updatedRail.end.x - updatedFeeder.start.x).toBeCloseTo(20)
+  expect(updatedFeeder.start.y).toBeCloseTo(updatedRail.start.y)
+})
 
 test('places BP beside a continuous feed and persists the inspector label position in the drawing and export', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })

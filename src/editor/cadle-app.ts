@@ -142,6 +142,7 @@ import { buildOneWireTopology, oneWireTopologyRcdTypes } from './layout/onewire-
 import { oneWireTopologyDescriptions } from './layout/protection-descriptions.js'
 import {
   ONE_WIRE_FIRST_ROW_OFFSET_Y,
+  ONE_WIRE_MIN_RAIL_LENGTH,
   ONE_WIRE_RAIL_END_PADDING,
   oneWireRailYForRows
 } from './layout/onewire-layout-plan.js'
@@ -259,7 +260,7 @@ const WHEEL_GESTURE_IDLE_MS = 180
 
 // Minimum drag distance (scene units) before a symbol placement gesture starts rotating.
 const SYMBOL_PLACEMENT_ROTATE_THRESHOLD = 6
-const KAMRAIL_HALF_LENGTH = 420
+const KAMRAIL_HALF_LENGTH = ONE_WIRE_MIN_RAIL_LENGTH / 2
 const KAMRAIL_STROKE_WIDTH = ONE_WIRE_BUS_STROKE_WIDTH
 const KAMRAIL_ATTACH_OFFSET = 20
 const ONEWIRE_BRANCH_STROKE = '#000000'
@@ -3460,15 +3461,17 @@ export class CadleApp extends LiteElement {
     return followConnectedConductors(before, after, moved)
   }
 
-  #layoutOneWireLabels(repack = false) {
+  #layoutOneWireLabels(repack = false, familyGap?: number) {
     let shapes = presentConnectionLabels(this.#document.shapes)
     const families = new Set(shapes.flatMap((shape) => shape.sourceLink?.role === 'breaker' ? [shape.sourceLink.id] : []))
     for (const family of families) shapes = spaceOneWireCircuitAnnotations(shapes, family).shapes
     this.#document.shapes = spaceOneWireTopologyAnnotations(shapes)
-    if (repack) this.#compactExistingOneWireRail()
+    if (repack) this.#compactExistingOneWireRail(false, undefined, undefined, familyGap)
   }
 
-  #compactExistingOneWireRail(preserveSingleRailLength = false, targetRailId?: string, insertedBreakerId?: string): boolean {
+  #compactExistingOneWireRail(
+    preserveSingleRailLength = false, targetRailId?: string, insertedBreakerId?: string, familyGap?: number
+  ): boolean {
     let changed = false
     if (!insertedBreakerId) {
       const cleaned = removeRedundantRailAttachments(this.#document.shapes)
@@ -3569,7 +3572,7 @@ export class CadleApp extends LiteElement {
         continue
       }
       const centerX = (rail.start.x + rail.end.x) / 2
-      const geometry = this.#oneWireController.packFamilies(familyBounds, centerX)
+      const geometry = this.#oneWireController.packFamilies(familyBounds, centerX, familyGap)
       // Keep the terminal span centered on its own rail, not on asymmetric annotations or the page.
       const offsetX = centerX - (geometry.startX + geometry.endX) / 2
       railAnchors.forEach((anchor) => {
@@ -3590,10 +3593,8 @@ export class CadleApp extends LiteElement {
         }).map((point) => point.x)
       })
       if (span && fixedTaps.length) {
-        const halfWidth = Math.max(centerX - span.startX, span.endX - centerX,
-          ...fixedTaps.map((x) => Math.abs(x - centerX) + ONE_WIRE_RAIL_END_PADDING))
-        span.startX = centerX - halfWidth
-        span.endX = centerX + halfWidth
+        span.startX = Math.min(span.startX, ...fixedTaps.map((x) => x - ONE_WIRE_RAIL_END_PADDING))
+        span.endX = Math.max(span.endX, ...fixedTaps.map((x) => x + ONE_WIRE_RAIL_END_PADDING))
       }
       railUpdates.set(rail.id, {
         ...rail,
@@ -4117,7 +4118,8 @@ export class CadleApp extends LiteElement {
     try {
       this.#document.shapes = [...retainedShapes]
       const safeArea = this.#safeAreaRect()
-      const railWidth = Math.max(1, safeArea.width)
+      const horizontalInset = Math.min(120, safeArea.width / 4)
+      const railWidth = Math.max(1, safeArea.width - 2 * horizontalInset)
       const railStartX = safeArea.x + (safeArea.width - railWidth) / 2
       const railEndX = railStartX + railWidth
       const usableWidth = Math.max(1, railEndX - railStartX)
@@ -4286,12 +4288,13 @@ export class CadleApp extends LiteElement {
       if (generatedFamilies !== visiblePlacements.length) {
         throw new Error('One-wire regeneration produced an incomplete result.')
       }
-      this.#compactExistingOneWireRail()
+      const familyGap = visiblePlacements[0]?.familyGap
+      this.#compactExistingOneWireRail(false, undefined, undefined, familyGap)
 
       const freshGenerated = this.#document.shapes.slice(retainedShapes.length)
       const reconciled = this.#oneWireController.reconcile(previousGenerated, freshGenerated)
       this.#document.shapes = [...retainedShapes, ...reconciled.shapes]
-      this.#layoutOneWireLabels(true)
+      this.#layoutOneWireLabels(true, familyGap)
       this.#document.shapes = alignOneWireContent(this.#document.shapes, safeArea).shapes
       this.#document.selectedId = null
       this.#document.selectedIds = new Set()

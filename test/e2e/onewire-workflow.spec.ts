@@ -120,6 +120,38 @@ test('places differentials from the toolbar on rails and inline without adding a
   await page.screenshot({ path: testInfo.outputPath('differential-toolbar.png') })
 })
 
+test('starts a new kamrail at a compact length', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.goto('/?fixture=priority-suite#!/projects')
+  await page.locator('projects-field custom-list-item[data-name="Cadle Visual Test"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  const schematic = '00000000-0000-4000-8000-000000000104'
+  await expect.poll(() => app.evaluate((element) =>
+    (element as CadleApp).waitForPageReady('00000000-0000-4000-8000-000000000102'))).toBe(true)
+  await shell.evaluate(async (element, key) => { await (element as AppShell).loadPage(key) }, schematic)
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), schematic)).toBe(true)
+  await app.locator('input[type="file"][accept="application/json"]').setInputFiles({
+    name: 'empty-rail.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      version: 2, paperLayoutVersion: 1, oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION,
+      shapes: [], selectedId: null, paperPreset: 'a4-landscape', printMargin: 10,
+      worldWidth: 2376, worldHeight: 1680
+    }))
+  })
+  await page.getByRole('button', { name: 'Add kamrail', exact: true }).click()
+  const stage = app.locator('svg.stage')
+  const point = await stage.locator('.print-safe-area').evaluate((area: SVGRectElement) => {
+    const screen = new DOMPoint(1000, 1000).matrixTransform(area.getScreenCTM()!)
+    return { x: screen.x, y: screen.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  const rail = stage.locator('line.shape-line[data-shape-id]')
+  await expect(rail).toHaveCount(1)
+  const length = await rail.evaluate((line) => Number(line.getAttribute('x2')) - Number(line.getAttribute('x1')))
+  expect(length).toBe(240)
+})
+
 test('grows and shrinks only the affected rail when differentials are added and removed', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/?fixture=priority-suite#!/projects')
@@ -456,6 +488,61 @@ test('requires a reviewed supply description and preserves editable text, JSON c
   await page.screenshot({ path: testInfo.outputPath('consumer-topology.png') })
 })
 
+test('keeps generated circuits and the start of the rail away from the page edge', async ({ page }) => {
+  const groundKey = randomUUID(), rootKey = randomUUID()
+  const document = (shapes: Shape[]) => ({ version: 'native-svg-1', objects: [
+    { kind: 'cadle-native-svg-document', payload: { version: 2, paperLayoutVersion: 1,
+      oneWireLayoutVersion: ONE_WIRE_LAYOUT_VERSION, shapes, selectedId: null,
+      paperPreset: 'a4-landscape', printMargin: 10, worldWidth: 2376, worldHeight: 1680 } }
+  ] })
+  const project: Project = {
+    uuid: randomUUID(), creationTime: 1, name: 'Ruimte voor eerste kring', company: '',
+    customer: { name: '', lastname: '' }, installer: { name: '', lastname: '' },
+    address: { street: '', number: '', postalCode: '', city: '' },
+    oneWireTopology: { version: 1, residualBreaker: false, solar: false, consumers: true,
+      mainDifferential: { ratedCurrentA: 40, sensitivityMa: 300 } },
+    pages: {
+      [groundKey]: { name: 'Situatieplan', pageType: 'groundplan', creationTime: 1,
+        schema: document([...'ABCDEFGHIJKLM'].map((family, index): Shape => ({
+          id: `load-${family}`, kind: 'symbol', name: 'Wall outlet with grounding',
+          path: 'symbols/Socket outlets/Wall outlet with grounding for floorplan.svg', scale: 1,
+          position: { x: 200 + index * 120, y: 200 }, bindingId: `${family}1`,
+          electrical: { role: 'load', oneWireEligible: true, circuitType: 'sockets', socketCount: 1 }
+        }))) },
+      [rootKey]: { name: 'One-wire diagram', pageType: 'onewire', creationTime: 2, schema: document([]) }
+    }
+  }
+  await page.goto('/#!/projects')
+  await page.evaluate(async (value) => {
+    const root = await navigator.storage.getDirectory()
+    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+      const store = await root.getDirectoryHandle(directory, { create: true })
+      const file = await store.getFileHandle(value.uuid, { create: true })
+      const writer = await file.createWritable()
+      await writer.write(content)
+      await writer.close()
+    }
+  }, project)
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="Ruimte voor eerste kring"]').click()
+  const shell = page.locator('app-shell')
+  const app = page.locator('cadle-app:not([read-only])')
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), groundKey)).toBe(true)
+  await shell.evaluate((element) => (element as AppShell).generateAutoOneWireSchema())
+  const generated = await shell.evaluate((element) => (element as AppShell).project!)
+  const pages = Object.keys(generated.pages).filter((key) => generated.pages[key].pageType === 'onewire')
+  const circuitPages = pages.map((key) => nativeStateForProjectPage(generated, key)!)
+    .filter((state) => state.shapes.some((shape) => shape.sourceLink?.role === 'breaker'))
+  expect(circuitPages.length).toBeGreaterThan(0)
+  for (const state of circuitPages) {
+    const area = pageLayout(state.worldWidth, state.worldHeight, state.printMargin,
+      state.worldWidth / PAPER_PRESETS[state.paperPreset].widthMm).content
+    const boxes = state.shapes.filter((shape) => !shape.hidden).map(oneWireLayoutBounds)
+    expect(Math.min(...boxes.map((box) => box.x))).toBeGreaterThanOrEqual(area.x + 96 - 1e-6)
+    expect(Math.max(...boxes.map((box) => box.x + box.width))).toBeLessThanOrEqual(area.x + area.width - 96 + 1e-6)
+  }
+})
+
 test('uses the printable width and consolidates old automatic sheets without losing device identities or cable overrides', async ({ page }, testInfo) => {
   const groundKey = randomUUID(), rootKey = randomUUID()
   const families = [...'ADEFGHIJKLMNQ']
@@ -535,6 +622,12 @@ test('uses the printable width and consolidates old automatic sheets without los
     shape.sourceLink?.role === 'overflow-reference')).toBe(false)
   const originalArea = pageLayout(original.worldWidth, original.worldHeight, original.printMargin,
     original.worldWidth / PAPER_PRESETS[original.paperPreset].widthMm).content
+  const left = Math.min(...original.shapes.filter((shape) => !shape.hidden)
+    .map((shape) => oneWireLayoutBounds(shape).x))
+  const right = Math.max(...original.shapes.filter((shape) => !shape.hidden)
+    .map((shape) => { const bounds = oneWireLayoutBounds(shape); return bounds.x + bounds.width }))
+  expect(left).toBeGreaterThanOrEqual(originalArea.x + 96 - 1e-6)
+  expect(right).toBeLessThanOrEqual(originalArea.x + originalArea.width - 96 + 1e-6)
   const bottom = Math.max(...original.shapes.filter((shape) => !shape.hidden)
     .map((shape) => { const bounds = oneWireLayoutBounds(shape); return bounds.y + bounds.height }))
   expect(bottom).toBeCloseTo(originalArea.y + originalArea.height - 24, 6)

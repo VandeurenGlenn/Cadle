@@ -47,6 +47,28 @@ const openProject = async (page: Page, shapes: Shape[]) => {
   return { app, shell, stored, pageKey }
 }
 
+const clickPlacementPoint = async (page: Page, x = 0.62, y = 0.55) => {
+  const stage = page.locator('cadle-app:not([read-only]) svg.stage')
+  const bounds = await stage.boundingBox()
+  if (!bounds) throw new Error('The one-wire drawing stage is not visible.')
+  await page.mouse.click(bounds.x + bounds.width * x, bounds.y + bounds.height * y)
+}
+
+const clickRail = async (page: Page, railId: string) => {
+  const line = page.locator(`cadle-app:not([read-only]) svg.stage line[data-shape-id="${railId}"]`)
+  const point = await line.evaluate((element: SVGLineElement) => {
+    const world = { x: (element.x1.baseVal.value + element.x2.baseVal.value) / 2,
+      y: (element.y1.baseVal.value + element.y2.baseVal.value) / 2 }
+    const screen = new DOMPoint(world.x, world.y).matrixTransform(element.getScreenCTM()!)
+    return { ...world, screenX: screen.x, screenY: screen.y }
+  })
+  await page.mouse.click(point.screenX, point.screenY)
+  return point
+}
+
+const expectPvPlacementMode = (page: Page) =>
+  expect(page.getByRole('button', { name: 'PV-installatie plaatsen', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
 test('places a catalog PV breaker connected to the nearest kamrail', async ({ page }) => {
   const rail: Shape = {
     id: 'pv-manual-test-rail', kind: 'line', start: { x: 500, y: 900 }, end: { x: 1500, y: 900 },
@@ -136,13 +158,15 @@ test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23
   await expect(firstString).toHaveValue('11')
   await expect(secondString).toHaveValue('12')
   await firstString.fill('10')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('samen gelijk')
   await firstString.fill('11')
   await expect(dialog.getByRole('alert')).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('pdf-pv-unequal-strings.png') })
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
+  await expectPvPlacementMode(page)
+  await clickPlacementPoint(page)
   const shapes = await stored()
   expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
   expect(shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toMatchObject({
@@ -166,6 +190,21 @@ test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23
   expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 13 panelen')
   await app.evaluate((element) => (element as CadleApp).undo())
   expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 12 panelen')
+})
+
+test('cancels PV placement mode with Escape', async ({ page }) => {
+  const { stored } = await openProject(page, [])
+  await page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true }).click()
+  const dialog = page.locator('solar-installation-dialog')
+  await dialog.getByLabel('Onderdeel', { exact: true }).selectOption('panels')
+  await dialog.getByLabel('Paneelmodel', { exact: true }).fill('P470')
+  await dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true }).fill('470')
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
+  await expectPvPlacementMode(page)
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(0)
 })
 
 test('reads a scanned PDF datasheet using local OCR', async ({ page }) => {
@@ -242,15 +281,23 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await dialog.getByLabel('Omvormermodel', { exact: true }).fill('INV-5000')
   await dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true }).fill('5000')
   await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('25')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema' }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie' }).click()
   await expect(dialog.getByRole('alert')).toContainText('samen gelijk')
   await dialog.getByLabel('Aantal strings', { exact: true }).fill('2')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema' }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie' }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
+  await expectPvPlacementMode(page)
+  const placementPoint = await clickRail(page, 'rail')
   await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp = 5.64 kWp' })).toHaveCount(1)
   const added = await stored()
   expect(added.filter((shape) => initial.some((before) => before.id === shape.id))).toEqual(initial)
   expect(added.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  const inverter = added.find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat')
+  const feeder = added.find((shape) => shape.kind === 'line' && shape.groupId === inverter?.groupId &&
+    shape.oneWireRailId === 'rail' && Math.abs(shape.start.y - placementPoint.y) < 0.01)
+  expect(feeder?.kind).toBe('line')
+  if (feeder?.kind !== 'line') throw new Error('The PV feeder was not placed on the selected rail.')
+  expect(Math.abs(feeder.start.x - placementPoint.x)).toBeLessThan(4)
   expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('Voc 34.77 V')
   await trigger.click()
   await expect(dialog.getByLabel('Paneelmodel', { exact: true })).toHaveValue('ODA470-24V-MHDBRz')
@@ -295,8 +342,10 @@ test('creates a kamrail on an empty schematic and shows image-import failures ex
   await dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true }).fill('3000')
   await dialog.getByLabel('Fasen omvormer', { exact: true }).selectOption('3')
   await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('16')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema' }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie' }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
+  await expectPvPlacementMode(page)
+  await clickPlacementPoint(page)
   const shapes = await stored()
   expect(shapes.filter((shape) => shape.groupId?.startsWith('onewire-kamrail-'))).toHaveLength(1)
   expect(shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat')).toMatchObject({ electrical: { poles: 4 } })
@@ -329,8 +378,10 @@ Rated output voltage 230 V AC/400 V AC; 3 W/N + PE`)
   await expect(dialog.getByLabel('Fasen omvormer', { exact: true })).toHaveValue('3')
   await dialog.getByLabel('Merk omvormer', { exact: true }).fill('Huawei')
   await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('32')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
+  await expectPvPlacementMode(page)
+  await clickPlacementPoint(page)
   const inverter = await stored()
   expect(inverter.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(2)
   expect(inverter.some((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toBe(false)
@@ -350,8 +401,10 @@ Short Circuit Current-Isc(A) 16.90`)
   await dialog.getByLabel('Merk panelen', { exact: true }).fill('OSDA')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('12')
   await dialog.getByLabel('Aantal strings', { exact: true }).fill('2')
-  await dialog.getByRole('button', { name: 'Toevoegen aan schema', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
+  await expectPvPlacementMode(page)
+  await clickPlacementPoint(page, 0.75, 0.65)
   const separate = await stored()
   expect(separate.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
   const panels = separate.filter((shape) => !inverter.some((before) => before.id === shape.id))

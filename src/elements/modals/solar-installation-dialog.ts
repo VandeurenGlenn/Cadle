@@ -214,7 +214,7 @@ export class SolarInstallationDialog extends LiteElement {
         event.stopPropagation()
         if (event.key === 'Escape') { event.preventDefault(); this.#close() }
       }}>
-      <header><h2 id="pv-title">Omvormer en zonnepanelen</h2><p>Voeg onderdelen apart of samen toe. Elk onderdeel heeft een eigen fabrikant en datasheet. Open een PDF of afbeelding, of plak een foto in het juiste onderdeel.</p></header>
+      <header><h2 id="pv-title">Omvormer en zonnepanelen</h2><p>Voeg onderdelen apart of samen toe. Elk onderdeel heeft een eigen fabrikant en datasheet. Open een PDF of afbeelding, of plak een foto in het juiste onderdeel. Daarna klik je op het schema om de plaats te kiezen.</p></header>
       <label><span>Onderdeel</span><select aria-label="Onderdeel" ?disabled=${this.busy || Boolean(this.#request.installation)}
         @change=${(event: Event) => { this.values = { ...this.values, kind: (event.target as HTMLSelectElement).value }; this.error = '' }}>
         <option value="installation" .selected=${this.values.kind === 'installation'}>Omvormer en zonnepanelen</option>
@@ -282,7 +282,7 @@ export class SolarInstallationDialog extends LiteElement {
       <footer class="actions">
         ${this.#request.installation ? html`<button type="button" ?disabled=${this.busy} @click=${this.#startNew}>Nieuw onderdeel toevoegen</button>` : ''}
         <button type="button" @click=${() => this.#close()}>Annuleren</button>
-        <button type="submit" class="primary" ?disabled=${this.busy}>${this.#request.installation ? 'Installatie bijwerken' : 'Toevoegen aan schema'}</button></footer>
+        <button type="submit" class="primary" ?disabled=${this.busy}>${this.#request.installation ? 'Installatie bijwerken' : 'Plaats PV-installatie'}</button></footer>
     </form>`
   }
 }

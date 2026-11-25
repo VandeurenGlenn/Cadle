@@ -21,10 +21,13 @@ export const getProjects = async () => {
   return projects
 }
 
-export const getProjectData = async (uuid: UUID) =>
-  JSON.parse(decoder.decode(await projectDataStore.get(uuid))) as Promise<Project>
+export const getProjectData = async (uuid: UUID): Promise<Project> => {
+  const project = JSON.parse(decoder.decode(await projectDataStore.get(uuid))) as Project
+  return project.uuid === uuid ? project : { ...project, uuid }
+}
 
-export const setProjectData = (uuid: UUID, project: Project) => projectDataStore.put(uuid, JSON.stringify(project))
+export const setProjectData = (uuid: UUID, project: Project) =>
+  projectDataStore.put(uuid, JSON.stringify({ ...project, uuid }))
 
 export const keys = () => projectStore.keys()
 
@@ -61,7 +64,7 @@ export const create = async (project: ProjectInput, pageName: string) => {
     schema: { version: '6.0.0', objects: [] },
     order: 0
   }
-  const _project = { creationTime, ...project, pages }
+  const _project = { creationTime, ...project, uuid, pages }
   await projectDataStore.put(uuid, JSON.stringify(_project))
   await projectStore.put(uuid, project.name)
 

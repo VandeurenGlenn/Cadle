@@ -182,20 +182,21 @@ test('adds pages quickly with automatic names, type detection and cancel support
   groupedProject.pages[otherGroundKey] = {
     ...structuredClone(groupedProject.pages[groundKey]), name: 'Ander gebouw', linkedOneWirePageKey: otherWireKey
   }
+  const { uuid: groupedProjectKey, ...legacyProject } = groupedProject
   await page.goto('/#!/projects')
-  await page.evaluate(async (value) => {
+  await page.evaluate(async ({ project, projectKey }) => {
     const root = await navigator.storage.getDirectory()
-    for (const [directory, content] of [['projects', value.name], ['project-data', JSON.stringify(value)]]) {
+    for (const [directory, content] of [['projects', project.name], ['project-data', JSON.stringify(project)]]) {
       const store = await root.getDirectoryHandle(directory, { create: true })
-      const file = await store.getFileHandle(value.uuid, { create: true })
+      const file = await store.getFileHandle(projectKey, { create: true })
       const writer = await file.createWritable()
       await writer.write(content)
       await writer.close()
     }
-  }, groupedProject)
+  }, { project: legacyProject, projectKey: groupedProjectKey })
   await page.reload()
   await page.locator('projects-field custom-list-item[data-name="Pagina toevoegen test"]').click()
-  await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(groupedProject.uuid)
+  await expect.poll(() => shell.evaluate((element) => (element as AppShell).project?.uuid)).toBe(groupedProjectKey)
   await pagePane.locator(`custom-drawer-item[data-project="${oneWireKey}"]`).click()
   await expect.poll(() => app.evaluate((element, key) =>
     (element as CadleApp).waitForPageReady(key), oneWireKey)).toBe(true)

@@ -30,6 +30,7 @@ export class OneWireActions extends LiteElement {
   @property({ type: String }) accessor activeKind: OneWireComposeKind = 'switch'
   @property({ attribute: false }) accessor connectionKind: ConnectionKind | null = null
   @property({ type: String }) accessor activeTool = 'select'
+  @property({ type: String }) accessor solarPlacementTarget: 'drawing' | 'rail' | null = null
 
   #connections: ConnectionKind[] = ['wire', 'cable', 'branch', 'bridge']
 
@@ -69,10 +70,16 @@ export class OneWireActions extends LiteElement {
     this.isVisible = location.hash.includes('#!/editor/model')
   }
 
-  #onControlsState = (state: { oneWireComposeKind?: OneWireComposeKind; connectionKind?: ConnectionKind | null; activeTool?: string }) => {
+  #onControlsState = (state: {
+    oneWireComposeKind?: OneWireComposeKind
+    connectionKind?: ConnectionKind | null
+    activeTool?: string
+    solarPlacementTarget?: 'drawing' | 'rail' | null
+  }) => {
     if (state.oneWireComposeKind) this.activeKind = state.oneWireComposeKind
     this.connectionKind = state.connectionKind ?? null
     if (state.activeTool) this.activeTool = state.activeTool
+    this.solarPlacementTarget = state.solarPlacementTarget ?? null
   }
 
   @listen('hashchange', { target: 'window' })
@@ -119,9 +126,16 @@ export class OneWireActions extends LiteElement {
             </button>
           `
         )}
-        <button class="onewire-action-btn" title="Omvormer en zonnepanelen" aria-label="Omvormer en zonnepanelen"
+        <button class="onewire-action-btn"
+          title=${this.solarPlacementTarget
+            ? this.solarPlacementTarget === 'rail'
+              ? 'Klik op de kamrail om de PV-installatie te plaatsen · Escape annuleert'
+              : 'Klik in het schema om de PV-installatie te plaatsen · Escape annuleert'
+            : 'Omvormer en zonnepanelen'}
+          aria-label=${this.solarPlacementTarget ? 'PV-installatie plaatsen' : 'Omvormer en zonnepanelen'}
+          aria-pressed=${this.solarPlacementTarget ? 'true' : 'false'}
           @click=${() => pubsub.publish('editor.controls.command', { action: 'solar-installation' })}>
-          <custom-icon icon="solar_power"></custom-icon><span>Omvormer / PV</span>
+          <custom-icon icon="solar_power"></custom-icon><span>${this.solarPlacementTarget ? 'PV plaatsen' : 'Omvormer / PV'}</span>
         </button>
         <div class="connection-menu">
           <button type="button" class="connection-trigger" title="Elektrische verbindingen" aria-label="Elektrische verbindingen"

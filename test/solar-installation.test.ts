@@ -215,6 +215,7 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 200, y: 1000 }, end: { x: 800, y: 1000 } }
   const area = { x: 0, y: 0, width: 2400, height: 1600 }
   assert.equal(solarInstallationPlacement(shapes, [rail], rail, area), 0)
+  assert.equal(solarInstallationPlacement(shapes, [rail], rail, area, 1000), 700)
   const before = structuredClone(shapes)
   const dx = solarInstallationPlacement(shapes, [rail, ...shapes], rail, area)
   assert.ok(dx !== undefined && dx > 0)

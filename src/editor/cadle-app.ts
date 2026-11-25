@@ -214,7 +214,7 @@ import {
   type BomRow
 } from './circuit-analysis.js'
 import { circuitDefaults, defaultHasProtectiveConductor } from './circuit-defaults.js'
-import { defaultPvCableForBreaker } from './solar-installation.js'
+import { defaultPvCableForBreaker, type SolarInstallation } from './solar-installation.js'
 import { ViewportController } from './controllers/viewport-controller.js'
 import { ToolController } from './controllers/tool-controller.js'
 import { CanvasDocumentController } from './controllers/canvas-document-controller.js'
@@ -382,6 +382,7 @@ export class CadleApp extends LiteElement {
   #oneWireAnchor: Point | null = null
   #oneWireLastPoint: Point | null = null
   #oneWireBusBarId: string | null = null
+  #pendingSolarPlacement: { pageKey: UUID; project: Project; installation: SolarInstallation; railId: string } | null = null
   #symbolStrokeWidth = DEFAULT_SYMBOL_STROKE_WIDTH
   #wheelTransformSession: {
     mode: 'rotate' | 'scale'
@@ -2063,6 +2064,7 @@ export class CadleApp extends LiteElement {
   }
 
   #activateTool(tool: Tool) {
+    if (this.#pendingSolarPlacement && tool !== 'onewire') this.#pendingSolarPlacement = null
     this.#roomLabelError = null
     if (tool !== this.#tools.current) {
       this.#stairRoutePoints = []
@@ -2916,6 +2918,12 @@ export class CadleApp extends LiteElement {
   }
 
   #handleEscapeKey() {
+    if (this.#pendingSolarPlacement) {
+      this.#pendingSolarPlacement = null
+      this.#activateTool('select')
+      return
+    }
+
     const action = resolveNativeEscapeAction({
       tool: this.#tools.current,
       hasPendingCatalogSymbol: Boolean(this.#pendingCatalogSymbol),
@@ -5915,6 +5923,9 @@ export class CadleApp extends LiteElement {
       oneWirePreset: this.#oneWirePreset,
       oneWireBindingId: this.#oneWireBindingId,
       oneWireComposeKind: this.#oneWireComposeKind,
+      solarPlacementTarget: this.#pendingSolarPlacement
+        ? this.#pendingSolarPlacement.installation.kind === 'panels' ? 'drawing' : 'rail'
+        : null,
       connectionKind: this.#tools.current === 'line' ? this.#connectionKind : null,
       persistenceState: this.#persistence.state,
       zoom: this.#viewport.state.zoom,
@@ -5971,6 +5982,10 @@ export class CadleApp extends LiteElement {
 
   async #configureSolarInstallation() {
     if (this.readOnly || this.#project?.pages[this.#pageKey]?.pageType !== 'onewire') return
+    if (this.#pendingSolarPlacement) {
+      this.#pendingSolarPlacement = null
+      this.#render()
+    }
     const pageKey = this.#pageKey
     const project = this.#project
     const selected = this.#shapeById(this.#document.selectedId)
@@ -5994,7 +6009,16 @@ export class CadleApp extends LiteElement {
       globalThis.alert('De actieve pagina is gewijzigd. Open de PV-installatie opnieuw op het gewenste blad.')
       return
     }
-    if (result.newEquipment) groupId = undefined
+    if (result.newEquipment) {
+      this.#oneWireMode = 'preset'
+      this.#activateTool('onewire')
+      this.#pendingSolarPlacement = { pageKey, project, installation: result.installation, railId: result.railId }
+      this.#document.selectedId = null
+      this.#document.selectedIds = new Set()
+      this.#render()
+      return
+    }
+
     const area = this.#safeAreaRect()
     const occupied = this.#document.shapes.filter((shape) => !groupId || shape.groupId !== groupId)
     if (result.installation.kind === 'panels') {
@@ -6058,6 +6082,103 @@ export class CadleApp extends LiteElement {
     this.#render()
   }
 
+  #placePendingSolarInstallation(point: Point): boolean {
+    const pending = this.#pendingSolarPlacement
+    if (!pending) return false
+    if (pending.pageKey !== this.#pageKey || pending.project !== this.#project || this.readOnly) {
+      this.#pendingSolarPlacement = null
+      this.#activateTool('select')
+      globalThis.alert('De actieve pagina is gewijzigd. Start de PV-installatie opnieuw op het gewenste blad.')
+      return true
+    }
+
+    const installation = pending.installation
+    const area = this.#safeAreaRect()
+    const occupied = this.#document.shapes
+    let rail: LineShape | undefined
+    let newRail = false
+    let tap = this.#snapPoint(point)
+
+    if (installation.kind !== 'panels') {
+      rail = pending.railId
+        ? occupied.find((shape): shape is LineShape =>
+          shape.kind === 'line' && shape.id === pending.railId && this.#isKamrailShape(shape) &&
+          !shape.hidden && !shape.locked)
+        : undefined
+      if (pending.railId && !rail) {
+        globalThis.alert('De gekozen kamrail is niet meer beschikbaar. Open de PV-installatie opnieuw.')
+        this.#pendingSolarPlacement = null
+        this.#activateTool('select')
+        return true
+      }
+
+      if (rail) {
+        tap = this.#closestPointOnSegment(point, rail.start, rail.end)
+        if (Math.hypot(point.x - tap.x, point.y - tap.y) > 72) {
+          globalThis.alert('Klik op de geselecteerde kamrail om de PV-installatie te plaatsen.')
+          return true
+        }
+      } else {
+        newRail = true
+        tap = {
+          x: Math.max(area.x + 120, Math.min(area.x + area.width - 120, tap.x)),
+          y: Math.max(area.y + 80, Math.min(area.y + area.height - 80, tap.y))
+        }
+        rail = {
+          id: nextShapeId(),
+          kind: 'line',
+          start: { x: tap.x - 120, y: tap.y },
+          end: { x: tap.x + 120, y: tap.y },
+          groupId: `onewire-kamrail-${nextShapeId()}`,
+          stroke: ONEWIRE_BRANCH_STROKE,
+          strokeWidth: KAMRAIL_STROKE_WIDTH
+        }
+      }
+    }
+
+    let direction: 'top' | 'bottom' = 'top'
+    let generated = buildSolarInstallation(installation, rail?.id, tap, nextShapeId, direction)
+    let dx = solarInstallationPlacement(generated, occupied, rail, area, tap.x)
+    if (dx === undefined && rail) {
+      direction = 'bottom'
+      generated = buildSolarInstallation(installation, rail.id, tap, nextShapeId, direction)
+      dx = solarInstallationPlacement(generated, occupied, rail, area, tap.x)
+    }
+    if (dx === undefined) {
+      globalThis.alert('Geen vrije ruimte bij deze plaats. Kies een andere plek of vergroot het papierformaat. Bestaande onderdelen zijn niet verplaatst.')
+      return true
+    }
+
+    const added = generated.map((shape) => translateShape(shape, dx, 0))
+    if (rail) {
+      const railId = rail.id
+      const left = Math.min(rail.start.x, rail.end.x, tap.x + dx - 20)
+      const right = Math.max(rail.start.x, rail.end.x, tap.x + dx + 20)
+      const resized: LineShape = {
+        ...rail,
+        start: { ...rail.start, x: rail.start.x <= rail.end.x ? left : right },
+        end: { ...rail.end, x: rail.start.x <= rail.end.x ? right : left }
+      }
+      this.#document.shapes = [
+        ...occupied.map((shape) => shape.id === railId ? resized : shape),
+        ...(newRail ? [resized] : []),
+        ...added
+      ]
+    } else {
+      this.#document.shapes = [...occupied, ...added]
+    }
+
+    const selected = added.find((shape) => shape.kind === 'symbol' && shape.name === 'Omvormer') ??
+      added.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')
+    this.#document.selectedId = selected?.id ?? null
+    this.#document.selectedIds = selected ? new Set([selected.id]) : new Set()
+    this.#pendingSolarPlacement = null
+    this.#activateTool('select')
+    this.#pushHistory()
+    this.#render()
+    return true
+  }
+
   #onNativeControlsCommand = (payload: {
     connectionKind?: ConnectionKind
     paper?: PaperPreset
@@ -6111,6 +6232,7 @@ export class CadleApp extends LiteElement {
 
     const preset = payload.onewirePreset
     if (preset && preset in ONE_WIRE_PRESETS) {
+      this.#pendingSolarPlacement = null
       this.#oneWirePreset = preset
       this.#oneWireMode = 'preset'
       if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
@@ -6120,6 +6242,7 @@ export class CadleApp extends LiteElement {
 
     const compose = payload.onewireCompose
     if (compose === 'breaker' || compose === 'differential' || compose === 'switch' || compose === 'kamrail' || compose === 'load') {
+      this.#pendingSolarPlacement = null
       this.#oneWireMode = 'compose'
       this.#oneWireComposeKind = compose
       if (this.#tools.current !== 'onewire') this.#activateTool('onewire')
@@ -6550,6 +6673,10 @@ export class CadleApp extends LiteElement {
 
     const rawPoint = this.#pointFromEvent(event)
     if (!rawPoint) return
+    if (this.#tools.current === 'onewire' && this.#pendingSolarPlacement && event.button === 0) {
+      this.#placePendingSolarInstallation(rawPoint)
+      return
+    }
 
     if (this.#tools.current === 'room-label' && event.button === 0) {
       await this.#labelRoomAt(rawPoint)
@@ -7201,6 +7328,23 @@ export class CadleApp extends LiteElement {
 
     // One-wire: show snap preview
     if (this.#tools.current === 'onewire') {
+      if (this.#pendingSolarPlacement) {
+        const pending = this.#pendingSolarPlacement
+        const rail = pending.railId
+          ? this.#document.shapes.find((shape): shape is LineShape =>
+            shape.kind === 'line' && shape.id === pending.railId && this.#isKamrailShape(shape))
+          : undefined
+        const railAnchor = pending.installation.kind !== 'panels' && rail
+          ? this.#closestPointOnSegment(rawPoint, rail.start, rail.end)
+          : null
+        this.#snapTarget = railAnchor && Math.hypot(rawPoint.x - railAnchor.x, rawPoint.y - railAnchor.y) <= 72
+          ? railAnchor
+          : pending.installation.kind === 'panels' || !pending.railId ? this.#snapPoint(rawPoint) : null
+        this.#snapIndicatorKind = 'onewire'
+        this.#renderPreviewOnly()
+        return
+      }
+
       if (this.#oneWireMode === 'compose' && this.#oneWireComposeKind === 'kamrail') {
         const snapped = this.#snapPoint(rawPoint)
         this.#snapTarget = snapped

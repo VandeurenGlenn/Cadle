@@ -150,7 +150,8 @@ export const solarInstallationPlacement = (
   shapes: readonly Shape[],
   occupied: readonly Shape[],
   rail: LineShape | undefined,
-  area: { x: number; y: number; width: number; height: number }
+  area: { x: number; y: number; width: number; height: number },
+  preferredTapX?: number
 ): number | undefined => {
   const boxes = shapes.map(oneWireLayoutBounds)
   const minX = Math.min(...boxes.map((box) => box.x))
@@ -159,9 +160,25 @@ export const solarInstallationPlacement = (
   const obstacles = occupied.filter((shape) => !shape.hidden && shape.id !== rail?.id).map(oneWireLayoutBounds)
   const otherRails = occupied.filter((shape): shape is LineShape =>
     shape.kind === 'line' && shape.id !== rail?.id && !shape.hidden && isOneWireRailShape(shape))
-  const tapX = shapes.find((shape): shape is LineShape => shape.kind === 'line')?.start.x ?? minX
-  const start = Math.max(0, area.x - minX)
-  for (let dx = start; maxX + dx <= area.x + area.width; dx += 24) {
+  const firstLine = shapes.find((shape): shape is LineShape => shape.kind === 'line')
+  const firstSymbol = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol')
+  const tapX = firstLine?.start.x ?? (firstSymbol
+    ? oneWireSymbolConnectionAnchors(firstSymbol).find((anchor) => anchor.side === 'top')?.point.x ?? firstSymbol.position.x
+    : minX)
+  const minDx = Math.max(0, area.x - minX)
+  const maxDx = area.x + area.width - maxX
+  const candidates = preferredTapX === undefined
+    ? Array.from({ length: Math.max(0, Math.floor((maxDx - minDx) / 24) + 1) }, (_, index) => minDx + index * 24)
+    : (() => {
+        const preferredDx = Math.max(minDx, Math.min(maxDx, preferredTapX - tapX))
+        const offsets = [0]
+        for (let offset = 24; offset <= Math.max(preferredDx - minDx, maxDx - preferredDx); offset += 24) {
+          offsets.push(offset, -offset)
+        }
+        return offsets.map((offset) => preferredDx + offset)
+      })()
+  for (const dx of candidates) {
+    if (dx < minDx || dx > maxDx) continue
     if (rail) {
       const railLeft = Math.min(rail.start.x, rail.end.x, tapX + dx - 20)
       const railRight = Math.max(rail.start.x, rail.end.x, tapX + dx + 20)

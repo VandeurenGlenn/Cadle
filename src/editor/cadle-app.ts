@@ -3995,17 +3995,9 @@ export class CadleApp extends LiteElement {
     const currentPageType = this.#pageKey ? this.#project?.pages[this.#pageKey]?.pageType : undefined
     let scopedPageKey = sourcePageKey
     if (!scopedPageKey && currentPageType === 'onewire') {
-      scopedPageKey = this.#buildingSettingsPageKey()
+      scopedPageKey = this.#buildingSettingsPageKey() ?? this.#pageKey
     } else if (!scopedPageKey && currentPageType === 'groundplan') {
-      const page = this.#project?.pages[this.#pageKey]
-      if (page && (
-        page.linkedOneWirePageKey !== undefined ||
-        page.electricalProfile ||
-        page.circuitSpecifications ||
-        page.mainFuseA !== undefined ||
-        page.oneWirePrompt ||
-        page.oneWireTopology
-      )) scopedPageKey = this.#pageKey
+      scopedPageKey = this.#pageKey
     }
     const settingsPage = scopedPageKey ? this.#buildingSettingsPage(scopedPageKey) : undefined
     const legacySettingsPage = scopedPageKey ? this.#legacyBuildingSettingsPage(scopedPageKey) : undefined

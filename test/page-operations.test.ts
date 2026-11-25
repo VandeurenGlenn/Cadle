@@ -108,8 +108,9 @@ test('creates a separate one-wire page when another building already owns the ex
   assert.equal(savedProject?.pages.buildingB.linkedOneWirePageKey, newPageKey)
 })
 
-test('links legacy overflow sheets to the building root when adopting an old diagram', async () => {
+test('does not automatically adopt existing diagrams for an unlinked situation plan', async () => {
   const projectKey = 'project' as UUID
+  const newPageKey = 'new-wire' as UUID
   const project = {
     pages: {
       building: { creationTime: 1, name: 'Gebouw', pageType: 'groundplan',
@@ -122,15 +123,21 @@ test('links legacy overflow sheets to the building root when adopting an old dia
   } as Project
   let savedProject: Project | undefined
   const result = await ensureOneWirePage(projectKey, project, {
-    addPage: async () => { throw new Error('an existing root should be reused') },
+    addPage: async (_key, name, schema, pageType) => {
+      project.pages[newPageKey] = { creationTime: 4, name, schema, pageType }
+      return newPageKey
+    },
     getProjectData: async () => project,
     setProjectData: async (_key, updated) => { savedProject = updated }
   }, 'building')
 
-  assert.equal(result?.pageKey, 'root')
-  assert.equal(savedProject?.pages.building.linkedOneWirePageKey, 'root')
-  assert.equal(savedProject?.pages.overflow.oneWireOverflowOf, 'root')
-  assert.deepEqual(oneWireGenerationPageKeys(savedProject!, 'root'), ['root', 'overflow'])
+  assert.equal(result?.pageKey, newPageKey)
+  assert.equal(savedProject?.pages.building.linkedOneWirePageKey, newPageKey)
+  assert.equal(savedProject?.pages.overflow.oneWireOverflowOf, undefined)
+  assert.deepEqual(oneWireGenerationPageKeys(savedProject!, newPageKey), [newPageKey])
+  const explicitlyLinked = linkGroundPlanToOneWirePage(project, 'building', 'root')
+  assert.equal(explicitlyLinked.pages.overflow.oneWireOverflowOf, undefined)
+  assert.deepEqual(oneWireGenerationPageKeys(explicitlyLinked, 'root'), ['root'])
 })
 
 test('resolves explicit ground-plan and one-wire page links without changing legacy auto-link behavior', () => {
@@ -228,9 +235,8 @@ test('only removes obsolete automatic sheets whose complete content is represent
     custom: page('Eigen extra schema', [generated]),
     overflow: { ...page('Vervolg', [generated]), oneWireOverflowOf: 'stale' as UUID }
   } } as Project
-  const keys = oneWireGenerationPageKeys(project, 'root')
-  assert.ok(keys.includes('overflow'))
-  assert.ok(!keys.includes('custom'))
+  const keys = Object.keys(project.pages).filter((key) => key !== 'custom')
+  assert.deepEqual(oneWireGenerationPageKeys(project, 'root'), ['root'])
   assert.deepEqual(redundantOneWirePageKeys(project, keys, new Set(['root'])), ['stale', 'empty', 'overflow'])
   assert.deepEqual(redundantOneWirePageKeys(project, keys, new Set(['root', 'stale'])), ['empty', 'overflow'])
 })
@@ -317,7 +323,7 @@ test('moving an automatic continuation to another installation makes it a preser
   assert.deepEqual(oneWireGenerationPageKeys(moved, 'other'), ['other'])
 })
 
-test('legacy automatic continuations without explicit installation membership retain project-wide sources and settings', () => {
+test('generation only includes explicitly linked continuation sheets', () => {
   const project = { pages: {
     plan: { name: 'Groundplan', pageType: 'groundplan' },
     root: { name: 'One-wire diagram', pageType: 'onewire' },
@@ -327,5 +333,5 @@ test('legacy automatic continuations without explicit installation membership re
   assert.equal(electricalSettingsPageKey(project, 'root'), undefined)
   assert.equal(electricalSettingsPageKey(project, 'continuation'), undefined)
   assert.equal(explicitLinkedPageKey(project, 'continuation'), null)
-  assert.deepEqual(oneWireGenerationPageKeys(project, 'root'), ['root', 'legacy', 'continuation'])
+  assert.deepEqual(oneWireGenerationPageKeys(project, 'root'), ['root', 'continuation'])
 })

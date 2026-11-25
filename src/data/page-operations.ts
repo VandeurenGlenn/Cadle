@@ -66,11 +66,7 @@ export const explicitLinkedPageKey = (project: Project, pageKey: string): string
 
 export const oneWireGenerationPageKeys = (project: Project, rootKey: string): string[] => {
   rootKey = oneWireInstallationRootKey(project, rootKey) ?? rootKey
-  const isLinkedBuildingPage = linkedGroundplanPageKeys(project, rootKey).length > 0 ||
-    hasManualOneWireSheets(project, rootKey)
-  const legacyPages = isLinkedBuildingPage ? [] : Object.entries(project.pages).flatMap(([key, page]) =>
-    page.pageType === 'onewire' && !page.oneWireInstallationOf && /^One-wire diagram \d+$/.test(page.name) ? [key] : [])
-  const keys = new Set([rootKey, ...legacyPages])
+  const keys = new Set([rootKey])
   for (const key of keys) {
     for (const [childKey, page] of Object.entries(project.pages)) {
       if (page.pageType === 'onewire' && !page.oneWireInstallationOf && page.oneWireOverflowOf === key) keys.add(childKey)
@@ -107,15 +103,7 @@ const oneWirePageKey = (project: Project, groundPlanPageKey?: string): string | 
   if (!groundPlanPageKey) {
     return pages.find(([, page]) => page.pageType === 'onewire' && !page.oneWireOverflowOf && !page.oneWireInstallationOf)?.[0] ?? null
   }
-  const linkedPageKey = explicitLinkedPageKey(project, groundPlanPageKey)
-  if (linkedPageKey) return linkedPageKey
-  const claimedPageKeys = new Set(pages.flatMap(([key, page]) => {
-    const root = page.pageType === 'groundplan' ? oneWireInstallationRootKey(project, key) : null
-    return root ? [root] : []
-  }))
-  return pages.find(([key, page]) =>
-    page.pageType === 'onewire' && !page.oneWireOverflowOf && !page.oneWireInstallationOf && !claimedPageKeys.has(key)
-  )?.[0] ?? null
+  return oneWireInstallationRootKey(project, groundPlanPageKey)
 }
 
 export const linkGroundPlanToOneWirePage = (
@@ -149,22 +137,6 @@ export const linkGroundPlanToOneWirePage = (
       previousSettingsPages.find((page) => page?.oneWirePrompt)?.oneWirePrompt,
     oneWireTopology: oneWirePage.oneWireTopology ??
       previousSettingsPages.find((page) => page?.oneWireTopology)?.oneWireTopology
-  }
-  const rootName = pages[oneWirePageKey]?.name ?? ''
-  const rootNumber = /^One-wire diagram(?: (\d+))?$/.exec(rootName)
-  if (rootNumber) {
-    const rootIndex = Number(rootNumber[1] ?? 1)
-    const claimedPageKeys = new Set<string>(Object.entries(pages).flatMap(([key, page]) => {
-      const root = page.pageType === 'groundplan' ? oneWireInstallationRootKey({ ...project, pages }, key) : null
-      return root ? [root] : []
-    }))
-    for (const [key, page] of Object.entries(pages)) {
-      const legacyOverflow = /^One-wire diagram (\d+)$/.exec(page.name)
-      if (page.pageType === 'onewire' && !page.oneWireOverflowOf && !page.oneWireInstallationOf && !claimedPageKeys.has(key) &&
-        Number(legacyOverflow?.[1]) > rootIndex) {
-        pages[key] = { ...page, oneWireOverflowOf: oneWirePageKey as UUID }
-      }
-    }
   }
   return { ...project, pages }
 }

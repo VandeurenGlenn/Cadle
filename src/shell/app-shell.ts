@@ -163,9 +163,6 @@ export class AppShell extends LiteElement {
   @property({ type: String })
   accessor comparisonPageKey = ''
 
-  @property({ type: String, attribute: false })
-  accessor selectedBindingId = ''
-
   @property({ type: Boolean, attribute: false })
   accessor googleDriveAuthRequired = false
 
@@ -216,47 +213,12 @@ export class AppShell extends LiteElement {
   }
 
   get linkedPageKey(): string {
-    if (this.project) {
-      const explicitLink = explicitLinkedPageKey(this.project, this.currentPageKey)
-      if (explicitLink !== null) {
-        const candidates = this.currentPage?.pageType === 'groundplan'
-          ? installationOneWirePageKeys(this.project, this.currentPageKey)
-          : linkedGroundplanPageKeys(this.project, this.currentPageKey)
-        if (candidates.includes(this.comparisonPageKey)) return this.comparisonPageKey
-        if (this.selectedBindingId) {
-          const matching = candidates.find((key) => nativeStateForProjectPage(this.project!, key)?.shapes.some((shape) =>
-            shape.bindingId?.trim().toUpperCase() === this.selectedBindingId ||
-            shape.sourceLink?.id?.trim().toUpperCase() === this.selectedBindingId))
-          if (matching) return matching
-        }
-        return explicitLink
-      }
-    }
-    const currentType = this.currentPage?.pageType
-    const targetType = currentType === 'groundplan' ? 'onewire' : currentType === 'onewire' ? 'groundplan' : null
-    if (!targetType) return ''
-    if (targetType === 'onewire' && this.selectedBindingId && this.project) {
-      const matchingPage = this.projectPageEntries.find(([pageKey, page]) => {
-        if (page.pageType !== 'onewire') return false
-        const state = nativeStateForProjectPage(this.project!, pageKey as UUID)
-        return state?.shapes.some(
-          (shape) =>
-            shape.bindingId?.trim().toUpperCase() === this.selectedBindingId ||
-            shape.sourceLink?.id?.trim().toUpperCase() === this.selectedBindingId
-        )
-      })
-      if (matchingPage) return matchingPage[0]
-    }
-    if (targetType === 'onewire' && this.project) {
-      const circuitPage = this.projectPageEntries.find(([pageKey, page]) => {
-        if (page.pageType !== 'onewire') return false
-        return nativeStateForProjectPage(this.project!, pageKey as UUID)?.shapes.some((shape) =>
-          Boolean(shape.bindingId)
-        )
-      })
-      if (circuitPage) return circuitPage[0]
-    }
-    return this.projectPageEntries.find(([, page]) => page.pageType === targetType)?.[0] ?? ''
+    if (!this.project) return ''
+    const candidates = this.currentPage?.pageType === 'groundplan'
+      ? installationOneWirePageKeys(this.project, this.currentPageKey)
+      : this.currentPage?.pageType === 'onewire'
+        ? linkedGroundplanPageKeys(this.project, this.currentPageKey) : []
+    return candidates.includes(this.comparisonPageKey) ? this.comparisonPageKey : candidates[0] ?? ''
   }
 
   #buildingSettingsPageKey(): string | undefined {
@@ -575,7 +537,7 @@ export class AppShell extends LiteElement {
     const selectedKey = (event.currentTarget as HTMLSelectElement).value
     if (!this.projectKey || !this.project || !currentPageKey ||
       (currentPage?.pageType !== 'groundplan' && currentPage?.pageType !== 'onewire')) return
-    if (selectedKey && selectedKey !== 'auto' && this.project.pages[selectedKey]?.pageType !== 'onewire') return
+    if (selectedKey && this.project.pages[selectedKey]?.pageType !== 'onewire') return
 
     try {
       await this.savePage()
@@ -585,7 +547,6 @@ export class AppShell extends LiteElement {
       const updatedPage = { ...page }
       let updatedProject = project
       if (page.pageType === 'onewire') updatedProject = linkOneWirePageToInstallation(project, currentPageKey, selectedKey)
-      else if (selectedKey === 'auto') delete updatedPage.linkedOneWirePageKey
       else if (!selectedKey) updatedPage.linkedOneWirePageKey = null
       else updatedProject = linkGroundPlanToOneWirePage(project, currentPageKey, selectedKey)
       if (updatedProject === project) {
@@ -603,9 +564,7 @@ export class AppShell extends LiteElement {
       const select = event.currentTarget as HTMLSelectElement
       select.value = currentPage.pageType === 'onewire'
         ? oneWireInstallationRootKey(this.project!, currentPageKey) ?? currentPageKey
-        : currentPage.linkedOneWirePageKey === undefined
-        ? 'auto'
-        : currentPage.linkedOneWirePageKey ?? ''
+        : oneWireInstallationRootKey(this.project!, currentPageKey) ?? ''
     }
   }
 
@@ -664,16 +623,6 @@ export class AppShell extends LiteElement {
     this.#selectedObjectId = id
     if (count === 0) this.objectInspectorOpen = false
     else if (selectionChanged) this.objectInspectorOpen = true
-    const bindingId = payload.shape?.bindingId?.trim()
-    if (payload.pageKey !== this.loadedPage || !bindingId) return
-    this.selectedBindingId = bindingId.toUpperCase()
-    if (!this.splitViewOpen) return
-    requestAnimationFrame(async () => {
-      const linkedApp = this.shadowRoot?.querySelector('.linked-editor-pane cadle-app') as NativeAppElement | null
-      if (!linkedApp || !this.projectKey) return
-      await linkedApp.loadReadOnlyPage?.(this.projectKey, this.linkedPageKey)
-      linkedApp.focusBinding?.(bindingId)
-    })
   }
 
   @listen('keydown', { target: 'window' })
@@ -1818,7 +1767,6 @@ export class AppShell extends LiteElement {
     }
     this.splitViewOpen = false
     this.comparisonPageKey = ''
-    this.selectedBindingId = ''
     this.loadedPage = key
     if (this.projectKey) {
       localStorage.setItem(AppShell.LAST_OPEN_PROJECT_KEY_STORAGE, this.projectKey)
@@ -2139,8 +2087,6 @@ export class AppShell extends LiteElement {
       oneWirePageOptions.length > 0
     const oneWirePageLinkValue = this.currentPage?.pageType === 'onewire'
       ? oneWireInstallationRootKey(this.project!, this.currentPageKey) ?? this.currentPageKey
-      : this.currentPage?.linkedOneWirePageKey === undefined
-      ? 'auto'
       : oneWireInstallationRootKey(this.project!, this.currentPageKey) ?? ''
     const comparisonKeys = !this.project ? [] : this.currentPage?.pageType === 'groundplan'
       ? installationOneWirePageKeys(this.project, this.currentPageKey)
@@ -2345,7 +2291,6 @@ export class AppShell extends LiteElement {
                       .value=${oneWirePageLinkValue}
                       @change=${this.#onInstallationChange}>
                       ${this.currentPage?.pageType === 'groundplan' ? html`
-                        <option value="auto">Automatisch</option>
                         <option value="">Niet gekoppeld</option>` : ''}
                       ${installationOptions.map(([pageKey, page]) => {
                         const plans = linkedGroundplanPageKeys(this.project!, pageKey).length

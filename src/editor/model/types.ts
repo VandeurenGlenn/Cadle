@@ -134,6 +134,7 @@ export type SymbolShape = GeneratedShapeMetadata & {
   scale: number
   symbolTextOverrides?: Record<string, string>
   electrical?: ElectricalDeviceMetadata
+  oneWireConnectionAxis?: 'crosswise'
   rotation?: number
   fill?: string
   stroke?: string

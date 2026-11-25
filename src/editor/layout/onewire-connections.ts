@@ -65,7 +65,7 @@ export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnec
       }
     }))
   }
-  const ports = oneWireSymbolPortInfo(shape.path, shape.scale)
+  const ports = oneWireSymbolPortInfo(shape.path, shape.scale, shape.oneWireConnectionAxis)
   if (oneWireSymbolUsesExplicitPorts(shape.path) && ports) {
     return (Object.entries(ports) as Array<[ConnectionSide, Point]>).map(([side, offset]) => {
       const transformed = transform(offset)

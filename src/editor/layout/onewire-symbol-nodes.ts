@@ -48,6 +48,7 @@ type NodeSpec = {
   cutRadius: number | null
   // Exact ports for compound symbols whose contacts do not form one circle.
   connectionPorts?: Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>>
+  crosswiseConnectionPorts?: Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>>
   connectionPortsOnly?: boolean
   protectionBody?: { left: number; right: number }
   // Explicit one-wire scale for symbols without a standard node circle.
@@ -274,6 +275,10 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
       connectionPorts: {
         left: { x: 0.12, y: 4.37197 },
         right: { x: 19.9625, y: 4.37197 }
+      },
+      crosswiseConnectionPorts: {
+        top: { x: 10.04125, y: 0.12 },
+        bottom: { x: 10.04125, y: 8.62394 }
       },
       connectionPortsOnly: true,
       // The wide relay needs more width for its internal switching mark.
@@ -657,10 +662,11 @@ export const oneWireSymbolNodeInfo = (path: string, scale: number, rotation = 0,
 
 // Electrical terminal offsets used by generated vertical topology chains.
 // Unlike visual bounds, these points land on the actual SVG conductor ends.
-export const oneWireSymbolPortInfo = (path: string, scale: number): Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>> | null => {
+export const oneWireSymbolPortInfo = (path: string, scale: number, axis?: SymbolShape['oneWireConnectionAxis']): Partial<Record<'top' | 'bottom' | 'left' | 'right', Point>> | null => {
   const spec = findSpec(path)
-  if (!spec?.connectionPorts) return null
-  return Object.fromEntries(Object.entries(spec.connectionPorts).map(([side, point]) =>
+  const ports = axis === 'crosswise' ? spec?.crosswiseConnectionPorts : spec?.connectionPorts
+  if (!spec || !ports) return null
+  return Object.fromEntries(Object.entries(ports).map(([side, point]) =>
     [side, pointOffset(spec.viewBox, point, renderedSymbolScale(path, scale))]
   ))
 }

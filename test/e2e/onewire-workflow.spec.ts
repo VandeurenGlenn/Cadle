@@ -934,6 +934,19 @@ test('counts identical push buttons per point on generated and synchronized sche
     const buttons = shapes.filter((shape) => shape.kind === 'symbol' && shape.path === push)
     expect(buttons.map((shape) => shape.bindingId).sort()).toEqual(['A1', 'A2'])
     expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.path === illuminated)).toHaveLength(1)
+    const relays = shapes.filter((shape) => shape.kind === 'symbol' && /switches\/impulse relay\.svg$/i.test(shape.path))
+    expect(relays).toHaveLength(2)
+    for (const relay of relays) {
+      if (relay.kind !== 'symbol') throw new Error('Invalid relay')
+      expect(relay.rotation).toBe(90)
+      expect(relay.oneWireConnectionAxis).toBe('crosswise')
+      const bounds = oneWireLayoutBounds(relay)
+      expect(bounds.height).toBeGreaterThan(bounds.width)
+      for (const { point } of oneWireSymbolConnectionAnchors(relay)) {
+        expect(shapes.some((shape) => shape.kind === 'line' && shape.bindingId === relay.bindingId &&
+          [shape.start, shape.end].some((end) => Math.hypot(end.x - point.x, end.y - point.y) < 0.01))).toBe(true)
+      }
+    }
     const row = shapes.filter((shape) => shape.kind === 'symbol' && shape.bindingId === 'A1' &&
       (shape.sourceLink?.role === 'switch' || shape.sourceLink?.role === 'load'))
     const counts = shapes.filter((shape) => shape.kind === 'text' && shape.bindingId === 'A1' &&

@@ -118,6 +118,7 @@ type RowSymbolSpec = {
   scale: number
   node: ReturnType<typeof oneWireSymbolNodeInfo>
   rotation: number | undefined
+  connectionAxis?: SymbolShape['oneWireConnectionAxis']
   leftReach: number
   symbolRightReach: number
   rightReach: number
@@ -532,13 +533,14 @@ export const buildOneWireRowSection = (
     const fallback = deps.oneWireComponentSymbol(entry.kind)
     const component = { name: entry.sourceName ?? fallback.name, path: entry.sourcePath ?? fallback.path }
     const scale = deps.oneWireSymbolScale(component.path, entry.kind) * ONE_WIRE_ROW_COMPONENT_SCALE
-    const inlineRotation = oneWireSymbolRotationFor(component.path)
+    const connectionAxis = /switches\/impulse relay\.svg$/i.test(component.path) ? 'crosswise' : undefined
+    const inlineRotation = connectionAxis ? 90 : oneWireSymbolRotationFor(component.path)
     const isSocket = /socket|outlet|stopcontact/i.test(`${component.path} ${component.name}`)
-    const rotation = placeDirectlyOnTrunk && isSocket ? (inlineRotation ?? 0) - 90 : inlineRotation
+    const rotation = placeDirectlyOnTrunk && (isSocket || connectionAxis) ? (inlineRotation ?? 0) - 90 : inlineRotation
     const centerNode = oneWireSymbolNodeInfo(component.path, scale, rotation)
     const bottomPort = placeDirectlyOnTrunk ? oneWireSymbolConnectionAnchors({
       id: 'probe', kind: 'symbol', name: component.name, path: component.path,
-      scale, rotation, position: { x: 0, y: 0 }
+      scale, rotation, oneWireConnectionAxis: connectionAxis, position: { x: 0, y: 0 }
     }).find((anchor) => anchor.side === 'bottom')?.point : undefined
     const node = bottomPort ? { offset: bottomPort, cutHalfWidth: centerNode?.cutHalfWidth ?? null } : centerNode
     const probeSlotX = 0
@@ -568,6 +570,7 @@ export const buildOneWireRowSection = (
       scale,
       node,
       rotation,
+      connectionAxis,
       leftReach: probeSlotX - bounds.x,
       symbolRightReach,
       rightReach: symbolRightReach + (repeatCount > 1 && compactSingleCircuit ? 6 + PAPER_LABEL_FONT_SIZE * 1.2 : 0)
@@ -613,6 +616,7 @@ export const buildOneWireRowSection = (
     }
     symbol.generationKey = `device:${source?.sourceShapeId ?? `${bindingId}:${spec.kind}:${symbolIndex}`}`
     if (typeof spec.rotation === 'number') symbol.rotation = spec.rotation
+    if (spec.connectionAxis) symbol.oneWireConnectionAxis = spec.connectionAxis
     return symbol
   })
 

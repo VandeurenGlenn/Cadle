@@ -271,6 +271,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
       generationKey?: unknown
       sourceLink?: unknown
       oneWireRailId?: unknown
+      oneWireConnectionAxis?: unknown
       hidden?: unknown
       locked?: unknown
       heatingObstacle?: unknown
@@ -405,6 +406,7 @@ export const sanitizeShapes = (values: unknown[], context?: 'groundplan' | 'onew
             : 1
       }
       if (typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)) symbol.rotation = raw.rotation
+      if (raw.oneWireConnectionAxis === 'crosswise') symbol.oneWireConnectionAxis = 'crosswise'
       if (raw.flipX === true) symbol.flipX = true
       if (raw.flipY === true) symbol.flipY = true
       if (typeof raw.fill === 'string' && raw.fill) symbol.fill = raw.fill

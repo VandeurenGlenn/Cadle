@@ -735,7 +735,8 @@ test('places one impulse relay between push buttons and lighting loads', () => {
       shape.kind === 'symbol' && /impulse relay/i.test(shape.path)
   )
   assert.ok(impulse)
-  assert.equal(impulse.rotation, -90)
+  assert.equal(impulse.rotation, 0)
+  assert.equal(impulse.oneWireConnectionAxis, 'crosswise')
   const impulsePorts = oneWireSymbolConnectionAnchors(impulse)
   const rowWires = generated.shapes.filter(
     (shape): shape is Extract<Shape, { kind: 'line' }> =>
@@ -775,11 +776,32 @@ test('places one impulse relay between push buttons and lighting loads', () => {
       light
     ]
   })
+
   assert.ok(preserved)
   assert.equal(
     preserved.shapes.filter((shape) => shape.kind === 'symbol' && /impulse relay/i.test(shape.path)).length,
     1
   )
+})
+
+test('places a lone impulse relay crosswise on the circuit trunk', () => {
+  const generated = buildKamrailCircuitBundle({
+    rail: { id: 'rail', kind: 'line', start: { x: 80, y: 700 }, end: { x: 900, y: 700 } },
+    anchorX: 400, options: { amps: 16, family: 'A', autoIncludeFamily: true },
+    familyComponents: [{ bindingId: 'A1', kind: 'switch', sourceShapeId: 'relay',
+      sourcePath: 'symbols/Switches/Impulse relay.svg' }],
+    nextShapeId: idSequence(),
+    oneWireComponentSymbol: () => ({ name: 'Automaat', path: 'symbols/Protection devices/Automaat.svg' }),
+    oneWireSymbolScale: (path) => oneWireSymbolScaleFor(path)!,
+    symbolContentBounds: (shape) => oneWireSymbolBounds(shape)!, branchStroke: '#000000'
+  })!
+  const relay = generated.shapes.find((shape) => shape.kind === 'symbol' && shape.sourceLink?.id === 'relay')
+  assert.ok(relay?.kind === 'symbol')
+  assert.equal(relay.rotation, 0)
+  assert.equal(relay.oneWireConnectionAxis, 'crosswise')
+  const port = oneWireSymbolConnectionAnchors(relay).find((anchor) => anchor.side === 'bottom')!.point
+  assert.ok(generated.shapes.some((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'trunk' &&
+    [shape.start, shape.end].some((point) => Math.hypot(point.x - port.x, point.y - port.y) < 1e-8)))
 })
 
 test('turns a lone socket onto the vertical circuit trunk', () => {

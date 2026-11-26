@@ -256,6 +256,7 @@ export class SolarInstallationDialog extends LiteElement {
               this.error = ''
             }} /></label>`)}</div>
       <small>Bij wijzigen van het totaal of het aantal strings wordt een nieuwe verdeling voorgesteld. Pas daarna elk stringaantal aan.</small>
+      ${this.values.kind === 'installation' ? html`<small>Strings worden afzonderlijk schematisch aangesloten. Controleer zelf de beschikbare DC-ingangen en de aansluiting op de MPPT-trackers.</small>` : ''}
       <p>Verdeeld: ${this.stringPanels.reduce((sum, count) => sum + Number(count), 0)} / ${this.values.panelCount || '0'} panelen.
         Totaal DC: ${Number.isFinite(watts) && watts > 0 ? `${Number((watts / 1000).toFixed(3))} kWp` : '—'}</p>
         ${this.values.kind === 'panels' ? html`<small>Panelen worden los geplaatst, niet op een AC-kamrail. Verbind de DC-aansluiting met de gewenste omvormer via Verbinding.</small>` : ''}

@@ -26,7 +26,8 @@ export const buildSolarInstallation = (
     fontWeight: 400, groupId,
     ...(railId ? { oneWireRailId: railId } : {})
   })
-  const add = (path: string, name: string, description: string, quantity?: string) => {
+  const add = (path: string, name: string, description: string, quantity?: string,
+    separateStrings = false, skipOutgoing = false) => {
     const scale = name === 'Zonnepanelen' ? 2.4 : oneWireSymbolScaleFor(path) ?? 1.35
     let shape: SymbolShape = {
       id: nextId(), kind: 'symbol', path, name, scale, groupId, ...(railId ? { oneWireRailId: railId } : {}),
@@ -61,7 +62,7 @@ export const buildSolarInstallation = (
       for (const item of row) item.position.y += dy
       placed.connection.y += dy
     }
-    if (!disconnected) {
+    if (!disconnected && !separateStrings) {
       const solarCable = name === 'Omvormer' && solarBreakerId
       const cable: LineShape = {
         id: nextId(), kind: 'line', start: { ...connection }, end: placed.connection, groupId, oneWireRailId: railId,
@@ -88,24 +89,28 @@ export const buildSolarInstallation = (
     }
     shapes.push(...row)
     const outgoing = oneWireSymbolConnectionAnchors(shape).find((anchor) => anchor.side === direction)?.point
-    if (!outgoing) return
+    if (!outgoing) return shape
     const bounds = row.map(oneWireLayoutBounds)
     connection = { x: outgoing.x, y: direction === 'top'
       ? Math.min(outgoing.y, ...bounds.map((box) => box.y))
       : Math.max(outgoing.y, ...bounds.map((box) => box.y + box.height)) }
-    if (Math.abs(connection.y - outgoing.y) > 1e-8) shapes.push({
+    if (!skipOutgoing && Math.abs(connection.y - outgoing.y) > 1e-8) shapes.push({
       id: nextId(), kind: 'line', start: outgoing, end: { ...connection }, groupId, oneWireRailId: railId,
       strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH, connection: { kind: 'wire', showLabel: false },
       energyFlow: 'reverse', energySource: 'generator'
     })
+    if (skipOutgoing) connection = { ...outgoing }
+    return shape
   }
+  const separateStrings = installation.kind !== 'inverter' && installation.stringCount > 1
   if (installation.kind !== 'panels') {
     add('symbols/Protection devices/Automaat.svg', 'PV automaat', '')
     add('symbols/Photovoltaic devices (≠AREI)/Inverter.svg', 'Omvormer',
       [installation.inverterManufacturer, installation.inverterModel,
         `${installation.inverterPowerW / 1000} kW AC · ${installation.phases} fase(n)`,
         installation.maxDcVoltageV ? `Max DC ${installation.maxDcVoltageV} V` : '',
-        installation.mpptCount ? `${installation.mpptCount} MPPT` : ''].filter(Boolean).join('\n'))
+        installation.mpptCount ? `${installation.mpptCount} MPPT` : ''].filter(Boolean).join('\n'),
+      undefined, false, separateStrings)
   }
   if (installation.kind !== 'inverter') {
     const panel = installation.panel
@@ -114,10 +119,39 @@ export const buildSolarInstallation = (
     const strings = counts.every((count) => count === counts[0])
       ? `${installation.stringCount} string(s) van ${counts[0]} panelen`
       : counts.map((count, index) => `String ${index + 1}: ${count} panelen`).join('\n')
-    add('symbols/Photovoltaic devices (≠AREI)/Solar panel.svg', 'Zonnepanelen',
+    const firstPanel = add('symbols/Photovoltaic devices (≠AREI)/Solar panel.svg', 'Zonnepanelen',
       [panel.manufacturer, panel.model, strings,
         ...solarElectricalLines(panel)].filter(Boolean).join('\n'),
-      `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`)
+      `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`, separateStrings)
+    if (separateStrings && firstPanel) {
+      const inverter = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Omvormer')
+      const ports = inverter ? oneWireSymbolConnectionAnchors(inverter)
+        .filter((anchor) => anchor.side === direction).slice(1)
+        .sort((a, b) => b.point.x - a.point.x) : []
+      for (const [index, count] of counts.entries()) {
+        const symbol: SymbolShape = index === 0 ? firstPanel : {
+          ...firstPanel, id: nextId(), position: { x: firstPanel.position.x - index * 250, y: firstPanel.position.y }
+        }
+        if (index) shapes.push(symbol)
+        const bounds = oneWireLayoutBounds(symbol)
+        shapes.push({ ...text(`String ${index + 1}: ${count} panelen`, bounds.x + bounds.width / 2,
+          direction === 'top' ? bounds.y - 14 : bounds.y + bounds.height + 28),
+          textAnchor: 'end', sourceLink: { kind: 'device', id: symbol.id, role: 'solar-string-label' } })
+        if (!inverter) continue
+        const start = ports[index].point
+        const end = oneWireSymbolConnectionAnchors(symbol).find((anchor) =>
+          anchor.side === (direction === 'top' ? 'bottom' : 'top'))!.point
+        const bendY = start.y + (end.y - start.y) * 0.7 * (counts.length - index) / (counts.length + 1)
+        shapes.push({
+          id: nextId(), kind: 'line', start, end, groupId, oneWireRailId: railId,
+          strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+          connection: { kind: 'wire', showLabel: false, routing: 'orthogonal',
+            via: [{ x: start.x, y: bendY }, { x: end.x, y: bendY }] },
+          sourceLink: { kind: 'device', id: symbol.id, role: 'solar-string-connection' },
+          energyFlow: 'reverse', energySource: 'generator'
+        })
+      }
+    }
   }
   if (installation.kind !== 'panels' && installation.battery) {
     const inverter = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Omvormer')!
@@ -132,7 +166,9 @@ export const buildSolarInstallation = (
       electrical: { role: 'load', oneWireEligible: true, solar: installation }
     }
     const placed = positionOneWireSymbolForConnection(battery, inverterPort, 'left', undefined, 110)
-    placed.symbol.position.y += direction === 'top' ? -80 : 80
+    placed.symbol.position.y += separateStrings
+      ? direction === 'top' ? 100 : -100
+      : direction === 'top' ? -80 : 80
     const batteryPort = oneWireSymbolConnectionAnchors(placed.symbol).find((anchor) => anchor.side === 'right')!.point
     const bendX = batteryPort.x + 30
     shapes.push({
@@ -208,6 +244,7 @@ const solarTextAnchors = (shapes: readonly Shape[]) => {
   const result = new Map<string, { text: TextShape; anchor: Point }>()
   const symbols = new Map(shapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol')
     .map((shape) => [shape.id, shape]))
+  const panels = [...symbols.values()].filter((shape) => shape.name === 'Zonnepanelen')
   let precedingSymbol: SymbolShape | undefined
   for (const shape of shapes) {
     if (shape.kind === 'symbol') {
@@ -232,7 +269,8 @@ const solarTextAnchors = (shapes: readonly Shape[]) => {
       ? /^\s*\d+\s*x\s+[\d.]+\s+Wp\s*=/i.test(shape.text) ? 'solar-panel-quantity' : 'solar-panel-description'
       : symbol.name === 'Omvormer' ? 'solar-inverter-description'
         : symbol.name === 'Batterij' ? 'solar-battery-description' : undefined
-    const key = role === 'solar-panel-quantity' || role === 'solar-panel-description' ||
+    const key = role === 'solar-string-label' ? `${role}:${panels.indexOf(symbol)}`
+      : role === 'solar-panel-quantity' || role === 'solar-panel-description' ||
       role === 'solar-inverter-description' || role === 'solar-battery-description'
       ? role : !shape.sourceLink ? inferredRole : undefined
     if (key) result.set(key, { text: shape, anchor: symbol.position })

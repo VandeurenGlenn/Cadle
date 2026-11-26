@@ -11,6 +11,7 @@ import {
 import { paperTextBounds } from './paper-text-layout.js'
 import { protectionAnnotationBounds } from './protection-label-layout.js'
 import { connectionSegments } from '../model/electrical-connection.js'
+import { renderedSymbolScale } from '../model/symbol-scale.js'
 
 export type ConnectionSide = 'top' | 'bottom' | 'left' | 'right'
 export type SymbolConnectionAnchor = { side: ConnectionSide; point: Point }
@@ -58,13 +59,25 @@ export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnec
       : facing.y < 0 ? 'top' : 'bottom'
   }
   if (terminals) {
-    return (Object.entries(terminals) as Array<[ConnectionSide, Point]>).map(([side, offset]) => ({
+    const anchors = (Object.entries(terminals) as Array<[ConnectionSide, Point]>).map(([side, offset]) => ({
       side: transformedSide(directions[side]),
       point: {
         x: shape.position.x + transform(offset).x,
         y: shape.position.y + transform(offset).y
       }
     }))
+    const solar = shape.electrical?.solar
+    if (/\/inverter\.svg$/i.test(shape.path) && terminals.top && solar &&
+      solar.kind !== 'panels' && solar.kind !== 'inverter' && solar.stringCount > 1) {
+      const width = 24 * renderedSymbolScale(shape.path, shape.scale) * 0.8
+      for (let index = 0; index < solar.stringCount; index++) {
+        const offset = transform({ x: terminals.top.x + width * (0.5 - (index + 0.5) / solar.stringCount),
+          y: terminals.top.y })
+        anchors.push({ side: transformedSide(directions.top),
+          point: { x: shape.position.x + offset.x, y: shape.position.y + offset.y } })
+      }
+    }
+    return anchors
   }
   const ports = oneWireSymbolPortInfo(shape.path, shape.scale, shape.oneWireConnectionAxis)
   if (oneWireSymbolUsesExplicitPorts(shape.path) && ports) {

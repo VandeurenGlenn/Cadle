@@ -36,6 +36,13 @@ export type SolarInverter = {
   breakerCurrentA: number
   maxDcVoltageV?: number
   mpptCount?: number
+  battery?: SolarBattery
+}
+
+export type SolarBattery = {
+  manufacturer?: string
+  model?: string
+  capacityKWh?: number
 }
 
 export type SolarInstallation =
@@ -245,6 +252,8 @@ export const validateSolarInstallation = (value: SolarInstallation): string | nu
       (value.phases !== 1 && value.phases !== 3)) return 'Controleer het AC-vermogen, het aantal fasen en de automaatstroom.'
     if ((value.maxDcVoltageV !== undefined && (!Number.isFinite(value.maxDcVoltageV) || value.maxDcVoltageV <= 0)) ||
       (value.mpptCount !== undefined && (!Number.isInteger(value.mpptCount) || value.mpptCount < 1))) return 'Controleer de maximale DC-spanning en het aantal MPPT-trackers.'
+    if (value.battery?.capacityKWh !== undefined &&
+      (!Number.isFinite(value.battery.capacityKWh) || value.battery.capacityKWh <= 0)) return 'De batterijcapaciteit moet een positief getal zijn.'
   }
   return null
 }
@@ -270,10 +279,23 @@ export const sanitizeSolarInstallation = (input: unknown): SolarInstallation | u
   let inverter: SolarInverter | undefined
   if (raw.kind !== 'panels') {
     if (raw.phases !== 1 && raw.phases !== 3) return undefined
+    let battery: SolarBattery | undefined
+    if (raw.battery !== undefined) {
+      if (!raw.battery || typeof raw.battery !== 'object' || Array.isArray(raw.battery)) return undefined
+      const source = raw.battery as Record<string, unknown>
+      if ((source.manufacturer !== undefined && typeof source.manufacturer !== 'string') ||
+        (source.model !== undefined && typeof source.model !== 'string')) return undefined
+      battery = {
+        ...(text(source.manufacturer) ? { manufacturer: text(source.manufacturer) } : {}),
+        ...(text(source.model) ? { model: text(source.model) } : {}),
+        ...(source.capacityKWh !== undefined ? { capacityKWh: number(source.capacityKWh) } : {})
+      }
+    }
     inverter = { inverterManufacturer: text(raw.inverterManufacturer), inverterModel: text(raw.inverterModel),
       inverterPowerW: number(raw.inverterPowerW), phases: raw.phases, breakerCurrentA: number(raw.breakerCurrentA),
       ...(raw.maxDcVoltageV !== undefined ? { maxDcVoltageV: number(raw.maxDcVoltageV) } : {}),
-      ...(raw.mpptCount !== undefined ? { mpptCount: number(raw.mpptCount) } : {}) }
+      ...(raw.mpptCount !== undefined ? { mpptCount: number(raw.mpptCount) } : {}),
+      ...(battery ? { battery } : {}) }
   }
   const value: SolarInstallation = raw.kind === 'inverter' ? { ...inverter!, kind: 'inverter' }
     : raw.kind === 'panels' ? { ...panels!, kind: 'panels' }

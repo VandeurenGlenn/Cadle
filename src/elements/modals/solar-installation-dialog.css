@@ -20,6 +20,18 @@ legend {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.battery-option {
+  display: flex;
+  align-items: center;
+  gap: var(--cadle-space-2);
+}
+
+.battery-option input {
+  width: 20px;
+  min-height: 20px;
+  padding: 0;
+}
+
 textarea {
   width: 100%;
   box-sizing: border-box;

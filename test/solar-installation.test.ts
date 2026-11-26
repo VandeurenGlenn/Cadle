@@ -6,8 +6,9 @@ import { buildSolarInstallation, preserveSolarBreakerSettings, preserveSolarText
 import { expandSelectionWithGroup } from '../src/editor/interaction/pointer-select.ts'
 import { bindingLabelsMarkup } from '../src/editor/svg-templates.ts'
 import { oneWireLayoutBounds, oneWireSymbolConnectionAnchors } from '../src/editor/layout/onewire-connections.ts'
-import { sanitizeShapes, cloneShapes } from '../src/editor/model/model.ts'
-import type { LineShape, SymbolShape } from '../src/editor/model/types.ts'
+import { findConnectionIssues } from '../src/editor/layout/connection-issues.ts'
+import { sanitizeShapes, cloneShapes, shapeBounds } from '../src/editor/model/model.ts'
+import type { LineShape, SymbolShape, TextShape } from '../src/editor/model/types.ts'
 import { shouldOcrSolarDatasheetPage } from '../src/editor/solar-datasheet-import.ts'
 
 const datasheet = `SPECIFICATION (STC)
@@ -129,6 +130,64 @@ test('preserves independently moved PV labels from current and legacy installati
       assert.ok(Math.abs(current.position.y - (old.position.y + offsets[index].y)) < 1e-8)
     }
   }
+})
+
+test('stores an optional battery and connects it to a separate inverter port in either orientation', () => {
+  const withBattery: SolarInstallation = { ...installation,
+    battery: { manufacturer: 'Merk', model: 'B10', capacityKWh: 10 } }
+  assert.deepEqual(sanitizeSolarInstallation(withBattery), withBattery)
+  assert.equal(sanitizeSolarInstallation({ ...withBattery, battery: { capacityKWh: -1 } }), undefined)
+  assert.equal(sanitizeSolarInstallation({ ...withBattery, battery: 'invalid' }), undefined)
+  for (const direction of ['top', 'bottom'] as const) {
+    let id = 0
+    const shapes = buildSolarInstallation(withBattery, 'rail', { x: 700, y: 800 }, () => `battery-${++id}`, direction)
+    const inverter = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Omvormer')!
+    const battery = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Batterij')!
+    const wire = shapes.find((shape): shape is LineShape =>
+      shape.kind === 'line' && shape.sourceLink?.role === 'solar-battery-connection')!
+    assert.ok(inverter && battery && wire)
+    assert.deepEqual(wire.start, oneWireSymbolConnectionAnchors(inverter).find((anchor) => anchor.side === 'left')!.point)
+    assert.deepEqual(wire.end, oneWireSymbolConnectionAnchors(battery).find((anchor) => anchor.side === 'right')!.point)
+    assert.equal(wire.energyFlow, 'bidirectional')
+    assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.text === 'Batterij\nMerk\nB10\n10 kWh'))
+    const saved = sanitizeShapes(cloneShapes(shapes))
+    assert.deepEqual(saved.find((shape) => shape.id === battery.id && shape.kind === 'symbol')?.electrical?.solar, withBattery)
+    const savedInverter = saved.find((shape): shape is SymbolShape => shape.id === inverter.id && shape.kind === 'symbol')!
+    assert.equal(savedInverter.scale, inverter.scale)
+    assert.deepEqual(findConnectionIssues(saved).map((issue) => [issue.shapeId, issue.endpoint]),
+      [[shapes.find((shape) => shape.kind === 'line')!.id, 'start']])
+    const inverterPorts = oneWireSymbolConnectionAnchors(inverter)
+    const panelFeed = shapes.find((shape): shape is LineShape => shape.kind === 'line' && shape.groupId === inverter.groupId &&
+      shape.id !== wire.id && [shape.start, shape.end].some((point) =>
+        inverterPorts.some((anchor) => anchor.side === direction &&
+          Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y) < 1e-8)))
+    assert.ok(panelFeed)
+  }
+})
+
+test('preserves a moved battery description when editing the installation', () => {
+  const withBattery: SolarInstallation = { ...installation, battery: {} }
+  let id = 0
+  const original = buildSolarInstallation(withBattery, 'rail', { x: 300, y: 1200 }, () => `old-${++id}`)
+  const moved = original.map((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'solar-battery-description'
+    ? { ...shape, position: { x: shape.position.x - 50, y: shape.position.y + 30 } } : shape)
+  const oldText = moved.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'solar-battery-description')!
+  id = 0
+  const updated = preserveSolarTextPositions(
+    buildSolarInstallation({ ...withBattery, panelCount: 14 }, 'rail', { x: 300, y: 1200 }, () => `new-${++id}`), moved)
+  const newText = updated.find((shape) => shape.kind === 'text' && shape.sourceLink?.role === 'solar-battery-description')!
+  assert.deepEqual((newText as Extract<typeof newText, { kind: 'text' }>).position,
+    (oldText as Extract<typeof oldText, { kind: 'text' }>).position)
+})
+
+test('allows an inverter and battery without inventing panels', () => {
+  const value: SolarInstallation = { kind: 'inverter', inverterManufacturer: '', inverterModel: 'INV',
+    inverterPowerW: 5000, phases: 1, breakerCurrentA: 25, battery: {} }
+  assert.deepEqual(sanitizeSolarInstallation(value), value)
+  let id = 0
+  const shapes = buildSolarInstallation(value, 'rail', { x: 700, y: 800 }, () => `inverter-${++id}`)
+  assert.deepEqual(shapes.filter((shape) => shape.kind === 'symbol').map((shape) => shape.name),
+    ['PV automaat', 'Omvormer', 'Batterij'])
 })
 
 const inverterSheet = `SUN2000-12/15/17/20/25K-MB0
@@ -344,6 +403,35 @@ test('places the PV circuit label at the rail tap like other breaker labels', ()
     assert.doesNotMatch(bindingLabelsMarkup([rail, ...shapes]), /data-shape-id=/)
     assert.match(bindingLabelsMarkup(bound), />A<\/text>/)
   }
+})
+
+test('places a manual breaker label at its actual rail connection, including older ungrouped breakers', () => {
+  const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 100, y: 800 }, end: { x: 700, y: 800 },
+    strokeWidth: 4, groupId: 'onewire-kamrail-test' }
+  let id = 0
+  const shapes = buildSolarInstallation(installation, rail.id, { x: 300, y: 800 }, () => `pv-${++id}`)
+  const breaker = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'PV automaat')!
+  const feeder = shapes.find((shape): shape is LineShape => shape.kind === 'line' &&
+    shape.start.y === rail.start.y)!
+  for (const grouped of [true, false]) {
+    const manual: SymbolShape = { ...breaker, name: 'Automaat', bindingId: 'A',
+      groupId: grouped ? 'onewire-manual' : undefined, oneWireRailId: grouped ? rail.id : undefined }
+    const wire: LineShape = { ...feeder, groupId: grouped ? 'onewire-manual' : undefined,
+      oneWireRailId: grouped ? rail.id : undefined }
+    const reversedRail = { ...rail, start: rail.end, end: rail.start }
+    const markup = bindingLabelsMarkup([reversedRail, manual, wire])
+    assert.match(markup, /x="300" y="824"/)
+    assert.match(markup, /font-size:22px;font-weight:500/)
+    const bounds = shapeBounds(manual)
+    const moved = { ...manual, bindingLabelOffset: { x: 70, y: -30 } }
+    assert.match(bindingLabelsMarkup([rail, moved, wire]),
+      new RegExp(`x="${bounds.x + bounds.width / 2 + 70}" y="${bounds.y + bounds.height / 2 - 30}"`))
+    const heading: TextShape = { id: 'heading', kind: 'text', position: { x: 300, y: 824 }, text: 'A',
+      bindingId: 'A', sourceLink: { kind: 'circuit', id: 'A', role: 'label' } }
+    assert.doesNotMatch(bindingLabelsMarkup([rail, manual, wire, heading]), /data-shape-id=/)
+  }
+  const disconnected = { ...breaker, name: 'Automaat', bindingId: 'A', groupId: undefined, oneWireRailId: undefined }
+  assert.doesNotMatch(bindingLabelsMarkup([rail, disconnected]), /font-size:22px;font-weight:500/)
 })
 
 test('keeps readable annotations clear of every device above and below a kamrail', () => {

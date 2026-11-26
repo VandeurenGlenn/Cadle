@@ -198,7 +198,8 @@ const currentSymbolPath = (path: string, name: string): string => {
 }
 
 const migratedSymbolScale = (path: string, scale: number, groupId: unknown, context?: 'groundplan' | 'onewire'): number => {
-  if (context === 'onewire' || (typeof groupId === 'string' && groupId.startsWith('onewire-'))) return scale
+  if (context === 'onewire' || (typeof groupId === 'string' &&
+    (groupId.startsWith('onewire-') || groupId.startsWith('solar-installation-')))) return scale
   if (context === 'groundplan') {
     const revised = revisedGroundPlanDefaultScale(path, scale)
     if (revised !== null) return revised

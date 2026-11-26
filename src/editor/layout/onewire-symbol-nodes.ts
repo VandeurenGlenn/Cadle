@@ -40,6 +40,8 @@ export type OneWireNodeInfo = {
 export type OneWireTerminalInfo = {
   top?: Point
   bottom?: Point
+  left?: Point
+  right?: Point
 }
 
 type NodeSpec = {
@@ -513,11 +515,21 @@ const NODE_SPECS: Array<{ match: RegExp; spec: NodeSpec }> = [
 type TerminalSpec = {
   viewBox: { width: number; height: number }
   oneWireScale?: number
+  onlyWithBattery?: boolean
   top?: Point
   bottom?: Point
+  left?: Point
+  right?: Point
 }
 
 const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
+  {
+    match: /photovoltaic devices \(≠arei\)\/battery bank\.svg$/i,
+    spec: {
+      viewBox: { width: 120, height: 70 }, oneWireScale: 2, onlyWithBattery: true,
+      left: { x: 8, y: 36 }, right: { x: 112, y: 36 }
+    }
+  },
   {
     match: /consumption appliances\/kwh meter\.svg$/i,
     spec: {
@@ -548,7 +560,9 @@ const TERMINAL_SPECS: Array<{ match: RegExp; spec: TerminalSpec }> = [
     spec: {
       viewBox: { width: 17.7579, height: 17.2579 },
       top: { x: 8.87895, y: 0.125 },
-      bottom: { x: 8.87895, y: 17.1329 }
+      bottom: { x: 8.87895, y: 17.1329 },
+      left: { x: 0.375, y: 8.62895 },
+      right: { x: 17.385, y: 8.62895 }
     }
   },
   {
@@ -674,12 +688,14 @@ export const oneWireSymbolPortInfo = (path: string, scale: number, axis?: Symbol
 export const oneWireSymbolUsesExplicitPorts = (path: string): boolean =>
   findSpec(path)?.connectionPortsOnly === true
 
-export const oneWireSymbolTerminalInfo = (path: string, scale: number): OneWireTerminalInfo | null => {
+export const oneWireSymbolTerminalInfo = (path: string, scale: number, includeSidePorts = false): OneWireTerminalInfo | null => {
   const spec = TERMINAL_SPECS.find(({ match }) => match.test(path))?.spec
-  if (!spec) return null
+  if (!spec || (spec.onlyWithBattery && !includeSidePorts)) return null
   return {
     ...(spec.top ? { top: pointOffset(spec.viewBox, spec.top, renderedSymbolScale(path, scale)) } : {}),
-    ...(spec.bottom ? { bottom: pointOffset(spec.viewBox, spec.bottom, renderedSymbolScale(path, scale)) } : {})
+    ...(spec.bottom ? { bottom: pointOffset(spec.viewBox, spec.bottom, renderedSymbolScale(path, scale)) } : {}),
+    ...(includeSidePorts && spec.left ? { left: pointOffset(spec.viewBox, spec.left, renderedSymbolScale(path, scale)) } : {}),
+    ...(includeSidePorts && spec.right ? { right: pointOffset(spec.viewBox, spec.right, renderedSymbolScale(path, scale)) } : {})
   }
 }
 

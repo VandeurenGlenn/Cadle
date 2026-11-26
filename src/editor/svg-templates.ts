@@ -24,6 +24,9 @@ import { isRoomLabel } from './room-labels.js'
 import { DEFAULT_SYMBOL_STROKE_WIDTH, symbolStrokeWidthForViewBox } from '../preferences/symbol-stroke-width.js'
 import { isSocketSymbol, socketCopyOffsets, socketCount } from './socket-multiplicity.js'
 import { oneWireSocketConnector } from './layout/onewire-symbol-nodes.js'
+import { oneWireSymbolConnectionAnchors } from './layout/onewire-connections.js'
+import { isOneWireRailShape } from './layout/onewire-regeneration.js'
+import { isOneWireDistributionProtection } from './interaction/connected-conductors.js'
 import { DEFAULT_ROOF_FILL, DEFAULT_ROOF_STROKE, roofGeometry, roofPathData, roofPatternPathData } from './roof-geometry.js'
 import { isStairVariant } from './model/stair-geometry.js'
 import { stairShapeGeometry } from './model/stair-route.js'
@@ -574,12 +577,40 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
     shape.kind === 'text' && !shape.hidden && shape.sourceLink?.role === 'label' &&
     (shape.sourceLink.kind === 'board' || shape.sourceLink.kind === 'circuit')
       ? [normalizeBindingId(shape.bindingId)].filter((id): id is string => Boolean(id)) : []))
+  const railTapForBreaker = (shape: Shape): { rail: LineShape; x: number } | undefined => {
+    if (shape.kind !== 'symbol' || shape.hidden || !/automaat|breaker/i.test(`${shape.name} ${shape.path}`) ||
+      isOneWireDistributionProtection(shape)) return undefined
+    const rails = shapes.filter((candidate): candidate is LineShape =>
+      candidate.kind === 'line' && !candidate.hidden &&
+      (isOneWireRailShape(candidate) || candidate.id === shape.oneWireRailId) &&
+      Math.abs(candidate.start.y - candidate.end.y) < 0.01 &&
+      (!shape.oneWireRailId || candidate.id === shape.oneWireRailId))
+    const ports = oneWireSymbolConnectionAnchors(shape).map((anchor) => anchor.point)
+    for (const rail of rails) {
+      const onRail = (point: Point) =>
+        Math.abs(point.y - rail.start.y) <= Math.max(4, (rail.strokeWidth ?? 4) / 2 + 1) &&
+        point.x >= Math.min(rail.start.x, rail.end.x) - 1 &&
+        point.x <= Math.max(rail.start.x, rail.end.x) + 1
+      const direct = ports.find(onRail)
+      if (direct) return { rail, x: direct.x }
+      for (const wire of shapes) {
+        if (wire.kind !== 'line' || wire.hidden || wire.id === rail.id) continue
+        const ends = [wire.start, wire.end]
+        if (!ends.some((point) => ports.some((port) => Math.hypot(point.x - port.x, point.y - port.y) < 0.01))) continue
+        const tap = ends.find(onRail)
+        if (tap) return { rail, x: tap.x }
+      }
+    }
+    return undefined
+  }
   const labeledShapes = new Map<string, Shape[]>()
   for (const shape of shapes) {
     const bindingId = 'bindingId' in shape ? normalizeBindingId(shape.bindingId) : undefined
     if (!bindingId) continue
-    // One-wire circuits render their own text labels — skip them here.
-    if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-')) continue
+    // Generated circuits render their own text labels. A manually placed
+    // breaker may instead only have a binding on the symbol itself.
+    if (typeof shape.groupId === 'string' && shape.groupId.startsWith('onewire-') &&
+      (shape.generationKey || !railTapForBreaker(shape))) continue
     const solarBreaker = shape.kind === 'symbol' && shape.name === 'PV automaat' &&
       shape.groupId?.startsWith('solar-installation-')
     if (circuitHeadings.has(bindingId) && !solarBreaker) continue
@@ -616,24 +647,13 @@ const resolveBindingLabelPlacements = (shapes: Shape[]) => {
           'bindingLabelOffset' in shape && Boolean(shape.bindingLabelOffset)
       )?.bindingLabelOffset ?? null
 
-    if (anchorShape.kind === 'symbol' && anchorShape.name === 'PV automaat' &&
-      anchorShape.groupId?.startsWith('solar-installation-') && anchorShape.oneWireRailId) {
-      const rail = shapes.find((shape): shape is LineShape =>
-        shape.kind === 'line' && shape.id === anchorShape.oneWireRailId && !shape.hidden &&
-        Math.abs(shape.start.y - shape.end.y) < 0.01)
-      const tap = rail && shapes.flatMap((shape) => {
-        if (shape.kind !== 'line' || shape.hidden || shape.groupId !== anchorShape.groupId ||
-          shape.oneWireRailId !== rail.id || shape.connection?.kind !== 'wire') return []
-        return [shape.start, shape.end].filter((point) =>
-          Math.abs(point.y - rail.start.y) <= Math.max(4, (rail.strokeWidth ?? 4) / 2 + 1) &&
-          point.x >= Math.min(rail.start.x, rail.end.x) - 1 &&
-          point.x <= Math.max(rail.start.x, rail.end.x) + 1)
-      })[0]
-      if (rail && tap) {
+    if (anchorShape.kind === 'symbol') {
+      const tap = railTapForBreaker(anchorShape)
+      if (tap) {
         const bounds = shapeBounds(anchorShape)
         const x = manualOffset ? bounds.x + bounds.width / 2 + manualOffset.x : tap.x
         const y = manualOffset ? bounds.y + bounds.height / 2 + manualOffset.y
-          : rail.start.y + (anchorShape.position.y < rail.start.y ? 24 : -12)
+          : tap.rail.start.y + (anchorShape.position.y < tap.rail.start.y ? 24 : -12)
         placements.push({ shapeId: anchorShape.id, bindingId, x, y, oneWire: true })
         continue
       }

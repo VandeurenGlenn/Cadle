@@ -7,6 +7,7 @@ import type { Shape } from '../../src/editor/model/types.ts'
 import { nativeStateForProjectPage } from '../../src/data/project-document.ts'
 import { ONE_WIRE_LAYOUT_VERSION } from '../../src/editor/layout/onewire-layout-plan.ts'
 import { oneWireSymbolConnectionAnchors } from '../../src/editor/layout/onewire-connections.ts'
+import { findConnectionIssues } from '../../src/editor/layout/connection-issues.ts'
 import { buildSolarInstallation } from '../../src/editor/layout/solar-installation-layout.ts'
 import { jsPDF } from 'jspdf'
 
@@ -118,7 +119,7 @@ test('places a catalog PV breaker connected to the nearest kamrail', async ({ pa
     id: 'pv-manual-test-rail', kind: 'line', start: { x: 500, y: 900 }, end: { x: 1500, y: 900 },
     stroke: '#000000', strokeWidth: 4, groupId: 'onewire-kamrail-pv-manual-test'
   }
-  const { app, stored } = await openProject(page, [rail])
+  const { app, stored, pageKey } = await openProject(page, [rail])
   await page.getByRole('button', { name: 'Add symbol', exact: true }).click()
   const picker = page.locator('symbol-picker-dialog')
   const search = picker.locator('catalog-element search-element input')
@@ -148,6 +149,27 @@ test('places a catalog PV breaker connected to the nearest kamrail', async ({ pa
   expect(connector.end).toEqual(terminal)
   expect(Math.abs(connector.start.x - 1000)).toBeLessThan(3)
   expect(connector.start.y).toBeCloseTo(898, 5)
+  const binding = page.locator('object-pane input.native-binding-input')
+  await binding.fill('A')
+  await binding.press('Enter')
+  const label = app.locator(`.binding-label[data-shape-id="${breaker.id}"] text`)
+  await expect(label).toHaveText('A')
+  await expect(label).toHaveAttribute('x', String(connector.start.x))
+  await expect(label).toHaveAttribute('y', '924')
+  await expect(label).toHaveAttribute('style', /font-size:22px;font-weight:500/)
+  const exportedLabel = await app.evaluate((element, id) => {
+    const svg = new DOMParser().parseFromString((element as CadleApp).toSVG(), 'image/svg+xml')
+    const text = svg.querySelector(`.binding-label[data-shape-id="${id}"] text`)
+    return { x: text?.getAttribute('x'), y: text?.getAttribute('y'), text: text?.textContent }
+  }, breaker.id)
+  expect(exportedLabel).toEqual({ x: String(connector.start.x), y: '924', text: 'A' })
+  await stored()
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  await expect(label).toHaveText('A')
+  await expect(label).toHaveAttribute('x', String(connector.start.x))
+  await expect(label).toHaveAttribute('y', '924')
 })
 
 test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23 panels', async ({ page }, testInfo) => {
@@ -249,6 +271,56 @@ test('cancels PV placement mode with Escape', async ({ page }) => {
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })).toHaveAttribute('aria-pressed', 'false')
   expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(0)
+})
+
+test('adds, edits and removes an optional DC battery on an existing PV installation', async ({ page }) => {
+  const { app, stored, pageKey } = await openProject(page, [])
+  const trigger = page.getByRole('button', { name: 'Omvormer en zonnepanelen', exact: true })
+  const dialog = page.locator('solar-installation-dialog')
+  await trigger.click()
+  await dialog.getByLabel('Paneelmodel', { exact: true }).fill('P470')
+  await dialog.getByLabel('Paneelvermogen STC (Wp)', { exact: true }).fill('470')
+  await dialog.getByLabel('Omvormermodel', { exact: true }).fill('INV-5000')
+  await dialog.getByLabel('Nominaal AC-vermogen omvormer (W)', { exact: true }).fill('5000')
+  await dialog.getByLabel('PV-automaat (A)', { exact: true }).fill('25')
+  await dialog.getByRole('button', { name: 'Plaats PV-installatie', exact: true }).click()
+  await clickPlacementPoint(page)
+  expect((await stored()).some((shape) => shape.kind === 'symbol' && shape.name === 'Batterij')).toBe(false)
+
+  await trigger.click()
+  await dialog.getByLabel('Batterij toevoegen', { exact: true }).check()
+  await dialog.getByLabel('Merk batterij', { exact: true }).fill('Testmerk')
+  await dialog.getByLabel('Batterijmodel', { exact: true }).fill('B10')
+  await dialog.getByLabel('Batterijcapaciteit (kWh)', { exact: true }).fill('10')
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  const shapes = await stored()
+  const battery = shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'Batterij')
+  expect(battery).toMatchObject({ electrical: { solar: { battery: { manufacturer: 'Testmerk', model: 'B10', capacityKWh: 10 } } } })
+  expect(shapes.find((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-battery-connection'))
+    .toMatchObject({ energyFlow: 'bidirectional' })
+  expect(findConnectionIssues(shapes)).toEqual([])
+  expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('10 kWh')
+
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  const reloaded = await stored()
+  expect(reloaded.find((shape) => shape.id === battery!.id)).toMatchObject(battery!)
+  expect(findConnectionIssues(reloaded)).toEqual([])
+  const point = await app.locator(`g.shape-symbol[data-shape-id="${battery!.id}"] path`).first().evaluate((path: SVGPathElement) => {
+    const point = path.getPointAtLength(4).matrixTransform(path.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+  await page.mouse.click(point.x, point.y)
+  await trigger.click()
+  await expect(dialog.getByLabel('Batterij toevoegen', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Batterijmodel', { exact: true })).toHaveValue('B10')
+  await dialog.getByLabel('Batterij toevoegen', { exact: true }).uncheck()
+  await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
+  const removed = await stored()
+  expect(removed.some((shape) => shape.kind === 'symbol' && shape.name === 'Batterij')).toBe(false)
+  expect(removed.some((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-battery-connection')).toBe(false)
+  expect(removed.some((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toBe(true)
 })
 
 test('edits the PV breaker circuit and cable like a normal breaker and keeps them after PV edits and reload', async ({ page }) => {

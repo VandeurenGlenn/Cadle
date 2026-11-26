@@ -37,7 +37,12 @@ export class SolarInstallationDialog extends LiteElement {
     const previous = request.installation
     this.values = { railId: request.rails.some((rail) => rail.id === request.railId) ? request.railId! : request.rails[0]?.id ?? '',
       panelCount: '1', stringCount: '1', phases: '1', kind: previous?.kind ?? 'installation',
-      ...(previous ? Object.fromEntries(Object.entries(previous).filter(([key]) => key !== 'panel' && key !== 'kind' && key !== 'panelsPerString').map(([key, value]) => [key, String(value)])) : {}),
+      ...(previous ? Object.fromEntries(Object.entries(previous).filter(([key]) => !['panel', 'kind', 'panelsPerString', 'battery'].includes(key)).map(([key, value]) => [key, String(value)])) : {}),
+      ...(previous && previous.kind !== 'panels' && previous.battery ? {
+        batteryEnabled: 'true', batteryManufacturer: previous.battery.manufacturer ?? '',
+        batteryModel: previous.battery.model ?? '',
+        batteryCapacityKWh: previous.battery.capacityKWh === undefined ? '' : String(previous.battery.capacityKWh)
+      } : {}),
       ...(previous && previous.kind !== 'inverter' ? Object.fromEntries(Object.entries(previous.panel).map(([key, value]) => [key, String(value)])) : {}) }
     this.stringPanels = previous && previous.kind !== 'inverter' ? solarStringPanelCounts(previous).map(String) : ['1']
     this.panels = []
@@ -158,7 +163,12 @@ export class SolarInstallationDialog extends LiteElement {
       inverterPowerW: Number(values.inverterPowerW), phases: values.phases === '3' ? 3 : 1,
       breakerCurrentA: Number(values.breakerCurrentA),
       ...(values.maxDcVoltageV?.trim() ? { maxDcVoltageV: Number(values.maxDcVoltageV) } : {}),
-      ...(values.mpptCount?.trim() ? { mpptCount: Number(values.mpptCount) } : {})
+      ...(values.mpptCount?.trim() ? { mpptCount: Number(values.mpptCount) } : {}),
+      ...(values.batteryEnabled === 'true' ? { battery: {
+        ...(values.batteryManufacturer?.trim() ? { manufacturer: values.batteryManufacturer.trim() } : {}),
+        ...(values.batteryModel?.trim() ? { model: values.batteryModel.trim() } : {}),
+        ...(values.batteryCapacityKWh?.trim() ? { capacityKWh: Number(values.batteryCapacityKWh.replace(',', '.')) } : {})
+      } } : {})
     }
     const installation: SolarInstallation = kind === 'panels' ? { ...panels, kind }
       : kind === 'inverter' ? { ...inverter, kind } : { ...panels, ...inverter }
@@ -276,7 +286,15 @@ export class SolarInstallationDialog extends LiteElement {
           @change=${(event: Event) => { this.values = { ...this.values, railId: (event.target as HTMLSelectElement).value } }}>
           ${this.#request.rails.length ? this.#request.rails.map((rail) => html`<option value=${rail.id} .selected=${this.values.railId === rail.id}>${rail.label}</option>`)
             : html`<option value="">Nieuwe kamrail</option>`}</select></label>
-      </div><small>Controleer de beveiliging, kabels, DC-schakeling en omvormercompatibiliteit zelf; dit is geen dimensioneringscontrole.</small></fieldset>` : ''}
+      </div>
+      <label class="battery-option"><input type="checkbox" aria-label="Batterij toevoegen" .checked=${this.values.batteryEnabled === 'true'}
+        @change=${(event: Event) => { this.values = { ...this.values, batteryEnabled: (event.target as HTMLInputElement).checked ? 'true' : 'false' } }}> Batterij toevoegen</label>
+      ${this.values.batteryEnabled === 'true' ? html`<div class="fields">
+        ${this.#field('batteryManufacturer', 'Merk batterij')}
+        ${this.#field('batteryModel', 'Batterijmodel')}
+        ${this.#field('batteryCapacityKWh', 'Batterijcapaciteit (kWh)', true)}
+      </div><small>De batterij wordt schematisch op een afzonderlijke DC-batterijaansluiting van de omvormer getekend, niet in serie met de panelen. Controleer of de omvormer en batterij compatibel zijn en welke beveiliging en bedrading nodig zijn.</small>` : ''}
+      <small>Controleer de beveiliging, kabels, DC-schakeling en omvormercompatibiliteit zelf; dit is geen dimensioneringscontrole.</small></fieldset>` : ''}
       ${this.status ? html`<p role="status">${this.status}</p>` : ''}
       ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : ''}
       <footer class="actions">

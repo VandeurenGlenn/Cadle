@@ -33,7 +33,8 @@ export const oneWireLayoutBounds = (shape: Shape) => {
 }
 
 export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnectionAnchor[] => {
-  const terminals = oneWireSymbolTerminalInfo(shape.path, shape.scale)
+  const terminals = oneWireSymbolTerminalInfo(shape.path, shape.scale, Boolean(shape.electrical?.solar &&
+    shape.electrical.solar.kind !== 'panels' && shape.electrical.solar.battery))
   const node = oneWireSymbolNodeInfo(shape.path, shape.scale)
   if (!terminals && !node) {
     const bounds = symbolContentBounds(shape)
@@ -57,7 +58,7 @@ export const oneWireSymbolConnectionAnchors = (shape: SymbolShape): SymbolConnec
       : facing.y < 0 ? 'top' : 'bottom'
   }
   if (terminals) {
-    return (Object.entries(terminals) as Array<['top' | 'bottom', Point]>).map(([side, offset]) => ({
+    return (Object.entries(terminals) as Array<[ConnectionSide, Point]>).map(([side, offset]) => ({
       side: transformedSide(directions[side]),
       point: {
         x: shape.position.x + transform(offset).x,

@@ -119,6 +119,36 @@ export const buildSolarInstallation = (
         ...solarElectricalLines(panel)].filter(Boolean).join('\n'),
       `${installation.panelCount} x ${panel.powerWp} Wp = ${Number(total.toFixed(3))} kWp`)
   }
+  if (installation.kind !== 'panels' && installation.battery) {
+    const inverter = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Omvormer')!
+    const inverterPort = oneWireSymbolConnectionAnchors(inverter).find((anchor) => anchor.side === 'left')!.point
+    const path = 'symbols/Photovoltaic devices (≠AREI)/Battery bank.svg'
+    const scale = oneWireSymbolScaleFor(path)!
+    const battery: SymbolShape = {
+      id: nextId(), kind: 'symbol', path, name: 'Batterij', scale, groupId,
+      ...(railId ? { oneWireRailId: railId } : {}),
+      strokeWidth: oneWireSymbolStrokeWidthFor(path, scale),
+      position: { x: 0, y: 0 },
+      electrical: { role: 'load', oneWireEligible: true, solar: installation }
+    }
+    const placed = positionOneWireSymbolForConnection(battery, inverterPort, 'left', undefined, 110)
+    placed.symbol.position.y += direction === 'top' ? -80 : 80
+    const batteryPort = oneWireSymbolConnectionAnchors(placed.symbol).find((anchor) => anchor.side === 'right')!.point
+    const bendX = batteryPort.x + 30
+    shapes.push({
+      id: nextId(), kind: 'line', start: inverterPort, end: batteryPort, groupId, oneWireRailId: railId,
+      strokeWidth: ONE_WIRE_CONDUCTOR_STROKE_WIDTH,
+      connection: { kind: 'wire', showLabel: false, routing: 'orthogonal',
+        via: [{ x: bendX, y: inverterPort.y }, { x: bendX, y: batteryPort.y }] },
+      sourceLink: { kind: 'device', id: inverter.id, role: 'solar-battery-connection' },
+      energyFlow: 'bidirectional', energySource: 'mixed'
+    }, placed.symbol)
+    const bounds = oneWireLayoutBounds(placed.symbol)
+    const description = ['Batterij', installation.battery.manufacturer, installation.battery.model,
+      installation.battery.capacityKWh !== undefined ? `${installation.battery.capacityKWh} kWh` : ''].filter(Boolean).join('\n')
+    shapes.push({ ...text(description, bounds.x - 24, bounds.y + 20), textAnchor: 'end',
+      sourceLink: { kind: 'device', id: placed.symbol.id, role: 'solar-battery-description' } })
+  }
   const solarBreaker = shapes.find((shape): shape is SymbolShape =>
     shape.kind === 'symbol' && shape.name === 'PV automaat')
   return solarBreaker ? updateSolarInstallationCable(shapes, solarBreaker) : shapes
@@ -200,9 +230,11 @@ const solarTextAnchors = (shapes: readonly Shape[]) => {
     if (!symbol) continue
     const inferredRole = symbol.name === 'Zonnepanelen'
       ? /^\s*\d+\s*x\s+[\d.]+\s+Wp\s*=/i.test(shape.text) ? 'solar-panel-quantity' : 'solar-panel-description'
-      : symbol.name === 'Omvormer' ? 'solar-inverter-description' : undefined
+      : symbol.name === 'Omvormer' ? 'solar-inverter-description'
+        : symbol.name === 'Batterij' ? 'solar-battery-description' : undefined
     const key = role === 'solar-panel-quantity' || role === 'solar-panel-description' ||
-      role === 'solar-inverter-description' ? role : !shape.sourceLink ? inferredRole : undefined
+      role === 'solar-inverter-description' || role === 'solar-battery-description'
+      ? role : !shape.sourceLink ? inferredRole : undefined
     if (key) result.set(key, { text: shape, anchor: symbol.position })
   }
   return result

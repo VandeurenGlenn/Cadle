@@ -71,6 +71,27 @@ const clickRail = async (page: Page, railId: string) => {
 const expectPvPlacementMode = (page: Page) =>
   expect(page.getByRole('button', { name: 'PV-installatie plaatsen', exact: true })).toHaveAttribute('aria-pressed', 'true')
 
+test('does not automatically rearrange an older installation with multiple strings', async ({ page }) => {
+  const rail: Shape = { id: 'rail', kind: 'line', start: { x: 300, y: 1200 }, end: { x: 1700, y: 1200 },
+    groupId: 'onewire-kamrail-test', strokeWidth: 4 }
+  const installation = { panel: { manufacturer: 'Test', model: 'P470', powerWp: 470 },
+    panelCount: 12, stringCount: 2, inverterManufacturer: 'Test', inverterModel: 'INV',
+    inverterPowerW: 5000, phases: 1 as const, breakerCurrentA: 25 }
+  let sequence = 0
+  const legacy = buildSolarInstallation({ ...installation, stringCount: 1 }, rail.id, { x: 700, y: 1200 },
+    () => `legacy-${++sequence}`).map((shape): Shape =>
+    shape.kind === 'symbol' && shape.electrical
+      ? { ...shape, electrical: { ...shape.electrical, solar: installation } } : shape)
+  const { app, stored, pageKey } = await openProject(page, [rail, ...legacy])
+  const before = await stored()
+  expect(before.filter((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toHaveLength(1)
+  expect(before.some((shape) => shape.sourceLink?.role === 'solar-string-connection')).toBe(false)
+  await page.reload()
+  await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
+  await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  expect(await stored()).toEqual(before)
+})
+
 test('moves PV descriptions independently and keeps their position after editing and reloading', async ({ page }) => {
   const rail: Shape = { id: 'rail', kind: 'line', start: { x: 300, y: 1200 }, end: { x: 1700, y: 1200 },
     groupId: 'onewire-kamrail-test', strokeWidth: 4 }
@@ -234,7 +255,11 @@ test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23
   await expectPvPlacementMode(page)
   await clickPlacementPoint(page)
   const shapes = await stored()
-  expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect(shapes.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(4)
+  const stringWires = shapes.filter((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-string-connection')
+  expect(stringWires).toHaveLength(2)
+  expect(new Set(stringWires.map((shape) => shape.kind === 'line' && `${shape.start.x},${shape.start.y}`)).size).toBe(2)
+  expect(findConnectionIssues(shapes)).toEqual([])
   expect(shapes.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toMatchObject({
     electrical: { solar: { panelCount: 23, stringCount: 2, panelsPerString: [11, 12] } }
   })
@@ -242,18 +267,28 @@ test('reads panel and inverter PDFs and preserves an editable 11/12 split for 23
   expect(svg).toContain('String 1: 11 panelen')
   expect(svg).toContain('String 2: 12 panelen')
   expect(svg).not.toContain('11.5 panelen')
+  await app.screenshot({ path: testInfo.outputPath('separate-strings.png') })
   await page.reload()
   await page.locator('projects-field custom-list-item[data-name="PV-installatie"]').click()
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
+  expect((await stored()).filter((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-string-connection')).toHaveLength(2)
+  expect(findConnectionIssues(await stored())).toEqual([])
   await app.locator('text.shape-text').filter({ hasText: '23 x 470 Wp = 10.81 kWp' }).click()
   await trigger.click()
   await expect(firstString).toHaveValue('11')
   await expect(secondString).toHaveValue('12')
+  await dialog.getByLabel('Batterij toevoegen', { exact: true }).check()
+  await dialog.getByLabel('Batterijmodel', { exact: true }).fill('B10')
   await secondString.fill('13')
   await firstString.fill('10')
   await dialog.getByRole('button', { name: 'Installatie bijwerken', exact: true }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 13 panelen')
+  const editedShapes = await stored()
+  expect(editedShapes.filter((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-string-connection')).toHaveLength(2)
+  expect(editedShapes.some((shape) => shape.kind === 'line' && shape.sourceLink?.role === 'solar-battery-connection')).toBe(true)
+  expect(findConnectionIssues(editedShapes)).toEqual([])
+  await app.screenshot({ path: testInfo.outputPath('separate-strings-and-battery.png') })
   await app.evaluate((element) => (element as CadleApp).undo())
   expect(await app.evaluate((element) => (element as CadleApp).toSVG())).toContain('String 2: 12 panelen')
 })
@@ -494,7 +529,7 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp = 5.64 kWp' })).toHaveCount(1)
   const added = await stored()
   expect(added.filter((shape) => initial.some((before) => before.id === shape.id))).toEqual(initial)
-  expect(added.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect(added.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(4)
   const inverter = added.find((shape) => shape.kind === 'symbol' && shape.name === 'PV automaat')
   const feeder = added.find((shape) => shape.kind === 'line' && shape.groupId === inverter?.groupId &&
     shape.oneWireRailId === 'rail' && Math.abs(shape.start.y - placementPoint.y) < 0.01)
@@ -509,7 +544,7 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await dialog.getByRole('button', { name: 'Installatie bijwerken' }).click()
   await expect(dialog).not.toHaveAttribute('data-open')
   await expect(app.locator('text.shape-text').filter({ hasText: '18 x 470 Wp = 8.46 kWp' })).toHaveCount(1)
-  expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(5)
   await app.evaluate((element) => (element as CadleApp).undo())
   await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp = 5.64 kWp' })).toHaveCount(1)
   await app.evaluate((element) => (element as CadleApp).redo())
@@ -525,7 +560,7 @@ Rated Peak Power-Pmax(Wp)* 499.00 521.00`)
   await expect(dialog.getByLabel('Paneelmodel', { exact: true })).toHaveValue('ODA470-24V-MHDBRz')
   await dialog.getByRole('button', { name: 'Annuleren' }).press('Delete')
   await dialog.getByRole('button', { name: 'Annuleren' }).click()
-  expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect((await stored()).filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(5)
 })
 
 test('creates a kamrail on an empty schematic and shows image-import failures explicitly', async ({ page }) => {
@@ -615,6 +650,15 @@ Short Circuit Current-Isc(A) 16.90`)
   expect(panels.find((shape) => shape.kind === 'symbol')).toMatchObject({
     electrical: { solar: { kind: 'panels', panel: { manufacturer: 'OSDA', powerWp: 470 }, panelCount: 12 } }
   })
+  const firstPanel = panels.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')
+  const secondPanel = panels.filter((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')[1]
+  if (!firstPanel || firstPanel.kind !== 'symbol' || !secondPanel) throw new Error('The separate strings were not placed.')
+  const secondPoint = await app.locator(`g.shape-symbol[data-shape-id="${secondPanel.id}"] path`).first()
+    .evaluate((path: SVGPathElement) => {
+      const point = path.getPointAtLength(4).matrixTransform(path.getScreenCTM()!)
+      return { x: point.x, y: point.y }
+    })
+  await page.mouse.click(secondPoint.x, secondPoint.y)
   await trigger.click()
   await expect(dialog.getByLabel('Merk panelen', { exact: true })).toHaveValue('OSDA')
   await dialog.getByLabel('Aantal panelen', { exact: true }).fill('18')
@@ -623,6 +667,9 @@ Short Circuit Current-Isc(A) 16.90`)
   await expect(dialog).not.toHaveAttribute('data-open')
   const updated = await stored()
   expect(updated.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
+  expect(updated.find((shape) => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')).toMatchObject({
+    position: firstPanel.position
+  })
   await app.evaluate((element) => (element as CadleApp).undo())
   await expect(app.locator('text.shape-text').filter({ hasText: '12 x 470 Wp' })).toHaveCount(1)
   await app.evaluate((element) => (element as CadleApp).redo())
@@ -632,7 +679,7 @@ Short Circuit Current-Isc(A) 16.90`)
   await expect.poll(() => app.evaluate((element, key) => (element as CadleApp).waitForPageReady(key), pageKey)).toBe(true)
   const saved = await stored()
   expect(saved.filter((shape) => inverter.some((before) => before.id === shape.id))).toEqual(inverter)
-  expect(saved.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(3)
+  expect(saved.filter((shape) => shape.kind === 'symbol' && shape.electrical?.solar)).toHaveLength(5)
   const svg = await app.evaluate((element) => (element as CadleApp).toSVG())
   expect(svg).toContain('Huawei')
   expect(svg).toContain('OSDA')

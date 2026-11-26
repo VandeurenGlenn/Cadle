@@ -6118,8 +6118,10 @@ export class CadleApp extends LiteElement {
     const occupied = this.#document.shapes.filter((shape) => !groupId || shape.groupId !== groupId)
     const previousShapes = groupId ? this.#document.shapes.filter((shape) => shape.groupId === groupId) : []
     if (result.installation.kind === 'panels') {
-      const oldContact = groupId && previous?.kind === 'panels' && equipment
-        ? oneWireSymbolConnectionAnchors(equipment).find((anchor) => anchor.side === 'bottom')?.point : undefined
+      const firstPanel = previousShapes.find((shape): shape is SymbolShape =>
+        shape.kind === 'symbol' && shape.name === 'Zonnepanelen')
+      const oldContact = groupId && previous?.kind === 'panels' && firstPanel
+        ? oneWireSymbolConnectionAnchors(firstPanel).find((anchor) => anchor.side === 'bottom')?.point : undefined
       const taps = oldContact ? [{ x: oldContact.x, y: oldContact.y + 48 }]
         : [area.y + area.height - 240, area.y + area.height / 2, area.y + 240]
           .map((y) => ({ x: area.x + 60, y }))

@@ -180,6 +180,60 @@ test('preserves a moved battery description when editing the installation', () =
     (oldText as Extract<typeof oldText, { kind: 'text' }>).position)
 })
 
+test('draws each string on a distinct inverter input without intersecting the battery in either orientation', () => {
+  const value: SolarInstallation = { ...installation, panelCount: 23, stringCount: 3, panelsPerString: [7, 8, 8],
+    mpptCount: 2, battery: { model: 'B10' } }
+  for (const direction of ['top', 'bottom'] as const) {
+    let id = 0
+    const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 200, y: 800 }, end: { x: 1600, y: 800 },
+      strokeWidth: 4, groupId: 'onewire-kamrail-test' }
+    const shapes = buildSolarInstallation(value, rail.id, { x: 1200, y: 800 }, () => `string-${++id}`, direction)
+    const inverter = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Omvormer')!
+    const battery = shapes.find((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Batterij')!
+    const panels = shapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol' && shape.name === 'Zonnepanelen')
+    const wires = shapes.filter((shape): shape is LineShape =>
+      shape.kind === 'line' && shape.sourceLink?.role === 'solar-string-connection')
+    const labels = shapes.filter((shape): shape is TextShape =>
+      shape.kind === 'text' && shape.sourceLink?.role === 'solar-string-label')
+    const overlaps = (a: ReturnType<typeof oneWireLayoutBounds>, b: ReturnType<typeof oneWireLayoutBounds>) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+    assert.equal(panels.length, 3)
+    assert.equal(wires.length, 3)
+    assert.equal(new Set(wires.map((wire) => `${wire.start.x},${wire.start.y}`)).size, 3)
+    for (const [index, panel] of panels.entries()) {
+      const wire = wires.find((candidate) => candidate.sourceLink?.id === panel.id)!
+      assert.ok(oneWireSymbolConnectionAnchors(inverter).some(({ point }) =>
+        Math.hypot(point.x - wire.start.x, point.y - wire.start.y) < 1e-8))
+      assert.ok(oneWireSymbolConnectionAnchors(panel).some(({ point }) =>
+        Math.hypot(point.x - wire.end.x, point.y - wire.end.y) < 1e-8))
+      assert.ok(shapes.some((shape) => shape.kind === 'text' && shape.sourceLink?.id === panel.id &&
+        shape.text === `String ${index + 1}: ${value.panelsPerString![index]} panelen`))
+      const a = oneWireLayoutBounds(panel), b = oneWireLayoutBounds(battery)
+      assert.equal(overlaps(a, b), false)
+      const labelBounds = oneWireLayoutBounds(labels[index])
+      assert.ok(panels.every((other) => !overlaps(labelBounds, oneWireLayoutBounds(other))))
+      assert.ok(labels.slice(index + 1).every((other) => !overlaps(labelBounds, oneWireLayoutBounds(other))))
+    }
+    assert.deepEqual(findConnectionIssues(sanitizeShapes(cloneShapes([rail, ...shapes]))), [])
+  }
+})
+
+test('preserves independent string label positions when updating an installation', () => {
+  let id = 0
+  const original = buildSolarInstallation(installation, 'rail', { x: 900, y: 1200 }, () => `old-${++id}`)
+  const labels = original.filter((shape): shape is TextShape =>
+    shape.kind === 'text' && shape.sourceLink?.role === 'solar-string-label')
+  const moved = original.map((shape) => shape.kind === 'text' && shape.id === labels[1].id
+    ? { ...shape, position: { x: shape.position.x - 40, y: shape.position.y - 20 } } : shape)
+  id = 0
+  const updated = preserveSolarTextPositions(
+    buildSolarInstallation({ ...installation, panelCount: 14 }, 'rail', { x: 900, y: 1200 }, () => `new-${++id}`), moved)
+  const updatedLabels = updated.filter((shape): shape is TextShape =>
+    shape.kind === 'text' && shape.sourceLink?.role === 'solar-string-label')
+  assert.deepEqual(updatedLabels[0].position, labels[0].position)
+  assert.deepEqual(updatedLabels[1].position, { x: labels[1].position.x - 40, y: labels[1].position.y - 20 })
+})
+
 test('allows an inverter and battery without inventing panels', () => {
   const value: SolarInstallation = { kind: 'inverter', inverterManufacturer: '', inverterModel: 'INV',
     inverterPowerW: 5000, phases: 1, breakerCurrentA: 25, battery: {} }
@@ -248,9 +302,9 @@ test('validates and serializes independent equipment without requiring or fabric
     assert.equal(validateSolarInstallation(value), null)
     assert.deepEqual(sanitizeSolarInstallation(value), value)
     let id = 0
-    const shapes = buildSolarInstallation(value, value.kind === 'panels' ? undefined : 'rail', { x: 300, y: 800 }, () => `part-${++id}`)
+    const shapes = buildSolarInstallation(value, value.kind === 'panels' ? undefined : 'rail', { x: 600, y: 800 }, () => `part-${++id}`)
     const symbols = shapes.filter((shape) => shape.kind === 'symbol')
-    assert.equal(symbols.length, value.kind === 'panels' ? 1 : 2)
+    assert.equal(symbols.length, 2)
     assert.deepEqual(sanitizeShapes(cloneShapes(shapes)).filter((shape) => shape.kind === 'symbol')
       .map((shape) => shape.electrical?.solar), symbols.map(() => value))
     if (value.kind === 'panels') {
@@ -302,9 +356,9 @@ test('rejects missing, mismatched and malformed per-string panel quantities with
 
 test('connects actual PV terminals, annotates STC quantities and preserves equipment through serialization', () => {
   let id = 0
-  const shapes = buildSolarInstallation(installation, 'rail', { x: 300, y: 1000 }, () => `pv-${++id}`)
+  const shapes = buildSolarInstallation(installation, 'rail', { x: 600, y: 1000 }, () => `pv-${++id}`)
   const symbols = shapes.filter((shape): shape is SymbolShape => shape.kind === 'symbol')
-  assert.equal(symbols.length, 3)
+  assert.equal(symbols.length, 4)
   const lines = shapes.filter((shape): shape is LineShape => shape.kind === 'line')
   for (const symbol of symbols) {
     const incoming = oneWireSymbolConnectionAnchors(symbol).find((anchor) => anchor.side === 'bottom')!.point
@@ -334,7 +388,7 @@ test('connects actual PV terminals, annotates STC quantities and preserves equip
   const rail: LineShape = { id: 'rail', kind: 'line', start: { x: 200, y: 1000 }, end: { x: 800, y: 1000 } }
   const area = { x: 0, y: 0, width: 2400, height: 1600 }
   assert.equal(solarInstallationPlacement(shapes, [rail], rail, area), 0)
-  assert.equal(solarInstallationPlacement(shapes, [rail], rail, area, 1000), 700)
+  assert.equal(solarInstallationPlacement(shapes, [rail], rail, area, 1000), 400)
   const before = structuredClone(shapes)
   const dx = solarInstallationPlacement(shapes, [rail, ...shapes], rail, area)
   assert.ok(dx !== undefined && dx > 0)
